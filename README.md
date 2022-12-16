@@ -12,6 +12,7 @@ P4TG consist of:
 
 **The repository is not yet fully set up!**
 
+**Installation instructions & documentation follows soon.**
 ## Preview of P4TG
 
 ![image](preview.png)
