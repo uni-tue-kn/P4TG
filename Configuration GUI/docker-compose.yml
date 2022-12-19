@@ -1,0 +1,9 @@
+version: "3"
+services:
+  p4tg:
+    container_name: p4tg-frontend
+    build: .
+    ports:
+      - 80:80
+    volumes:
+      - ./:/app
