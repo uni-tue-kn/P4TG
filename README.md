@@ -12,6 +12,24 @@ P4TG consist of:
 
 **The repository is not yet fully set up!**
 
+## Installation
+
+### Configuration GUI
+
+The configuration GUI is based on react & nodejs.
+It can be either started via docker-compose or via npm.
+
+#### Docker
+
+To run the configuration GUI via docker-compose run `docker-compose up`.
+After the build has finished, the configuration GUI is reachable at `http://127.0.0.1`.
+To change the listening port adjust the port in `docker-compose.yml`.
+
+#### Lecay NPM installation
+
+Run `npm install --legacy-peer-deps` to install the nodejs dependencies.
+Afterwards run `npm run build` to create a production build and serve the `build/` directory with a webserver of your choice.
+
 **Installation instructions & documentation follows soon.**
 ## Preview of P4TG
 
