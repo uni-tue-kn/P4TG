@@ -7,3 +7,5 @@ services:
       - 80:80
     volumes:
       - ./:/app
+      - /app/node_modules
+    command: bash -c "npm run build && serve -s build -p 80"
