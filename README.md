@@ -1,3 +1,5 @@
+![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/python-3.8-success) ![image](https://img.shields.io/badge/built%20with-P4-orange)
+
 # P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks
 
 This repository contains the source code for a P4 based 1 Tb/s traffic generator based on the Intel Tofino(TM) ASIC.
