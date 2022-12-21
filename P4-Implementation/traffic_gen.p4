@@ -23,7 +23,6 @@
 #include "src/headers.p4"
 #include "src/libs/Add_64_64.p4"
 #include "src/libs/P4TG_Ingress.p4"
-#include "src/libs/ARP.p4"
 #include "src/ingress.p4"
 #include "src/egress.p4"
 #include "src/parser.p4"

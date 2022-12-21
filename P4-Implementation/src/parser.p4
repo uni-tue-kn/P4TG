@@ -69,14 +69,8 @@ parser SwitchIngressParser(
         transition select(hdr.ethernet.ether_type) {
             ETHERTYPE_MONITOR: parse_monitor;
             ETHERTYPE_IPV4: parse_ipv4;
-            TYPE_ARP  	   : parse_arp;
             default: reject;
         }
-    }
-
-    state parse_arp {
-        pkt.extract(hdr.arp);
-        transition accept;
     }
 
 
@@ -128,7 +122,6 @@ control SwitchIngressDeparser(
        }
 
         pkt.emit(hdr.ethernet);
-        pkt.emit(hdr.arp);
         pkt.emit(hdr.ipv4);
         //pkt.emit(hdr.udp);
         pkt.emit(hdr.path);

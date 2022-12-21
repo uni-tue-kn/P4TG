@@ -5,7 +5,6 @@ control ingress(
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
     P4TG_Ingress() p4tg;
-    ARP() arp_c;
 
     apply {
         p4tg.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);

@@ -28,8 +28,6 @@ typedef bit<32> seq_t;
 const ether_type_t ETHERTYPE_IPV4 = 0x800;
 const ether_type_t ETHERTYPE_MONITOR = 0xBB02;
 
-const ether_type_t TYPE_ARP = 0x0806;
-
 const bit<8> IP_PROTOCOL_UDP = 17;
 const bit<8> IP_PROTOCOL_P4TG = 110;
 
@@ -91,19 +89,6 @@ header udp_t {
     bit<16> checksum;
 }
 
-header arp_t {
-    bit<16> hardwareaddr_t;
-    bit<16> protoaddr_t;
-    bit<8> hardwareaddr_s;
-    bit<8> protoaddr_s;
-    bit<16> op;
-    mac_addr_t src_mac_addr;
-    ipv4_addr_t src_ip_addr;
-    mac_addr_t dst_mac_addr;
-    ipv4_addr_t dst_ip_addr;
-}
-
-
 struct header_t {
     ethernet_h ethernet;
     ipv4_t ipv4;
@@ -111,7 +96,6 @@ struct header_t {
     udp_t udp;
     monitor_t monitor;
     path_monitor_t path;
-    arp_t arp;
 }
 
 

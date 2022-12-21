@@ -165,10 +165,6 @@ control egress(
 
             frame_size_monitor.apply();
 
-            /*if(hdr.path.isValid() && hdr.path.dst_port == 50083) {
-                monitor_stream.apply();
-
-            }*/
         }
 
 
