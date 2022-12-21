@@ -301,42 +301,7 @@ const StatView = ({stats, port_mapping}: { stats: Statistics, port_mapping: { [n
                         </tbody>
                     </Table>
                 </Col>
-                {/*<Col className={"col-3"}>*/}
-                {/*    <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>*/}
-                {/*        <thead className={"table-dark"}>*/}
-                {/*        <tr>*/}
-                {/*            <th className={"col-4"}><Overline>TX IAT</Overline></th>*/}
-                {/*            <th className={"col-4"}>&#963;(TX IAT)</th>*/}
-                {/*            <th className={"col-4"}>#TX IAT</th>*/}
-                {/*        </tr>*/}
-                {/*    </thead>*/}
-                {/*    <tbody>*/}
-                {/*    <tr>*/}
-                {/*        <td>{formatNanoSeconds(mean_iat_tx)} vs {formatNanoSeconds(stats.iat_mean_tx)}</td>*/}
-                {/*        <td>{stats.iat_std_tx > 0 ? formatNanoSeconds(stats.iat_std_tx) : 0}</td>*/}
-                {/*        <td>{stats.iat_n_tx}</td>*/}
-                {/*    </tr>*/}
-                {/*    </tbody>*/}
-                {/*</Table>*/}
-                {/*</Col>*/}
-                {/*<Col className={"col-3"}>*/}
-                {/*    <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>*/}
-                {/*        <thead className={"table-dark"}>*/}
-                {/*        <tr>*/}
-                {/*            <th className={"col-4"}><Overline>RX IAT</Overline></th>*/}
-                {/*            <th className={"col-4"}>&#963;(RX IAT)</th>*/}
-                {/*            <th className={"col-4"}>#RX IAT</th>*/}
-                {/*        </tr>*/}
-                {/*        </thead>*/}
-                {/*        <tbody>*/}
-                {/*        <tr>*/}
-                {/*            <td>{formatNanoSeconds(mean_iat_rx)} vs {formatNanoSeconds(stats.iat_mean_rx)}</td>*/}
-                {/*            <td>{stats.iat_std_rx > 0 ? formatNanoSeconds(stats.iat_std_rx) : 0}</td>*/}
-                {/*            <td>{stats.iat_n_rx}</td>*/}
-                {/*        </tr>*/}
-                {/*        </tbody>*/}
-                {/*    </Table>*/}
-                {/*</Col>*/}
+
             </Row>
             <Row>
                 <Col className={"col-12 col-md-4"}>

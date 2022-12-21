@@ -445,30 +445,33 @@ const Settings = () => {
         <Row>
 
         </Row>
-        <Row>
-            <Col>
-                <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
-                    <thead className={"table-dark"}>
-                    <tr>
-                        <th>Stream-ID</th>
-                        <th>Frame Size</th>
-                        <th>Rate</th>
-                        <th>Mode</th>
-                        <th>Options</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {streams.map((v, i) => {
-                        v.app_id = i + 1;
+        {mode != "Monitor" ?
+            <Row>
+                <Col>
+                    <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
+                        <thead className={"table-dark"}>
+                        <tr>
+                            <th>Stream-ID</th>
+                            <th>Frame Size</th>
+                            <th>Rate</th>
+                            <th>Mode</th>
+                            <th>Options</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {streams.map((v, i) => {
+                            v.app_id = i + 1;
 
-                        return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}/>
-                    })}
+                            return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}/>
+                        })}
 
-                    </tbody>
-                </Table>
+                        </tbody>
+                    </Table>
 
-            </Col>
-        </Row>
+                </Col>
+            </Row>
+            : null
+        }
         <Row className={"mb-3"}>
             <Col className={"text-start"}>
                 {running ? null :
@@ -481,7 +484,7 @@ const Settings = () => {
             </Col>
         </Row>
 
-        {streams.length > 0 ?
+        {streams.length > 0 || mode == "Monitor" ?
             <Row>
                 <Col>
                     <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>

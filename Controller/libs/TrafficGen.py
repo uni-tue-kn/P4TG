@@ -279,6 +279,24 @@ class TrafficGen:
                                    action_name="egress.no_action",
                                    action_params={})
 
+    def configureMonitorForwarding(self, mapping=None):
+        for p in mapping:
+            if mapping.get(p) == "":
+                continue
+
+            rx_port = int(mapping.get(p))
+            tx_port = int(p)
+
+            self.switch.TableEntry(table="ingress.p4tg.forward",
+                                    match_fields={
+                                        "ig_intr_md.ingress_port": self.port_mapping.get(rx_port).get("rx_recirc"),
+                                    },
+                                    action_name="ingress.p4tg.port_forward",
+                                    action_params={
+                                        "e_port": self.port_mapping.get(tx_port).get("tx_recirc")
+                                    })
+
+
     def configureFowrading(self):
         for p in self.port_mapping:
             # Received packets are forwarded to rx recirc port
@@ -300,7 +318,6 @@ class TrafficGen:
                                    action_params={
                                        "e_port": p
                                    })
-
 
     def resetRegisters(self):
         # Reset registers
@@ -333,25 +350,17 @@ class TrafficGen:
         if mode != Mode.CBR and len(streams) > 1:
             raise Exception("Only CBR mode supports multiple streams. Mode: {}".format(mode))
 
+        logging.info("Start reset")
         self.reset()
 
-        if mode != Mode.ANALYZE:
-            # add default forwarding state
-            self.configureFowrading()
+        logging.info("Start configure forwarding")
+        self.configureFowrading()
+
+        if mode == Mode.ANALYZE:
+            self.configureMonitorForwarding(mapping=port_mapping)
 
         dt = DevTarget_t(0, hex_to_i16(0xFFFF))
         self.overall_rate = 0
-
-        factor = 2
-
-        for s in streams:
-            self.overall_rate += s["traffic_rate"]
-
-        self.pipes = [68, 196]
-
-        if self.overall_rate < 75:
-            self.pipes = [68]
-            factor = 1
 
         packets = 0
         timeout = 0
@@ -390,7 +399,17 @@ class TrafficGen:
             id = self.mc_manager.add_mc_grp(name="Stream {}".format(s), ports=stream_to_ports.get(s))
             stream_to_mc[s] = id
 
-        p = 0
+        # default on both pipes
+        factor = 2
+        self.pipes = [68, 196]
+
+        for s in streams:
+            if s["app_id"] in stream_to_mc:  # stream is active
+                self.overall_rate += s["traffic_rate"]
+
+        if self.overall_rate < 75:
+            self.pipes = [68]
+            factor = 1
 
         def configureGenerator(factor=1):
             offset = 0
@@ -504,16 +523,6 @@ class TrafficGen:
 
         configureGenerator(factor=factor)
 
-        if mode == "Monitor":
-            self.switch.TableEntry(table="ingress.p4tg.forward",
-                                   match_fields={
-                                       "ig_intr_md.ingress_port": self.rx_port,
-                                   },
-                                   action_name="ingress.p4tg.port_forward",
-                                   action_params={
-                                       "e_port": self.tx_port
-                                   })
-
         self.config = {"mode": mode, "stream_settings": stream_settings, "port_mapping": port_mapping,
                        "streams": streams, "stream_to_mc": stream_to_mc, "stream_to_ports": stream_to_ports,
                        "port_to_recirc": self.port_mapping,
@@ -521,7 +530,8 @@ class TrafficGen:
                        }
 
         for s in streams:
-            self.tc.conn_mgr.pktgen_app_enable(self.tc.hdl, dt, s["app_id"])
+            if s["active"]:
+                self.tc.conn_mgr.pktgen_app_enable(self.tc.hdl, dt, s["app_id"])
 
         self.running = True
 
@@ -534,19 +544,25 @@ class TrafficGen:
         if not self.running:
             raise Exception("TrafficGen not running")
 
+        if "mode" in self.config and self.config.get("mode") == Mode.ANALYZE:
+            self.reset()
+
         # self.monitor.stop_rtt_measure()
         # self.monitor.stop_iat_measure()
 
         dt = DevTarget_t(0, hex_to_i16(0xFFFF))
 
-        for s in self.config["streams"]:
-            if not s["active"]:
-                continue
+        for id in range(1, 8):
+            self.tc.conn_mgr.pktgen_app_disable(self.tc.hdl, dt, id)
 
-            self.tc.conn_mgr.pktgen_app_disable(self.tc.hdl, dt, s["app_id"])
+        self.switch.ClearTable(table="ingress.p4tg.tg_forward")
 
-            self.switch.ClearTable(table="ingress.p4tg.tg_forward")
-            self.mc_manager.delete_mc_group(name="Stream {}".format(s["app_id"]))
+        if "streams" in self.config:
+            for s in self.config["streams"]:
+                if not s["active"]:
+                    continue
+
+                self.mc_manager.delete_mc_group(name="Stream {}".format(s["app_id"]))
 
         self.running = False
 
@@ -556,8 +572,7 @@ class TrafficGen:
         logging.debug("Stop traffic generation.")
 
     def reset(self):
-        if "streams" in self.config:
-            self.removeEntries()
+        self.removeEntries()
 
         for handler in self.reset_handler:
             handler()

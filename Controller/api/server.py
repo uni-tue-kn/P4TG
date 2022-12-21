@@ -43,7 +43,7 @@ class RestAPI:
 
         traffic_gen = TrafficGen(tg=tg)
 
-        tables = ["ingress.p4tg.tg_forward", "ingress.p4tg.monitor_forward", "ingress.p4tg.frame_type.frame_type_monitor",
+        tables = ["ingress.p4tg.tg_forward", "ingress.p4tg.forward", "ingress.p4tg.monitor_forward", "ingress.p4tg.frame_type.frame_type_monitor",
                   "egress.header_replace.header_replace", "egress.frame_size_monitor"]
 
         self.app.add_route('/online', Online())
