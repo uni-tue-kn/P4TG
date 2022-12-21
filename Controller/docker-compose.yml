@@ -1,0 +1,11 @@
+version: "3"
+services:
+  p4tg:
+    container_name: p4tg-controller
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+      - /opt/bf-sde-9.9.0/install/lib/python3.8/:/opt/python_packages/
+    network_mode: host

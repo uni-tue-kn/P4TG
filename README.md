@@ -12,9 +12,7 @@ P4TG consist of:
 - Python control plane
 - React configuration GUI
 
-**The repository is not yet fully set up!**
-
-## Installation
+## Installation & Start Instructions
 
 ### P4 Program
 
@@ -26,6 +24,16 @@ This requires a fully setup SDE with set `$SDE` and `$SDE_INSTALL` environment v
 
 Tested on:
   - SDE 9.9.0
+
+### Controller
+
+The controller is written in python and can be started via docker-compose.
+First, adjust the second volume in the `docker-compose.yml` that maps the local `$SDE` python path to the container.
+This path depends on the `$SDE` installation and is required to make the python SDE modules available in the container.
+
+Afterwards, start the controller via `docker-compose up`.
+
+The controller then starts a REST-API server at port 8000 that is used to communicate with the configuration GUI.
 
 ### Configuration GUI
 
@@ -43,7 +51,15 @@ To change the listening port adjust the port in `docker-compose.yml`.
 Run `npm install --legacy-peer-deps` to install the nodejs dependencies.
 Afterwards run `npm run build` to create a production build and serve the `build/` directory with a webserver of your choice.
 
-**Installation instructions & documentation follows soon.**
+#### Connection to REST-API server
+
+Connect to the REST-API server through the frontend of the configuration GUI: http://*ip-of-tofino-controller*:8000
+
+# Documentation
+
+
+**Code Documentation follows soon.**
+
 ## Preview of P4TG
 
 ![image](preview.png)
