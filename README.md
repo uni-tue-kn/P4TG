@@ -14,6 +14,17 @@ P4TG consist of:
 
 ## Installation
 
+### P4 Program
+
+Compile p4tg via `make compile`. This compiles the program and copies the resulting configs to the target directory.
+
+Afterwards, start p4tg via `make start`.
+
+This requires a fully setup SDE with set `$SDE` and `$SDE_INSTALL` environment variables.
+
+Tested on:
+  - SDE 9.9.0
+
 ### Configuration GUI
 
 The configuration GUI is based on react & nodejs.
