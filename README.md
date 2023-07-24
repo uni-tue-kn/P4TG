@@ -24,6 +24,7 @@ This requires a fully setup SDE with set `$SDE` and `$SDE_INSTALL` environment v
 
 Tested on:
   - SDE 9.9.0
+  - SDE 9.13.0
 
 ### Controller
 
@@ -46,7 +47,7 @@ To run the configuration GUI via docker-compose run `docker-compose up`.
 After the build has finished, the configuration GUI is reachable at `http://127.0.0.1`.
 To change the listening port adjust the port in `docker-compose.yml`.
 
-#### Lecay NPM installation
+#### Legacy NPM installation
 
 Run `npm install --legacy-peer-deps` to install the nodejs dependencies.
 Afterwards run `npm run build` to create a production build and serve the `build/` directory with a webserver of your choice.

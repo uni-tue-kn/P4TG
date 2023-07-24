@@ -29,20 +29,20 @@ control IAT(inout header_t hdr,
             inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
     // IAT monitoring
-    Register<bit<32>, _>(256, 0) lower_last_rx;
-    Register<bit<16>, _>(256, 0) higher_last_rx;
+    Register<bit<32>, PortId_t>(256, 0) lower_last_rx;
+    Register<bit<16>, PortId_t>(256, 0) higher_last_rx;
 
     // used to limit the digest rate
     Meter<bit<9>>(256, MeterType_t.BYTES) digest_rate;
 
-    RegisterAction<bit<32>, _, bit<32>>(lower_last_rx) set_lower_last_rx = {
+    RegisterAction<bit<32>, PortId_t, bit<32>>(lower_last_rx) set_lower_last_rx = {
             void apply(inout bit<32> value, out bit<32> read_value) {
                 read_value = value;
                 value = ig_intr_md.ingress_mac_tstamp[31:0];
             }
     };
 
-    RegisterAction<bit<16>, _, bit<16>>(higher_last_rx) set_higher_last_rx = {
+    RegisterAction<bit<16>, PortId_t, bit<16>>(higher_last_rx) set_higher_last_rx = {
             void apply(inout bit<16> value, out bit<16> read_value) {
                 read_value = value;
                 value = ig_intr_md.ingress_mac_tstamp[47:32];
