@@ -1404,8 +1404,8 @@ dependencies = [
 
 [[package]]
 name = "rbfrt"
-version = "0.1.0-alpha"
-source = "git+https://github.com/uni-tue-kn/rbfrt?rev=0cb142e#0cb142ebf7df171069d0aa5db448aa75a517aa98"
+version = "0.1.1-alpha"
+source = "git+https://github.com/uni-tue-kn/rbfrt?rev=4f4c46e#4f4c46e21f963b5d0ffa97c468bd873a8213cab6"
 dependencies = [
  "async-stream",
  "crossbeam-channel",
