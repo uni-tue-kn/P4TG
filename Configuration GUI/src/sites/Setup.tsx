@@ -20,14 +20,26 @@
 import React, {useState} from 'react'
 import styled from 'styled-components'
 import {Button, Container, Form} from "react-bootstrap";
+import {GitHub} from "./Home"
+
+import P4TGLogo from "../assets/p4tg_logo_white.png"
+
+const StyledImg = styled.img`
+    width: 150px;
+`
 
 const StyledContainer = styled(Container)`
-  background: #FFF;
+  background: linear-gradient(180deg, var(--color-secondary) 40%, 40%, #FFF 10%);
   max-width: 400px;
   border-radius: 10px;
   padding: 20px;
+  padding-top: 15px;
   box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 12px;
   border: 1px solid #e8e8e8;
+
+  input {
+    border: 1px solid var(--color-primary);
+  }
 `
 
 const Wrapper = styled.div`
@@ -44,21 +56,27 @@ const Setup = () => {
         localStorage.setItem("server", server)
         window.location.reload();
     }
-    return <Wrapper>
-        <StyledContainer>
-            <h3 className={"mb-4"}><i className="bi bi-ethernet"/> P4TG: Configuration</h3>
-            <form onSubmit={onSubmit}>
-                <Form.Control
-                    required
-                    onChange={(event) => set_server(event.target.value)}
-                    type={"text"}
-                    className={"mb-3"}
-                    placeholder="https://mycontroller.net"
-                />
-                <Button className="col-12" type={"submit"} variant="primary">Connect</Button>
-            </form>
-        </StyledContainer>
-    </Wrapper>
+    return <>
+        <Wrapper>
+            <StyledContainer>
+                <h3 className={"mb-4 text-center"}><StyledImg src={P4TGLogo} alt="P4TG log"/></h3>
+                <form onSubmit={onSubmit}>
+                    <Form.Control
+                        required
+                        onChange={(event) => set_server(event.target.value)}
+                        type={"text"}
+                        className={"mb-3"}
+                        placeholder="https://mycontroller.net"
+                    />
+                    <Button className="col-12" type={"submit"} variant="danger">Connect</Button>
+                </form>
+                <GitHub/>
+            </StyledContainer>
+        </Wrapper>
+
+    </>
+
+
 }
 
 export default Setup

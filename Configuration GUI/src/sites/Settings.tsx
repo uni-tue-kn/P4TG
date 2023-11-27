@@ -21,29 +21,49 @@ import React, {useEffect, useState} from 'react'
 import {Button, Col, Form, InputGroup, Modal, Row, Table} from "react-bootstrap";
 import {get} from "../common/API";
 import Loader from "../components/Loader";
-import {DefaultStream, DefaultStreamSettings, Stream, StreamSettings} from "../common/Interfaces";
+import {
+    DefaultStream,
+    DefaultStreamSettings,
+    Encapsulation,
+    GenerationMode,
+    Stream,
+    StreamSettings
+} from "../common/Interfaces";
 import styled from "styled-components";
 
 const StyledRow = styled.tr`
-  display: flex;
-  align-items: center;
+    display: flex;
+    align-items: center;
 `
 
 const StyledCol = styled.td`
-  vertical-align: middle;
-  display: table-cell;
-  text-indent: 5px;
+    vertical-align: middle;
+    display: table-cell;
+    text-indent: 5px;
 `
 
 const SettingsModal = ({
                            show,
                            hide,
                            data,
-                           running
-                       }: { show: boolean, hide: () => void, data: StreamSettings, running: boolean }) => {
+                           running,
+                           stream
+                       }: {
+    show: boolean,
+    hide: () => void,
+    data: StreamSettings,
+    running: boolean,
+    stream: Stream
+}) => {
     const [eth_src, set_eth_src] = useState(data.eth_src)
     const [eth_dst, set_eth_dst] = useState(data.eth_dst)
     const [ip_src, set_ip_src] = useState(data.ip_src)
+    const [vlan_id, set_vlan_id] = useState(data.vlan_id)
+    const [inner_vlan_id, set_inner_vlan_id] = useState(data.inner_vlan_id)
+    const [pcp, set_pcp] = useState(data.pcp)
+    const [inner_pcp, set_inner_pcp] = useState(data.inner_pcp)
+    const [dei, set_dei] = useState(data.dei)
+    const [inner_dei, set_inner_dei] = useState(data.inner_dei)
     const [ip_dst, set_ip_dst] = useState(data.ip_dst)
     const [ip_tos, set_ip_tos] = useState(data.ip_tos)
     const [ip_src_mask, set_ip_src_mask] = useState(data.ip_src_mask)
@@ -95,6 +115,12 @@ const SettingsModal = ({
         data.ip_tos = ip_tos
         data.ip_src_mask = ip_src_mask
         data.ip_dst_mask = ip_dst_mask
+        data.vlan_id = vlan_id
+        data.inner_vlan_id = inner_vlan_id
+        data.pcp = pcp
+        data.inner_pcp = inner_pcp
+        data.dei = dei
+        data.inner_dei = inner_dei
 
         hide()
     }
@@ -108,6 +134,9 @@ const SettingsModal = ({
         set_ip_src_mask(data.ip_src_mask)
         set_ip_dst_mask(data.ip_dst_mask)
 
+        set_vlan_id(data.vlan_id)
+        set_inner_vlan_id(data.inner_vlan_id)
+
         hide()
 
 
@@ -115,7 +144,7 @@ const SettingsModal = ({
 
     return <Modal show={show} size="lg" onHide={hideRestore}>
         <Modal.Header closeButton>
-            <Modal.Title>Stream</Modal.Title>
+            <Modal.Title>Stream #{stream.app_id}</Modal.Title>
         </Modal.Header>
         <form onSubmit={submit}>
             <Modal.Body>
@@ -151,6 +180,142 @@ const SettingsModal = ({
                             className="bi bi-shuffle"/></Button>
                     </Col>
                 </Form.Group>
+
+                {stream.encapsulation == Encapsulation.Q ?
+                    <>
+                        <h4>VLAN</h4>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                PCP
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control onChange={(event: any) => set_pcp(parseInt(event.target.value))}
+                                                      disabled={running} type={"number"} value={pcp}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                DEI
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control onChange={(event: any) => set_dei(parseInt(event.target.value))}
+                                                      disabled={running} type={"number"} value={dei}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                VLAN ID
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control
+                                            onChange={(event: any) => set_vlan_id(parseInt(event.target.value))}
+                                            disabled={running} type={"number"} value={vlan_id}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                    </>
+                    :
+                    null}
+
+                {stream.encapsulation == Encapsulation.QinQ ?
+                    <>
+                        <h4>QinQ</h4>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                Outer PCP
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control onChange={(event: any) => set_pcp(parseInt(event.target.value))}
+                                                      disabled={running} type={"number"} value={pcp}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                Outer DEI
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control onChange={(event: any) => set_dei(parseInt(event.target.value))}
+                                                      disabled={running} type={"number"} value={dei}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                Outer VLAN ID
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control
+                                            onChange={(event: any) => set_vlan_id(parseInt(event.target.value))}
+                                            disabled={running} type={"number"} value={vlan_id}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                Inner PCP
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control
+                                            onChange={(event: any) => set_inner_pcp(parseInt(event.target.value))}
+                                            disabled={running} type={"number"} value={inner_pcp}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                Inner DEI
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control
+                                            onChange={(event: any) => set_inner_dei(parseInt(event.target.value))}
+                                            disabled={running} type={"number"} value={inner_dei}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                            <Form.Label className={"col-3 text-start"}>
+                                Inner VLAN ID
+                            </Form.Label>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col>
+                                        <Form.Control
+                                            onChange={(event: any) => set_inner_vlan_id(parseInt(event.target.value))}
+                                            disabled={running} type={"number"} value={inner_vlan_id}/>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+                    </>
+                    :
+                    null}
 
                 <h4>IPv4</h4>
 
@@ -219,12 +384,40 @@ const SettingsModal = ({
     </Modal>
 }
 
+const StreamSettingsList = ({stream_settings, streams, running, port}: {
+    stream_settings: StreamSettings[],
+    streams: Stream[],
+    running: boolean,
+    port: { pid: number, port: number, channel: number, loopback: string, status: boolean }
+}) => {
+    return <>
+        {stream_settings.map((s: StreamSettings, i: number) => {
+            let stream = null;
+
+            streams.forEach((st: Stream) => {
+                if (st.stream_id == s.stream_id) {
+                    stream = st;
+                }
+            })
+
+            if (stream == null) {
+                console.log(s, streams)
+            }
+            if (s.port == port.pid && stream != null) {
+                return <StreamSettingsElement key={i} running={running || !port.status} stream_data={stream}
+                                              stream={s}/>
+            }
+
+        })}
+    </>
+}
+
 const StreamElement = ({
                            running,
                            data,
                            remove,
                            mode
-                       }: { running: boolean, data: Stream, remove: (id: number) => void, mode: string }) => {
+                       }: { running: boolean, data: Stream, remove: (id: number) => void, mode: GenerationMode }) => {
     const [show, set_show] = useState(false)
 
     return <tr>
@@ -251,13 +444,13 @@ const StreamElement = ({
                     onChange={(event: any) => data.traffic_rate = parseFloat(event.target.value)}
                     required
                     min={"0"}
-                    max={mode == "Mpps" ? 200 : 100}
+                    max={mode == GenerationMode.MPPS ? 200 : 100}
                     step={"any"}
                     type={"number"}
                     placeholder="Traffic rate"
                     defaultValue={data.traffic_rate > 0 ? data.traffic_rate : ""}
                 />
-                <InputGroup.Text>{mode == "Mpps" ? "Mpps" : "Gbps"}</InputGroup.Text>
+                <InputGroup.Text>{mode == GenerationMode.MPPS ? "Mpps" : "Gbps"}</InputGroup.Text>
             </InputGroup>
         </StyledCol>
         <StyledCol>
@@ -267,24 +460,36 @@ const StreamElement = ({
                 <option selected={1 === data.burst} value="1">IAT Precision</option>
             </Form.Select>
         </StyledCol>
+        <StyledCol>
+            <Form.Select disabled={running} required
+                         onChange={(event: any) => {
+                             data.encapsulation = parseInt(event.target.value)
+                         }}
+            >
+                <option selected={Encapsulation.None == data.encapsulation} value={Encapsulation.None}>None</option>
+                <option selected={Encapsulation.Q == data.encapsulation} value={Encapsulation.Q}>VLAN (+4 byte)</option>
+                <option selected={Encapsulation.QinQ == data.encapsulation} value={Encapsulation.QinQ}>Q-in-Q (+8
+                    byte)
+                </option>
+            </Form.Select>
+        </StyledCol>
         <StyledCol className={"text-end"}>
             <Button disabled={running} className={"btn-sm"} variant={"dark"}
                     onClick={() => remove(data.stream_id)}>
                 <i className="bi bi-trash2-fill"/></Button>
         </StyledCol>
-
-
     </tr>
 }
 
 const StreamSettingsElement = ({
                                    running,
-                                   stream
-                               }: { running: boolean, stream: StreamSettings }) => {
+                                   stream,
+                                   stream_data
+                               }: { running: boolean, stream: StreamSettings, stream_data: Stream }) => {
     const [show, set_show] = useState(false)
 
     return <>
-        <SettingsModal running={running} data={stream} show={show} hide={() => set_show(false)}/>
+        <SettingsModal running={running} data={stream} stream={stream_data} show={show} hide={() => set_show(false)}/>
         <StyledCol>
             <Form.Check
                 className={"d-inline"}
@@ -306,7 +511,13 @@ const StreamSettingsElement = ({
 }
 
 const Settings = () => {
-    const [ports, set_ports] = useState<{ pid: number, port: number, channel: number, loopback: string, status: boolean }[]>([])
+    const [ports, set_ports] = useState<{
+        pid: number,
+        port: number,
+        channel: number,
+        loopback: string,
+        status: boolean
+    }[]>([])
     const [running, set_running] = useState(false)
     // @ts-ignore
     const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
@@ -316,7 +527,7 @@ const Settings = () => {
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
 
-    const [mode, set_mode] = useState(localStorage.getItem("gen-mode") || "")
+    const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [loaded, set_loaded] = useState(false)
 
     const loadPorts = async () => {
@@ -337,16 +548,20 @@ const Settings = () => {
     const loadGen = async () => {
         let stats = await get({route: "/trafficgen"})
 
-        if (Object.keys(stats.data).length > 0) {
-            set_mode(stats.data.mode)
-            set_port_tx_rx_mapping(stats.data.port_mapping)
-            set_stream_settings(stats.data.stream_settings)
-            set_streams(stats.data.streams)
+        if (Object.keys(stats.data).length > 1) {
+            let old_streams = JSON.stringify(streams)
 
-            localStorage.setItem("streams", JSON.stringify(stats.data.streams))
-            localStorage.setItem("gen-mode", stats.data.mode)
-            localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
-            localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_mapping))
+            if (old_streams != JSON.stringify(stats.data.streams)) {
+                set_mode(stats.data.mode)
+                set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
+                set_stream_settings(stats.data.stream_settings)
+                set_streams(stats.data.streams)
+
+                localStorage.setItem("streams", JSON.stringify(stats.data.streams))
+                localStorage.setItem("gen-mode", stats.data.mode)
+                localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
+                localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
+            }
 
             set_running(true)
         } else {
@@ -356,14 +571,17 @@ const Settings = () => {
 
     useEffect(() => {
         refresh()
-        console.log(streams)
 
-        setInterval(loadGen, 2000);
-    }, [])
+        const interval = setInterval(loadGen, 2000);
+
+        return () => {
+            clearInterval(interval)
+        }
+    }, [streams])
 
     const save = () => {
         localStorage.setItem("streams", JSON.stringify(streams))
-        localStorage.setItem("gen-mode", mode)
+        localStorage.setItem("gen-mode", String(mode))
 
         localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
 
@@ -380,22 +598,11 @@ const Settings = () => {
 
         set_streams([])
         set_stream_settings([])
-        set_mode("")
+        set_mode(GenerationMode.NONE)
         set_port_tx_rx_mapping({})
 
         alert("Reset complete.")
     }
-
-    // useEffect(() => {
-    //     return () => {
-    //         //console.log(JSON.stringify(streams))
-    //         //localStorage.setItem("streams", JSON.stringify(streams))
-    //         //localStorage.setItem("gen-mode", mode)
-    //
-    //         //localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
-    //     }
-    //
-    // }, [streams, mode, stream_settings])
 
     const addStream = () => {
         if (streams.length > 6) {
@@ -429,23 +636,23 @@ const Settings = () => {
                              onChange={(event: any) => {
                                  set_streams([]);
                                  set_stream_settings([]);
-                                 if (event.target.value != "" && event.target.value != "Monitor") {
+                                 if (event.target.value != "" && event.target.value != GenerationMode.ANALYZE) {
                                      addStream();
                                  }
-                                 set_mode(event.target.value);
+                                 set_mode(parseInt(event.target.value));
                              }}>
-                    <option value={""}>Generation Mode</option>
-                    <option selected={mode === "CBR"} value={"CBR"}>CBR</option>
-                    <option selected={mode === "Poisson"} value={"Poisson"}>Poisson</option>
-                    <option selected={mode === "Mpps"} value={"Mpps"}>Mpps</option>
-                    <option selected={mode === "Monitor"} value={"Monitor"}>Monitor</option>
+                    <option value={GenerationMode.NONE}>Generation Mode</option>
+                    <option selected={mode === GenerationMode.CBR} value={GenerationMode.CBR}>CBR</option>
+                    <option selected={mode === GenerationMode.POISSON} value={GenerationMode.POISSON}>Poisson</option>
+                    <option selected={mode === GenerationMode.MPPS} value={GenerationMode.MPPS}>Mpps</option>
+                    <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
                 </Form.Select>
             </Col>
         </Row>
         <Row>
 
         </Row>
-        {mode != "Monitor" ?
+        {mode != GenerationMode.ANALYZE ?
             <Row>
                 <Col>
                     <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
@@ -455,13 +662,13 @@ const Settings = () => {
                             <th>Frame Size</th>
                             <th>Rate</th>
                             <th>Mode</th>
+                            <th>Encapsulation</th>
                             <th>Options</th>
                         </tr>
                         </thead>
                         <tbody>
                         {streams.map((v, i) => {
                             v.app_id = i + 1;
-
                             return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}/>
                         })}
 
@@ -475,7 +682,7 @@ const Settings = () => {
         <Row className={"mb-3"}>
             <Col className={"text-start"}>
                 {running ? null :
-                    mode === "CBR" ?
+                    mode === GenerationMode.CBR ?
                         <Button onClick={addStream} variant="primary"><i className="bi bi-plus"/> Add
                             stream</Button>
                         :
@@ -484,7 +691,7 @@ const Settings = () => {
             </Col>
         </Row>
 
-        {streams.length > 0 || mode == "Monitor" ?
+        {streams.length > 0 || mode == GenerationMode.ANALYZE ?
             <Row>
                 <Col>
                     <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
@@ -499,21 +706,27 @@ const Settings = () => {
                         </thead>
                         <tbody>
                         {ports.map((v, i) => {
-                            if (v.loopback == "BF_LPBK_NONE" && v.status) {
+                            if (v.loopback == "BF_LPBK_NONE") {
                                 return <tr key={i}>
                                     <StyledCol>{v.port} ({v.pid})</StyledCol>
                                     <StyledCol>
-                                        <Form.Select disabled={running} required
-                                                     defaultValue={port_tx_rx_mapping[v.pid] || ""}
+                                        <Form.Select disabled={running || !v.status} required
+                                                     defaultValue={port_tx_rx_mapping[v.pid] || -1}
                                                      onChange={(event: any) => {
-                                                         set_port_tx_rx_mapping({
-                                                             ...port_tx_rx_mapping,
-                                                             [v.pid]: event.target.value
-                                                         })
+                                                         let current = port_tx_rx_mapping;
+
+                                                         if(parseInt(event.target.value) == -1) {
+                                                             delete current[v.pid]
+                                                         }
+                                                         else {
+                                                             current[v.pid] = parseInt(event.target.value);
+                                                         }
+
+                                                         set_port_tx_rx_mapping(current);
                                                      }}>
-                                            <option value={""}>Select RX Port</option>
+                                            <option value={-1}>Select RX Port</option>
                                             {ports.map((v, i) => {
-                                                if (v.loopback == "BF_LPBK_NONE" && v.status) {
+                                                if (v.loopback == "BF_LPBK_NONE") {
                                                     return <option key={i}
                                                                    value={v.pid}>{v.port} ({v.pid})</option>
                                                 }
@@ -522,12 +735,8 @@ const Settings = () => {
                                         </Form.Select>
 
                                     </StyledCol>
-                                    {stream_settings.map((s, i) => {
-                                        if (s.port == v.pid) {
-                                            return <StreamSettingsElement key={i} running={running} stream={s}/>
-                                        }
-
-                                    })}
+                                    <StreamSettingsList stream_settings={stream_settings} streams={streams}
+                                                        running={running} port={v}/>
 
                                 </tr>
                             }
@@ -542,8 +751,8 @@ const Settings = () => {
             null
         }
 
-        <Button onClick={save} disabled={running} variant="success"><i className="bi bi-check"/> Save</Button>
-        { " " }
+        <Button onClick={save} disabled={running} variant="primary"><i className="bi bi-check"/> Save</Button>
+        {" "}
         <Button onClick={reset} disabled={running} variant="danger"><i className="bi bi-x-octagon-fill"/> Reset</Button>
 
     </Loader>

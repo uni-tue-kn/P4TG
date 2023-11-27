@@ -17,20 +17,20 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {ChangeEvent, useEffect, useState} from 'react'
+import React, {useEffect, useState} from 'react'
 import Loader from "../components/Loader";
-import {get, del as del_req, post} from '../common/API'
-import {Button, Col, Form, Modal, Row, Tab, Table, Tabs} from "react-bootstrap";
+import {get, post} from '../common/API'
+import {Button, Col, Form, Row, Table} from "react-bootstrap";
 import styled from "styled-components";
 
 const StyledCol = styled.td`
-  vertical-align: middle;
-  display: table-cell;
-  text-indent: 5px;
+    vertical-align: middle;
+    display: table-cell;
+    text-indent: 5px;
 `
 
 export const PortStat = styled.span<{ active: boolean }>`
-  color: ${props => (props.active ? 'green' : 'red')};
+    color: ${props => (props.active ? 'var(--color-okay)' : 'var(--color-primary)')};
 `
 
 export const PortStatus = ({active}: { active: boolean }) => {
@@ -83,14 +83,16 @@ const Ports = () => {
     }
 
     const updatePort = async (pid: number, speed: string, fec: string, auto_neg: string) => {
-        let update = await post({route: "/ports", body: {
+        let update = await post({
+            route: "/ports", body: {
                 pid: pid,
                 speed: speed,
                 fec: fec,
                 auto_neg: auto_neg
-            }})
+            }
+        })
 
-        if(update.status === 201) {
+        if (update.status === 201) {
             refresh()
         }
     }
@@ -121,7 +123,7 @@ const Ports = () => {
             </thead>
             <tbody>
             {ports.map((v: any, i: number) => {
-                if(loopback_mapping[v["loopback"]] == "Off") {
+                if (loopback_mapping[v["loopback"]] == "Off") {
                     return <tr key={i}>
                         <StyledCol>{v["pid"]}</StyledCol>
                         <StyledCol>{v['port']}/{v["channel"]}</StyledCol>
@@ -131,14 +133,15 @@ const Ports = () => {
                                 await updatePort(v["pid"], v["speed"], v["fec"], event.target.value)
                             }}>
                                 {Object.keys(auto_neg_mapping).map(f => {
-                                    return <option selected={f == v["auto_neg"]} value={f}>{auto_neg_mapping[f]}</option>
+                                    return <option selected={f == v["auto_neg"]}
+                                                   value={f}>{auto_neg_mapping[f]}</option>
                                 })}
                             </Form.Select></StyledCol>
                         <StyledCol><Form.Select onChange={async (event: any) => {
                             await updatePort(v["pid"], v["speed"], event.target.value, v["auto_neg"])
                         }}>
                             {Object.keys(fec_mapping).map(f => {
-                                if(f != "BF_FEC_TYP_FC" || v["speed"] != "BF_SPEED_100G") {
+                                if (f != "BF_FEC_TYP_FC" || v["speed"] != "BF_SPEED_100G") {
                                     return <option selected={f == v["fec"]} value={f}>{fec_mapping[f]}</option>
                                 }
                             })}

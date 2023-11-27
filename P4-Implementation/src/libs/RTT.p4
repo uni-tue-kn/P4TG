@@ -33,13 +33,12 @@ control RTT(inout header_t hdr,
     }
 
     apply {
-        calculate_rtt(hdr.path.tx_tstmp, ig_md.rtt);
-
         bit<8> color = digest_rate.execute(ig_intr_md.ingress_port);
 
         // packet is not colored red
         // this limits the digest rate to a control plane specified value
         if(color != 0b11) {
+            calculate_rtt(hdr.path.tx_tstmp, ig_md.rtt);
             ig_dprsr_md.digest_type = 2;
         }
 

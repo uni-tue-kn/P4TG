@@ -55,10 +55,38 @@ control Header_Replace(
         size = 64;
     }
 
+
+    action rewrite_vlan(bit<3> pcp, bit<1> dei, bit<12> vlan_id) {
+        hdr.vlan.pcp = pcp;
+        hdr.vlan.dei = dei;
+        hdr.vlan.vid = vlan_id;
+    }
+
+    action rewrite_q_in_q(bit<3> outer_pcp, bit<1> outer_dei, bit<12> outer_vlan_id, bit<3> inner_pcp, bit<1> inner_dei, bit<12> inner_vlan_id) {
+        hdr.q_in_q.outer_pcp = outer_pcp;
+        hdr.q_in_q.outer_dei = outer_dei;
+        hdr.q_in_q.outer_vid = outer_vlan_id;
+        hdr.q_in_q.inner_pcp = inner_pcp;
+        hdr.q_in_q.inner_dei = inner_dei;
+        hdr.q_in_q.inner_vid = inner_vlan_id;
+    }
+
+    table vlan_header_replace {
+        key = {
+            eg_intr_md.egress_port: exact;
+            hdr.path.app_id: exact;
+        }
+        actions = {
+            rewrite_vlan;
+            rewrite_q_in_q;
+        }
+        size = 64;
+    }
+
     apply {
         // we only rewrite IP header for P4TG packets
         // identified by valid path header and UDP port
-        if(hdr.path.isValid() && hdr.path.dst_port == 50083) {
+        if(hdr.ipv4.protocol == IP_PROTOCOL_UDP && hdr.path.dst_port == 50083) {
             if(header_replace.apply().hit) {
                 // get random 32 bit number and make bitwise AND with network mask
                 bit<32> s_tmp = src_rand.get() & src_mask;
@@ -68,6 +96,10 @@ control Header_Replace(
                 hdr.ipv4.src_addr = hdr.ipv4.src_addr | s_tmp;
                 hdr.ipv4.dst_addr = hdr.ipv4.dst_addr | d_tmp;
             }
+
+            vlan_header_replace.apply(); // rewrite vlan header if configured
         }
+
+
     }
 }

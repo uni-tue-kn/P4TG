@@ -21,19 +21,27 @@ import React, {useEffect, useState} from 'react'
 import styled from "styled-components";
 import {Link, useLocation} from "react-router-dom";
 import {get} from "../common/API";
-import {CNavItem, CNavTitle, CSidebar, CSidebarBrand, CSidebarNav} from "@coreui/react";
+import {CNavItem, CSidebar, CSidebarBrand, CSidebarNav} from "@coreui/react";
+import {Row} from 'react-bootstrap'
 
-const StyledLink = styled(Link)<{ active?: boolean }>`
-  text-decoration: none;
-  margin-right: 15px;
-  color: var(--cui-nav-link-color);
-  padding: 10px;
-  width: 100%;
+import P4TGLogo from "../assets/p4tg_logo_white.png"
 
-  :hover {
-    background: #5c636a;
-  }
+const StyledLink = styled(Link) <{ active?: boolean }>`
+    text-decoration: none;
+    margin-right: 15px;
+    color: var(--cui-nav-link-color);
+    padding: 10px;
+    width: 100%;
+
+    :hover {
+        background: #5c636a;
+    }
 `
+
+const StyledImg = styled.img`
+    width: 80px;
+`
+
 
 interface Props {
     to: string,
@@ -43,7 +51,7 @@ interface Props {
 }
 
 const StatusIndicator = styled.span<{ online?: boolean }>`
-  color: ${props => (props.online ? 'green' : 'red')};
+    color: ${props => (props.online ? 'green' : 'red')};
 `
 
 const Status = ({online}: { online?: boolean }) => {
@@ -58,29 +66,12 @@ export const NavLink = ({to, icon, text, overlay}: Props) => {
             <i className={icon}/> {text}
         </Link>
     </CNavItem>
-
-    // return <>
-    //     {overlay ?
-    //         <OverlayTrigger
-    //             key={"bottom"}
-    //             placement={"bottom"}
-    //             overlay={
-    //                 <Tooltip id={`tooltip-bottom`}>
-    //                     {text}
-    //                 </Tooltip>
-    //             }
-    //         >
-    //             <StyledLink active={location.pathname == to} to={to}>{icon ? <i className={icon}/> : null}</StyledLink>
-    //         </OverlayTrigger>
-    //         :
-    //         <StyledLink active={location.pathname == to} to={to}>{icon ? <i className={icon}/> : null} {text ? text : null}</StyledLink>
-    //     }
-    // </>
 }
 
 
 const Navbar = () => {
     const [online, set_online] = useState(false)
+    const [visible, set_visible] = useState(true)
 
     const setup = () => {
         localStorage.clear()
@@ -92,7 +83,7 @@ const Navbar = () => {
         const loadStatus = async () => {
             let stats = await get({route: "/online"})
 
-            if (stats.status !== 200) {
+            if (stats != undefined && stats.status !== 200) {
                 return
             }
 
@@ -104,18 +95,22 @@ const Navbar = () => {
 
     }, [])
 
-    return <CSidebar className={"h-100"} position={"fixed"}>
-        <CSidebarBrand><i className="bi bi-ethernet me-2"/>P4TG</CSidebarBrand>
-        <CSidebarNav>
-            <NavLink to={"/home"} text={"Dashboard"} icon={"bi bi-speedometer me-2"}/>
-            <CNavTitle>Settings</CNavTitle>
-            <NavLink to={"/ports"} text={"Ports"} icon={"bi bi-ethernet me-2"}/>
-            <NavLink to={"/tables"} text={"Tables"} icon={"bi bi-table me-2"}/>
-            <NavLink to={"/settings"} text={"Traffic Gen"} icon={"bi bi-sliders2-vertical me-2"}/>
-            <CNavItem className={"fixed-bottom col-2"}>
-                <a href={"#"} onClick={() => setup()} className={"nav-link"}>
-                    <i className="bi bi-box-arrow-left me-2"></i> Logout</a>
-            </CNavItem>
+    return <CSidebar className={"h-100"}>
+        <CSidebarNav className="h-100">
+            <CSidebarBrand className="mb-0"><StyledImg src={P4TGLogo} alt="P4TG log"/></CSidebarBrand>
+            <NavLink to={"/"} text={""} icon={"bi bi-speedometer"}/>
+            <NavLink to={"/ports"} text={""} icon={"bi bi-ethernet"}/>
+            <NavLink to={"/tables"} text={""} icon={"bi bi-table"}/>
+            <NavLink to={"/settings"} text={""} icon={"bi bi-gear-wide-connected"}/>
+            <Row className="flex-grow-1">
+            </Row>
+            <Row>
+                <CNavItem className="flex-grow-1">
+                    <span>v2.0.0</span>
+                    <a href={"#"} role="button" onClick={() => setup()} className={"nav-link logout"}>
+                        <i className="bi bi-box-arrow-left me-2"></i></a>
+                </CNavItem>
+            </Row>
         </CSidebarNav>
     </CSidebar>
 }

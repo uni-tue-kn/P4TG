@@ -18,16 +18,17 @@
  */
 
 export interface Statistics {
-    tx_rate_l1: { [name: string]: number},
-    tx_rate_l2: { [name: string]: number},
-    rx_rate_l1: { [name: string]: number},
-    rx_rate_l2: { [name: string]: number},
-    frame_size: { [name: string]: {tx: {low: number, high: number, packets: number}[], rx: {low: number, high: number, packets: number}[]}},
+    sample_mode: boolean,
+    tx_rate_l1: { [name: string]: number },
+    tx_rate_l2: { [name: string]: number },
+    rx_rate_l1: { [name: string]: number },
+    rx_rate_l2: { [name: string]: number },
+    frame_size: { [name: string]: { tx: { low: number, high: number, packets: number }[], rx: { low: number, high: number, packets: number }[] } },
     iats: {
-        [name: string]: {tx: {mean: number, std: number, n: number}, rx: {mean: number, std: number, n: number}}
+        [name: string]: { tx: { mean: number, std: number, n: number, mae: number }, rx: { mean: number, std: number, n: number, mae: number } }
     }
-    frame_type_data: {[name: string]: {tx: {multicast: number, broadcast: number, unicast: number, total: number, "non-unicast": number}, rx: {multicast: number, broadcast: number, unicast: number, total: number, "non-unicast": number}}},
-    rtts: { [name: string]: {mean: number, current: number, min: number, max: number, jitter: number, n: number}},
+    frame_type_data: { [name: string]: { tx: { multicast: number, broadcast: number, unicast: number, total: number, "non-unicast": number }, rx: { multicast: number, broadcast: number, unicast: number, total: number, "non-unicast": number } } },
+    rtts: { [name: string]: { mean: number, current: number, min: number, max: number, jitter: number, n: number } },
     packet_loss: { [name: string]: number },
     app_tx_l2: {
         [name: string]: {
@@ -40,10 +41,12 @@ export interface Statistics {
         }
     },
     out_of_order: { [name: string]: number },
+    elapsed_time: number
 
 }
 
-export const StatisticsObject : Statistics = {
+export const StatisticsObject: Statistics = {
+    sample_mode: false,
     frame_size: {},
     frame_type_data: {},
     rx_rate_l1: {},
@@ -56,11 +59,18 @@ export const StatisticsObject : Statistics = {
     app_tx_l2: {},
     app_rx_l2: {},
     out_of_order: {},
+    elapsed_time: 0
 }
 
 export interface StreamSettings {
     port: number
     stream_id: number,
+    vlan_id: number,
+    pcp: number,
+    dei: number,
+    inner_vlan_id: number,
+    inner_pcp: number,
+    inner_dei: number,
     eth_src: string,
     eth_dst: string,
     ip_src: string,
@@ -71,19 +81,34 @@ export interface StreamSettings {
     active: boolean
 }
 
+export enum Encapsulation {
+    None,
+    Q,
+    QinQ
+}
+
+export enum GenerationMode {
+    NONE = 0,
+    CBR = 1,
+    MPPS = 2,
+    POISSON = 3,
+    ANALYZE = 4,
+}
 export interface Stream {
     stream_id: number,
     frame_size: number,
+    encapsulation: Encapsulation
     traffic_rate: number,
     app_id: number
     burst: number
 }
 
 export const DefaultStream = (id: number) => {
-    let stream : Stream = {
+    let stream: Stream = {
         stream_id: id,
         app_id: id,
         frame_size: 1024,
+        encapsulation: Encapsulation.None,
         traffic_rate: 1,
         burst: 1
     }
@@ -92,9 +117,15 @@ export const DefaultStream = (id: number) => {
 }
 
 export const DefaultStreamSettings = (id: number, port: number) => {
-    let stream : StreamSettings = {
+    let stream: StreamSettings = {
         port: port,
         stream_id: id,
+        vlan_id: 1,
+        pcp: 0,
+        dei: 0,
+        inner_vlan_id: 1,
+        inner_pcp: 0,
+        inner_dei: 0,
         eth_src: "3B:D5:42:2A:F6:92",
         eth_dst: "81:E7:9D:E3:AD:47",
         ip_src: "192.168.178.10",

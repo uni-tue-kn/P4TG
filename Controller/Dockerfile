@@ -1,7 +1,11 @@
-FROM python:3.8-buster
-COPY requirements.txt /requirements.txt
-RUN pip install -r requirements.txt
+FROM rust:1.74-bookworm
 RUN mkdir /app
 WORKDIR /app
-ENTRYPOINT ["./controller.py"]
+COPY ./src /app/src
+COPY ./Cargo.toml /app
+RUN apt update
+RUN apt install -y libstdc++6 libgomp1 cmake libclang-dev
+RUN cargo build --release
+RUN cp target/release/p4tg-controller /app
+ENTRYPOINT ["/bin/bash", "-c", "RUST_LOG=none,p4tg_controller=info,rbfrt=info /app/p4tg-controller"]
 

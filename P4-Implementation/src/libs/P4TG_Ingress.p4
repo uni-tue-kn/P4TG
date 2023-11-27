@@ -126,6 +126,8 @@ control P4TG_Ingress (
 
 
     action nop() {}
+
+    // this table checks if a packet was received on an ingress port
     table is_ingress {
         key = {
             ig_intr_md.ingress_port: exact;
@@ -137,10 +139,24 @@ control P4TG_Ingress (
         size = 64;
     }
 
+    // this table is used to activate/deactivate
+    // iat monitoring
+    table monitor_iat {
+        key = {
+            ig_intr_md.ingress_port: lpm;
+        }
+        actions = {
+            nop;
+        }
+        size = 1;
+    }
+
     apply {
         // monitor iats and send to controller
         // limited by meter
-        iat.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md);
+        if(monitor_iat.apply().hit) {
+            iat.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md);
+        }
 
         // monitor frame types
         frame_type.apply(hdr, ig_intr_md);
@@ -163,7 +179,7 @@ control P4TG_Ingress (
 
                 // get next expected rx
                 bit<32> r_seq = get_rx.execute(ig_md.ig_port);
-                //ig_md.lost_packets = calculate_packet_loss.execute(0);
+
                 bit<32> m = max(r_seq, hdr.path.seq);
                 bit<32> diff = (hdr.path.seq - r_seq);
 
@@ -190,10 +206,6 @@ control P4TG_Ingress (
             tg_forward.apply();
         }
         else {
-            /*if(hdr.path.isValid() && hdr.path.dst_port == 50083 ) {
-                path_index.apply();
-            }*/
-
             if(!hdr.monitor.isValid()) {
                 forward.apply();
             }

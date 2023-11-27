@@ -50,6 +50,8 @@ parser SwitchIngressParser(
     TofinoIngressParser() tofino_parser;
 
     state start {
+        ig_md.iat = 0;
+        ig_md.rtt = 0;
         tofino_parser.apply(pkt, ig_intr_md);
         transition select(ig_intr_md.ingress_port) {
             68: parse_pkt_gen;
@@ -58,21 +60,42 @@ parser SwitchIngressParser(
         }
     }
 
-
     state parse_pkt_gen {
         pkt.extract(hdr.pkt_gen);
-        transition parse_ethernet;
+        transition parse_ethernet_2;
+    }
+
+    state parse_ethernet_2 {
+        pkt.extract(hdr.ethernet);
+        transition select(hdr.ethernet.ether_type) {
+            ETHERTYPE_MONITOR: parse_monitor;
+            default: accept;
+        }
     }
 
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
             ETHERTYPE_MONITOR: parse_monitor;
+            ETHERTYPE_VLANQ: parse_vlan;
+            ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
-            default: reject;
+            default: accept;
         }
     }
 
+    state parse_vlan {
+        pkt.extract(hdr.vlan);
+        transition select (hdr.vlan.ether_type) {
+            ETHERTYPE_IPV4: parse_ipv4;
+            default: accept;
+        }
+    }
+
+    state parse_q_in_q{
+        pkt.extract(hdr.q_in_q);
+        transition parse_ipv4;
+    }
 
     state parse_ipv4 {
         pkt.extract(hdr.ipv4);
@@ -122,8 +145,9 @@ control SwitchIngressDeparser(
        }
 
         pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.vlan);
+        pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.ipv4);
-        //pkt.emit(hdr.udp);
         pkt.emit(hdr.path);
         pkt.emit(hdr.monitor);
     }
@@ -140,37 +164,47 @@ parser SwitchEgressParser(
         out egress_intrinsic_metadata_t eg_intr_md) {
 
     TofinoEgressParser() tofino_parser;
+
+    #if __NO_UDP_CHECKSUM__ == 0
     Checksum() udp_checksum;
+    #endif
 
     state start {
         tofino_parser.apply(pkt, eg_intr_md);
-        transition parse_ethernet;
-    }
-
-    state parse_pkt_gen {
-        pkt.extract(hdr.pkt_gen);
-        transition parse_ethernet;
-    }
-
-    state parse_ethernet {
         pkt.extract(hdr.ethernet);
+
         transition select(hdr.ethernet.ether_type) {
             ETHERTYPE_MONITOR: parse_monitor;
+            ETHERTYPE_VLANQ: parse_vlan;
+            ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
             default: accept;
         }
     }
 
+     state parse_vlan {
+        pkt.extract(hdr.vlan);
+        transition parse_ipv4;
+    }
+
+    state parse_q_in_q {
+        pkt.extract(hdr.q_in_q);
+        transition parse_ipv4;
+    }
+
     state parse_ipv4 {
         pkt.extract(hdr.ipv4);
-
+        
+        #if __NO_UDP_CHECKSUM__ == 0
         udp_checksum.subtract({hdr.ipv4.src_addr});
         udp_checksum.subtract({hdr.ipv4.dst_addr});
 
-        transition select(hdr.ipv4.protocol) {
-            IP_PROTOCOL_UDP: parse_path;
-            default: accept;
-        }
+        transition parse_path;
+        #else 
+        pkt.extract(hdr.path);
+        transition accept;
+        #endif
+
     }
 
     state parse_monitor {
@@ -178,22 +212,19 @@ parser SwitchEgressParser(
         transition accept;
     }
 
-    state parse_udp {
-        pkt.extract(hdr.udp);
-        transition select(hdr.udp.dst_port) {
-            50083: parse_path;
-            default: accept;
-        }
-    }
+
 
     state parse_path {
         pkt.extract(hdr.path);
 
         // subtract old checksum components
+        #if __NO_UDP_CHECKSUM__ == 0
         udp_checksum.subtract({hdr.path.checksum});
         udp_checksum.subtract({hdr.path.tx_tstmp});
         udp_checksum.subtract({hdr.path.seq});
         eg_md.checksum_udp_tmp = udp_checksum.get();
+        #endif
+
         transition accept;
     }
 }
@@ -208,7 +239,10 @@ control SwitchEgressDeparser(
         in egress_intrinsic_metadata_for_deparser_t eg_dprsr_md) {
 
     Checksum() ipv4_checksum;
+
+    #if __NO_UDP_CHECKSUM__ == 0
     Checksum() udp_checksum;
+    #endif
 
     apply {
 
@@ -226,6 +260,7 @@ control SwitchEgressDeparser(
              hdr.ipv4.dst_addr});
 
         // compute new udp checksum
+        #if __NO_UDP_CHECKSUM__ == 0
         hdr.path.checksum = udp_checksum.update(data = {
                 hdr.ipv4.src_addr,
                 hdr.ipv4.dst_addr,
@@ -233,10 +268,12 @@ control SwitchEgressDeparser(
                 hdr.path.seq,
                 eg_md.checksum_udp_tmp
             }, zeros_as_ones = true);
+        #endif
 
         pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.vlan);
+        pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.ipv4);
-        //pkt.emit(hdr.udp);
         pkt.emit(hdr.path);
         pkt.emit(hdr.monitor);
 

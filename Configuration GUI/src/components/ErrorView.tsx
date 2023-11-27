@@ -17,15 +17,15 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useState} from 'react'
+import React from 'react'
 
 import {Toast, ToastContainer} from "react-bootstrap";
 
 import styled from 'styled-components'
 
 const StyledToastContainer = styled(ToastContainer)`
-  margin-top: 20px;
-  margin-right:20px;
+    margin-top: 20px;
+    margin-right: 20px;
 `
 
 interface ErrorProps {

@@ -150,7 +150,9 @@ control egress(
                 pkt_len = eg_intr_md.pkt_length - 6; // minus pkt gen header
 
                 // we are on tx recirc; set sequence number
-                hdr.path.seq = get_next_tx_seq.execute(eg_intr_md.egress_port);
+                if(hdr.ipv4.isValid() && hdr.ipv4.protocol == IP_PROTOCOL_UDP && hdr.path.dst_port == 50083) { // make sure its PTG's traffic
+                  hdr.path.seq = get_next_tx_seq.execute(eg_intr_md.egress_port);
+                }
             }
 
             rate_l1.apply(dummy, l_1, (bit<32>)eg_intr_md.egress_port);
@@ -159,7 +161,9 @@ control egress(
             app.apply(dummy, l_2, index);
 
             // set tx tstamp
-            is_egress.apply();
+            if(hdr.ipv4.isValid() && hdr.ipv4.protocol == IP_PROTOCOL_UDP && hdr.path.dst_port == 50083) { // make sure its PTG's traffic
+                is_egress.apply();
+            }
 
             header_replace.apply(hdr, eg_intr_md);
 

@@ -100,7 +100,7 @@ const TableView = ({name, data}: TableViewProps) => {
 
 const Tables = () => {
     const [loaded, set_loaded] = useState(false)
-    const [table_data, set_table_data] = useState<{[name: string]: object}>({})
+    const [table_data, set_table_data] = useState<{ [name: string]: object }>({})
 
     const loadTables = async () => {
         let tables = await get({route: "/tables"})
@@ -126,12 +126,12 @@ const Tables = () => {
             defaultActiveKey="0"
             className="mt-3"
         >
-        {Object.keys(table_data).map((e: string, i: number) => {
-            // @ts-ignore
-            return <Tab eventKey={i} key={i} title={e}><TableView key={i} name={e} data={table_data[e]}/>
-            </Tab>
-        })
-        }
+            {Object.keys(table_data).map((e: string, i: number) => {
+                // @ts-ignore
+                return <Tab eventKey={i} key={i} title={e}><TableView key={i} name={e} data={table_data[e]}/>
+                </Tab>
+            })
+            }
         </Tabs>
         <Button onClick={refresh} className={"mt-3"}><i className="bi bi-arrow-clockwise"/> Refresh</Button>
     </Loader>

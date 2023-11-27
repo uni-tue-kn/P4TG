@@ -1,22 +1,39 @@
-![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/python-3.8-success) ![image](https://img.shields.io/badge/built%20with-P4-orange)
+<div align="center">
+ <img src="./logo.png" />
+ <h2>P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks</h2>
 
-# P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.0.0-yellow)
 
-This repository contains the source code for a P4 based 1 Tb/s traffic generator based on the Intel Tofino(TM) ASIC.
+</div>
 
-In generation mode, P4TG is capable of generating traffic up to 1 Tb/s split across 10x 100 Gb/s ports. Thereby it measures rates directly in the data plane. Generated traffic may be fed back from the output to the input ports, possibly through other equipment, to record packet loss, packet reordering, and sampled IAT and RTT. In analysis mode, P4TG measures rates on the input ports, samples IAT, and forwards traffic through its output ports.
+- [Overview](#overview)
+- [Installation & Start Instructions](#installation--start-instructions)
+  - [Data plane](#data-plane)
+  - [Control plane](#control-plane)
+  - [Configuration GUI](#configuration-gui)
+- [Changelog](./CHANGELOG.md)
+- [Documentation](#documentation)
+- [Preview](#preview-of-p4tg)
+
+## Overview 
+This repository contains the source code for a P4 based 1 Tb/s traffic generator based on the Intel Tofino(TM) ASIC, called P4TG (<a href="https://ieeexplore.ieee.org/document/10048513">Paper</a>).
+The paper version corresponds to *v.1.0.0*.
+
+In generation mode, P4TG is capable of generating traffic up to 1 Tb/s split across 10x 100 Gb/s ports. Thereby it measures rates directly in the data plane. Generated traffic may be fed back from the output to the input ports, possibly through other equipment, to record packet loss, packet reordering, IATs and sampled RTTs. In analysis mode, P4TG measures rates on the input ports, measures IATs, and forwards traffic through its output ports. 
+
+P4TG (v2.0.0) supports VLAN (802.1Q) and QinQ (802.1ad) encapsulation.
 
 P4TG consist of:
 
 - a P4 program for the Intel Tofino(TM)
-- Python control plane
+- Rust control plane
 - React configuration GUI
 
 ## Installation & Start Instructions
 
-### P4 Program
+### Data plane
 
-Compile p4tg via `make compile`. This compiles the program and copies the resulting configs to the target directory.
+Go to `P4-Implementation` and compile p4tg via `make compile`. This compiles the program and copies the resulting configs to the target directory.
 
 Afterwards, start p4tg via `make start`.
 
@@ -26,15 +43,17 @@ Tested on:
   - SDE 9.9.0
   - SDE 9.13.0
 
-### Controller
+### Control plane
 
-The controller is written in python and can be started via docker-compose.
-First, adjust the second volume in the `docker-compose.yml` that maps the local `$SDE` python path to the container.
-This path depends on the `$SDE` installation and is required to make the python SDE modules available in the container.
+The controller is written in rust and can be started via `docker-compose up`. The initial build may take a few minutes.
 
-Afterwards, start the controller via `docker-compose up`.
+The controller then starts a REST-API server at port `P4TG_PORT` (see `docker-compose.yml`) that is used to communicate with the configuration GUI.
 
-The controller then starts a REST-API server at port 8000 that is used to communicate with the configuration GUI.
+#### Configuration 
+
+Set `SAMPLE=1` in `docker-compose.yml` to activate IAT sampling mode instead of data plane measurement.
+Data plane measurement mode (`SAMPLE=0`) is more accurate and the default
+
 
 ### Configuration GUI
 
@@ -54,13 +73,12 @@ Afterwards run `npm run build` to create a production build and serve the `build
 
 #### Connection to REST-API server
 
-Connect to the REST-API server through the frontend of the configuration GUI: http://*ip-of-tofino-controller*:8000
+Connect to the REST-API server through the frontend of the configuration GUI: http://*ip-of-tofino-controller*:`P4TG_PORT`
 
 # Documentation
 
-
-**Code Documentation follows soon.**
+The documentation of the REST-API can be found at the `/docs` endpoint of the REST-API of the controller.
 
 ## Preview of P4TG
 
-![image](preview.png)
+<img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview.png"/>

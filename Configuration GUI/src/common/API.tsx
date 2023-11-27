@@ -48,15 +48,20 @@ const getHeader = (token?: string) => {
 }
 
 
-const AxiosInterceptor = ({ onError, children } : {onError: (message: string) => void, children: JSX.Element}) => {
+const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError: (message: string) => void, onOffline: () => void, onOnline: () => void, children: JSX.Element}) => {
 
     useEffect(() => {
 
         const resInterceptor = (response: AxiosResponse) => {
+            onOnline()
             return response;
         };
 
         const errInterceptor = (error: any) => {
+            if (!("response" in error) || ("code" in error && error.code === "ERR_NETWORK")) {
+                onOffline()
+            }
+
             if(error.response.status === 400) {
                 console.log(error.response)
                 onError(error.response.data.message)
@@ -71,7 +76,7 @@ const AxiosInterceptor = ({ onError, children } : {onError: (message: string) =>
                 onError("Request endpoint not found.")
             }
 
-            return Promise.reject();
+            return Promise.resolve();
         };
 
         const interceptor = instance.interceptors.response.use(

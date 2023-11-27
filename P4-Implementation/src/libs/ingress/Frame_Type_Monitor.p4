@@ -25,6 +25,7 @@ control Frame_Type_Monitor(
     in ingress_intrinsic_metadata_t ig_intr_md) {
 
     DirectCounter<bit<64>>(CounterType_t.PACKETS_AND_BYTES) frame_type_counter;
+    DirectCounter<bit<64>>(CounterType_t.PACKETS_AND_BYTES) ethernet_type_counter;
 
 
     action unicast() {
@@ -54,9 +55,50 @@ control Frame_Type_Monitor(
         size = 64;
     }
 
+    action vlan() {
+        ethernet_type_counter.count();
+    }
+
+    action q_in_q() {
+        ethernet_type_counter.count();
+    }
+
+    action ipv4() {
+        ethernet_type_counter.count();
+    }
+
+    action ipv6() {
+        ethernet_type_counter.count();
+    }
+
+    action unknown() {
+        ethernet_type_counter.count();
+    }
+
+    table ethernet_type_monitor {
+        key = {
+            hdr.ethernet.ether_type: lpm;
+            ig_intr_md.ingress_port: exact;
+        }
+        actions = {
+            vlan;
+            q_in_q;
+            ipv4;
+            ipv6;
+            unknown;
+        }
+        default_action = unknown;
+        counters = ethernet_type_counter;
+        size = 256;
+    }
+
     apply {
         if(hdr.ipv4.isValid()) {
             frame_type_monitor.apply();
+        }
+
+        if(!hdr.monitor.isValid()) {
+            ethernet_type_monitor.apply();
         }
     }
 }

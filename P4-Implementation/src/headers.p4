@@ -27,14 +27,36 @@ typedef bit<32> reg_index_t;
 typedef bit<32> seq_t;
 const ether_type_t ETHERTYPE_IPV4 = 0x800;
 const ether_type_t ETHERTYPE_MONITOR = 0xBB02;
+const ether_type_t ETHERTYPE_QinQ = 0x88a8;
+const ether_type_t ETHERTYPE_VLANQ = 0x8100;
 
 const bit<8> IP_PROTOCOL_UDP = 17;
 const bit<8> IP_PROTOCOL_P4TG = 110;
+
+
 
 header ethernet_h {
     mac_addr_t dst_addr;
     mac_addr_t src_addr;
     bit<16> ether_type;
+}
+
+header vlan_t {
+        bit<3> pcp;
+        bit<1> dei;
+        bit<12> vid;
+        bit<16> ether_type;
+}
+
+header q_in_q_t {
+    bit<3> outer_pcp;
+    bit<1> outer_dei;
+    bit<12> outer_vid;
+    bit<16> outer_ether_type;
+    bit<3> inner_pcp;
+    bit<1> inner_dei;
+    bit<12> inner_vid;
+    bit<16> inner_ether_type;
 }
 
 header ipv4_t {
@@ -89,6 +111,7 @@ header udp_t {
     bit<16> checksum;
 }
 
+
 struct header_t {
     ethernet_h ethernet;
     ipv4_t ipv4;
@@ -96,6 +119,9 @@ struct header_t {
     udp_t udp;
     monitor_t monitor;
     path_monitor_t path;
+    vlan_t vlan;
+    q_in_q_t q_in_q;
+
 }
 
 
@@ -106,8 +132,11 @@ struct ingress_metadata_t {
     bit<16> rand_value;
     bit<19> iat_rand_value;
     bit<32> iat;
+    bit<32> iat_diff_for_mae;
+    bit<1> iat_mae_reset;
     bit<32> src_mask;
     bit<32> dst_mask;
+    bit<32> mean_iat_diff;
     PortId_t ig_port;
 }
 

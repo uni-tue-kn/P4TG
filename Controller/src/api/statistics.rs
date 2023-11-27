@@ -1,0 +1,173 @@
+/* Copyright 2022-present University of Tuebingen, Chair of Communication Networks
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ */
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{Json, IntoResponse, Response};
+use schemars::JsonSchema;
+use serde::Serialize;
+use crate::AppState;
+use crate::core::statistics::{IATStatistics, IATValues, RangeCount, RTTStatistics, TypeCount};
+
+use crate::api::helper;
+
+#[derive(Serialize, JsonSchema)]
+pub struct Statistics {
+    /// Indicates whether the sample mode is used or not.
+    /// In sampling mode, IATs are sampled and not calculated in the data plane.
+    /// It is recommended to don't use the sample mode to get more precise values
+    pub(crate) sample_mode: bool,
+    /// Frame size statistics that are divided in (lower, upper) sections.
+    pub(crate) frame_size: HashMap<u32, RangeCount>,
+    /// L1 send rates per port.
+    pub(crate) tx_rate_l1: HashMap<u32, f64>,
+    /// L2 send rates per port.
+    pub(crate) tx_rate_l2: HashMap<u32, f64>,
+    /// L1 receive rates per port.
+    pub(crate) rx_rate_l1: HashMap<u32, f64>,
+    /// L2 receive rates per port.
+    pub(crate) rx_rate_l2: HashMap<u32, f64>,
+    /// L2 send rate per stream and port.
+    /// The number corresponds to the app_id in the Stream description.
+    pub(crate) app_tx_l2: HashMap<u32, HashMap<u32, f64>>,
+    /// L2 receive rate per stream and port.
+    /// The number corresponds to the app_id in the Stream description.
+    pub(crate) app_rx_l2: HashMap<u32, HashMap<u32, f64>>,
+    /// Statistics what kind of packets have been received per port
+    pub(crate) frame_type_data: HashMap<u32, TypeCount>,
+    /// Statistics of the inter arrival times per port.
+    pub(crate) iats: HashMap<u32, IATStatistics>,
+    /// Statistics of the round trip times per port.
+    pub(crate) rtts: HashMap<u32, RTTStatistics>,
+    /// Number of lost packets per port.
+    pub(crate) packet_loss: HashMap<u32, u64>,
+    /// Number of out of order packets per port.
+    pub(crate) out_of_order: HashMap<u32, u64>,
+    /// Elapsed time sind the traffic generation has started in seconds.
+    pub(crate) elapsed_time: u32
+
+
+}
+
+pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
+    let frame_size_monitor = &state.frame_size_monitor;
+    let frame_type_monitor = &state.frame_type_monitor;
+    let rate_monitor = &state.rate_monitor;
+
+    let mut stats = Statistics {
+        sample_mode: state.sample_mode,
+        frame_size: Default::default(),
+        frame_type_data: Default::default(),
+        tx_rate_l1: Default::default(),
+        tx_rate_l2: Default::default(),
+        rx_rate_l1: Default::default(),
+        rx_rate_l2: Default::default(),
+        app_tx_l2: Default::default(),
+        app_rx_l2: Default::default(),
+        iats: Default::default(),
+        rtts: Default::default(),
+        packet_loss: Default::default(),
+        out_of_order: Default::default(),
+        elapsed_time: 0
+    };
+
+
+    stats.frame_size = frame_size_monitor.lock().await.statistics.frame_size.clone();
+    stats.frame_type_data = frame_type_monitor.lock().await.statistics.frame_type_data.clone();
+
+    let monitor_statistics =  rate_monitor.lock().await.statistics.clone();
+
+    let rtts = rate_monitor.lock().await.rtt_storage.clone();
+
+    let mut rtt_stats = HashMap::new();
+
+    for (port, rtt_samples) in &rtts {
+        let mean = helper::simple_stats::average(rtt_samples);
+        let std = helper::simple_stats::std(rtt_samples);
+
+        let stats = RTTStatistics {
+            mean,
+            min: *rtt_samples.iter().min().unwrap_or(&0) as u32,
+            max: *rtt_samples.iter().max().unwrap_or(&0) as u32,
+            current: *rtt_samples.iter().last().unwrap_or(&0) as u32,
+            jitter: std,
+            n: rtt_samples.len() as u32,
+        };
+
+        rtt_stats.insert(*port, stats);
+    }
+
+    if state.sample_mode {
+        let mut iats = HashMap::new();
+        let tx_stats = &mut state.rate_monitor.lock().await.tx_iat_storage.clone();
+        let rx_stats = &mut state.rate_monitor.lock().await.rx_iat_storage.clone();
+
+        for (port, _) in &state.port_mapping {
+            let tx_iats = tx_stats.entry(*port).or_default();
+            let rx_iats = rx_stats.entry(*port).or_default();
+
+            let iat_stats = IATStatistics {
+                tx: IATValues {
+                    mean: helper::simple_stats::average(tx_iats) as f32,
+                    std: Some(helper::simple_stats::std(tx_iats) as f32),
+                    mae: 0.0,
+                    n: tx_iats.len() as u32,
+                },
+                rx: IATValues {
+                    mean: helper::simple_stats::average(rx_iats) as f32,
+                    std: Some(helper::simple_stats::std(rx_iats) as f32),
+                    mae: 0.0,
+                    n: rx_iats.len() as u32,
+                },
+            };
+
+            iats.insert(*port, iat_stats);
+        }
+
+        stats.iats = iats;
+
+    }
+    else {
+        stats.iats = monitor_statistics.iats.clone();
+    }
+
+    stats.rtts = rtt_stats;
+    stats.tx_rate_l1 = monitor_statistics.tx_rate_l1.clone();
+    stats.rx_rate_l1 = monitor_statistics.rx_rate_l1.clone();
+    stats.tx_rate_l2 = monitor_statistics.tx_rate_l2.clone();
+    stats.rx_rate_l2 = monitor_statistics.rx_rate_l2.clone();
+    stats.app_tx_l2 = monitor_statistics.app_tx_l2.clone();
+    stats.app_rx_l2 = monitor_statistics.app_rx_l2.clone();
+    stats.packet_loss = monitor_statistics.packet_loss.clone();
+    stats.out_of_order = monitor_statistics.out_of_order.clone();
+    stats.elapsed_time = {
+        let experiment = state.experiment.lock().await;
+        if experiment.running {
+            experiment.start.elapsed().unwrap_or(Duration::from_secs(0)).as_secs() as u32
+        }
+        else {
+            0
+        }
+    };
+
+    (StatusCode::OK, Json(stats)).into_response()
+}
