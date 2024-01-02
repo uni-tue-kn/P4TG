@@ -25,6 +25,7 @@ import {CNavItem, CSidebar, CSidebarBrand, CSidebarNav} from "@coreui/react";
 import {Row} from 'react-bootstrap'
 
 import P4TGLogo from "../assets/p4tg_logo_white.png"
+import config from "../config";
 
 const StyledLink = styled(Link) <{ active?: boolean }>`
     text-decoration: none;
@@ -71,7 +72,6 @@ export const NavLink = ({to, icon, text, overlay}: Props) => {
 
 const Navbar = () => {
     const [online, set_online] = useState(false)
-    const [visible, set_visible] = useState(true)
 
     const setup = () => {
         localStorage.clear()
@@ -102,13 +102,14 @@ const Navbar = () => {
             <NavLink to={"/ports"} text={""} icon={"bi bi-ethernet"}/>
             <NavLink to={"/tables"} text={""} icon={"bi bi-table"}/>
             <NavLink to={"/settings"} text={""} icon={"bi bi-gear-wide-connected"}/>
+            {/*<NavLink to={config.API_URL + "/docs"} text={""} icon={"bi bi-file-earmark-text"}/>*/}
             <Row className="flex-grow-1">
             </Row>
             <Row>
-                <CNavItem className="flex-grow-1">
-                    <span>v2.0.0</span>
-                    <a href={"#"} role="button" onClick={() => setup()} className={"nav-link logout"}>
-                        <i className="bi bi-box-arrow-left me-2"></i></a>
+                <CNavItem className="flex-grow-1 mb-2">
+                    <span>v2.1.0</span>
+                    {/*<a href={"#"} role="button" onClick={() => setup()} className={"nav-link logout"}>*/}
+                    {/*    <i className="bi bi-box-arrow-left me-2"></i></a>*/}
                 </CNavItem>
             </Row>
         </CSidebarNav>

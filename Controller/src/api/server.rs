@@ -34,15 +34,16 @@ use axum::http::Method;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 
-
 use tower_http::cors::{Any, CorsLayer};
 use crate::api::{configure_traffic_gen, online, ports, reset, statistics, stop_traffic_gen, traffic_gen, restart, add_port};
 use crate::api::docs::doc_route;
 use crate::api::docs::online::get_online;
 use crate::api::docs::reset::get_reset;
 use crate::api::docs::restart::get_restart;
-use crate::api::docs::statistics::get_statistics;
+use crate::api::docs::statistics::{get_statistics};
 use crate::api::docs::traffic_gen::{delete_traffic_gen, get_traffic_gen, post_traffic_gen};
+use crate::api::helper::serve_static_files::{serve_index, static_path};
+use crate::api::statistics::time_statistics;
 use crate::api::tables::tables;
 use crate::AppState;
 
@@ -79,9 +80,11 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .allow_origin(Any)
         .allow_headers(Any);
 
-    let app = ApiRouter::new()
+    // Router for the REST API
+    let api_router = ApiRouter::new()
         .api_route("/online", get_with(online, get_online))
         .api_route("/statistics", get_with(statistics, get_statistics))
+        .route("/time_statistics", get(time_statistics))
         .api_route("/trafficgen", get_with(traffic_gen, get_traffic_gen))
         .api_route("/trafficgen", post_with(configure_traffic_gen, post_traffic_gen))
         .api_route("/trafficgen", delete_with(stop_traffic_gen, delete_traffic_gen))
@@ -95,6 +98,17 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .finish_api_with(&mut api, api_docs)
         .layer(Extension(Arc::new(api)))
         .with_state(Arc::clone(&state));
+
+    // Router for the static configuration gui
+    let app = ApiRouter::new()
+        .nest_service("/api", api_router)
+        .route("/", get(serve_index)) // create react routing endpoints
+        .route("/home", get(serve_index))
+        .route("/ports", get(serve_index))
+        .route("/tables", get(serve_index))
+        .route("/settings", get(serve_index))
+        .route("/*path", get(static_path));
+
 
     info!("Starting rest api server on port {}.", port);
 

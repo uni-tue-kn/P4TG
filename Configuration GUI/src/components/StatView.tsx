@@ -19,16 +19,17 @@
 
 import React, {useEffect, useState} from 'react'
 import {Col, Row, Table} from "react-bootstrap";
-import {GenerationMode, Statistics} from "../common/Interfaces";
+import {GenerationMode, Statistics, TimeStatistics} from "../common/Interfaces";
 import {formatBits} from "./SendReceiveMonitor";
 
 import styled from 'styled-components'
+import Visuals from "./Visuals";
 
 const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatView = ({ stats, port_mapping, mode }: { stats: Statistics, port_mapping: { [name: number]: number }, mode: GenerationMode }) => {
+const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: Statistics, time_stats: TimeStatistics, port_mapping: { [name: number]: number }, mode: GenerationMode, visual: boolean }) => {
     const [total_tx, set_total_tx] = useState(0);
     const [total_rx, set_total_rx] = useState(0);
     const [iat_tx, set_iat_tx] = useState({ "mean": 0, "std": 0, "n": 0, "mae": 0 });
@@ -285,6 +286,11 @@ const StatView = ({ stats, port_mapping, mode }: { stats: Statistics, port_mappi
 
 
     return <>
+    { visual ?
+        <Visuals data={time_stats} stats={stats} port_mapping={port_mapping}/>
+        :
+        null
+    }
         <Row className={"mb-3"}>
             <Col className={"col-12 col-md-6 col-sm-12"}>
                 <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
@@ -431,13 +437,13 @@ const StatView = ({ stats, port_mapping, mode }: { stats: Statistics, port_mappi
                         </tr>
                     </thead>
                     <tbody>
-                        {["Multicast", "Broadcast", "Unicast", "Non-Unicast", "Total"].map((v, i) => {
+                        {["Multicast", "Broadcast", "Unicast", "Non-Unicast", " ", "Total"].map((v, i) => {
                             let key = v.toLowerCase()
                             let data = get_frame_types(key)
                             return <tr>
-                                <td>{v}</td>
-                                <td>{formatFrameCount(data.tx)}</td>
-                                <td>{formatFrameCount(data.rx)}</td>
+                                <td>{v != " " ? v : "\u00A0" }</td> {/* Quick hack for empty row */}
+                                <td>{v != " " ? formatFrameCount(data.tx) : null}</td>
+                                <td>{v != " " ? formatFrameCount(data.rx) : null}</td>
                                 {/*<td>{stats.frame_type_data.tx[key]}</td>*/}
                                 {/*<td>{stats.frame_type_data.rx[key]}</td>*/}
                             </tr>
@@ -456,7 +462,7 @@ const StatView = ({ stats, port_mapping, mode }: { stats: Statistics, port_mappi
                         </tr>
                     </thead>
                     <tbody>
-                        {["VLAN", "QinQ", "IPv4", "IPv6", "Unknown"].map((v, i) => {
+                        {["VLAN", "QinQ", "IPv4", "IPv6", "MPLS", "Unknown"].map((v, i) => {
                             let key = v.toLowerCase()
                             let data = get_frame_types(key)
 

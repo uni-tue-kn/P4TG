@@ -26,12 +26,11 @@
     --color-yellow: #f1c40f;
 }
 
-
 body {
     width: 100%;
     overflow-x: hidden;
-
 }
+
 
 .sidebar {
     width: auto;

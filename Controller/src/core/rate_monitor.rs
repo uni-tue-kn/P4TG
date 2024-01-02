@@ -18,7 +18,7 @@
  */
 
 use std::cmp::max;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -31,7 +31,7 @@ use rbfrt::table::{MatchValue, ToBytes};
 
 use crate::{AppState, PortMapping};
 use crate::core::traffic_gen_core::types::GenerationMode;
-use crate::core::statistics::{IATStatistics, RateMonitorStatistics};
+use crate::core::statistics::{IATStatistics, RateMonitorStatistics, TimeStatistic};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::core::traffic_gen_core::types::MonitoringMapping;
 
@@ -60,6 +60,7 @@ const RTT_STORAGE: usize = 50000;
 pub struct RateMonitor {
     port_mapping: HashMap<u32, PortMapping>,
     pub statistics: RateMonitorStatistics,
+    pub time_statistics: TimeStatistic,
     pub rtt_storage: HashMap<u32, VecDeque<u64>>,
     pub tx_iat_storage: HashMap<u32, VecDeque<u64>>,
     pub rx_iat_storage: HashMap<u32, VecDeque<u64>>,
@@ -90,7 +91,7 @@ impl DataRate {
 
 impl RateMonitor {
     pub fn new(port_mapping: HashMap<u32, PortMapping>) -> RateMonitor {
-        RateMonitor { port_mapping, statistics: RateMonitorStatistics::default(), rtt_storage: Default::default(), tx_iat_storage: Default::default(), rx_iat_storage: Default::default(), running: true }
+        RateMonitor { port_mapping, statistics: RateMonitorStatistics::default(), time_statistics: TimeStatistic::default(), rtt_storage: Default::default(), tx_iat_storage: Default::default(), rx_iat_storage: Default::default(), running: true }
     }
 
     pub async fn init_monitoring_rules(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
@@ -422,6 +423,17 @@ impl RateMonitor {
         // listen on the channel that receives digests
         while let Ok(digest) = &mut state.switch.digest_queue.recv() {
             if digest.name == RATE_DIGEST_NAME {
+                let (elapsed_time, running) = {
+                    let exp = state.experiment.lock().await;
+
+                    if exp.running {
+                        (exp.start.elapsed().unwrap_or(Duration::from_secs(0)).as_secs() as u32, true)
+                    }
+                    else {
+                        (0, false)
+                    }
+                };
+
                 let data = &digest.data;
 
                 // we know how the digest is build
@@ -467,9 +479,30 @@ impl RateMonitor {
                     if is_tx {
                         state.rate_monitor.lock().await.statistics.tx_rate_l1.insert(*port, new_rate.rate_l1.clone());
                         state.rate_monitor.lock().await.statistics.tx_rate_l2.insert(*port, new_rate.rate_l2.clone());
+
+                        // time statistic
+                        if running {
+                            state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, new_rate.rate_l1);
+
+                            // remove potential old data
+                            state.rate_monitor.lock().await.time_statistics.tx_rate_l1.get_mut(&port).unwrap().retain(|key, _| *key <= elapsed_time)
+                        }
+
                     } else {
                         state.rate_monitor.lock().await.statistics.rx_rate_l1.insert(*port, new_rate.rate_l1.clone());
                         state.rate_monitor.lock().await.statistics.rx_rate_l2.insert(*port, new_rate.rate_l2.clone());
+
+                        // time statistics
+                        if running {
+                            state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, new_rate.rate_l1);
+                            state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, packet_loss);
+                            state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, out_of_order);
+
+                            // remove potential old data
+                            state.rate_monitor.lock().await.time_statistics.rx_rate_l1.get_mut(&port).unwrap().retain(|key, _| *key <= elapsed_time);
+                            state.rate_monitor.lock().await.time_statistics.packet_loss.get_mut(&port).unwrap().retain(|key, _| *key <= elapsed_time);
+                            state.rate_monitor.lock().await.time_statistics.out_of_order.get_mut(&port).unwrap().retain(|key, _| *key <= elapsed_time);
+                        }
 
                         // only write packet loss if its from a rx recirc port
                         state.rate_monitor.lock().await.statistics.packet_loss.insert(*port, packet_loss);
@@ -550,8 +583,11 @@ impl RateMonitor {
 
 #[async_trait]
 impl TrafficGenEvent for RateMonitor {
-    async fn on_start(&self, switch: &SwitchConnection, mode: &GenerationMode) -> Result<(), RBFRTError> {
+    async fn on_start(&mut self, switch: &SwitchConnection, mode: &GenerationMode) -> Result<(), RBFRTError> {
         switch.clear_tables(vec![MONITOR_IAT_TABLE, IS_INGRESS_TABLE]).await?;
+
+        self.time_statistics.tx_rate_l1.clear();
+        self.time_statistics.rx_rate_l1.clear();
 
         // allow iat generation
         let req = table::Request::new(MONITOR_IAT_TABLE).match_key("ig_intr_md.ingress_port", MatchValue::lpm(0, 0)).action("ingress.p4tg.nop");
@@ -579,6 +615,8 @@ impl TrafficGenEvent for RateMonitor {
         self.rtt_storage.clear();
         self.tx_iat_storage.clear();
         self.rx_iat_storage.clear();
+        self.time_statistics.tx_rate_l1.clear();
+        self.time_statistics.rx_rate_l1.clear();
 
         let monitoring_registers = vec!["ingress.p4tg.rx_seq",
                                         "egress.tx_seq",

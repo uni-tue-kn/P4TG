@@ -23,6 +23,7 @@ pub fn get_traffic_gen(op: TransformOperation) -> TransformOperation {
                     inner_vlan_id: 0,
                     inner_pcp: 0,
                     inner_dei: 0,
+                    mpls_stack: Vec::new(),
                     eth_src: "3B:D5:42:2A:F6:92".to_string(),
                     eth_dst: "81:E7:9D:E3:AD:47".to_string(),
                     ip_src: Ipv4Addr::from([192, 168, 178, 10]),
@@ -37,6 +38,7 @@ pub fn get_traffic_gen(op: TransformOperation) -> TransformOperation {
                     app_id: 2,
                     frame_size: 64,
                     encapsulation: Encapsulation::VLAN,
+                    number_of_lse: 0,
                     traffic_rate: 55.2,
                     burst: 1,
                     n_packets: None,
@@ -63,6 +65,7 @@ pub fn post_traffic_gen(op: TransformOperation) -> TransformOperation {
                 app_id: 2,
                 frame_size: 1024,
                 encapsulation: Encapsulation::VLAN,
+                number_of_lse: 0,
                 traffic_rate: 90f32,
                 burst: 1,
                 n_packets: Some(1),
@@ -70,6 +73,7 @@ pub fn post_traffic_gen(op: TransformOperation) -> TransformOperation {
                 generation_accuracy: Some(99.101654),
                 n_pipes: Some(2),
             }]).description("Traffic generation was successfully started.")
+
         })
 }
 

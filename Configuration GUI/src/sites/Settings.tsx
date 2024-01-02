@@ -27,7 +27,9 @@ import {
     Encapsulation,
     GenerationMode,
     Stream,
-    StreamSettings
+    StreamSettings,
+    MPLSHeader,
+    DefaultMPLSHeader
 } from "../common/Interfaces";
 import styled from "styled-components";
 
@@ -58,6 +60,7 @@ const SettingsModal = ({
     const [eth_src, set_eth_src] = useState(data.eth_src)
     const [eth_dst, set_eth_dst] = useState(data.eth_dst)
     const [ip_src, set_ip_src] = useState(data.ip_src)
+    const [mpls_stack, set_mpls_stack] = useState(data.mpls_stack)
     const [vlan_id, set_vlan_id] = useState(data.vlan_id)
     const [inner_vlan_id, set_inner_vlan_id] = useState(data.inner_vlan_id)
     const [pcp, set_pcp] = useState(data.pcp)
@@ -70,7 +73,7 @@ const SettingsModal = ({
     const [ip_dst_mask, set_ip_dst_mask] = useState(data.ip_dst_mask)
 
     const validateMAC = (mac: string) => {
-        let regex = /^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$/;
+        let regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
 
         return regex.test(mac)
     }
@@ -91,8 +94,28 @@ const SettingsModal = ({
 
     }
 
+    const validateMPLS = (mpls_stack: MPLSHeader[]) => {
+        let result = true;
+        mpls_stack.forEach((lse: MPLSHeader) => {
+            result = result && lse.label >= 0 && lse.label < 1048575 && lse.tc >= 0 && lse.tc < 8 && lse.ttl >= 0 && lse.ttl < 256;
+        });
+        return result;
+    }
+
     const validateToS = (tos: number) => {
         return !isNaN(tos) && (0 <= tos) && tos <= (2 ** 7 - 1)
+    }
+
+    const set_label = (label: number, i: number) => {
+        mpls_stack[i].label = label;
+    }
+
+    const set_tc = (tc: number, i: number) => {
+        mpls_stack[i].tc = tc;
+    }
+
+    const set_ttl = (ttl: number, i: number) => {
+        mpls_stack[i].ttl = ttl;
     }
 
     const submit = () => {
@@ -106,6 +129,8 @@ const SettingsModal = ({
             alert("Destination IP not valid.")
         } else if (!validateToS(ip_tos)) {
             alert("IP ToS not valid.")
+        } else if (!validateMPLS(mpls_stack)) {
+            alert("MPLS stack is not valid.")
         }
 
         data.eth_src = eth_src
@@ -115,6 +140,7 @@ const SettingsModal = ({
         data.ip_tos = ip_tos
         data.ip_src_mask = ip_src_mask
         data.ip_dst_mask = ip_dst_mask
+        data.mpls_stack = mpls_stack
         data.vlan_id = vlan_id
         data.inner_vlan_id = inner_vlan_id
         data.pcp = pcp
@@ -134,6 +160,7 @@ const SettingsModal = ({
         set_ip_src_mask(data.ip_src_mask)
         set_ip_dst_mask(data.ip_dst_mask)
 
+        set_mpls_stack(data.mpls_stack)
         set_vlan_id(data.vlan_id)
         set_inner_vlan_id(data.inner_vlan_id)
 
@@ -317,6 +344,87 @@ const SettingsModal = ({
                     :
                     null}
 
+                {stream.encapsulation == Encapsulation.MPLS ?
+                    <>
+                        <h4>MPLS</h4>
+                        <Form.Group as={StyledRow} className="mb-12" controlId="formPlaintextEmail">
+                            <Col className={"col-3 text-start"}>
+                                <Form.Label>
+                                </Form.Label>
+                            </Col>
+                            <Col className={"col-7 text-end"}>
+                                <Row>
+                                    <Col className={"text-start"}>
+                                        <Form.Label>
+                                            Label
+                                        </Form.Label>
+                                    </Col>
+                                    <Col className={"text-start"}>
+                                        <Form.Label>
+                                            TC
+                                        </Form.Label>
+                                    </Col>
+                                    <Col className={"text-start"}>
+                                        <Form.Label>
+                                            TTL
+                                        </Form.Label>
+                                    </Col>
+                                </Row>
+                            </Col>
+                        </Form.Group>
+
+                        {Array.from({length: stream.number_of_lse}, (_, i) => {
+
+                            {
+                                if (mpls_stack[i] === undefined) {
+                                    // Settings were never saved before, initialize with default header
+                                    mpls_stack[i] = DefaultMPLSHeader()
+                                }
+                            }
+
+                            return <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    LSE {i + 1}
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+
+                                    <Row>
+                                        <Col className={"text-end"}>
+                                            <Form.Control className={"col-3 text-start"}
+                                                          onChange={(event: any) => set_label(parseInt(event.target.value), i)}
+                                                          min={0}
+                                                          max={2 ** 20 - 1}
+                                                          step={1}
+                                                          placeholder={data.mpls_stack[i].label.toString()}
+                                                          disabled={running} type={"number"}/>
+                                        </Col>
+                                        <Col className={"text-end"}>
+                                            <Form.Control className={"col-3 text-start"}
+                                                          onChange={(event: any) => set_tc(parseInt(event.target.value), i)}
+                                                          min={0}
+                                                          max={7}
+                                                          step={1}
+                                                          placeholder={data.mpls_stack[i].tc.toString()}
+                                                          disabled={running} type={"number"}/>
+                                        </Col>
+                                        <Col className={"text-end"}>
+                                            <Form.Control className={"col-3 text-start"}
+                                                          onChange={(event: any) => set_ttl(parseInt(event.target.value), i)}
+                                                          min={0}
+                                                          max={255}
+                                                          step={1}
+                                                          placeholder={data.mpls_stack[i].ttl.toString()}
+                                                          disabled={running} type={"number"}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                        })}
+                    </>
+                    :
+                    null
+                }
+
                 <h4>IPv4</h4>
 
                 <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
@@ -416,9 +524,59 @@ const StreamElement = ({
                            running,
                            data,
                            remove,
-                           mode
-                       }: { running: boolean, data: Stream, remove: (id: number) => void, mode: GenerationMode }) => {
-    const [show, set_show] = useState(false)
+                           mode,
+                           stream_settings
+                       }: {
+    running: boolean,
+    data: Stream,
+    remove: (id: number) => void,
+    mode: GenerationMode,
+    stream_settings: StreamSettings[]
+}) => {
+    const [show_mpls_dropdown, set_show] = useState(data.encapsulation == Encapsulation.MPLS)
+    const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
+    const [stream_settings_c, set_stream_settings] = useState(stream_settings)
+
+    const handleEncapsulationChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        data.encapsulation = parseInt(event.target.value)
+        if (data.encapsulation === Encapsulation.MPLS) {
+            set_show(true);
+        } else {
+            set_show(false);
+            data.number_of_lse = 0;
+            set_number_of_lse(0);
+            update_settings();
+        }
+    }
+
+    const update_settings = () => {
+        stream_settings_c.map((s, i) => {
+            if (s.stream_id == data.stream_id) {
+                if (s.mpls_stack.length > data.number_of_lse) {
+                    // Newly set length is smaller than previous length. Remove the excess elements.
+                    s.mpls_stack = s.mpls_stack.slice(0, data.number_of_lse)
+
+                } else if (s.mpls_stack.length < data.number_of_lse) {
+                    // Newly set length is larger than previous length. Fill with default MPLS headers
+                    let new_mpls_stack: MPLSHeader[] = []
+                    let elements_to_add = data.number_of_lse - s.mpls_stack.length
+
+                    {
+                        Array.from({length: elements_to_add}, (_, index) => {
+                            new_mpls_stack.push(DefaultMPLSHeader())
+                        })
+                    }
+                    s.mpls_stack = s.mpls_stack.concat(new_mpls_stack)
+                }
+            }
+        })
+    }
+
+    const handleNumberOfLSE = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        set_number_of_lse(parseInt(event.target.value))
+        data.number_of_lse = parseInt(event.target.value)
+        update_settings()
+    }
 
     return <tr>
         <StyledCol>{data.app_id}</StyledCol>
@@ -462,22 +620,40 @@ const StreamElement = ({
         </StyledCol>
         <StyledCol>
             <Form.Select disabled={running} required
-                         onChange={(event: any) => {
-                             data.encapsulation = parseInt(event.target.value)
-                         }}
+                         onChange={handleEncapsulationChange}
             >
                 <option selected={Encapsulation.None == data.encapsulation} value={Encapsulation.None}>None</option>
                 <option selected={Encapsulation.Q == data.encapsulation} value={Encapsulation.Q}>VLAN (+4 byte)</option>
                 <option selected={Encapsulation.QinQ == data.encapsulation} value={Encapsulation.QinQ}>Q-in-Q (+8
                     byte)
                 </option>
+                <option selected={Encapsulation.MPLS == data.encapsulation} value={Encapsulation.MPLS}>MPLS (+4 byte /
+                    LSE)
+                </option>
             </Form.Select>
         </StyledCol>
-        <StyledCol className={"text-end"}>
-            <Button disabled={running} className={"btn-sm"} variant={"dark"}
-                    onClick={() => remove(data.stream_id)}>
-                <i className="bi bi-trash2-fill"/></Button>
-        </StyledCol>
+        <StyledRow>
+            <StyledCol>
+                {show_mpls_dropdown ?
+                    <Form.Select disabled={running}
+                                 onChange={handleNumberOfLSE}
+                                 defaultValue={number_of_lse}
+                    >
+                        <option selected={0 == number_of_lse} value="0">#LSE</option>
+                        {Array.from({length: 15}, (_, index) => (
+                            <option selected={index + 1 == number_of_lse} value={index + 1}>{index + 1}</option>
+                        ))}
+                    </Form.Select>
+                    :
+                    null
+                }
+            </StyledCol>
+            <StyledCol className={"text-end"}>
+                <Button disabled={running} className={"btn-sm"} variant={"dark"}
+                        onClick={() => remove(data.stream_id)}>
+                    <i className="bi bi-trash2-fill"/></Button>
+            </StyledCol>
+        </StyledRow>
     </tr>
 }
 
@@ -669,7 +845,8 @@ const Settings = () => {
                         <tbody>
                         {streams.map((v, i) => {
                             v.app_id = i + 1;
-                            return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}/>
+                            return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}
+                                                  stream_settings={stream_settings}/>
                         })}
 
                         </tbody>
@@ -715,10 +892,9 @@ const Settings = () => {
                                                      onChange={(event: any) => {
                                                          let current = port_tx_rx_mapping;
 
-                                                         if(parseInt(event.target.value) == -1) {
+                                                         if (parseInt(event.target.value) == -1) {
                                                              delete current[v.pid]
-                                                         }
-                                                         else {
+                                                         } else {
                                                              current[v.pid] = parseInt(event.target.value);
                                                          }
 

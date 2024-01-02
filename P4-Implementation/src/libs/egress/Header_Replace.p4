@@ -17,6 +17,8 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
  
+#include "./mpls_actions.p4"
+
 /*
 Replaces IP src / dst addresses based on random 32 bit number
 */
@@ -27,6 +29,8 @@ control Header_Replace(
     // IP replace
     Random<bit<32>>() src_rand;
     Random<bit<32>>() dst_rand;
+
+    MPLS_Rewrite() mpls_rewrite_c;
 
     bit<32> src_mask = 0;
     bit<32> dst_mask = 0;
@@ -98,8 +102,7 @@ control Header_Replace(
             }
 
             vlan_header_replace.apply(); // rewrite vlan header if configured
+            mpls_rewrite_c.apply(hdr, eg_intr_md);
         }
-
-
     }
 }

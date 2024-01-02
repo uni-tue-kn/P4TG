@@ -25,7 +25,7 @@ use crate::core::traffic_gen_core::types::GenerationMode;
 
 #[async_trait]
 pub trait TrafficGenEvent {
-    async fn on_start(&self, switch: &SwitchConnection, mode: &GenerationMode) -> Result<(), RBFRTError>;
+    async fn on_start(&mut self, switch: &SwitchConnection, mode: &GenerationMode) -> Result<(), RBFRTError>;
     async fn on_stop(&self, switch: &SwitchConnection) -> Result<(), RBFRTError>;
     async fn on_reset(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError>;
 }

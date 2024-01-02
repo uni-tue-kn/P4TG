@@ -3,6 +3,7 @@ RUN mkdir /app
 WORKDIR /app
 COPY ./src /app/src
 COPY ./Cargo.toml /app
+COPY ./gui_build /app/gui_build
 RUN apt update
 RUN apt install -y libstdc++6 libgomp1 cmake libclang-dev
 RUN cargo build --release

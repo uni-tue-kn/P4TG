@@ -19,6 +19,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
+use std::cmp;
 
 use etherparse::PacketBuilder;
 
@@ -336,7 +337,7 @@ impl TrafficGen {
             // this table is used to detect if we are on the "final" TX port that leaves the switch, i.e., a front panel port
             // that is used for traffic generation.
             // In that case we set the TX timestamp to get most accurate RTTs
-            let req = table::Request::new(IS_EGRESS_TABLE)
+            let req = Request::new(IS_EGRESS_TABLE)
                 .match_key("eg_intr_md.egress_port", MatchValue::exact(*port))
                 .action("egress.set_tx");
 
@@ -375,7 +376,7 @@ impl TrafficGen {
         // keep monitoring running
         let app_ids: Vec<u8> = (1..8).collect();
 
-        let update_requests: Vec<table::Request> = app_ids.iter().map(|x| table::Request::new(APP_CFG)
+        let update_requests: Vec<Request> = app_ids.iter().map(|x| table::Request::new(APP_CFG)
             .match_key("app_id", MatchValue::exact(*x))
             .action("trigger_timer_periodic")
             .action_data("app_enable", false))
@@ -392,7 +393,7 @@ impl TrafficGen {
     ///
     /// * `packets`: List of packets that should be generated. Index is the application id.
     pub async fn activate_traffic_gen_applications(&self, switch: &SwitchConnection, packets: &HashMap<u8, StreamPacket>) -> Result<(), RBFRTError> {
-        let update_requests: Vec<table::Request> = packets.iter().map(|(_, packet)| table::Request::new(APP_CFG)
+        let update_requests: Vec<Request> = packets.iter().map(|(_, packet)| table::Request::new(APP_CFG)
             .match_key("app_id", MatchValue::exact(packet.app_id))
             .action("trigger_timer_periodic")
             .action_data("app_enable", true)
@@ -454,6 +455,7 @@ impl TrafficGen {
                 Encapsulation::None => 0,
                 Encapsulation::VLAN => 4, // VLAN adds 4 bytes
                 Encapsulation::QinQ => 8, // QinQ adds 8 bytes
+                Encapsulation::MPLS => s.number_of_lse as u32 * 4 // each mpls label has 4 bytes
             };
 
             // preamble + inter frame gap (IFG) = 20 bytes
@@ -492,6 +494,7 @@ impl TrafficGen {
                     Encapsulation::None => {0}
                     Encapsulation::VLAN => {4}
                     Encapsulation::QinQ => {8}
+                    Encapsulation::MPLS => stream.number_of_lse as u32 * 4
                 }
             };
 
@@ -518,7 +521,7 @@ impl TrafficGen {
         }
 
         let packet_bytes: Vec<StreamPacket> = active_streams.iter().map(|s| {
-            let packet = self.create_packet(s.frame_size, s.encapsulation, s.app_id);
+            let packet = self.create_packet(s);
             StreamPacket { app_id: s.app_id, bytes: packet, buffer_offset: None, timer: s.timeout.unwrap(), n_packets: s.n_packets.unwrap() }
         }).collect();
 
@@ -608,6 +611,7 @@ impl TrafficGen {
                                 Encapsulation::None => {0}
                                 Encapsulation::VLAN => {4}
                                 Encapsulation::QinQ => {8}
+                                Encapsulation::MPLS => s.number_of_lse as u32 * 4
                             }
                         };
 
@@ -693,10 +697,32 @@ impl TrafficGen {
 
                     reqs.push(req);
                 }
+                else if s.encapsulation == Encapsulation::MPLS {
+                    let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse, MAX_NUM_MPLS_LABEL));
+
+                    let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action(&action_name);
+
+                    // build generic action data
+                    for j in 1..cmp::min(s.number_of_lse+1, MAX_NUM_MPLS_LABEL+1) {
+                        let lse = &setting.mpls_stack[(j-1) as usize];
+
+                        let label_param = format!("label{}", j);
+                        let ttl_param = format!("ttl{}", j);
+                        let tc_param = format!("tc{}", j);
+                        req = req.action_data(&label_param, lse.label)
+                                .action_data(&ttl_param, lse.ttl)
+                                .action_data(&tc_param, lse.tc);
+                    }
+
+                    reqs.push(req.clone());
+                }
             }
         }
 
-        info!("Configure table {} & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE);
+        info!("Configure table {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE);
         switch.write_table_entries(reqs).await?;
 
         Ok(())
@@ -745,11 +771,17 @@ impl TrafficGen {
     ///
     /// `frame_size` is L2 size **WITHOUT** encapsulation and without preamble and IFG.
     /// Therefore the remaining filler bytes take the encapsulation into account.
-    fn create_packet(&self, frame_size: u32, encapsulation: Encapsulation, app_id: u8) -> Vec<u8> {
+    fn create_packet(&self, s: &Stream) -> Vec<u8> {
+        let frame_size = s.frame_size;
+        let encapsulation = s.encapsulation;
+        let app_id = s.app_id;
+        let number_of_lse = s.number_of_lse;
+
         // this represents the P4TG header
         // sequence number and tx_timestamp are initially zero and take 10 bytes
         // last byte is app id
         let mut payload = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, app_id].to_vec();
+
 
         let packet = match encapsulation {
             Encapsulation::None => {
@@ -832,6 +864,62 @@ impl TrafficGen {
 
                 result
             }
+
+            
+            Encapsulation::MPLS => {
+                let pkt = etherparse::Ethernet2Header {
+                    source: [0, 0, 0, 0, 0, 0],
+                    destination: [0, 0, 0, 0, 0, 0],
+                    ether_type: 0x8847, // MPLS ether type
+                };
+
+                let mut result = Vec::<u8>::with_capacity((s.frame_size + s.number_of_lse as u32 * 4) as usize);
+    
+                pkt.write(&mut result).unwrap();
+
+                for lse_count in 1..number_of_lse + 1 {
+
+                    // Reuse the VLAN header as an MPLS LSE because both have 4 byte.
+                    // This indicates the bottom of the MPLS stack through the "ethertype" field in the VLAN header
+                    let ether_type = if lse_count == number_of_lse {256} else {0};
+
+                    let vlan_header = etherparse::SingleVlanHeader {
+                        priority_code_point: 0,
+                        drop_eligible_indicator: false,
+                        vlan_identifier: 0,
+                        ether_type,
+                    };
+
+                    vlan_header.write(&mut result).unwrap();
+
+                }
+    
+                // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
+                let ip_header  = etherparse::Ipv4Header::new((frame_size - 20 - 14 - 4) as u16, 64, 17, [0, 0, 0, 0], [0, 0, 0, 0]);
+                ip_header.write(&mut result).unwrap();
+
+                
+                let mut udp_header = etherparse::UdpHeader {
+                    source_port: P4TG_SOURCE_PORT,
+                    destination_port: P4TG_DST_PORT,
+                    // Subtract IP, Ethernet, CRC size 
+                    length: (frame_size - 20 - 14 - 4) as u16,
+                    checksum: 0,
+                };
+
+                // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
+                let remaining = result.capacity() - result.len() - 8 - payload.len() -4;
+                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
+
+                payload.extend_from_slice(&padding);
+                udp_header.checksum = udp_header.calc_checksum_ipv4(&ip_header, &payload).unwrap();
+
+                udp_header.write(&mut result).unwrap();
+
+                result.extend_from_slice(&payload);
+    
+                result
+            }
         };
 
         packet
@@ -839,7 +927,7 @@ impl TrafficGen {
 
     /// Clears various tables that are refilled during traffic gen setup
     async fn reset_tables(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        switch.clear_tables(vec![IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        switch.clear_tables(vec![IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE,  ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
 
         Ok(())
     }

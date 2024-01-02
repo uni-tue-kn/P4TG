@@ -21,7 +21,7 @@ use schemars::JsonSchema;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 /// Describes the supported encapsulations of P4TG.
-/// Currently, only VLAN and QinQ are supported.
+/// Currently, only MPLS, VLAN and QinQ are supported.
 ///
 /// [Encapsulation::None] corresponds to plain Ethernet | IPv4 packet.
 #[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug, Clone, Copy, JsonSchema)]
@@ -30,6 +30,7 @@ pub enum Encapsulation {
     None = 0,
     VLAN = 1,
     QinQ = 2,
+    MPLS = 3
 }
 
 /// Describes the used generation mode

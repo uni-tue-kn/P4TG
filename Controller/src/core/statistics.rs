@@ -17,9 +17,9 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Serialize};
 
 #[derive(Serialize, Clone, JsonSchema)]
 pub struct FrameSizeStatistics {
@@ -163,6 +163,28 @@ impl IATValues {
             mae: 0f32,
             std: None,
             n: 1
+        }
+    }
+}
+
+/// Represents the time-based statistics
+/// for visualisation
+#[derive(Serialize, Debug, Clone, JsonSchema)]
+pub struct TimeStatistic {
+    pub(crate) tx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
+    pub(crate) rx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
+    pub(crate) packet_loss: BTreeMap<u32, BTreeMap<u32, u64>>,
+    pub(crate) out_of_order: BTreeMap<u32, BTreeMap<u32, u64>>,
+
+}
+
+impl TimeStatistic {
+    pub fn default() -> TimeStatistic {
+        TimeStatistic {
+            tx_rate_l1: Default::default(),
+            rx_rate_l1: Default::default(),
+            packet_loss: Default::default(),
+            out_of_order: Default::default()
         }
     }
 }

@@ -29,6 +29,7 @@ const ether_type_t ETHERTYPE_IPV4 = 0x800;
 const ether_type_t ETHERTYPE_MONITOR = 0xBB02;
 const ether_type_t ETHERTYPE_QinQ = 0x88a8;
 const ether_type_t ETHERTYPE_VLANQ = 0x8100;
+const ether_type_t ETHERTYPE_MPLS = 0x8847;
 
 const bit<8> IP_PROTOCOL_UDP = 17;
 const bit<8> IP_PROTOCOL_P4TG = 110;
@@ -39,6 +40,13 @@ header ethernet_h {
     mac_addr_t dst_addr;
     mac_addr_t src_addr;
     bit<16> ether_type;
+}
+
+header mpls_h {
+    bit<20> label;
+    bit<3> tc; // traffic class
+    bit<1> bos; // bottom of stack
+    bit<8> ttl;
 }
 
 header vlan_t {
@@ -114,6 +122,7 @@ header udp_t {
 
 struct header_t {
     ethernet_h ethernet;
+    mpls_h[15] mpls_stack;
     ipv4_t ipv4;
     pkg_gen_t pkt_gen;
     udp_t udp;

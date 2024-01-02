@@ -18,7 +18,7 @@
  */
 
 import React, {useEffect, useState} from 'react'
-import {Button, Col, Row, Tab, Tabs} from 'react-bootstrap'
+import {Button, Col, Form, Row, Tab, Tabs} from 'react-bootstrap'
 import {del, get, post} from "../common/API";
 import SendReceiveMonitor from "../components/SendReceiveMonitor";
 import StatView from "../components/StatView";
@@ -30,7 +30,7 @@ import {
     Statistics as StatInterface,
     StatisticsObject,
     Stream,
-    StreamSettings
+    StreamSettings, TimeStatistics, TimeStatisticsObject
 } from '../common/Interfaces'
 import styled from "styled-components";
 import StreamView from "../components/StreamView";
@@ -69,6 +69,8 @@ const Home = () => {
     const [loaded, set_loaded] = useState(false)
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
+    const [visual, set_visual] = useState(true)
+
     // @ts-ignore
     const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
     // @ts-ignore
@@ -78,17 +80,19 @@ const Home = () => {
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
     const [statistics, set_statistics] = useState<StatInterface>(StatisticsObject)
-
+    const [time_statistics, set_time_statistics] = useState<TimeStatistics>(TimeStatisticsObject)
 
     useEffect(() => {
         refresh()
 
         const interval_stats = setInterval(async () => await Promise.all([loadStatistics()]), 500);
         const interval_loadgen = setInterval(async () => await Promise.all([loadGen()]), 5000);
+        const inverval_timestats = setInterval(async () => await Promise.all([loadTimeStatistics()]), 2000);
 
         return () => {
             clearInterval(interval_stats)
             clearInterval(interval_loadgen)
+            clearInterval(inverval_timestats)
         }
 
     }, [])
@@ -134,6 +138,10 @@ const Home = () => {
                 } else if (v.encapsulation == Encapsulation.QinQ) {
                     ret += 8
                 }
+                else if (v.encapsulation == Encapsulation.MPLS) {
+                    ret += v.number_of_lse * 4 // 4 bytes per LSE
+                }
+
                 return
             }
         })
@@ -191,6 +199,15 @@ const Home = () => {
             set_statistics(stats.data)
         }
     }
+
+    const loadTimeStatistics = async () => {
+        let stats = await get({route: "/time_statistics?limit=100"})
+
+        if (stats != undefined && stats.status === 200) {
+            set_time_statistics(stats.data)
+        }
+    }
+
 
     const loadGen = async () => {
         let stats = await get({route: "/trafficgen"})
@@ -253,12 +270,22 @@ const Home = () => {
             </Row>
         </form>
 
+        <Form>
+            <Form.Check // prettier-ignore
+                type="switch"
+                id="custom-switch"
+                checked={visual}
+                onClick={() => set_visual(!visual)}
+                label="Visualization"
+            />
+        </Form>
+
         <Tabs
             defaultActiveKey="Summary"
             className="mt-3"
         >
             <Tab eventKey="Summary" title="Summary">
-                <StatView stats={statistics} port_mapping={port_tx_rx_mapping} mode={mode}/>
+                <StatView stats={statistics} time_stats={time_statistics} port_mapping={port_tx_rx_mapping} visual={visual} mode={mode}/>
             </Tab>
             {activePorts().map((v, i) => {
                 let mapping: { [name: number]: number } = {[v.tx]: v.rx}
@@ -268,7 +295,7 @@ const Home = () => {
                         className={"mt-3"}
                     >
                         <Tab eventKey={"Overview"} title={"Overview"}>
-                            <StatView stats={statistics} port_mapping={mapping} mode={mode}/>
+                            <StatView stats={statistics} time_stats={time_statistics} port_mapping={mapping} mode={mode} visual={visual}/>
                         </Tab>
                         {Object.keys(mapping).map(Number).map(v => {
                             let stream_ids = getStreamIDsByPort(v)

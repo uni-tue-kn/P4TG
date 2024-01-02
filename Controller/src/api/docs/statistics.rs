@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap};
 use aide::transform::TransformOperation;
 use crate::api::docs::extractor::Json;
 use crate::api::statistics::Statistics;

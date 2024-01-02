@@ -92,7 +92,7 @@ const Speed = ({up, speed, packet}: { up: boolean, speed: number, packet: number
     </Stat>
 }
 
-const secondsToTime = (s: number) => {
+export const secondsToTime = (s: number) => {
     let hours = Math.floor(s / 3600);
     let minutes = Math.floor((s % 3600) / 60)
     let seconds = Math.floor( (s % 3600) % 60)

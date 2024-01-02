@@ -83,3 +83,10 @@ pub const ETHERNET_IP_HEADER_REPLACE_TABLE: &str = "egress.header_replace.header
 /// VLAN replace table
 /// This table replaces the header content of QinQ and VLAN frames
 pub const VLAN_HEADER_REPLACE_TABLE: &str = "egress.header_replace.vlan_header_replace";
+
+/// MPLS replace table
+/// This table replaces the header content of the MPLS stack
+pub const MPLS_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_rewrite_c.mpls_header_replace";
+
+/// Maximal number of supported mpls labels
+pub const MAX_NUM_MPLS_LABEL: u8 = 15;

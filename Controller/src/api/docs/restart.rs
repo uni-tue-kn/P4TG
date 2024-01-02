@@ -13,6 +13,7 @@ pub fn get_restart(op: TransformOperation) -> TransformOperation {
                 app_id: 2,
                 frame_size: 1024,
                 encapsulation: Encapsulation::VLAN,
+                number_of_lse: 0,
                 traffic_rate: 90f32,
                 burst: 1,
                 n_packets: Some(1),

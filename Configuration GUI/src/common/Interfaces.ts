@@ -17,6 +17,13 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
+
+export interface MPLSHeader {
+    label: number,
+    tc: number,
+    ttl: number
+}
+
 export interface Statistics {
     sample_mode: boolean,
     tx_rate_l1: { [name: string]: number },
@@ -42,7 +49,6 @@ export interface Statistics {
     },
     out_of_order: { [name: string]: number },
     elapsed_time: number
-
 }
 
 export const StatisticsObject: Statistics = {
@@ -62,8 +68,23 @@ export const StatisticsObject: Statistics = {
     elapsed_time: 0
 }
 
+export interface TimeStatistics {
+    tx_rate_l1: { [name: number]: {
+        [name: number]: number
+        } },
+    rx_rate_l1: { [name: number]: {
+            [name: number]: number
+        } },
+}
+
+export const TimeStatisticsObject: TimeStatistics = {
+    tx_rate_l1: {},
+    rx_rate_l1: {}
+}
+
 export interface StreamSettings {
-    port: number
+    mpls_stack: MPLSHeader[],
+    port: number,
     stream_id: number,
     vlan_id: number,
     pcp: number,
@@ -84,7 +105,8 @@ export interface StreamSettings {
 export enum Encapsulation {
     None,
     Q,
-    QinQ
+    QinQ,
+    MPLS
 }
 
 export enum GenerationMode {
@@ -97,10 +119,20 @@ export enum GenerationMode {
 export interface Stream {
     stream_id: number,
     frame_size: number,
-    encapsulation: Encapsulation
+    encapsulation: Encapsulation,
+    number_of_lse: number,
     traffic_rate: number,
     app_id: number
     burst: number
+}
+
+export const DefaultMPLSHeader = () => {
+    let lse: MPLSHeader = {
+        label: 20,
+        tc: 0,
+        ttl: 64
+    }
+    return lse
 }
 
 export const DefaultStream = (id: number) => {
@@ -109,6 +141,7 @@ export const DefaultStream = (id: number) => {
         app_id: id,
         frame_size: 1024,
         encapsulation: Encapsulation.None,
+        number_of_lse: 0,
         traffic_rate: 1,
         burst: 1
     }
@@ -126,6 +159,7 @@ export const DefaultStreamSettings = (id: number, port: number) => {
         inner_vlan_id: 1,
         inner_pcp: 0,
         inner_dei: 0,
+        mpls_stack: [],
         eth_src: "3B:D5:42:2A:F6:92",
         eth_dst: "81:E7:9D:E3:AD:47",
         ip_src: "192.168.178.10",

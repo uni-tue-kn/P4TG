@@ -55,6 +55,10 @@ control Frame_Type_Monitor(
         size = 64;
     }
 
+    action mpls() {
+        ethernet_type_counter.count();
+    }
+
     action vlan() {
         ethernet_type_counter.count();
     }
@@ -81,6 +85,7 @@ control Frame_Type_Monitor(
             ig_intr_md.ingress_port: exact;
         }
         actions = {
+            mpls;
             vlan;
             q_in_q;
             ipv4;

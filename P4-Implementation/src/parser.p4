@@ -80,6 +80,7 @@ parser SwitchIngressParser(
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
+            ETHERTYPE_MPLS: parse_mpls;
             default: accept;
         }
     }
@@ -123,6 +124,14 @@ parser SwitchIngressParser(
         transition accept;
     }
 
+    state parse_mpls {
+        pkt.extract(hdr.mpls_stack.next);
+        transition select (hdr.mpls_stack.last.bos){
+            0x0: parse_mpls;
+            0x1: parse_ipv4;
+        }
+    }
+
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +154,7 @@ control SwitchIngressDeparser(
        }
 
         pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.mpls_stack);
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.ipv4);
@@ -178,6 +188,7 @@ parser SwitchEgressParser(
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
+            ETHERTYPE_MPLS: parse_mpls;
             default: accept;
         }
     }
@@ -190,6 +201,14 @@ parser SwitchEgressParser(
     state parse_q_in_q {
         pkt.extract(hdr.q_in_q);
         transition parse_ipv4;
+    }
+
+    state parse_mpls {
+        pkt.extract(hdr.mpls_stack.next);
+        transition select (hdr.mpls_stack.last.bos){
+            0x0: parse_mpls;
+            0x1: parse_ipv4;
+        }
     }
 
     state parse_ipv4 {
@@ -271,6 +290,7 @@ control SwitchEgressDeparser(
         #endif
 
         pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.mpls_stack);
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.ipv4);

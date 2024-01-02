@@ -191,7 +191,7 @@ impl FrameSizeMonitor {
 
 #[async_trait]
 impl TrafficGenEvent for FrameSizeMonitor {
-    async fn on_start(&self, switch: &SwitchConnection, _mode: &GenerationMode) -> Result<(), RBFRTError> {
+    async fn on_start(&mut self, switch: &SwitchConnection, _mode: &GenerationMode) -> Result<(), RBFRTError> {
         self.configure(switch).await?;
         Ok(())
     }

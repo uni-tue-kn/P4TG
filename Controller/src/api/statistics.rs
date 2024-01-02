@@ -17,16 +17,17 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
-use axum::extract::State;
+use std::usize;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Json, IntoResponse, Response};
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use crate::AppState;
-use crate::core::statistics::{IATStatistics, IATValues, RangeCount, RTTStatistics, TypeCount};
+use crate::core::statistics::{IATStatistics, IATValues, RangeCount, RTTStatistics, TimeStatistic, TypeCount};
 
 use crate::api::helper;
 
@@ -62,10 +63,8 @@ pub struct Statistics {
     pub(crate) packet_loss: HashMap<u32, u64>,
     /// Number of out of order packets per port.
     pub(crate) out_of_order: HashMap<u32, u64>,
-    /// Elapsed time sind the traffic generation has started in seconds.
+    /// Elapsed time since the traffic generation has started in seconds.
     pub(crate) elapsed_time: u32
-
-
 }
 
 pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
@@ -167,6 +166,63 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
         else {
             0
         }
+    };
+
+    (StatusCode::OK, Json(stats)).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Params {
+    limit: Option<usize>,
+}
+
+pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): Query<Params>) -> Response {
+    let rate_monitor = &state.rate_monitor;
+    let stats = rate_monitor.lock().await.time_statistics.clone();
+
+    let limit = params.limit.unwrap_or(usize::MAX);
+
+    // we typically have as many elements as elapsed seconds
+    let elements =  state.experiment.lock().await.start.elapsed().unwrap_or(Duration::from_secs(0)).as_secs() as usize;
+
+    let step = {
+        if limit < elements {
+            let ratio = elements / limit;
+
+            ratio
+        }
+        else {
+            1
+        }
+    };
+
+    // get every ratio-nth element
+    let tx: BTreeMap<u32, BTreeMap<u32, f64>> = stats.tx_rate_l1.clone()
+        .into_iter()
+        .map(|v|
+            (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
+
+    let rx: BTreeMap<u32, BTreeMap<u32, f64>> = stats.rx_rate_l1.clone()
+        .into_iter()
+        .map(|v|
+            (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
+
+    let packet_loss: BTreeMap<u32, BTreeMap<u32, u64>> = stats.packet_loss.clone()
+        .into_iter()
+        .map(|v|
+            (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
+
+    let out_of_order: BTreeMap<u32, BTreeMap<u32, u64>> = stats.out_of_order.clone()
+        .into_iter()
+        .map(|v|
+            (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
+
+
+    let stats = TimeStatistic {
+        tx_rate_l1: tx,
+        rx_rate_l1: rx,
+        packet_loss,
+        out_of_order,
     };
 
     (StatusCode::OK, Json(stats)).into_response()

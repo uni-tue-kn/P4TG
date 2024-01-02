@@ -32,6 +32,7 @@ import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
 import Offline from "./sites/Offline"
 import Tables from "./sites/Tables";
+import config from "./config";
 
 const App = () => {
     const [error, set_error] = useState(false)
@@ -52,44 +53,38 @@ const App = () => {
 
     `
     return <>
-
-        {localStorage.getItem("server") == null ?
-            <Container fluid={"lg"} className={"pb-2"}>
-                <Setup/>
-            </Container>
-            :
-            <Router basename={Config.BASE_PATH}>
-                <Row>
-                    <Col className={'col-2 col-sm-2 col-xl-1 fixed-navbar'}>
-                        <Navbar/>
-                    </Col>
-                    <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-5"}>
-                        <ErrorView error={error} message={message} time={time} close={() => set_error(false)}/>
-                        <AxiosInterceptor onError={setError} onOffline={() => set_online(false)}
-                                          onOnline={() => set_online(true)}>
-                            <Container fluid className={"pb-2"}>
-                                <Wrapper>
-                                    {//<h2>P4TG: 100 Gbps traffic generation for Ethernet/IP networks</h2>
-                                        //  <Navbar/>
-                                    }
-                                    {online ?
-                                        <Routes>
-                                            <Route path={""} element={<Home/>}/>
-                                            <Route path={"/home"} element={<Home/>}/>
-                                            <Route path={"/ports"} element={<Ports/>}/>
-                                            <Route path={"/tables"} element={<Tables/>}/>
-                                            <Route path={"/settings"} element={<Settings/>}/>
-                                        </Routes>
-                                        :
-                                        <Offline/>
-                                    }
-                                </Wrapper>
-                            </Container>
-                        </AxiosInterceptor>
-                    </Col>
-                </Row>
-            </Router>
-        }
+        <Router basename={Config.BASE_PATH}>
+            <Row>
+                <Col className={'col-2 col-sm-2 col-xl-1 fixed-navbar'}>
+                    <Navbar/>
+                </Col>
+                <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-5"}>
+                    <ErrorView error={error} message={message} time={time} close={() => set_error(false)}/>
+                    <AxiosInterceptor onError={setError} onOffline={() => set_online(false)}
+                                      onOnline={() => set_online(true)}>
+                        <Container fluid className={"pb-2"}>
+                            <Wrapper>
+                                {//<h2>P4TG: 100 Gbps traffic generation for Ethernet/IP networks</h2>
+                                    //  <Navbar/>
+                                }
+                                {online ?
+                                    <Routes>
+                                        <Route path={""} element={<Home/>}/>
+                                        <Route path={"/"} element={<Home/>}/>
+                                        <Route path={"/home"} element={<Home/>}/>
+                                        <Route path={"/ports"} element={<Ports/>}/>
+                                        <Route path={"/tables"} element={<Tables/>}/>
+                                        <Route path={"/settings"} element={<Settings/>}/>
+                                    </Routes>
+                                    :
+                                    <Offline/>
+                                }
+                            </Wrapper>
+                        </Container>
+                    </AxiosInterceptor>
+                </Col>
+            </Row>
+        </Router>
 
 
     </>

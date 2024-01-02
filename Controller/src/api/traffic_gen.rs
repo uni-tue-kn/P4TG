@@ -28,11 +28,22 @@ use axum::response::{IntoResponse, Json, Response};
 use log::info;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use crate::api::helper::validate::validate_request;
 
 use crate::api::server::Error;
 use crate::AppState;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 
+/// Defines an MPLS LSE
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct MPLSHeader {
+    /// Label of this MPLS LSE
+    pub label: u32,
+    /// Traffic class field of this MPLS LSE
+    pub tc: u32,
+    /// Time-to-live of this MPLS LSE
+    pub ttl: u32
+}
 
 /// Represents the body of the GET / POST endpoints of /trafficgen
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
@@ -59,6 +70,8 @@ pub struct StreamSetting {
     pub dei: u8,
     pub inner_vlan_id: u16,
     pub inner_pcp: u8,
+    /// An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.
+    pub mpls_stack: Vec<MPLSHeader>,
     pub inner_dei: u8,
     pub eth_src: String,
     pub eth_dst: String,
@@ -87,6 +100,8 @@ pub struct Stream {
     pub(crate) frame_size: u32,
     /// Encapsulation type.
     pub(crate) encapsulation: Encapsulation,
+    /// Number of MPLS LSEs in this stream. The value has to equal the length of the MPLS stack in a stream setting.
+    pub(crate) number_of_lse: u8,
     /// Traffic rate in Gbps that should be generated.
     pub(crate) traffic_rate: f32,
     /// Maximal allowed burst (= packets). Burst = 1 is used for IAT precision mode, Burst = 100 for Rate precision.
@@ -174,6 +189,12 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
     // contains the mapping of Send->Receive ports
     // required for analyze mode
     let port_mapping = &payload.port_tx_rx_mapping;
+
+    // validate request
+    match validate_request(&active_streams, &active_stream_settings) {
+        Ok(_) => {},
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response()
+    }
 
     match tg.start_traffic_generation(&state, active_streams, payload.mode, active_stream_settings, port_mapping).await {
         Ok(streams) => {

@@ -17,7 +17,7 @@ pub fn docs_routes() -> ApiRouter {
         .api_route_with(
             "/",
             get_with(
-                Redoc::new("/docs/private/api.json")
+                Redoc::new("/api/docs/private/api.json")
                     .with_title("P4TG Rest API Docs")
                     .axum_handler(),
                 |op| op.description("This documentation page.").hidden(true),
