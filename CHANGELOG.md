@@ -1,5 +1,12 @@
 # Changelog 
 
+## v2.1.0
+
+- Added MPLS support with up to 15 MPLS labels
+- Integrated configuration GUI webserver in controller
+  - The configuration GUI is now also served at `http://ip-of-controller:controller-port`
+- Moved REST-API to `/api` endpoint of the controller. It is now served at `http://ip-of-controller:controller-port/api`
+- Added visualization on the GUI for traffic rates, packet loss & out of order, frame statistics
 ## v2.0.0 
 
 ### Have you considered Rewriting It In Rust?
