@@ -1,5 +1,10 @@
 # Changelog 
 
+## v2.1.1
+
+- UI bug-fix total TX/RX frame tpes
+- Remove "non-unicast" from frame chart
+
 ## v2.1.0
 
 - Added MPLS support with up to 15 MPLS labels

@@ -2,7 +2,7 @@
  <img src="./logo.png" />
  <h2>P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.1.0-yellow)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.1.1-yellow)
 
 </div>
 
@@ -96,3 +96,4 @@ The documentation of the REST-API can be found at the `/api/docs` endpoint of th
 
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-2.png"/>
+<img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-3.png"/>

@@ -440,6 +440,34 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
                         {["Multicast", "Broadcast", "Unicast", "Non-Unicast", " ", "Total"].map((v, i) => {
                             let key = v.toLowerCase()
                             let data = get_frame_types(key)
+
+                            if(key == "total") {
+                                data.tx = ["multicast", "broadcast", "unicast"].reduce((acc, curr) => {
+                                    acc += get_frame_types(curr).tx
+
+                                    return acc
+                                }, 0)
+
+                                data.rx = ["multicast", "broadcast", "unicast"].reduce((acc, curr) => {
+                                    acc += get_frame_types(curr).rx
+
+                                    return acc
+                                }, 0)
+                            }
+
+                            if(key == "non-unicast") {
+                                data.tx = ["multicast", "broadcast"].reduce((acc, curr) => {
+                                    acc += get_frame_types(curr).tx
+
+                                    return acc
+                                }, 0)
+
+                                data.rx = ["multicast", "broadcast"].reduce((acc, curr) => {
+                                    acc += get_frame_types(curr).rx
+
+                                    return acc
+                                }, 0)
+                            }
                             return <tr>
                                 <td>{v != " " ? v : "\u00A0" }</td> {/* Quick hack for empty row */}
                                 <td>{v != " " ? formatFrameCount(data.tx) : null}</td>

@@ -283,7 +283,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
         ],
     }
 
-    let frame_type_label = ["Multicast", "Broadcast", "Unicast", "Non-Unicast"]
+    let frame_type_label = ["Multicast", "Broadcast", "Unicast"]
 
     const frame_type_data = {
         labels: frame_type_label,
@@ -292,13 +292,11 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                 label: 'TX frame types',
                 data: [get_frame_types(stats, port_mapping, "multicast").tx,
                     get_frame_types(stats, port_mapping, "broadcast").tx,
-                    get_frame_types(stats, port_mapping, "unicast").tx,
-                    get_frame_types(stats, port_mapping, "non_unicast").tx],
+                    get_frame_types(stats, port_mapping, "unicast").tx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
-                    'rgb(255, 205, 86)',
-                    'rgb(18,194,0)'
+                    'rgb(255, 205, 86)'
                 ],
                 hoverOffset: 4
             },
@@ -306,13 +304,11 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                 label: 'RX frame types',
                 data: [get_frame_types(stats, port_mapping, "multicast").rx,
                     get_frame_types(stats, port_mapping, "broadcast").rx,
-                    get_frame_types(stats, port_mapping, "unicast").rx,
-                    get_frame_types(stats, port_mapping, "non_unicast").rx],
+                    get_frame_types(stats, port_mapping, "unicast").rx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
-                    'rgb(255, 205, 86)',
-                    'rgb(18,194,0)'
+                    'rgb(255, 205, 86)'
                 ],
                 hoverOffset: 4
             },
