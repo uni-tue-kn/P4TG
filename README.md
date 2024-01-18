@@ -2,7 +2,7 @@
  <img src="./logo.png" />
  <h2>P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.1.1-yellow)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.1.2-yellow)
 
 </div>
 

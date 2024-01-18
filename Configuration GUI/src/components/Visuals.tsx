@@ -132,6 +132,40 @@ const frame_options = {
 
 }
 
+const rtt_options = {
+    responsive: true,
+    aspectRatio: 6,
+    scales: {
+        y: {
+            title: {
+                display: true,
+                text: 'μs'
+            },
+            suggestedMin: 0,
+            beginAtZero: true
+        },
+        x: {
+            title: {
+                display: true,
+                text: 'Time'
+            },
+            ticks: {
+                source: 'auto',
+                autoSkip: true,
+            },
+        },
+    },
+    plugins: {
+        legend: {
+            position: 'top' as const,
+        },
+        title: {
+            display: false,
+            text: '',
+        },
+    },
+}
+
 const generateLineData = (data_key: string, use_key: boolean, data: TimeStatistics, port_mapping: { [name: number]: number }): [string[], number[]] => {
     let cum_data: {[name: number]: number}[] = []
 
@@ -233,18 +267,59 @@ const get_frame_stats = (stats: Statistics, port_mapping: {[name: number]: numbe
     return ret
 }
 
+const get_rtt = (data: TimeStatistics, port_mapping: {[name: number]: number}): [string[], number[]] => {
+    let cum_data: {[name: number]: number}[] = []
+
+    if("rtt" in data) {
+        Object.values(port_mapping).map(v => {
+            // @ts-ignore
+            if (v in data["rtt"]) {
+                // @ts-ignore
+                cum_data.push(data["rtt"][v])
+            }
+        })
+    }
+
+    let ret_data = cum_data.reduce((acc, current) => {
+        const key = Object.keys(current)
+
+        key.forEach(k => {
+            if(Object.keys(acc[0]).includes(k)) {
+                // @ts-ignore
+                acc[0][k] += current[k]
+                // @ts-ignore
+                acc[1][k] += 1
+            }
+            else {
+                // @ts-ignore
+                acc[0][k] = current[k]
+                // @ts-ignore
+                acc[1][k] = 1
+            }
+        })
+
+        return acc
+    }, [{}, {}])
+
+    Object.keys(ret_data[0]).forEach (v => {
+        // @ts-ignore
+        ret_data[0][v] = ret_data[0][v] / ret_data[1][v]
+    })
+
+    return [Object.keys(ret_data[0]).map(v => secondsToTime(parseInt(v))), Object.values(ret_data[0])]
+}
+
 const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Statistics, port_mapping: { [name: number]: number }}) => {
     const [labels_tx, line_data_tx] = generateLineData("tx_rate_l1", true, data, port_mapping)
     const [labels_rx, line_data_rx] = generateLineData("rx_rate_l1", false, data, port_mapping)
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)
     const [labels_out_of_order, line_data_out_of_order] = generateLineData("out_of_order", false, data, port_mapping)
+    const [labels_rtt, line_data_rtt] = get_rtt(data, port_mapping)
 
     const [visual_select, set_visual_select] = useState("rate")
 
-    let labels = labels_tx
-
     const rate_data = {
-        labels,
+        labels: labels_tx,
         datasets: [
             {
                 fill: true,
@@ -264,7 +339,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
     }
 
     const loss_data = {
-        labels,
+        labels: labels_loss,
         datasets: [
             {
                 fill: true,
@@ -281,6 +356,19 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                 backgroundColor: 'rgb(250,122,64, 0.5)',
             },
         ],
+    }
+
+    const rtt_data = {
+        labels: labels_rtt,
+        datasets: [
+            {
+                fill: true,
+                label: 'RTT',
+                data: line_data_rtt.map(val => val * 10**-3),
+                borderColor: 'rgb(53, 162, 235)',
+                backgroundColor: 'rgba(53, 162, 235, 0.5)',
+            },            
+        ]
     }
 
     let frame_type_label = ["Multicast", "Broadcast", "Unicast"]
@@ -431,6 +519,12 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
             null
         }
 
+        {visual_select == "rtt" ?
+            <Line options={rtt_options} data={rtt_data}/>
+            :
+            null
+        }
+
         <Row className={"text-center mb-3 mt-3"}>
             <Form onChange={(event: any) => set_visual_select(event.target.id)}>
                 <Form.Check
@@ -448,6 +542,14 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                     name={"visuals"}
                     checked={visual_select == "loss"}
                     id={`loss`}
+                />
+                <Form.Check
+                    inline
+                    label="RTT"
+                    type="radio"
+                    name={"visuals"}
+                    checked={visual_select == "rtt"}
+                    id={`rtt`}
                 />
                 <Form.Check
                     inline

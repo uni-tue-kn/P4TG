@@ -1,5 +1,9 @@
 # Changelog 
 
+## v2.1.2
+- Added RTT visualization
+- Cleaner monitoring routine in controller
+
 ## v2.1.1
 
 - UI bug-fix total TX/RX frame tpes

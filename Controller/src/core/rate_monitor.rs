@@ -422,17 +422,18 @@ impl RateMonitor {
 
         // listen on the channel that receives digests
         while let Ok(digest) = &mut state.switch.digest_queue.recv() {
-            if digest.name == RATE_DIGEST_NAME {
-                let (elapsed_time, running) = {
-                    let exp = state.experiment.lock().await;
+            let (elapsed_time, running) = {
+                let exp = state.experiment.lock().await;
 
-                    if exp.running {
-                        (exp.start.elapsed().unwrap_or(Duration::from_secs(0)).as_secs() as u32, true)
-                    }
-                    else {
-                        (0, false)
-                    }
-                };
+                if exp.running {
+                    (exp.start.elapsed().unwrap_or(Duration::from_secs(0)).as_secs() as u32, true)
+                }
+                else {
+                    (0, false)
+                }
+            };
+
+            if digest.name == RATE_DIGEST_NAME {
 
                 let data = &digest.data;
 
@@ -482,10 +483,10 @@ impl RateMonitor {
 
                         // time statistic
                         if running {
-                            state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, new_rate.rate_l1);
+                            state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
 
                             // remove potential old data
-                            state.rate_monitor.lock().await.time_statistics.tx_rate_l1.get_mut(&port).unwrap().retain(|key, _| *key <= elapsed_time)
+                            state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
                         }
 
                     } else {
@@ -494,14 +495,14 @@ impl RateMonitor {
 
                         // time statistics
                         if running {
-                            state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, new_rate.rate_l1);
-                            state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, packet_loss);
-                            state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, out_of_order);
+                            state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
+                            state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_default().insert(elapsed_time, packet_loss);
+                            state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_default().insert(elapsed_time, out_of_order);
 
                             // remove potential old data
-                            state.rate_monitor.lock().await.time_statistics.rx_rate_l1.get_mut(&port).unwrap().retain(|key, _| *key <= elapsed_time);
-                            state.rate_monitor.lock().await.time_statistics.packet_loss.get_mut(&port).unwrap().retain(|key, _| *key <= elapsed_time);
-                            state.rate_monitor.lock().await.time_statistics.out_of_order.get_mut(&port).unwrap().retain(|key, _| *key <= elapsed_time);
+                            state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                            state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                            state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
                         }
 
                         // only write packet loss if its from a rx recirc port
@@ -552,6 +553,10 @@ impl RateMonitor {
                         let port = rx_reverse_mapping.get(&port).unwrap();
 
                         state.rate_monitor.lock().await.rtt_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(rtt);
+                        state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, rtt);
+
+                        // remove potential old data
+                        state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
                     }
                 }
 
@@ -617,6 +622,9 @@ impl TrafficGenEvent for RateMonitor {
         self.rx_iat_storage.clear();
         self.time_statistics.tx_rate_l1.clear();
         self.time_statistics.rx_rate_l1.clear();
+        self.time_statistics.packet_loss.clear();
+        self.time_statistics.out_of_order.clear();
+        self.time_statistics.rtt.clear();
 
         let monitoring_registers = vec!["ingress.p4tg.rx_seq",
                                         "egress.tx_seq",

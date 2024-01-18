@@ -217,12 +217,17 @@ pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): 
         .map(|v|
             (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
 
+    let rtt: BTreeMap<u32, BTreeMap<u32, u64>> = stats.rtt.clone()
+        .into_iter()
+        .map(|v|
+            (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();            
 
     let stats = TimeStatistic {
         tx_rate_l1: tx,
         rx_rate_l1: rx,
         packet_loss,
         out_of_order,
+        rtt
     };
 
     (StatusCode::OK, Json(stats)).into_response()

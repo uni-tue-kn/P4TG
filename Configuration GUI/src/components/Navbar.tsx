@@ -107,7 +107,7 @@ const Navbar = () => {
             </Row>
             <Row>
                 <CNavItem className="flex-grow-1 mb-2">
-                    <span>v2.1.1</span>
+                    <span>v2.1.2</span>
                     {/*<a href={"#"} role="button" onClick={() => setup()} className={"nav-link logout"}>*/}
                     {/*    <i className="bi bi-box-arrow-left me-2"></i></a>*/}
                 </CNavItem>

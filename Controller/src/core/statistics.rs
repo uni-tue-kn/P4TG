@@ -175,6 +175,7 @@ pub struct TimeStatistic {
     pub(crate) rx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
     pub(crate) packet_loss: BTreeMap<u32, BTreeMap<u32, u64>>,
     pub(crate) out_of_order: BTreeMap<u32, BTreeMap<u32, u64>>,
+    pub(crate) rtt: BTreeMap<u32, BTreeMap<u32, u64>>
 
 }
 
@@ -184,7 +185,8 @@ impl TimeStatistic {
             tx_rate_l1: Default::default(),
             rx_rate_l1: Default::default(),
             packet_loss: Default::default(),
-            out_of_order: Default::default()
+            out_of_order: Default::default(),
+            rtt: Default::default()
         }
     }
 }
