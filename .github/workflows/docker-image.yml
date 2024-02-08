@@ -1,0 +1,16 @@
+name: Controller build
+
+on:
+  push:
+    branches: [ "main", "dev"]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Controller CI
+      run: cd Controller && docker build .
