@@ -13,4 +13,4 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Controller CI
-      run: docker build .
+      run: cd Controller && docker build .
