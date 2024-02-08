@@ -2,7 +2,7 @@ name: Controller CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "dev", "CI-Test" ]
   pull_request:
     branches: [ "main" ]
 
