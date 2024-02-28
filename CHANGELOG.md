@@ -3,6 +3,7 @@
 ## v2.1.2
 - Added RTT visualization
 - Cleaner monitoring routine in controller
+- Add "port clearance" before P4TG starts. May be needed if other systems configure the switch (e.g., SONiC). See https://github.com/uni-tue-kn/P4TG/issues/6
 
 ## v2.1.1
 
