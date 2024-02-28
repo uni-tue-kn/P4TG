@@ -82,6 +82,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .connect()
         .await?;
 
+    // Delete previously configured ports
+    switch.clear_table("$PORT").await?;
+
     let pm = PortManager::new(&mut switch).await;
 
     let mut port_requests = vec![];
