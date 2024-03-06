@@ -437,18 +437,18 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
                         </tr>
                     </thead>
                     <tbody>
-                        {["Multicast", "Broadcast", "Unicast", "Non-Unicast", " ", "Total"].map((v, i) => {
+                        {["Multicast", "Broadcast", "Unicast", "VxLAN", "Non-Unicast", "Total"].map((v, i) => {
                             let key = v.toLowerCase()
                             let data = get_frame_types(key)
 
                             if(key == "total") {
-                                data.tx = ["multicast", "broadcast", "unicast"].reduce((acc, curr) => {
+                                data.tx = ["multicast", "broadcast", "unicast", "vxlan"].reduce((acc, curr) => {
                                     acc += get_frame_types(curr).tx
 
                                     return acc
                                 }, 0)
 
-                                data.rx = ["multicast", "broadcast", "unicast"].reduce((acc, curr) => {
+                                data.rx = ["multicast", "broadcast", "unicast", "vxlan"].reduce((acc, curr) => {
                                     acc += get_frame_types(curr).rx
 
                                     return acc

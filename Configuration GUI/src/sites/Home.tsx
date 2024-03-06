@@ -141,6 +141,9 @@ const Home = () => {
                 else if (v.encapsulation == Encapsulation.MPLS) {
                     ret += v.number_of_lse * 4 // 4 bytes per LSE
                 }
+                else if (v.encapsulation == Encapsulation.VxLAN) {
+                    ret += 50 // 50 bytes overhead
+                }
 
                 return
             }

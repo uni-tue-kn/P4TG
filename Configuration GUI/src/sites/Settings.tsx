@@ -32,6 +32,7 @@ import {
     DefaultMPLSHeader
 } from "../common/Interfaces";
 import styled from "styled-components";
+import InfoBox from "../components/InfoBox";
 
 const StyledRow = styled.tr`
     display: flex;
@@ -441,6 +442,20 @@ const SettingsModal = ({
                                 <Form.Control onChange={(event: any) => set_ip_src_mask(event.target.value)}
                                               disabled={running} type={"text"} value={ip_src_mask}/>
                             </Col>
+                            <Col className={"col-1"}>
+                                <InfoBox>
+                                    <>
+                                        <p>IP addresses can be randomized to simulate multiple flows.</p>
+                                        <p>The second value (default 0.0.0.0) represents a randomization mask that can be used to randomize parts of the src/dst address.</p>
+
+                                        <p>In the dataplane, a 32 bit value (randomized IP address) is generated and bitwise ANDed with the randomization mask. The resulting IP address is bitwise ORed with the src/dst address.</p>
+
+                                        <h3>Example</h3>
+
+                                        <p>Src IP address is set to 0.10.5.3 and the randomization mask is set to 255.0.0.0. P4TG will then generate IP addresses with a randomized first octet, i.e., a address in the range 0.10.5.3-255.10.5.3</p>
+                                    </>
+                                </InfoBox>
+                            </Col>
                         </Row>
                     </Col>
                     <Col className={"col-1 text-end"}>
@@ -461,6 +476,20 @@ const SettingsModal = ({
                             <Col>
                                 <Form.Control onChange={(event: any) => set_ip_dst_mask(event.target.value)}
                                               disabled={running} type={"text"} value={ip_dst_mask}/>
+                            </Col>
+                            <Col className={"col-1"}>
+                                <InfoBox>
+                                    <>
+                                        <p>IP addresses can be randomized to simulate multiple flows.</p>
+                                        <p>The second value (default 0.0.0.0) represents a randomization mask that can be used to randomize parts of the src/dst address.</p>
+
+                                        <p>In the dataplane, a 32 bit value (randomized IP address) is generated and bitwise ANDed with the randomization mask. The resulting IP address is bitwise ORed with the src/dst address.</p>
+
+                                        <h3>Example</h3>
+
+                                        <p>Src IP address is set to 0.10.5.3 and the randomization mask is set to 255.0.0.0. P4TG will then generate IP addresses with a randomized first octet, i.e., a address in the range 0.10.5.3-255.10.5.3</p>
+                                    </>
+                                </InfoBox>
                             </Col>
                         </Row>
 
@@ -612,11 +641,29 @@ const StreamElement = ({
             </InputGroup>
         </StyledCol>
         <StyledCol>
-            <Form.Select disabled={running} required
-                         onChange={(event: any) => data.burst = parseInt(event.target.value)}>
-                <option selected={100 === data.burst} value="100">Rate Precision</option>
-                <option selected={1 === data.burst} value="1">IAT Precision</option>
-            </Form.Select>
+            <tr>
+                <td>
+                    <Form.Select disabled={running} required
+                             onChange={(event: any) => data.burst = parseInt(event.target.value)}>
+                        <option selected={100 === data.burst} value="100">Rate Precision</option>
+                        <option selected={1 === data.burst} value="1">IAT Precision</option>
+                    </Form.Select>
+                </td>
+                <td className={"col-1"}>
+                    <InfoBox>
+                        <>
+                            <h5>Rate Precision</h5>
+
+                            <p>In this mode, several packets may be generated at once (burst) to fit the configured traffic rate more precisely. </p>
+
+                            <h5>IAT Precision</h5>
+
+                            <p>In this mode, a single packet is generated at once and all packets have the same inter-arrival times. This mode should be used if the traffic should be very "smooth", i.e., without bursts.
+                            However, the configured traffic rate may not be met precisely.</p>
+                            </>
+                    </InfoBox>
+                </td>
+            </tr>
         </StyledCol>
         <StyledCol>
             <Form.Select disabled={running} required
@@ -624,6 +671,7 @@ const StreamElement = ({
             >
                 <option selected={Encapsulation.None == data.encapsulation} value={Encapsulation.None}>None</option>
                 <option selected={Encapsulation.Q == data.encapsulation} value={Encapsulation.Q}>VLAN (+4 byte)</option>
+                <option selected={Encapsulation.VxLAN == data.encapsulation} value={Encapsulation.VxLAN}>VxLAN (+50 byte)</option>
                 <option selected={Encapsulation.QinQ == data.encapsulation} value={Encapsulation.QinQ}>Q-in-Q (+8
                     byte)
                 </option>
@@ -823,6 +871,30 @@ const Settings = () => {
                     <option selected={mode === GenerationMode.MPPS} value={GenerationMode.MPPS}>Mpps</option>
                     <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
                 </Form.Select>
+            </Col>
+            <Col>
+                <InfoBox>
+                    <>
+                        <p>P4TG supports multiple modes.</p>
+
+                        <h5>Constant bit rate (CBR)</h5>
+
+                        <p>Constant bit rate (CBR) traffic sends traffic with a constant rate.</p>
+
+                        <h5>Poisson</h5>
+
+                        <p>Poisson traffic is traffic with random inter-arrival times but a constant average traffic rate.</p>
+
+                        <h5>Mpps</h5>
+
+                        <p>In Mpps mode, P4TG generates traffic with a fixed number of packets per seconds.</p>
+
+                        <h5>Monitor/Analyze</h5>
+
+                        <p>In monitor/analyze mode, P4TG forwards traffic received on its ports and measures L1/L2 rates, packet sizes/types and inter-arrival times.</p>
+
+                    </>
+                </InfoBox>
             </Col>
         </Row>
         <Row>

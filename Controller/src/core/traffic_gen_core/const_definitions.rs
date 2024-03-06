@@ -90,3 +90,6 @@ pub const MPLS_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_rewrite_
 
 /// Maximal number of supported mpls labels
 pub const MAX_NUM_MPLS_LABEL: u8 = 15;
+
+/// VxLAN UDP port
+pub const VX_LAN_UDP_PORT: u16 = 4789;

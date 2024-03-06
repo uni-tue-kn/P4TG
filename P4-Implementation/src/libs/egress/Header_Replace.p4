@@ -42,10 +42,33 @@ control Header_Replace(
             hdr.ethernet.dst_addr = dst_mac;
             hdr.ethernet.src_addr = src_mac;
 
-            hdr.ipv4.dst_addr = d_ip;
-            hdr.ipv4.src_addr = s_ip;
-            hdr.ipv4.diffserv = tos;
+            hdr.inner_ipv4.dst_addr = d_ip;
+            hdr.inner_ipv4.src_addr = s_ip;
+            hdr.inner_ipv4.diffserv = tos;
 
+    }
+
+    action rewrite_vxlan(mac_addr_t outer_src_mac, mac_addr_t outer_dst_mac, mac_addr_t inner_src_mac,
+                        mac_addr_t inner_dst_mac, bit<32> inner_s_ip, bit<32> inner_d_ip, bit<32> s_mask, bit<32> d_mask, bit<8> inner_tos,
+                        bit<32> outer_s_ip, bit<32> outer_d_ip, bit<8> outer_tos, bit<16> udp_source) {
+            src_mask = s_mask;
+            dst_mask = d_mask;
+
+            hdr.ethernet.dst_addr = outer_dst_mac;
+            hdr.ethernet.src_addr = outer_src_mac;
+
+            hdr.inner_ethernet.dst_addr = inner_dst_mac;
+            hdr.inner_ethernet.src_addr = inner_src_mac;
+
+            hdr.inner_ipv4.dst_addr = inner_d_ip;
+            hdr.inner_ipv4.src_addr = inner_s_ip;
+            hdr.inner_ipv4.diffserv = inner_tos;
+
+            hdr.ipv4.dst_addr = outer_d_ip;
+            hdr.ipv4.src_addr = outer_s_ip;
+            hdr.ipv4.diffserv = outer_tos;
+
+            hdr.udp.src_port = udp_source;
     }
 
     table header_replace {
@@ -55,6 +78,7 @@ control Header_Replace(
         }
         actions = {
             rewrite;
+            rewrite_vxlan;
         }
         size = 64;
     }
@@ -90,15 +114,15 @@ control Header_Replace(
     apply {
         // we only rewrite IP header for P4TG packets
         // identified by valid path header and UDP port
-        if(hdr.ipv4.protocol == IP_PROTOCOL_UDP && hdr.path.dst_port == 50083) {
+        if(hdr.path.isValid() && hdr.path.dst_port == 50083) {
             if(header_replace.apply().hit) {
                 // get random 32 bit number and make bitwise AND with network mask
                 bit<32> s_tmp = src_rand.get() & src_mask;
                 bit<32> d_tmp = dst_rand.get() & dst_mask;
 
                 // apply random sub ip string to ip address
-                hdr.ipv4.src_addr = hdr.ipv4.src_addr | s_tmp;
-                hdr.ipv4.dst_addr = hdr.ipv4.dst_addr | d_tmp;
+                hdr.inner_ipv4.src_addr = hdr.inner_ipv4.src_addr | s_tmp;
+                hdr.inner_ipv4.dst_addr = hdr.inner_ipv4.dst_addr | d_tmp;
             }
 
             vlan_header_replace.apply(); // rewrite vlan header if configured

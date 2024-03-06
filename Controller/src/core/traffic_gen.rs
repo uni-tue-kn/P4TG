@@ -455,7 +455,8 @@ impl TrafficGen {
                 Encapsulation::None => 0,
                 Encapsulation::VLAN => 4, // VLAN adds 4 bytes
                 Encapsulation::QinQ => 8, // QinQ adds 8 bytes
-                Encapsulation::MPLS => s.number_of_lse as u32 * 4 // each mpls label has 4 bytes
+                Encapsulation::MPLS => s.number_of_lse as u32 * 4, // each mpls label has 4 bytes
+                Encapsulation::VxLAN => 50, // VxLAN adds 50 bytes
             };
 
             // preamble + inter frame gap (IFG) = 20 bytes
@@ -494,7 +495,8 @@ impl TrafficGen {
                     Encapsulation::None => {0}
                     Encapsulation::VLAN => {4}
                     Encapsulation::QinQ => {8}
-                    Encapsulation::MPLS => stream.number_of_lse as u32 * 4
+                    Encapsulation::MPLS => {stream.number_of_lse as u32 * 4}
+                    Encapsulation::VxLAN => {14 + 20 + 8 + 8}
                 }
             };
 
@@ -611,7 +613,8 @@ impl TrafficGen {
                                 Encapsulation::None => {0}
                                 Encapsulation::VLAN => {4}
                                 Encapsulation::QinQ => {8}
-                                Encapsulation::MPLS => s.number_of_lse as u32 * 4
+                                Encapsulation::MPLS => {s.number_of_lse as u32 * 4}
+                                Encapsulation::VxLAN => {14 + 20 + 8 + 8}
                             }
                         };
 
@@ -864,8 +867,6 @@ impl TrafficGen {
 
                 result
             }
-
-            
             Encapsulation::MPLS => {
                 let pkt = etherparse::Ethernet2Header {
                     source: [0, 0, 0, 0, 0, 0],
@@ -918,6 +919,60 @@ impl TrafficGen {
 
                 result.extend_from_slice(&payload);
     
+                result
+            }
+            Encapsulation::VxLAN => {
+                // 50 byte header overhead => Ethernet + IP + UDP + VxLAN
+                let mut result = vec![];
+
+                let pkt = etherparse::Ethernet2Header {
+                    source: [0, 0, 0, 0, 0, 0],
+                    destination: [0, 0, 0, 0, 0, 0],
+                    ether_type: 0x800, // IPv4 ether type
+                };
+
+                pkt.write(&mut result).unwrap();
+
+                // That's the outer ip header; length frame_size + UDP + VxLAN - CRC
+                let outer_ip_header  = etherparse::Ipv4Header::new((frame_size + 8 + 8 - 4) as u16, 64, 17, [0, 0, 0, 0], [0, 0, 0, 0]);
+                outer_ip_header.write(&mut result).unwrap();
+
+                let mut outer_udp_header = etherparse::UdpHeader {
+                    source_port: 0,
+                    destination_port: VX_LAN_UDP_PORT,
+                    // length frame size + UDP + VxLAN - CRC
+                    length: (frame_size + 8 + 8 - 4) as u16,
+                    checksum: 0,
+                };
+
+                // we use an "udp" header as VxLAN
+                // simply because etherparse has no VxLAN header
+                // VNI will be written by dataplane
+                let vxlan_header = etherparse::UdpHeader {
+                    // I flag set, remaining flags and reserved 0 --> 0b00001000000000000000000000000000
+                    // --> split into two 16 bit fields --> 0b0000100000000000 0b0000000000000000
+                    source_port: 0b0000100000000000,
+                    destination_port: 0,
+                    length: 0,
+                    checksum: 0,
+                };
+
+                let mut vxlan_container = vec![];
+
+                vxlan_header.write(&mut vxlan_container).unwrap();
+
+                // regular packet
+                let mut stream_copy = s.clone();
+                stream_copy.encapsulation = Encapsulation::None;
+
+                let p4tg_packet = self.create_packet(&stream_copy);
+
+                vxlan_container.extend_from_slice(&p4tg_packet);
+
+                outer_udp_header.write(&mut result).unwrap();
+
+                result.extend_from_slice(&vxlan_container);
+
                 result
             }
         };

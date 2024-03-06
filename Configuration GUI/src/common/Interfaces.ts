@@ -106,7 +106,8 @@ export enum Encapsulation {
     None,
     Q,
     QinQ,
-    MPLS
+    MPLS,
+    VxLAN
 }
 
 export enum GenerationMode {
