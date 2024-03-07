@@ -47,7 +47,7 @@ control Frame_Type_Monitor(
 
     table frame_type_monitor {
         key = {
-            hdr.ipv4.dst_addr: lpm;
+            hdr.inner_ipv4.dst_addr: lpm;
             ig_intr_md.ingress_port: exact;
             ig_md.vxlan: exact;
         }
@@ -105,7 +105,7 @@ control Frame_Type_Monitor(
     }
 
     apply {
-        if(hdr.ipv4.isValid()) {
+        if(hdr.inner_ipv4.isValid()) {
             frame_type_monitor.apply();
         }
 

@@ -50,7 +50,7 @@ control Header_Replace(
 
     action rewrite_vxlan(mac_addr_t outer_src_mac, mac_addr_t outer_dst_mac, mac_addr_t inner_src_mac,
                         mac_addr_t inner_dst_mac, bit<32> inner_s_ip, bit<32> inner_d_ip, bit<32> s_mask, bit<32> d_mask, bit<8> inner_tos,
-                        bit<32> outer_s_ip, bit<32> outer_d_ip, bit<8> outer_tos, bit<16> udp_source) {
+                        bit<32> outer_s_ip, bit<32> outer_d_ip, bit<8> outer_tos, bit<16> udp_source, bit<24> vni) {
             src_mask = s_mask;
             dst_mask = d_mask;
 
@@ -69,6 +69,7 @@ control Header_Replace(
             hdr.ipv4.diffserv = outer_tos;
 
             hdr.udp.src_port = udp_source;
+            hdr.vxlan.vxlan_vni = vni;
     }
 
     table header_replace {

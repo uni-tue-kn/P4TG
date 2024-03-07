@@ -62,6 +62,7 @@ pub struct AppState {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let sample_mode = env::var("SAMPLE").unwrap_or("0".to_owned()).parse().unwrap_or(0);
     let sample_mode = if sample_mode == 1 { true } else { false };
+    let p4_name = env::var("P4_NAME").unwrap_or("traffic_gen".to_owned());
 
     info!("Start controller...");
 
@@ -78,7 +79,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut switch = SwitchConnection::new("localhost", 50052)
         .device_id(0)
         .client_id(1)
-        .p4_name("traffic_gen")
+        .p4_name(&p4_name)
         .connect()
         .await?;
 

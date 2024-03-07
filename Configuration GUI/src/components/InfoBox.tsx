@@ -26,7 +26,7 @@ interface Info {
 }
 
 const Wrapper = styled.div`
-    display: flex;
+    display: inline-flex;
     align-items: center;
     flex-wrap: wrap;
     height: 100%;
@@ -45,7 +45,7 @@ const InfoBox = ({children}: Info) => {
             </Modal.Header>
             <Modal.Body>{children}</Modal.Body>
             <Modal.Footer>
-                <Button variant="primary" onClick={() => {
+                <Button variant="danger" onClick={() => {
                     set_display(false)
                 }}>
                     Close

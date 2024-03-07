@@ -36,6 +36,7 @@ use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::error::P4TGError;
 
 use crate::core::traffic_gen_core::const_definitions::*;
+use crate::core::traffic_gen_core::helper::calculate_overhead;
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
 
@@ -451,13 +452,7 @@ impl TrafficGen {
         // calculate sending behaviour via ILP optimization
         // further adds number of packets per time to the stream
         let mut active_streams: Vec<Stream> = streams.into_iter().map(|mut s| {
-            let encapsulation_overhead = match s.encapsulation {
-                Encapsulation::None => 0,
-                Encapsulation::VLAN => 4, // VLAN adds 4 bytes
-                Encapsulation::QinQ => 8, // QinQ adds 8 bytes
-                Encapsulation::MPLS => s.number_of_lse as u32 * 4, // each mpls label has 4 bytes
-                Encapsulation::VxLAN => 50, // VxLAN adds 50 bytes
-            };
+            let encapsulation_overhead = calculate_overhead(&s);
 
             // preamble + inter frame gap (IFG) = 20 bytes
             let encapsulation_overhead = encapsulation_overhead + 20;
@@ -490,15 +485,7 @@ impl TrafficGen {
         if mode == GenerationMode::POISSON {
             // send with full capacity
             let stream = active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?;
-            let encap_overhead = 20 + {
-                match stream.encapsulation {
-                    Encapsulation::None => {0}
-                    Encapsulation::VLAN => {4}
-                    Encapsulation::QinQ => {8}
-                    Encapsulation::MPLS => {stream.number_of_lse as u32 * 4}
-                    Encapsulation::VxLAN => {14 + 20 + 8 + 8}
-                }
-            };
+            let encap_overhead = 20 + calculate_overhead(&stream);
 
             let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, 100f32, 25);
             active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.n_packets = Some(n_packets);
@@ -608,15 +595,7 @@ impl TrafficGen {
                         MatchValue::range(0, u16::MAX)
                     }
                     else {
-                        let addition = 20 + {
-                            match s.encapsulation {
-                                Encapsulation::None => {0}
-                                Encapsulation::VLAN => {4}
-                                Encapsulation::QinQ => {8}
-                                Encapsulation::MPLS => {s.number_of_lse as u32 * 4}
-                                Encapsulation::VxLAN => {14 + 20 + 8 + 8}
-                            }
-                        };
+                        let addition = 20 + calculate_overhead(&s);
 
                         let const_iat = (s.frame_size + addition) as f32 / 100f32;
                         let target_iat = (s.frame_size + addition) as f32 / s.traffic_rate;
@@ -661,17 +640,44 @@ impl TrafficGen {
                 let src_mac = MacAddr::from_str(&setting.eth_src).map_err(|_| P4TGError::Error { message: String::from("Source mac in stream settings not valid.")})?;
                 let dst_mac = MacAddr::from_str(&setting.eth_dst).map_err(|_| P4TGError::Error { message: String::from("Destination mac in stream settings not valid.")})?;
 
-                let req = Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
-                    .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                    .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                    .action("egress.header_replace.rewrite")
-                    .action_data("src_mac", src_mac.as_bytes().to_vec())
-                    .action_data("dst_mac", dst_mac.as_bytes().to_vec())
-                    .action_data("s_mask", setting.ip_src_mask)
-                    .action_data("d_mask", setting.ip_dst_mask)
-                    .action_data("s_ip", setting.ip_src)
-                    .action_data("d_ip", setting.ip_dst)
-                    .action_data("tos", setting.ip_tos);
+                let req = if s.vxlan { // we need to rewrite two Ethernet & IP headers
+                    // validation method in API makes sure that setting.vxlan exists if s.vxlan is set
+                    let vxlan = setting.vxlan.as_ref().unwrap();
+                    let outer_src_mac = MacAddr::from_str(&*vxlan.eth_src).map_err(|_| P4TGError::Error { message: String::from("VxLAN source mac in stream settings not valid.")})?;
+                    let outer_dst_mac = MacAddr::from_str(&*vxlan.eth_dst).map_err(|_| P4TGError::Error { message: String::from("VxLAN destination mac in stream settings not valid.")})?;
+
+                    Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action("egress.header_replace.rewrite_vxlan")
+                        .action_data("inner_src_mac", src_mac.as_bytes().to_vec())
+                        .action_data("inner_dst_mac", dst_mac.as_bytes().to_vec())
+                        .action_data("s_mask", setting.ip_src_mask)
+                        .action_data("d_mask", setting.ip_dst_mask)
+                        .action_data("inner_s_ip", setting.ip_src)
+                        .action_data("inner_d_ip", setting.ip_dst)
+                        .action_data("inner_tos", setting.ip_tos)
+                        .action_data("outer_src_mac", outer_src_mac.as_bytes().to_vec())
+                        .action_data("outer_dst_mac", outer_dst_mac.as_bytes().to_vec())
+                        .action_data("outer_s_ip", vxlan.ip_src)
+                        .action_data("outer_d_ip", vxlan.ip_dst)
+                        .action_data("outer_tos", vxlan.ip_tos)
+                        .action_data("udp_source", vxlan.udp_source)
+                        .action_data("vni", vxlan.vni)
+                }
+                else {
+                    Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action("egress.header_replace.rewrite")
+                        .action_data("src_mac", src_mac.as_bytes().to_vec())
+                        .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                        .action_data("s_mask", setting.ip_src_mask)
+                        .action_data("d_mask", setting.ip_dst_mask)
+                        .action_data("s_ip", setting.ip_src)
+                        .action_data("d_ip", setting.ip_dst)
+                        .action_data("tos", setting.ip_tos)
+                };
 
                 reqs.push(req);
 
@@ -785,199 +791,198 @@ impl TrafficGen {
         // last byte is app id
         let mut payload = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, app_id].to_vec();
 
+        if s.vxlan { // we tunnel over VxLAN
+            // regular packet without VxLAN tunnel
+            let mut stream_copy = s.clone();
+            stream_copy.vxlan = false;
 
-        let packet = match encapsulation {
-            Encapsulation::None => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .ipv4([192, 168, 0, 0],
-                    [192, 168, 0, 0],
-                    64)
-                    .udp(P4TG_SOURCE_PORT,
-                    P4TG_DST_PORT);
+            let p4tg_packet = self.create_packet(&stream_copy);
 
-                let size = builder.size(payload.len());
-                let encap_overhead = 0;
+            // now we build the VxLAN tunnel
+            let mut result = vec![];
 
-                // calculate how many remaining bytes need to be generated
-                // crc will be added by phy, therefore subtract 4 byte
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
-                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
+            let pkt = etherparse::Ethernet2Header {
+                source: [0, 0, 0, 0, 0, 0],
+                destination: [0, 0, 0, 0, 0, 0],
+                ether_type: 0x800, // IPv4 ether type
+            };
 
-                payload.extend_from_slice(&padding);
+            pkt.write(&mut result).unwrap();
 
-                let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
+            // That's the outer ip header; length frame_size + UDP + VxLAN
+            let outer_ip_header = etherparse::Ipv4Header::new((p4tg_packet.len() as u16) + 8 + 8, 64, 17, [0, 0, 0, 0], [0, 0, 0, 0]);
+            outer_ip_header.write(&mut result).unwrap();
 
-                builder.write(&mut result, &payload).unwrap();
+            let outer_udp_header = etherparse::UdpHeader {
+                source_port: 0,
+                destination_port: VX_LAN_UDP_PORT,
+                // length frame size + UDP + VxLAN
+                length: (p4tg_packet.len() as u16) + 8 + 8,
+                checksum: 0,
+            };
 
-                result
-            }
-            Encapsulation::VLAN => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .single_vlan(0)
-                    .ipv4([192, 168, 0, 0],
-                          [192, 168, 0, 0],
-                          64)
-                    .udp(P4TG_SOURCE_PORT,
-                         P4TG_DST_PORT);
+            // we use an "udp" header as VxLAN
+            // simply because etherparse has no VxLAN header
+            // VNI will be written by dataplane
+            let vxlan_header = etherparse::UdpHeader {
+                // I flag set, remaining flags and reserved 0 --> 0b00001000000000000000000000000000
+                // --> split into two 16 bit fields --> 0b0000100000000000 0b0000000000000000
+                source_port: 0b0000100000000000,
+                destination_port: 0,
+                length: 0,
+                checksum: 0,
+            };
 
-                let size = builder.size(payload.len());
-                let encap_overhead = 4;
+            let mut vxlan_container = vec![];
 
-                // calculate how many remaining bytes need to be generated
-                // crc will be added by phy, therefore subtract 4 byte
-                // but also add 4 byte from overhead
-                // crc overhead cancels each other
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
-                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
+            vxlan_header.write(&mut vxlan_container).unwrap();
 
-                payload.extend_from_slice(&padding);
+            vxlan_container.extend_from_slice(&p4tg_packet);
+
+            outer_udp_header.write(&mut result).unwrap();
+
+            result.extend_from_slice(&vxlan_container);
+
+            result
+        }
+        else { // we don't tunnel over VxLAN
+            let packet = match encapsulation {
+                Encapsulation::None => {
+                    let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                        .ipv4([192, 168, 0, 0],
+                              [192, 168, 0, 0],
+                              64)
+                        .udp(P4TG_SOURCE_PORT,
+                             P4TG_DST_PORT);
+
+                    let size = builder.size(payload.len());
+                    let encap_overhead = 0;
+
+                    // calculate how many remaining bytes need to be generated
+                    // crc will be added by phy, therefore subtract 4 byte
+                    let remaining = (frame_size as usize) + encap_overhead - size - 4;
+                    let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
+
+                    payload.extend_from_slice(&padding);
+
+                    let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
+
+                    builder.write(&mut result, &payload).unwrap();
+
+                    result
+                }
+                Encapsulation::VLAN => {
+                    let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                        .single_vlan(0)
+                        .ipv4([192, 168, 0, 0],
+                              [192, 168, 0, 0],
+                              64)
+                        .udp(P4TG_SOURCE_PORT,
+                             P4TG_DST_PORT);
+
+                    let size = builder.size(payload.len());
+                    let encap_overhead = 4;
+
+                    // calculate how many remaining bytes need to be generated
+                    // crc will be added by phy, therefore subtract 4 byte
+                    // but also add 4 byte from overhead
+                    // crc overhead cancels each other
+                    let remaining = (frame_size as usize) + encap_overhead - size - 4;
+                    let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
+
+                    payload.extend_from_slice(&padding);
 
 
+                    let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
 
-                let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
+                    builder.write(&mut result, &payload).unwrap();
 
-                builder.write(&mut result, &payload).unwrap();
+                    result
+                }
+                Encapsulation::QinQ => {
+                    let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                        .double_vlan(0, 0)
+                        .ipv4([192, 168, 0, 0],
+                              [192, 168, 0, 0],
+                              64)
+                        .udp(P4TG_SOURCE_PORT,
+                             P4TG_DST_PORT);
 
-                result
-            }
-            Encapsulation::QinQ => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .double_vlan(0, 0)
-                    .ipv4([192, 168, 0, 0],
-                          [192, 168, 0, 0],
-                          64)
-                    .udp(P4TG_SOURCE_PORT,
-                         P4TG_DST_PORT);
+                    let size = builder.size(payload.len());
+                    let encap_overhead = 8;
 
-                let size = builder.size(payload.len());
-                let encap_overhead = 8;
+                    // calculate how many remaining bytes need to be generated
+                    // crc will be added by phy, therefore subtract 4 byte
+                    // but also add 8 bytes from overhead
+                    // results in + 4
+                    let remaining = (frame_size as usize) + encap_overhead - size - 4;
+                    let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
 
-                // calculate how many remaining bytes need to be generated
-                // crc will be added by phy, therefore subtract 4 byte
-                // but also add 8 bytes from overhead
-                // results in + 4
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
-                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
+                    payload.extend_from_slice(&padding);
 
-                payload.extend_from_slice(&padding);
+                    let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
 
-                let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
+                    builder.write(&mut result, &payload).unwrap();
 
-                builder.write(&mut result, &payload).unwrap();
-
-                result
-            }
-            Encapsulation::MPLS => {
-                let pkt = etherparse::Ethernet2Header {
-                    source: [0, 0, 0, 0, 0, 0],
-                    destination: [0, 0, 0, 0, 0, 0],
-                    ether_type: 0x8847, // MPLS ether type
-                };
-
-                let mut result = Vec::<u8>::with_capacity((s.frame_size + s.number_of_lse as u32 * 4) as usize);
-    
-                pkt.write(&mut result).unwrap();
-
-                for lse_count in 1..number_of_lse + 1 {
-
-                    // Reuse the VLAN header as an MPLS LSE because both have 4 byte.
-                    // This indicates the bottom of the MPLS stack through the "ethertype" field in the VLAN header
-                    let ether_type = if lse_count == number_of_lse {256} else {0};
-
-                    let vlan_header = etherparse::SingleVlanHeader {
-                        priority_code_point: 0,
-                        drop_eligible_indicator: false,
-                        vlan_identifier: 0,
-                        ether_type,
+                    result
+                }
+                Encapsulation::MPLS => {
+                    let pkt = etherparse::Ethernet2Header {
+                        source: [0, 0, 0, 0, 0, 0],
+                        destination: [0, 0, 0, 0, 0, 0],
+                        ether_type: 0x8847, // MPLS ether type
                     };
 
-                    vlan_header.write(&mut result).unwrap();
+                    let mut result = Vec::<u8>::with_capacity((s.frame_size + s.number_of_lse as u32 * 4) as usize);
 
+                    pkt.write(&mut result).unwrap();
+
+                    for lse_count in 1..number_of_lse + 1 {
+
+                        // Reuse the VLAN header as an MPLS LSE because both have 4 byte.
+                        // This indicates the bottom of the MPLS stack through the "ethertype" field in the VLAN header
+                        let ether_type = if lse_count == number_of_lse { 256 } else { 0 };
+
+                        let vlan_header = etherparse::SingleVlanHeader {
+                            priority_code_point: 0,
+                            drop_eligible_indicator: false,
+                            vlan_identifier: 0,
+                            ether_type,
+                        };
+
+                        vlan_header.write(&mut result).unwrap();
+                    }
+
+                    // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
+                    let ip_header = etherparse::Ipv4Header::new((frame_size - 20 - 14 - 4) as u16, 64, 17, [0, 0, 0, 0], [0, 0, 0, 0]);
+                    ip_header.write(&mut result).unwrap();
+
+
+                    let mut udp_header = etherparse::UdpHeader {
+                        source_port: P4TG_SOURCE_PORT,
+                        destination_port: P4TG_DST_PORT,
+                        // Subtract IP, Ethernet, CRC size
+                        length: (frame_size - 20 - 14 - 4) as u16,
+                        checksum: 0,
+                    };
+
+                    // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
+                    let remaining = result.capacity() - result.len() - 8 - payload.len() - 4;
+                    let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
+
+                    payload.extend_from_slice(&padding);
+                    udp_header.checksum = udp_header.calc_checksum_ipv4(&ip_header, &payload).unwrap();
+
+                    udp_header.write(&mut result).unwrap();
+
+                    result.extend_from_slice(&payload);
+
+                    result
                 }
-    
-                // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
-                let ip_header  = etherparse::Ipv4Header::new((frame_size - 20 - 14 - 4) as u16, 64, 17, [0, 0, 0, 0], [0, 0, 0, 0]);
-                ip_header.write(&mut result).unwrap();
+            };
 
-                
-                let mut udp_header = etherparse::UdpHeader {
-                    source_port: P4TG_SOURCE_PORT,
-                    destination_port: P4TG_DST_PORT,
-                    // Subtract IP, Ethernet, CRC size 
-                    length: (frame_size - 20 - 14 - 4) as u16,
-                    checksum: 0,
-                };
-
-                // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = result.capacity() - result.len() - 8 - payload.len() -4;
-                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
-
-                payload.extend_from_slice(&padding);
-                udp_header.checksum = udp_header.calc_checksum_ipv4(&ip_header, &payload).unwrap();
-
-                udp_header.write(&mut result).unwrap();
-
-                result.extend_from_slice(&payload);
-    
-                result
-            }
-            Encapsulation::VxLAN => {
-                // 50 byte header overhead => Ethernet + IP + UDP + VxLAN
-                let mut result = vec![];
-
-                let pkt = etherparse::Ethernet2Header {
-                    source: [0, 0, 0, 0, 0, 0],
-                    destination: [0, 0, 0, 0, 0, 0],
-                    ether_type: 0x800, // IPv4 ether type
-                };
-
-                pkt.write(&mut result).unwrap();
-
-                // That's the outer ip header; length frame_size + UDP + VxLAN - CRC
-                let outer_ip_header  = etherparse::Ipv4Header::new((frame_size + 8 + 8 - 4) as u16, 64, 17, [0, 0, 0, 0], [0, 0, 0, 0]);
-                outer_ip_header.write(&mut result).unwrap();
-
-                let mut outer_udp_header = etherparse::UdpHeader {
-                    source_port: 0,
-                    destination_port: VX_LAN_UDP_PORT,
-                    // length frame size + UDP + VxLAN - CRC
-                    length: (frame_size + 8 + 8 - 4) as u16,
-                    checksum: 0,
-                };
-
-                // we use an "udp" header as VxLAN
-                // simply because etherparse has no VxLAN header
-                // VNI will be written by dataplane
-                let vxlan_header = etherparse::UdpHeader {
-                    // I flag set, remaining flags and reserved 0 --> 0b00001000000000000000000000000000
-                    // --> split into two 16 bit fields --> 0b0000100000000000 0b0000000000000000
-                    source_port: 0b0000100000000000,
-                    destination_port: 0,
-                    length: 0,
-                    checksum: 0,
-                };
-
-                let mut vxlan_container = vec![];
-
-                vxlan_header.write(&mut vxlan_container).unwrap();
-
-                // regular packet
-                let mut stream_copy = s.clone();
-                stream_copy.encapsulation = Encapsulation::None;
-
-                let p4tg_packet = self.create_packet(&stream_copy);
-
-                vxlan_container.extend_from_slice(&p4tg_packet);
-
-                outer_udp_header.write(&mut result).unwrap();
-
-                result.extend_from_slice(&vxlan_container);
-
-                result
-            }
-        };
-
-        packet
+            packet
+        }
     }
 
     /// Clears various tables that are refilled during traffic gen setup

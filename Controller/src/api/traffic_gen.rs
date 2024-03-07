@@ -34,6 +34,25 @@ use crate::api::server::Error;
 use crate::AppState;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 
+/// Defines an VxLAN Tunnel
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct VxLAN {
+    /// Outer Ethernet src
+    pub eth_src: String,
+    /// Outer Ethernet dst
+    pub eth_dst: String,
+    /// Outer IP src
+    pub ip_src: Ipv4Addr,
+    /// Outer IP dst
+    pub ip_dst: Ipv4Addr,
+    /// Outer IP tos
+    pub ip_tos: u8,
+    /// Outer UDP source
+    pub udp_source: u16,
+    /// VxLAN VNI
+    pub vni: u32
+}
+
 /// Defines an MPLS LSE
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
 pub struct MPLSHeader {
@@ -86,6 +105,8 @@ pub struct StreamSetting {
     pub ip_dst_mask: Ipv4Addr,
     /// Indicates if this stream setting is active.
     pub active: bool,
+    /// VxLAN tunnel settings
+    pub vxlan: Option<VxLAN>
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
@@ -114,6 +135,8 @@ pub struct Stream {
     pub(crate) generation_accuracy: Option<f32>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
     pub(crate) n_pipes: Option<u8>,
+    /// Flag that indicates if traffic should be encapsulation in VxLAN
+    pub(crate) vxlan: bool
 }
 
 #[derive(Serialize, JsonSchema)]

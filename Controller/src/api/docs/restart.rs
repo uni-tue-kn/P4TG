@@ -11,6 +11,7 @@ pub fn get_restart(op: TransformOperation) -> TransformOperation {
             res.example(vec![Stream {
                 stream_id: 1,
                 app_id: 2,
+                vxlan: false,
                 frame_size: 1024,
                 encapsulation: Encapsulation::VLAN,
                 number_of_lse: 0,

@@ -30,8 +30,7 @@ pub enum Encapsulation {
     None = 0,
     VLAN = 1,
     QinQ = 2,
-    MPLS = 3,
-    VxLAN = 4
+    MPLS = 3
 }
 
 /// Describes the used generation mode
