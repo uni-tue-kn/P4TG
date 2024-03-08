@@ -142,6 +142,10 @@ const Home = () => {
                     ret += v.number_of_lse * 4 // 4 bytes per LSE
                 }
 
+                if (v.vxlan) {
+                    ret += 50 // 50 bytes overhead
+                }
+
                 return
             }
         })

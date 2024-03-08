@@ -28,18 +28,25 @@ pub fn validate_request(streams: &Vec<Stream>, settings: &Vec<StreamSetting>) ->
     // Validate if the configured number_of_lse per stream matches the MPLS stack size
     for stream in streams.iter(){
         if stream.encapsulation == Encapsulation::MPLS {
-
             if stream.number_of_lse > MAX_NUM_MPLS_LABEL {
-                return Err(Error::new(format!("Configured number of LSEs in stream {} exceeded maximum of {}.", stream.stream_id, MAX_NUM_MPLS_LABEL)));
+                return Err(Error::new(format!("Configured number of LSEs in stream with ID #{} exceeded maximum of {}.", stream.stream_id, MAX_NUM_MPLS_LABEL)));
             }
 
             if stream.number_of_lse == 0 {
-                return Err(Error::new(format!("MPLS encapsulation selected for stream {} but #LSE is zero.", stream.stream_id)));
+                return Err(Error::new(format!("MPLS encapsulation selected for stream with ID #{} but #LSE is zero.", stream.stream_id)));
             }
 
             for setting in settings.iter(){
                 if setting.stream_id == stream.stream_id && setting.mpls_stack.len() != stream.number_of_lse as usize {
-                    return Err(Error::new(format!("Number of LSEs in stream {} does not match length of the MPLS stack.", setting.stream_id)));
+                    return Err(Error::new(format!("Number of LSEs in stream with ID #{} does not match length of the MPLS stack.", setting.stream_id)));
+                }
+            }
+        }
+
+        if stream.vxlan {
+            for setting in settings.iter(){
+                if setting.stream_id == stream.stream_id && setting.vxlan.is_none() {
+                    return Err(Error::new(format!("Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.", stream.stream_id)));
                 }
             }
         }

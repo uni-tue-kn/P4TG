@@ -18,7 +18,7 @@
  */
 
 import React, {useEffect, useState} from 'react'
-import {Button, Col, Form, InputGroup, Modal, Row, Table} from "react-bootstrap";
+import {Accordion, Button, Col, Form, InputGroup, Modal, Row, Table} from "react-bootstrap";
 import {get} from "../common/API";
 import Loader from "../components/Loader";
 import {
@@ -32,6 +32,7 @@ import {
     DefaultMPLSHeader
 } from "../common/Interfaces";
 import styled from "styled-components";
+import InfoBox from "../components/InfoBox";
 
 const StyledRow = styled.tr`
     display: flex;
@@ -57,6 +58,13 @@ const SettingsModal = ({
     running: boolean,
     stream: Stream
 }) => {
+    const [vxlan_eth_src, set_vxlan_eth_src] = useState(data.vxlan.eth_src)
+    const [vxlan_eth_dst, set_vxlan_eth_dst] = useState(data.vxlan.eth_dst)
+    const [vxlan_ip_src, set_vxlan_ip_src] = useState(data.vxlan.ip_src)
+    const [vxlan_ip_dst, set_vxlan_ip_dst] = useState(data.vxlan.ip_dst)
+    const [vxlan_ip_tos, set_vxlan_ip_tos] = useState(data.vxlan.ip_tos)
+    const [vxlan_udp_src, set_vxlan_udp_src] = useState(data.vxlan.udp_source)
+    const [vxlan_vni, set_vxlan_vni] = useState(data.vxlan.vni)
     const [eth_src, set_eth_src] = useState(data.eth_src)
     const [eth_dst, set_eth_dst] = useState(data.eth_dst)
     const [ip_src, set_ip_src] = useState(data.ip_src)
@@ -106,6 +114,14 @@ const SettingsModal = ({
         return !isNaN(tos) && (0 <= tos) && tos <= (2 ** 7 - 1)
     }
 
+    const validateUdpPort = (port: number) => {
+        return !isNaN(port) && (0 <= port) && port <= (2 ** 16 - 1)
+    }
+
+    const validateVNI = (vni: number) => {
+        return !isNaN(vni) && (0 <= vni) && vni <= (2 ** 24 - 1)
+    }
+
     const set_label = (label: number, i: number) => {
         mpls_stack[i].label = label;
     }
@@ -119,7 +135,28 @@ const SettingsModal = ({
     }
 
     const submit = () => {
-        if (!validateMAC(eth_src)) {
+        if (!validateMAC(vxlan_eth_src)) {
+            alert("VxLAN Ethernet source not a valid MAC.")
+        }
+        else if (!validateMAC(vxlan_eth_dst)) {
+            alert("VxLAN Ethernet destination not a valid MAC.")
+        }
+        else if (!validateIP(vxlan_ip_src)) {
+            alert("VxLAN source IP not valid.")
+        }
+        else if (!validateIP(vxlan_ip_dst)) {
+            alert("VxLAN destination IP not valid.")
+        }
+        else if (!validateToS(vxlan_ip_tos)) {
+            alert("VxLAN IP ToS not valid.")
+        }
+        else if (!validateUdpPort(vxlan_udp_src)) {
+            alert("VxLAN UDP source port not valid.")
+        }
+        else if (!validateVNI(vxlan_vni)) {
+            alert("VxLAN VNI not valid.")
+        }
+        else if (!validateMAC(eth_src)) {
             alert("Ethernet source not a valid MAC.")
         } else if (!validateMAC(eth_dst)) {
             alert("Ethernet destination not a valid MAC.")
@@ -133,6 +170,13 @@ const SettingsModal = ({
             alert("MPLS stack is not valid.")
         }
 
+        data.vxlan.eth_src = vxlan_eth_src
+        data.vxlan.eth_dst = vxlan_eth_dst
+        data.vxlan.ip_src = vxlan_ip_src
+        data.vxlan.ip_dst = vxlan_ip_dst
+        data.vxlan.ip_tos = vxlan_ip_tos
+        data.vxlan.udp_source = vxlan_udp_src
+        data.vxlan.vni = vxlan_vni
         data.eth_src = eth_src
         data.eth_dst = eth_dst
         data.ip_src = ip_src
@@ -175,178 +219,292 @@ const SettingsModal = ({
         </Modal.Header>
         <form onSubmit={submit}>
             <Modal.Body>
+                <Accordion defaultActiveKey={['0']} alwaysOpen>
+                    {stream.vxlan ?
+                    <> <Accordion.Item eventKey="5">
+                        <Accordion.Header>VxLAN</Accordion.Header>
+                        <Accordion.Body>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Ethernet Source
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Form.Control disabled={running} type={"text"}
+                                                  onChange={(event: any) => set_vxlan_eth_src(event.target.value)}
+                                                  value={vxlan_eth_src}
+                                    />
+                                </Col>
+                                <Col className={"col-1 text-end"}>
+                                    <Button disabled={running} onClick={() => set_vxlan_eth_src(randomMAC())}><i
+                                        className="bi bi-shuffle"/></Button>
+                                </Col>
+                            </Form.Group>
 
-                <h4>Ethernet</h4>
-                <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                    <Form.Label className={"col-3 text-start"}>
-                        Source
-                    </Form.Label>
-                    <Col className={"col-7 text-end"}>
-                        <Form.Control disabled={running} type={"text"}
-                                      onChange={(event: any) => set_eth_src(event.target.value)}
-                                      value={eth_src}
-                        />
-                    </Col>
-                    <Col className={"col-1 text-end"}>
-                        <Button disabled={running} onClick={() => set_eth_src(randomMAC())}><i
-                            className="bi bi-shuffle"/></Button>
-                    </Col>
-                </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Ethernet Destination
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Form.Control disabled={running} onChange={(event: any) => set_vxlan_eth_dst(event.target.value)}
+                                                  type={"text"}
+                                                  value={vxlan_eth_dst}/>
+                                </Col>
+                                <Col className={"col-1 text-end"}>
+                                    <Button disabled={running} onClick={() => set_vxlan_eth_dst(randomMAC())}><i
+                                        className="bi bi-shuffle"/></Button>
+                                </Col>
+                            </Form.Group>
 
-                <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
-                    <Form.Label className={"col-3 text-start"}>
-                        Destination
-                    </Form.Label>
-                    <Col className={"col-7 text-end"}>
-                        <Form.Control disabled={running} onChange={(event: any) => set_eth_dst(event.target.value)}
-                                      type={"text"}
-                                      value={eth_dst}/>
-                    </Col>
-                    <Col className={"col-1 text-end"}>
-                        <Button disabled={running} onClick={() => set_eth_dst(randomMAC())}><i
-                            className="bi bi-shuffle"/></Button>
-                    </Col>
-                </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    IPv4 Source
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Form.Control disabled={running} type={"text"}
+                                                  onChange={(event: any) => set_vxlan_ip_src(event.target.value)}
+                                                  value={vxlan_ip_src}
+                                    />
+                                </Col>
+                                <Col className={"col-1 text-end"}>
+                                    <Button disabled={running} onClick={() => set_vxlan_ip_src(randomIP())}><i className="bi bi-shuffle"/></Button>
+                                </Col>
+                            </Form.Group>
+
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
+                                <Form.Label className={"col-3 text-start"}>
+                                    IPv4 Destination
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Form.Control disabled={running} onChange={(event: any) => set_vxlan_ip_dst(event.target.value)}
+                                                  type={"text"}
+                                                  value={vxlan_ip_dst}/>
+                                </Col>
+                                <Col className={"col-1 text-end"}>
+                                    <Button disabled={running} onClick={() => set_vxlan_ip_dst(randomIP())}><i className="bi bi-shuffle"/></Button>
+                                </Col>
+                            </Form.Group>
+
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
+                                <Form.Label className={"col-3 text-start"}>
+                                    IPv4 ToS
+                                </Form.Label>
+                                <Col className={"col-9 text-end"}>
+                                    <Form.Control onChange={(event: any) => set_vxlan_ip_tos(parseInt(event.target.value))}
+                                                  disabled={running} type={"number"} defaultValue={data.vxlan.ip_tos}/>
+                                </Col>
+                            </Form.Group>
+
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
+                                <Form.Label className={"col-3 text-start"}>
+                                    UDP Source
+                                </Form.Label>
+                                <Col className={"col-9 text-end"}>
+                                    <Form.Control onChange={(event: any) => set_vxlan_udp_src(parseInt(event.target.value))}
+                                                  disabled={running} type={"number"} defaultValue={vxlan_udp_src}/>
+                                </Col>
+                            </Form.Group>
+
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
+                                <Form.Label className={"col-3 text-start"}>
+                                    VNI
+                                </Form.Label>
+                                <Col className={"col-9 text-end"}>
+                                    <Form.Control onChange={(event: any) => set_vxlan_vni(parseInt(event.target.value))}
+                                                  disabled={running} type={"number"} defaultValue={vxlan_vni}/>
+                                </Col>
+                            </Form.Group>
+
+                        </Accordion.Body>
+                    </Accordion.Item>
+                    </>
+                    :
+                    null
+                    }
+                    <Accordion.Item eventKey="0">
+                        <Accordion.Header>Ethernet</Accordion.Header>
+                        <Accordion.Body>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Source
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Form.Control disabled={running} type={"text"}
+                                                  onChange={(event: any) => set_eth_src(event.target.value)}
+                                                  value={eth_src}
+                                    />
+                                </Col>
+                                <Col className={"col-1 text-end"}>
+                                    <Button disabled={running} onClick={() => set_eth_src(randomMAC())}><i
+                                        className="bi bi-shuffle"/></Button>
+                                </Col>
+                            </Form.Group>
+
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Destination
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Form.Control disabled={running} onChange={(event: any) => set_eth_dst(event.target.value)}
+                                                  type={"text"}
+                                                  value={eth_dst}/>
+                                </Col>
+                                <Col className={"col-1 text-end"}>
+                                    <Button disabled={running} onClick={() => set_eth_dst(randomMAC())}><i
+                                        className="bi bi-shuffle"/></Button>
+                                </Col>
+                            </Form.Group>
+                        </Accordion.Body>
+                    </Accordion.Item>
 
                 {stream.encapsulation == Encapsulation.Q ?
                     <>
-                        <h4>VLAN</h4>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                PCP
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control onChange={(event: any) => set_pcp(parseInt(event.target.value))}
-                                                      disabled={running} type={"number"} value={pcp}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                DEI
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control onChange={(event: any) => set_dei(parseInt(event.target.value))}
-                                                      disabled={running} type={"number"} value={dei}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                VLAN ID
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control
-                                            onChange={(event: any) => set_vlan_id(parseInt(event.target.value))}
-                                            disabled={running} type={"number"} value={vlan_id}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
+                    <Accordion.Item eventKey="2">
+                        <Accordion.Header>VLAN</Accordion.Header>
+                        <Accordion.Body>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    PCP
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control onChange={(event: any) => set_pcp(parseInt(event.target.value))}
+                                                          disabled={running} type={"number"} value={pcp}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    DEI
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control onChange={(event: any) => set_dei(parseInt(event.target.value))}
+                                                          disabled={running} type={"number"} value={dei}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    VLAN ID
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control
+                                                onChange={(event: any) => set_vlan_id(parseInt(event.target.value))}
+                                                disabled={running} type={"number"} value={vlan_id}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                        </Accordion.Body>
+                    </Accordion.Item>
                     </>
                     :
                     null}
 
                 {stream.encapsulation == Encapsulation.QinQ ?
                     <>
-                        <h4>QinQ</h4>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                Outer PCP
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control onChange={(event: any) => set_pcp(parseInt(event.target.value))}
-                                                      disabled={running} type={"number"} value={pcp}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                Outer DEI
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control onChange={(event: any) => set_dei(parseInt(event.target.value))}
-                                                      disabled={running} type={"number"} value={dei}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                Outer VLAN ID
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control
-                                            onChange={(event: any) => set_vlan_id(parseInt(event.target.value))}
-                                            disabled={running} type={"number"} value={vlan_id}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                Inner PCP
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control
-                                            onChange={(event: any) => set_inner_pcp(parseInt(event.target.value))}
-                                            disabled={running} type={"number"} value={inner_pcp}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                Inner DEI
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control
-                                            onChange={(event: any) => set_inner_dei(parseInt(event.target.value))}
-                                            disabled={running} type={"number"} value={inner_dei}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                            <Form.Label className={"col-3 text-start"}>
-                                Inner VLAN ID
-                            </Form.Label>
-                            <Col className={"col-7 text-end"}>
-                                <Row>
-                                    <Col>
-                                        <Form.Control
-                                            onChange={(event: any) => set_inner_vlan_id(parseInt(event.target.value))}
-                                            disabled={running} type={"number"} value={inner_vlan_id}/>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Form.Group>
+                    <Accordion.Item eventKey="3">
+                        <Accordion.Header>QinQ</Accordion.Header>
+                        <Accordion.Body>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Outer PCP
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control onChange={(event: any) => set_pcp(parseInt(event.target.value))}
+                                                          disabled={running} type={"number"} value={pcp}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Outer DEI
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control onChange={(event: any) => set_dei(parseInt(event.target.value))}
+                                                          disabled={running} type={"number"} value={dei}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Outer VLAN ID
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control
+                                                onChange={(event: any) => set_vlan_id(parseInt(event.target.value))}
+                                                disabled={running} type={"number"} value={vlan_id}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Inner PCP
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control
+                                                onChange={(event: any) => set_inner_pcp(parseInt(event.target.value))}
+                                                disabled={running} type={"number"} value={inner_pcp}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Inner DEI
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control
+                                                onChange={(event: any) => set_inner_dei(parseInt(event.target.value))}
+                                                disabled={running} type={"number"} value={inner_dei}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Inner VLAN ID
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control
+                                                onChange={(event: any) => set_inner_vlan_id(parseInt(event.target.value))}
+                                                disabled={running} type={"number"} value={inner_vlan_id}/>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Form.Group>
+                        </Accordion.Body>
+                    </Accordion.Item>
                     </>
                     :
                     null}
 
                 {stream.encapsulation == Encapsulation.MPLS ?
                     <>
-                        <h4>MPLS</h4>
+                    <Accordion.Item eventKey="0">
+                        <Accordion.Header>MPLS</Accordion.Header>
+                        <Accordion.Body>
                         <Form.Group as={StyledRow} className="mb-12" controlId="formPlaintextEmail">
                             <Col className={"col-3 text-start"}>
                                 <Form.Label>
@@ -420,65 +578,100 @@ const SettingsModal = ({
                                 </Col>
                             </Form.Group>
                         })}
+                        </Accordion.Body>
+                    </Accordion.Item>
                     </>
                     :
                     null
                 }
 
-                <h4>IPv4</h4>
 
-                <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
-                    <Form.Label className={"col-3 text-start"}>
-                        Source
-                    </Form.Label>
-                    <Col className={"col-7 text-end"}>
-                        <Row>
-                            <Col>
-                                <Form.Control onChange={(event: any) => set_ip_src(event.target.value)}
-                                              disabled={running} type={"text"} value={ip_src}/>
-                            </Col>
-                            <Col>
-                                <Form.Control onChange={(event: any) => set_ip_src_mask(event.target.value)}
-                                              disabled={running} type={"text"} value={ip_src_mask}/>
-                            </Col>
-                        </Row>
-                    </Col>
-                    <Col className={"col-1 text-end"}>
-                        <Button disabled={running} onClick={() => set_ip_src(randomIP())}><i className="bi bi-shuffle"/></Button>
-                    </Col>
-                </Form.Group>
+                    <Accordion.Item eventKey="1">
+                        <Accordion.Header>IPv4</Accordion.Header>
+                        <Accordion.Body>
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Source
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control onChange={(event: any) => set_ip_src(event.target.value)}
+                                                          disabled={running} type={"text"} value={ip_src}/>
+                                        </Col>
+                                        <Col>
+                                            <Form.Control onChange={(event: any) => set_ip_src_mask(event.target.value)}
+                                                          disabled={running} type={"text"} value={ip_src_mask}/>
+                                        </Col>
+                                        <Col className={"col-1"}>
+                                            <InfoBox>
+                                                <>
+                                                    <p>IP addresses can be randomized to simulate multiple flows.</p>
+                                                    <p>The second value (default 0.0.0.0) represents a randomization mask that can be used to randomize parts of the src/dst address.</p>
 
-                <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
-                    <Form.Label className={"col-3 text-start"}>
-                        Destination
-                    </Form.Label>
-                    <Col className={"col-7 text-end"}>
-                        <Row>
-                            <Col>
-                                <Form.Control onChange={(event: any) => set_ip_dst(event.target.value)}
-                                              disabled={running} type={"text"} value={ip_dst}/>
-                            </Col>
-                            <Col>
-                                <Form.Control onChange={(event: any) => set_ip_dst_mask(event.target.value)}
-                                              disabled={running} type={"text"} value={ip_dst_mask}/>
-                            </Col>
-                        </Row>
+                                                    <p>In the dataplane, a 32 bit value (randomized IP address) is generated and bitwise ANDed with the randomization mask. The resulting IP address is bitwise ORed with the src/dst address.</p>
 
-                    </Col>
-                    <Col className={"col-1 text-end"}>
-                        <Button disabled={running} onClick={() => set_ip_dst(randomIP())}><i className="bi bi-shuffle"/></Button>
-                    </Col>
-                </Form.Group>
+                                                    <h3>Example</h3>
 
-                <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
-                    <Form.Label className={"col-3 text-start"}>
-                        ToS
-                    </Form.Label>
-                    <Col className={"col-7 text-end"}>
-                        <Form.Control onChange={(event: any) => set_ip_tos(parseInt(event.target.value))}
-                                      disabled={running} type={"number"} defaultValue={data.ip_tos}/>
-                    </Col>
-                </Form.Group>
+                                                    <p>Src IP address is set to 0.10.5.3 and the randomization mask is set to 255.0.0.0. P4TG will then generate IP addresses with a randomized first octet, i.e., a address in the range 0.10.5.3-255.10.5.3</p>
+                                                </>
+                                            </InfoBox>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                                <Col className={"col-1 text-end"}>
+                                    <Button disabled={running} onClick={() => set_ip_src(randomIP())}><i className="bi bi-shuffle"/></Button>
+                                </Col>
+                            </Form.Group>
+
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
+                                <Form.Label className={"col-3 text-start"}>
+                                    Destination
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Row>
+                                        <Col>
+                                            <Form.Control onChange={(event: any) => set_ip_dst(event.target.value)}
+                                                          disabled={running} type={"text"} value={ip_dst}/>
+                                        </Col>
+                                        <Col>
+                                            <Form.Control onChange={(event: any) => set_ip_dst_mask(event.target.value)}
+                                                          disabled={running} type={"text"} value={ip_dst_mask}/>
+                                        </Col>
+                                        <Col className={"col-1"}>
+                                            <InfoBox>
+                                                <>
+                                                    <p>IP addresses can be randomized to simulate multiple flows.</p>
+                                                    <p>The second value (default 0.0.0.0) represents a randomization mask that can be used to randomize parts of the src/dst address.</p>
+
+                                                    <p>In the dataplane, a 32 bit value (randomized IP address) is generated and bitwise ANDed with the randomization mask. The resulting IP address is bitwise ORed with the src/dst address.</p>
+
+                                                    <h3>Example</h3>
+
+                                                    <p>Src IP address is set to 0.10.5.3 and the randomization mask is set to 255.0.0.0. P4TG will then generate IP addresses with a randomized first octet, i.e., a address in the range 0.10.5.3-255.10.5.3</p>
+                                                </>
+                                            </InfoBox>
+                                        </Col>
+                                    </Row>
+
+                                </Col>
+                                <Col className={"col-1 text-end"}>
+                                    <Button disabled={running} onClick={() => set_ip_dst(randomIP())}><i className="bi bi-shuffle"/></Button>
+                                </Col>
+                            </Form.Group>
+
+                            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
+                                <Form.Label className={"col-3 text-start"}>
+                                    ToS
+                                </Form.Label>
+                                <Col className={"col-7 text-end"}>
+                                    <Form.Control onChange={(event: any) => set_ip_tos(parseInt(event.target.value))}
+                                                  disabled={running} type={"number"} defaultValue={data.ip_tos}/>
+                                </Col>
+                            </Form.Group>
+                        </Accordion.Body>
+                    </Accordion.Item>
+                </Accordion>
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={hideRestore}>
@@ -612,11 +805,40 @@ const StreamElement = ({
             </InputGroup>
         </StyledCol>
         <StyledCol>
-            <Form.Select disabled={running} required
-                         onChange={(event: any) => data.burst = parseInt(event.target.value)}>
-                <option selected={100 === data.burst} value="100">Rate Precision</option>
-                <option selected={1 === data.burst} value="1">IAT Precision</option>
-            </Form.Select>
+            <tr>
+                <td>
+                    <Form.Select disabled={running} required
+                             onChange={(event: any) => data.burst = parseInt(event.target.value)}>
+                        <option selected={100 === data.burst} value="100">Rate Precision</option>
+                        <option selected={1 === data.burst} value="1">IAT Precision</option>
+                    </Form.Select>
+                </td>
+                <td className={"col-1"}>
+                    <InfoBox>
+                        <>
+                            <h5>Rate Precision</h5>
+
+                            <p>In this mode, several packets may be generated at once (burst) to fit the configured traffic rate more precisely. </p>
+
+                            <h5>IAT Precision</h5>
+
+                            <p>In this mode, a single packet is generated at once and all packets have the same inter-arrival times. This mode should be used if the traffic should be very "smooth", i.e., without bursts.
+                            However, the configured traffic rate may not be met precisely.</p>
+                            </>
+                    </InfoBox>
+                </td>
+            </tr>
+        </StyledCol>
+        <StyledCol>
+            <Form.Check
+                type={"switch"}
+                disabled={running}
+                defaultChecked={data.vxlan}
+                onChange={(event) => {
+                    data.vxlan = !data.vxlan
+                }
+                }>
+            </Form.Check>
         </StyledCol>
         <StyledCol>
             <Form.Select disabled={running} required
@@ -671,7 +893,7 @@ const StreamSettingsElement = ({
                 className={"d-inline"}
                 disabled={running}
                 defaultChecked={stream.active}
-                type={"checkbox"}
+                type={"switch"}
                 onChange={(event) => {
                     stream.active = !stream.active
                 }
@@ -824,6 +1046,30 @@ const Settings = () => {
                     <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
                 </Form.Select>
             </Col>
+            <Col>
+                <InfoBox>
+                    <>
+                        <p>P4TG supports multiple modes.</p>
+
+                        <h5>Constant bit rate (CBR)</h5>
+
+                        <p>Constant bit rate (CBR) traffic sends traffic with a constant rate.</p>
+
+                        <h5>Poisson</h5>
+
+                        <p>Poisson traffic is traffic with random inter-arrival times but a constant average traffic rate.</p>
+
+                        <h5>Mpps</h5>
+
+                        <p>In Mpps mode, P4TG generates traffic with a fixed number of packets per seconds.</p>
+
+                        <h5>Monitor/Analyze</h5>
+
+                        <p>In monitor/analyze mode, P4TG forwards traffic received on its ports and measures L1/L2 rates, packet sizes/types and inter-arrival times.</p>
+
+                    </>
+                </InfoBox>
+            </Col>
         </Row>
         <Row>
 
@@ -838,7 +1084,16 @@ const Settings = () => {
                             <th>Frame Size</th>
                             <th>Rate</th>
                             <th>Mode</th>
-                            <th>Encapsulation</th>
+                            <th>VxLAN &nbsp;
+                                <InfoBox>
+                                    <p>VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC 7348</a>) adds an additional outer Ethernet, IP and VxLAN header to the packet.</p>
+                                </InfoBox>
+                            </th>
+                            <th>Encapsulation &nbsp;
+                                <InfoBox>
+                                    <p>P4TG supports various encapsulations for the generated IP/UDP packet.</p>
+                                </InfoBox>
+                            </th>
                             <th>Options</th>
                         </tr>
                         </thead>

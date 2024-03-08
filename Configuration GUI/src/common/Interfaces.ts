@@ -100,6 +100,15 @@ export interface StreamSettings {
     ip_src_mask: string,
     ip_dst_mask: string,
     active: boolean
+    vxlan: {
+        eth_src: string,
+        eth_dst: string,
+        ip_src: string,
+        ip_dst: string,
+        ip_tos: number,
+        udp_source: number,
+        vni: number
+    }
 }
 
 export enum Encapsulation {
@@ -120,6 +129,7 @@ export interface Stream {
     stream_id: number,
     frame_size: number,
     encapsulation: Encapsulation,
+    vxlan: boolean,
     number_of_lse: number,
     traffic_rate: number,
     app_id: number
@@ -143,7 +153,8 @@ export const DefaultStream = (id: number) => {
         encapsulation: Encapsulation.None,
         number_of_lse: 0,
         traffic_rate: 1,
-        burst: 1
+        burst: 1,
+        vxlan: false
     }
 
     return stream
@@ -167,7 +178,16 @@ export const DefaultStreamSettings = (id: number, port: number) => {
         ip_tos: 0,
         ip_src_mask: "0.0.0.0",
         ip_dst_mask: "0.0.0.0",
-        active: false
+        active: false,
+        vxlan: {
+            eth_src: "3B:D5:42:2A:F6:92",
+            eth_dst: "81:E7:9D:E3:AD:47",
+            ip_src: "192.168.178.10",
+            ip_dst: "192.168.178.11",
+            ip_tos: 0,
+            udp_source: 49152,
+            vni: 1
+        }
     }
 
     return stream

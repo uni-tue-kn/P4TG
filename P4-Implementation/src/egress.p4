@@ -150,7 +150,7 @@ control egress(
                 pkt_len = eg_intr_md.pkt_length - 6; // minus pkt gen header
 
                 // we are on tx recirc; set sequence number
-                if(hdr.ipv4.isValid() && hdr.ipv4.protocol == IP_PROTOCOL_UDP && hdr.path.dst_port == 50083) { // make sure its PTG's traffic
+                if(hdr.path.isValid() && hdr.path.dst_port == UDP_P4TG_PORT) { // make sure its PTG's traffic
                   hdr.path.seq = get_next_tx_seq.execute(eg_intr_md.egress_port);
                 }
             }
@@ -161,16 +161,25 @@ control egress(
             app.apply(dummy, l_2, index);
 
             // set tx tstamp
-            if(hdr.ipv4.isValid() && hdr.ipv4.protocol == IP_PROTOCOL_UDP && hdr.path.dst_port == 50083) { // make sure its PTG's traffic
+            if(hdr.path.isValid() && hdr.path.dst_port == UDP_P4TG_PORT) { // make sure its PTG's traffic
                 is_egress.apply();
             }
 
             header_replace.apply(hdr, eg_intr_md);
 
             frame_size_monitor.apply();
-
         }
 
+        // get "correct" ipv4 header fields for P4TG UDP checksum
+        // if we have VxLAN, we have two ipv4 headers
+        if(hdr.inner_ipv4.isValid()) { // we have VxLAN
+            eg_md.ipv4_src = hdr.inner_ipv4.src_addr;
+            eg_md.ipv4_dst = hdr.inner_ipv4.dst_addr;
+        }
+        else if(hdr.ipv4.isValid()) { // we dont have VxLAN, just "regular" IP traffic
+            eg_md.ipv4_src = hdr.ipv4.src_addr;
+            eg_md.ipv4_dst = hdr.ipv4.dst_addr;
+        }
 
     }
 }

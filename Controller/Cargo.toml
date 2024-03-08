@@ -1,7 +1,7 @@
 [package]
 name = "p4tg-controller"
-authors = ["Steffen Lindner"]
-version = "0.2.2"
+authors = ["Steffen Lindner <steffen@steffen-lindner.net>"]
+version = "0.3.0"
 edition = "2021"
 license = "Apache-2.0"
 
@@ -12,7 +12,7 @@ tokio = { version = "1.20.1", features = ["rt-multi-thread"]}
 axum = { version = "0.6.18" , features =  ["macros", "json"]}
 tower-http = { version = "0.4.0", features = ["cors"] }
 log = "0.4"
-env_logger = "0.10.0"
+env_logger = "0.11.3"
 serde = { version = "1.0.192", features = ["derive", "rc"] }
 serde_repr = "0.1"
 tower = { version = "0.4.13", features = ["full"] }

@@ -32,11 +32,13 @@ pub fn get_traffic_gen(op: TransformOperation) -> TransformOperation {
                     ip_src_mask: Ipv4Addr::from([0, 0, 0, 0]),
                     ip_dst_mask: Ipv4Addr::from([255, 255, 0, 0]),
                     active: true,
+                    vxlan: None
                 }],
                 streams: vec![Stream {
                     stream_id: 1,
                     app_id: 2,
                     frame_size: 64,
+                    vxlan: false,
                     encapsulation: Encapsulation::VLAN,
                     number_of_lse: 0,
                     traffic_rate: 55.2,
@@ -63,6 +65,7 @@ pub fn post_traffic_gen(op: TransformOperation) -> TransformOperation {
             res.example(vec![Stream {
                 stream_id: 1,
                 app_id: 2,
+                vxlan: false,
                 frame_size: 1024,
                 encapsulation: Encapsulation::VLAN,
                 number_of_lse: 0,

@@ -371,7 +371,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
         ]
     }
 
-    let frame_type_label = ["Multicast", "Broadcast", "Unicast"]
+    let frame_type_label = ["Multicast", "Broadcast", "Unicast", "VxLAN"]
 
     const frame_type_data = {
         labels: frame_type_label,
@@ -380,11 +380,13 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                 label: 'TX frame types',
                 data: [get_frame_types(stats, port_mapping, "multicast").tx,
                     get_frame_types(stats, port_mapping, "broadcast").tx,
-                    get_frame_types(stats, port_mapping, "unicast").tx],
+                    get_frame_types(stats, port_mapping, "unicast").tx,
+                    get_frame_types(stats, port_mapping, "vxlan").tx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
-                    'rgb(255, 205, 86)'
+                    'rgb(255, 205, 86)',
+                    'rgb(125,62,37)'
                 ],
                 hoverOffset: 4
             },
@@ -392,11 +394,13 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                 label: 'RX frame types',
                 data: [get_frame_types(stats, port_mapping, "multicast").rx,
                     get_frame_types(stats, port_mapping, "broadcast").rx,
-                    get_frame_types(stats, port_mapping, "unicast").rx],
+                    get_frame_types(stats, port_mapping, "unicast").rx,
+                    get_frame_types(stats, port_mapping, "vxlan").rx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
-                    'rgb(255, 205, 86)'
+                    'rgb(255, 205, 86)',
+                    'rgb(125,62,37)',
                 ],
                 hoverOffset: 4
             },
@@ -410,7 +414,8 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
         datasets: [
             {
                 label: 'TX ethernet types',
-                data: [get_frame_types(stats, port_mapping, "vlan").tx,
+                data: [
+                    get_frame_types(stats, port_mapping, "vlan").tx,
                     get_frame_types(stats, port_mapping, "qinq").tx,
                     get_frame_types(stats, port_mapping, "ipv4").tx,
                     get_frame_types(stats, port_mapping, "ipv6").tx,
@@ -428,7 +433,8 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
             },
             {
                 label: 'RX ethernet types',
-                data: [get_frame_types(stats, port_mapping, "vlan").rx,
+                data: [
+                    get_frame_types(stats, port_mapping, "vlan").rx,
                     get_frame_types(stats, port_mapping, "qinq").rx,
                     get_frame_types(stats, port_mapping, "ipv4").rx,
                     get_frame_types(stats, port_mapping, "ipv6").rx,

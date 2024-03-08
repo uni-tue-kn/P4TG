@@ -1,5 +1,9 @@
 # Changelog 
 
+## v2.2.0
+- Added VxLAN support
+- Added infobox in UI to get further information on features
+
 ## v2.1.2
 - Added RTT visualization
 - Cleaner monitoring routine in controller

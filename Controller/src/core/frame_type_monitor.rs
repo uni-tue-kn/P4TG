@@ -41,8 +41,8 @@ const ACTION_PREFIX: &str = "ingress.p4tg.frame_type";
 /// that counts the different frame sizes that are received/sent
 pub struct FrameTypeMonitor {
     port_mapping: HashMap<u32, PortMapping>,
-    /// (IP adress, LPM, action)
-    ip_lpm_entries: Vec<([u8; 4], u32, String)>,
+    /// (IP adress, LPM, VxLAN flag, action)
+    ip_lpm_entries: Vec<([u8; 4], u32, u8, String)>,
     /// (Ethertype, Action)
     ethernet_types: Vec<(u16, String)>,
     pub statistics: FrameTypeStatistics
@@ -51,7 +51,7 @@ pub struct FrameTypeMonitor {
 impl FrameTypeMonitor {
     pub fn new(port_mapping: HashMap<u32, PortMapping>) -> FrameTypeMonitor {
         // (IP adress, LPM)
-        let ip_lpm_entries = vec![([224, 0, 0, 0], 8, "multicast".to_owned()), ([0, 0, 0, 0], 0, "unicast".to_owned())];
+        let ip_lpm_entries = vec![([224, 0, 0, 0], 8, 0, "multicast".to_owned()), ([0, 0, 0, 0], 0, 0, "unicast".to_owned()), ([0, 0, 0, 0], 0, 1, "vxlan".to_owned())];
         let ethernet_types = vec![(0x800, "ipv4".to_owned()), (0x86DD, "ipv6".to_owned()), (0x8100, "vlan".to_owned()), (0x88a8, "q_in_q".to_owned()), (0x8847, "mpls".to_owned())];
         FrameTypeMonitor {port_mapping, ip_lpm_entries, ethernet_types, statistics: FrameTypeStatistics::default() }
     }
@@ -69,18 +69,20 @@ impl FrameTypeMonitor {
         // we used batched execution
         for (_, mapping) in self.port_mapping.iter().by_ref() {
             // frame type
-            for (base, lpm, action) in &self.ip_lpm_entries {
+            for (base, lpm, vxlan, action) in &self.ip_lpm_entries {
 
                 // table entry for the TX path
                 let tx_add_request = table::Request::new(FRAME_TYPE_MONITOR)
                     .match_key("ig_intr_md.ingress_port", MatchValue::exact(mapping.tx_recirculation))
-                    .match_key("hdr.ipv4.dst_addr", MatchValue::lpm(Ipv4Addr::from(*base), *lpm as i32))
+                    .match_key("hdr.inner_ipv4.dst_addr", MatchValue::lpm(Ipv4Addr::from(*base), *lpm as i32))
+                    .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
                     .action(&format!("{}.{}", ACTION_PREFIX, action));
 
                 // table entry for the RX path
                 let rx_add_request = table::Request::new(FRAME_TYPE_MONITOR)
                     .match_key("ig_intr_md.ingress_port", MatchValue::exact(mapping.rx_recirculation))
-                    .match_key("hdr.ipv4.dst_addr", MatchValue::lpm(Ipv4Addr::from(*base), *lpm as i32))
+                    .match_key("hdr.inner_ipv4.dst_addr", MatchValue::lpm(Ipv4Addr::from(*base), *lpm as i32))
+                    .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
                     .action(&format!("{}.{}", ACTION_PREFIX, action));
 
                 table_entries_frame_type.push(tx_add_request);
