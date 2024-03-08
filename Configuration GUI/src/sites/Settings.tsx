@@ -86,10 +86,20 @@ const SettingsModal = ({
         return regex.test(mac)
     }
 
-    const randomMAC = () => {
-        return "XX:XX:XX:XX:XX:XX".replace(/X/g, function () {
+    const randomMAC = (allow_multicast= true) => {
+        let mac = "XX:XX:XX:XX:XX:XX".replace(/X/g, function () {
             return "0123456789ABCDEF".charAt(Math.floor(Math.random() * 16))
-        });
+        })
+
+        if(allow_multicast) {
+            return mac
+        }
+        else { // non-multicast mac addresses have the least significant bit in the most significant octet set to 0
+            let new_mac = mac.split("")
+            new_mac[1] = "02468ACE".charAt(Math.floor(Math.random() * 7))
+            return new_mac.join("")
+        }
+
     }
     const validateIP = (ip: string) => {
         let regex = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)){3}$/gm;
@@ -235,7 +245,7 @@ const SettingsModal = ({
                                     />
                                 </Col>
                                 <Col className={"col-1 text-end"}>
-                                    <Button disabled={running} onClick={() => set_vxlan_eth_src(randomMAC())}><i
+                                    <Button disabled={running} onClick={() => set_vxlan_eth_src(randomMAC(false))}><i
                                         className="bi bi-shuffle"/></Button>
                                 </Col>
                             </Form.Group>
@@ -334,7 +344,7 @@ const SettingsModal = ({
                                     />
                                 </Col>
                                 <Col className={"col-1 text-end"}>
-                                    <Button disabled={running} onClick={() => set_eth_src(randomMAC())}><i
+                                    <Button disabled={running} onClick={() => set_eth_src(randomMAC(false))}><i
                                         className="bi bi-shuffle"/></Button>
                                 </Col>
                             </Form.Group>

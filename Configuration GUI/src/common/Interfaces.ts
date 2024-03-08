@@ -171,7 +171,7 @@ export const DefaultStreamSettings = (id: number, port: number) => {
         inner_pcp: 0,
         inner_dei: 0,
         mpls_stack: [],
-        eth_src: "3B:D5:42:2A:F6:92",
+        eth_src: "32:D5:42:2A:F6:92",
         eth_dst: "81:E7:9D:E3:AD:47",
         ip_src: "192.168.178.10",
         ip_dst: "192.168.178.11",
@@ -180,7 +180,7 @@ export const DefaultStreamSettings = (id: number, port: number) => {
         ip_dst_mask: "0.0.0.0",
         active: false,
         vxlan: {
-            eth_src: "3B:D5:42:2A:F6:92",
+            eth_src: "32:D5:42:2A:F6:92",
             eth_dst: "81:E7:9D:E3:AD:47",
             ip_src: "192.168.178.10",
             ip_dst: "192.168.178.11",

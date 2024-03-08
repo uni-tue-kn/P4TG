@@ -3,6 +3,9 @@
 ## v2.2.0
 - Added VxLAN support
 - Added infobox in UI to get further information on features
+- Random Ethernet src addresses are now always unicast
+- Detection mechanism that clears local storage if stored streams do not have all required properties
+  - This may be the case if an update introduces new properties, but the old stored values in local storage dont have them
 
 ## v2.1.2
 - Added RTT visualization
