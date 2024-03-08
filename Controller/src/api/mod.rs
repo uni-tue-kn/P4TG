@@ -27,6 +27,7 @@ mod helper;
 mod reset;
 mod restart;
 mod docs;
+mod config;
 
 pub use online::online;
 pub use statistics::statistics;
@@ -38,3 +39,4 @@ pub use ports::ports;
 pub use ports::add_port;
 pub use reset::reset;
 pub use restart::restart;
+pub use config::config;

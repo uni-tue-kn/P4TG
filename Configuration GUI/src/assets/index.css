@@ -19,10 +19,11 @@
 
 :root {
     --color-primary: #e74c3c;
+    --color-primary-light: #ff9e93;
     --color-okay: #27ae60;
     --color-okay-hover: #20864b;
     --color-secondary: #2c3e50;
-    --color-seconary-light: #415e7a;
+    --color-secondary-light: #415e7a;
     --color-yellow: #f1c40f;
 }
 
@@ -119,6 +120,17 @@ table tr th {
 .btn {
     padding: 10px 10px 10px 10px !important;
 }
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--color-secondary);
+    color: #FFF;
+}
+
+.accordion-button {
+    background-color: var(--color-secondary);
+    color: #FFF;
+}
+
 @media only screen and (max-width: 450px) {
     .sidebar-nav .nav-link i {
         font-size: 20px;

@@ -437,7 +437,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
                         </tr>
                     </thead>
                     <tbody>
-                        {["Multicast", "Broadcast", "Unicast", "VxLAN", "Non-Unicast", "Total"].map((v, i) => {
+                        {["Multicast", "Broadcast", "Unicast", "VxLAN", "Non-Unicast", " ", "Total"].map((v, i) => {
                             let key = v.toLowerCase()
                             let data = get_frame_types(key)
 
@@ -490,7 +490,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
                         </tr>
                     </thead>
                     <tbody>
-                        {["VLAN", "QinQ", "IPv4", "IPv6", "MPLS", "Unknown"].map((v, i) => {
+                        {["VLAN", "QinQ", "IPv4", "IPv6", "MPLS", "ARP", "Unknown"].map((v, i) => {
                             let key = v.toLowerCase()
                             let data = get_frame_types(key)
 

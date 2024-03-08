@@ -1,4 +1,4 @@
-/* Copyright 2022-present University of Tuebingen, Chair of Communication Networks
+/* Copyright 2024-present University of Tuebingen, Chair of Communication Networks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,28 +16,17 @@
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
-mod frame_size_monitor;
-pub use frame_size_monitor::FrameSizeMonitor;
 
-mod frame_type_monitor;
+use std::sync::Arc;
+use axum::extract::State;
+use axum::Json;
+use axum::response::{IntoResponse, Response};
+use crate::AppState;
 
-pub use frame_type_monitor::FrameTypeMonitor;
-
-mod rate_monitor;
-pub mod statistics;
-pub mod traffic_gen;
-
-mod multicast;
-pub use multicast::create_simple_multicast_group;
-
-pub use traffic_gen::TrafficGen;
-
-pub use rate_monitor::RateMonitor;
-
-pub mod traffic_gen_core;
-mod arp;
-
-pub use arp::ARP;
+/// Config endpoint
+pub async fn config(State(state): State<Arc<AppState>>) -> Response {
+    Json(state.config.lock().await.clone()).into_response()
+}
 
 
 

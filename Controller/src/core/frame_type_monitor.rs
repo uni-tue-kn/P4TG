@@ -52,7 +52,7 @@ impl FrameTypeMonitor {
     pub fn new(port_mapping: HashMap<u32, PortMapping>) -> FrameTypeMonitor {
         // (IP adress, LPM)
         let ip_lpm_entries = vec![([224, 0, 0, 0], 8, 0, "multicast".to_owned()), ([0, 0, 0, 0], 0, 0, "unicast".to_owned()), ([0, 0, 0, 0], 0, 1, "vxlan".to_owned())];
-        let ethernet_types = vec![(0x800, "ipv4".to_owned()), (0x86DD, "ipv6".to_owned()), (0x8100, "vlan".to_owned()), (0x88a8, "q_in_q".to_owned()), (0x8847, "mpls".to_owned())];
+        let ethernet_types = vec![(0x800, "ipv4".to_owned()), (0x86DD, "ipv6".to_owned()), (0x8100, "vlan".to_owned()), (0x88a8, "q_in_q".to_owned()), (0x0806, "arp".to_owned()), (0x8847, "mpls".to_owned())];
         FrameTypeMonitor {port_mapping, ip_lpm_entries, ethernet_types, statistics: FrameTypeStatistics::default() }
     }
 

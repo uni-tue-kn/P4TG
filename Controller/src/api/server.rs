@@ -35,7 +35,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 
 use tower_http::cors::{Any, CorsLayer};
-use crate::api::{configure_traffic_gen, online, ports, reset, statistics, stop_traffic_gen, traffic_gen, restart, add_port};
+use crate::api::{configure_traffic_gen, online, ports, reset, statistics, stop_traffic_gen, traffic_gen, restart, add_port, config};
 use crate::api::docs::doc_route;
 use crate::api::docs::online::get_online;
 use crate::api::docs::reset::get_reset;
@@ -43,6 +43,7 @@ use crate::api::docs::restart::get_restart;
 use crate::api::docs::statistics::{get_statistics};
 use crate::api::docs::traffic_gen::{delete_traffic_gen, get_traffic_gen, post_traffic_gen};
 use crate::api::helper::serve_static_files::{serve_index, static_path};
+use crate::api::ports::arp_reply;
 use crate::api::statistics::time_statistics;
 use crate::api::tables::tables;
 use crate::AppState;
@@ -92,7 +93,9 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .api_route("/restart", get_with(restart, get_restart))
         .route("/ports", get(ports))
         .route("/ports", post(add_port))
+        .route("/ports/arp", post(arp_reply))
         .route("/tables", get(tables))
+        .route("/config", get(config))
         .nest_api_service("/docs", doc_route::docs_routes())
         .layer(cors)
         .finish_api_with(&mut api, api_docs)

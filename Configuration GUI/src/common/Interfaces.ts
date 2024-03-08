@@ -192,3 +192,11 @@ export const DefaultStreamSettings = (id: number, port: number) => {
 
     return stream
 }
+
+export interface P4TGConfig {
+    tg_ports: {
+        port: number,
+        mac: string,
+        arp_reply: boolean
+    }[]
+}

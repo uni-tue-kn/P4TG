@@ -34,6 +34,12 @@ pub struct PortConfiguration {
     auto_neg: rbfrt::util::port_manager::AutoNegotiation
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ArpReply {
+    pid: u32,
+    arp_reply: bool
+}
+
 pub async fn ports(State(state): State<Arc<AppState>>) -> Response {
     let pm = &state.pm;
     let switch = &state.switch;
@@ -65,6 +71,32 @@ pub async fn add_port(State(state): State<Arc<AppState>>, payload: Json<PortConf
         }
         Err(err) => {
             (StatusCode::BAD_REQUEST, Json(Error::new(format!("{:#?}", err)))).into_response()
+        }
+    }
+}
+
+pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpReply>) -> Response {
+    let mapping = &state.port_mapping;
+
+    match mapping.get(&payload.pid) {
+        Some(port) => {
+            return match &state.arp_handler.modify_arp(&state.switch, port, payload.arp_reply).await {
+                Ok(_) => {
+                    let port = &state.pm.frontpanel_port(payload.pid);
+
+                    if let Ok((port, _)) = port {
+                        state.config.lock().await.update_arp_state(*port, payload.arp_reply);
+                    }
+
+                    StatusCode::CREATED.into_response()
+                }
+                Err(err) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
+                }
+            }
+        }
+        None => {
+            (StatusCode::BAD_REQUEST, Json(Error::new(format!("PID {} is not configured.", payload.pid)))).into_response()
         }
     }
 }
