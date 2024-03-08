@@ -96,7 +96,7 @@ const SettingsModal = ({
         }
         else { // non-multicast mac addresses have the least significant bit in the most significant octet set to 0
             let new_mac = mac.split("")
-            new_mac[1] = "02468ACE".charAt(Math.floor(Math.random() * 7))
+            new_mac[1] = "02468ACE".charAt(Math.floor(Math.random() * 8))
             return new_mac.join("")
         }
 
