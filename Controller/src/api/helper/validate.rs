@@ -68,11 +68,11 @@ pub fn validate_request(streams: &Vec<Stream>, settings: &Vec<StreamSetting>, mo
         }
     }
 
-    if settings.len() == 0 {
+    if settings.is_empty() {
         return Err(Error::new("No active streams provided."));
     }
 
-    if streams.len() == 0 {
+    if streams.is_empty() {
         return Err(Error::new("No stream provided."));
     }
 
