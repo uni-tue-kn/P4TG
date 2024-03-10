@@ -62,7 +62,7 @@ use crate::core::traffic_gen_core::types::*;
         EmptyResponse,
         Ethernet,
         IPv4,
-        VLAN,
+        Vlan,
         VxLAN,
         MPLSHeader,
         tables::TableDescriptor,
@@ -159,7 +159,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
 
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
-        .await.expect(&*format!("Unable to listen on 0.0.0.0:{}", port));
+        .await.expect(&format!("Unable to listen on 0.0.0.0:{}", port));
 
     axum::serve(listener, app).await.unwrap();
 }

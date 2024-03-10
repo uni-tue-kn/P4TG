@@ -38,18 +38,18 @@ impl Config {
             }
         }
 
-        return false;
+        false
     }
 
     pub(crate) fn validate(&self) -> bool {
         for port in &self.tg_ports {
-            if MacAddr::from_str(&*port.mac).is_err() {
-                return false
+            if MacAddr::from_str(&port.mac).is_err() {
+                return false;
             }
         }
 
-        !(self.tg_ports.len() > 10
-            || self.tg_ports.clone().into_iter().filter(|p| p.port > 32).collect::<Vec<_>>().len() > 0)
+        self.tg_ports.len() <= 10
+            && self.tg_ports.clone().into_iter().filter(|p| p.port > 32).collect::<Vec<_>>().is_empty()
     }
 
     pub(crate) fn update_arp_state(&mut self, port: u32, state: bool) {

@@ -34,7 +34,7 @@ mod api;
 mod error;
 
 use core::FrameSizeMonitor;
-use crate::core::{ARP, Config, FrameTypeMonitor, RateMonitor, TrafficGen};
+use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 
 #[derive(Debug, Copy, Clone)]
@@ -62,7 +62,7 @@ pub struct AppState {
     pub(crate) experiment: Mutex<Experiment>,
     pub(crate) sample_mode: bool,
     pub(crate) config: Mutex<Config>,
-    pub(crate) arp_handler: ARP
+    pub(crate) arp_handler: Arp
 }
 
 async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config: &Config, recirculation_ports: &Vec<u32>, port_mapping: &mut HashMap<u32, PortMapping>) -> Result<(), RBFRTError> {
@@ -187,7 +187,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let index_mapping = traffic_generator.init_monitoring_packet(&switch, &port_mapping).await?;
 
-    let arp_handler = ARP::new();
+    let arp_handler = Arp::new();
     arp_handler.init(&switch, &port_mapping).await?;
 
     let state = Arc::new(AppState {

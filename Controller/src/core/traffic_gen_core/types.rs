@@ -31,9 +31,9 @@ use utoipa::ToSchema;
 #[repr(u8)]
 pub enum Encapsulation {
     None = 0,
-    VLAN = 1,
+    Vlan = 1,
     QinQ = 2,
-    MPLS = 3
+    Mpls = 3
 }
 
 /// Describes the used generation mode
@@ -41,14 +41,14 @@ pub enum Encapsulation {
 #[repr(u8)]
 pub enum GenerationMode {
     /// Constant bit rate
-    CBR = 1,
+    Cbr = 1,
     /// Mega packets per second
-    MPPS = 2,
+    Mpps = 2,
     /// Poisson traffic
     /// This is traffic with random inter arrival times and models random traffic
-    POISSON = 3,
+    Poisson = 3,
     /// Analyze mode. In this mode, traffic is not generated and external traffic is forwarded and analyzed.
-    ANALYZE = 4
+    Analyze = 4
 }
 
 /// Byte representation of a packet for traffic gen application
@@ -130,7 +130,7 @@ pub struct TrafficGenData {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
-pub struct VLAN {
+pub struct Vlan {
     pub vlan_id: u16,
     pub pcp: u8,
     pub dei: u8,
@@ -179,7 +179,7 @@ pub struct StreamSetting {
     /// ID of the stream. This stream_id maps to the stream_id in the Stream description.
     pub stream_id: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub vlan: Option<VLAN>,
+    pub vlan: Option<Vlan>,
     /// An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mpls_stack: Option<Vec<MPLSHeader>>,

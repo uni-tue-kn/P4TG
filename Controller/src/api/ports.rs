@@ -60,7 +60,7 @@ pub async fn add_port(State(state): State<Arc<AppState>>, payload: Json<PortConf
                 .fec(payload.fec.clone())
                 .auto_negotiation(payload.auto_neg.clone());
 
-            return match pm.update_port(&state.switch, &req).await {
+            match pm.update_port(&state.switch, &req).await {
                 Ok(_) => {
                     StatusCode::CREATED.into_response()
                 }
@@ -80,7 +80,7 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
 
     match mapping.get(&payload.pid) {
         Some(port) => {
-            return match &state.arp_handler.modify_arp(&state.switch, port, payload.arp_reply).await {
+            match &state.arp_handler.modify_arp(&state.switch, port, payload.arp_reply).await {
                 Ok(_) => {
                     let port = &state.pm.frontpanel_port(payload.pid);
 

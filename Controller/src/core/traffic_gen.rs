@@ -73,7 +73,7 @@ impl TrafficGen {
             running: false,
             stream_settings: vec![],
             streams: vec![],
-            mode: GenerationMode::CBR,
+            mode: GenerationMode::Cbr,
             port_mapping: HashMap::new()
         }
     }
@@ -148,7 +148,7 @@ impl TrafficGen {
         // create a multicast group for the monitoring packet
         // that replicates a generated monitoring packet to all TX recirculation ports
         // this results in "parallel" monitoring of each traffic generation port
-        let multicast_ports = port_mapping.iter().map(|(_, p)| p.tx_recirculation).collect();
+        let multicast_ports = port_mapping.iter().map(|(_, p)| p.tx_recirculation).collect::<Vec<_>>();
 
         create_simple_multicast_group(switch, MONITORING_PACKET_MID, &multicast_ports).await?;
 
@@ -183,7 +183,7 @@ impl TrafficGen {
         let mut return_mapping = HashMap::new();
         let mut reverse_mapping = HashMap::new();
 
-        for (_, mapping) in port_mapping {
+        for mapping in port_mapping.values() {
             for app_id in 1..9 {
                 return_mapping.insert(index, MonitoringMapping {
                     index,
@@ -216,7 +216,7 @@ impl TrafficGen {
             .action_data("mcid", MONITORING_PACKET_MID));
 
         // create table entries for [MONITORING_INIT_TABLE]
-        for (_, mapping) in port_mapping {
+        for mapping in port_mapping.values() {
             // initialize monitoring packets in egress
             let req = table::Request::new(MONITORING_INIT_TABLE)
                 .match_key("eg_intr_md.egress_port", MatchValue::exact(mapping.tx_recirculation))
@@ -442,7 +442,7 @@ impl TrafficGen {
 
         // configure default forwarding
         // this pushes rules for RX -> RX Recirc and TX Recirc -> TX
-        self.configure_default_forwarding_path(&switch, &state.port_mapping).await?;
+        self.configure_default_forwarding_path(switch, &state.port_mapping).await?;
 
         // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on two pipes
         // therefore timeout is twice as high
@@ -459,7 +459,7 @@ impl TrafficGen {
 
             // traffic rate has MPPS semantics
             // rewrite traffic rate to reflect MPPS in Gbps
-            if mode == GenerationMode::MPPS {
+            if mode == GenerationMode::Mpps {
                 // recompute "correct" traffic rate in Gbps
                 s.traffic_rate = (s.frame_size + encapsulation_overhead) as f32 * 8f32 * s.traffic_rate / 1000f32;
             }
@@ -482,10 +482,10 @@ impl TrafficGen {
 
         // poisson mode
         // send with full capacity and then randomly drop in data plane to get geometric IAT distribution
-        if mode == GenerationMode::POISSON {
+        if mode == GenerationMode::Poisson {
             // send with full capacity
             let stream = active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?;
-            let encap_overhead = 20 + calculate_overhead(&stream);
+            let encap_overhead = 20 + calculate_overhead(stream);
 
             let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, 100f32, 25);
             active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.n_packets = Some(n_packets);
@@ -498,13 +498,13 @@ impl TrafficGen {
 
         for stream in &stream_settings {
             let out_port = port_mapping.get(&stream.port).unwrap().tx_recirculation;
-            stream_to_ports.entry(stream.stream_id).or_insert(HashSet::new()).insert(out_port);
+            stream_to_ports.entry(stream.stream_id).or_default().insert(out_port);
         }
 
         // delete and create simple multicast group for each stream
         for stream in &active_streams {
             let _ = delete_simple_multicast_group(switch, stream.app_id as u16).await;
-            let ports = stream_to_ports.get(&stream.stream_id).unwrap().clone().into_iter().collect();
+            let ports = stream_to_ports.get(&stream.stream_id).unwrap().clone().into_iter().collect::<Vec<_>>();
 
             create_simple_multicast_group(switch, stream.app_id as u16, &ports).await?;
         }
@@ -517,16 +517,16 @@ impl TrafficGen {
         // configure egress table rules
         // we dont want to rewrite tx seq and timestamp of potential
         // other P4TG traffic when we are in analyze mode
-        if mode != GenerationMode::ANALYZE {
+        if mode != GenerationMode::Analyze {
             // write packet content to traffic gen table
             let packet_mapping: HashMap<u8, StreamPacket> = self.configure_traffic_gen_table(switch, packet_bytes.clone()).await?;
 
             // write forwarding entries for newly generated stream traffic
             self.configure_traffic_gen_forwarding_table(switch, &active_streams, mode).await?;
-            self.configure_egress_rules(switch, &port_mapping).await?;
+            self.configure_egress_rules(switch, port_mapping).await?;
 
             // configure packet header rewrite table rules
-            self.configure_packet_header_rewrite(switch, &active_streams, &stream_settings, &port_mapping).await?;
+            self.configure_packet_header_rewrite(switch, &active_streams, &stream_settings, port_mapping).await?;
             self.activate_traffic_gen_applications(switch, &packet_mapping).await?;
         }
         else {
@@ -541,7 +541,7 @@ impl TrafficGen {
     }
 
 
-    /// This method configures the forwarding rules in the case of [GenerationMode::ANALYZE].
+    /// This method configures the forwarding rules in the case of [GenerationMode::Analyze].
     /// It installs the rules for RX recirc -> TX recirc according to the `tx_rx_mapping`
     ///
     /// # Arguments
@@ -570,7 +570,7 @@ impl TrafficGen {
     }
 
     /// Configures the forwarding table for generated traffic.
-    /// For [GenerationMode::POISSON], it also calculates the drop probability.
+    /// For [GenerationMode::Poisson], it also calculates the drop probability.
     async fn configure_traffic_gen_forwarding_table(&self, switch: &SwitchConnection, streams: &Vec<Stream>, mode: GenerationMode) -> Result<(), RBFRTError> {
         // first clear table
         switch.clear_table(STREAM_FORWARD_TABLE).await?;
@@ -580,7 +580,7 @@ impl TrafficGen {
         let overall_traffic_rate: f32 = streams.iter().map(|x| x.traffic_rate).sum();
 
         // we generate on both pipes if the overall rate is larger than the threshold or if we do poisson traffic
-        let generation_ports = if overall_traffic_rate < TWO_PIPE_GENERATION_THRESHOLD && mode != GenerationMode::POISSON {
+        let generation_ports = if overall_traffic_rate < TWO_PIPE_GENERATION_THRESHOLD && mode != GenerationMode::Poisson {
             vec![TG_PIPE_PORTS[0]]
         }
         else {
@@ -591,11 +591,11 @@ impl TrafficGen {
             for port in &generation_ports {
                 let rand_value = {
                     // compute drop probability for poisson traffic
-                    if mode != GenerationMode::POISSON { // no poisson, dont drop
+                    if mode != GenerationMode::Poisson { // no poisson, dont drop
                         MatchValue::range(0, u16::MAX)
                     }
                     else {
-                        let addition = 20 + calculate_overhead(&s);
+                        let addition = 20 + calculate_overhead(s);
 
                         let const_iat = (s.frame_size + addition) as f32 / 100f32;
                         let target_iat = (s.frame_size + addition) as f32 / s.traffic_rate;
@@ -643,8 +643,8 @@ impl TrafficGen {
                 let req = if s.vxlan { // we need to rewrite two Ethernet & IP headers
                     // validation method in API makes sure that setting.vxlan exists if s.vxlan is set
                     let vxlan = setting.vxlan.as_ref().unwrap();
-                    let outer_src_mac = MacAddr::from_str(&*vxlan.eth_src).map_err(|_| P4TGError::Error { message: String::from("VxLAN source mac in stream settings not valid.")})?;
-                    let outer_dst_mac = MacAddr::from_str(&*vxlan.eth_dst).map_err(|_| P4TGError::Error { message: String::from("VxLAN destination mac in stream settings not valid.")})?;
+                    let outer_src_mac = MacAddr::from_str(&vxlan.eth_src).map_err(|_| P4TGError::Error { message: String::from("VxLAN source mac in stream settings not valid.")})?;
+                    let outer_dst_mac = MacAddr::from_str(&vxlan.eth_dst).map_err(|_| P4TGError::Error { message: String::from("VxLAN destination mac in stream settings not valid.")})?;
 
                     Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
@@ -698,7 +698,7 @@ impl TrafficGen {
 
                     reqs.push(req);
                 }
-                else if s.encapsulation == Encapsulation::VLAN {
+                else if s.encapsulation == Encapsulation::Vlan {
                     // we checked in validation that vlan exists
                     let vlan = setting.vlan.clone().unwrap();
 
@@ -712,7 +712,7 @@ impl TrafficGen {
 
                     reqs.push(req);
                 }
-                else if s.encapsulation == Encapsulation::MPLS {
+                else if s.encapsulation == Encapsulation::Mpls {
                     // we checked that mpls stack exists
                     let mpls_stack = setting.mpls_stack.as_ref().unwrap();
                     let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
@@ -854,7 +854,7 @@ impl TrafficGen {
             result
         }
         else { // we don't tunnel over VxLAN
-            let packet = match encapsulation {
+            match encapsulation {
                 Encapsulation::None => {
                     let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
                         .ipv4([192, 168, 0, 0],
@@ -879,7 +879,7 @@ impl TrafficGen {
 
                     result
                 }
-                Encapsulation::VLAN => {
+                Encapsulation::Vlan => {
                     let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
                         .single_vlan(0)
                         .ipv4([192, 168, 0, 0],
@@ -934,7 +934,7 @@ impl TrafficGen {
 
                     result
                 }
-                Encapsulation::MPLS => {
+                Encapsulation::Mpls => {
                     let pkt = etherparse::Ethernet2Header {
                         source: [0, 0, 0, 0, 0, 0],
                         destination: [0, 0, 0, 0, 0, 0],
@@ -987,9 +987,7 @@ impl TrafficGen {
 
                     result
                 }
-            };
-
-            packet
+            }
         }
     }
 

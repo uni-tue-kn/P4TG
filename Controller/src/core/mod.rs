@@ -40,7 +40,7 @@ mod config;
 
 pub use config::Config;
 
-pub use arp::ARP;
+pub use arp::Arp;
 
 
 

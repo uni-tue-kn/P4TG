@@ -131,7 +131,7 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
         let tx_stats = &mut state.rate_monitor.lock().await.tx_iat_storage.clone();
         let rx_stats = &mut state.rate_monitor.lock().await.rx_iat_storage.clone();
 
-        for (port, _) in &state.port_mapping {
+        for port in state.port_mapping.keys() {
             let tx_iats = tx_stats.entry(*port).or_default();
             let rx_iats = rx_stats.entry(*port).or_default();
 
@@ -198,9 +198,7 @@ pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): 
 
     let step = {
         if limit < elements {
-            let ratio = elements / limit;
-
-            ratio
+            elements / limit
         }
         else {
             1

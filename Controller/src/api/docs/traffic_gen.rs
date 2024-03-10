@@ -6,7 +6,7 @@ use crate::core::traffic_gen_core::types::*;
 
 lazy_static! {
     pub static ref EXAMPLE_GET_1: TrafficGenData = TrafficGenData {
-        mode: GenerationMode::CBR,
+        mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
                 port: 128,
                 stream_id: 1,
@@ -24,7 +24,7 @@ lazy_static! {
                 active: true,
                 mpls_stack: None,
                 vxlan: None,
-                vlan: Some(VLAN {
+                vlan: Some(Vlan {
                     pcp: 1,
                     dei: 0,
                     vlan_id: 5,
@@ -38,7 +38,7 @@ lazy_static! {
                 stream_id: 1,
                 app_id: 1,
                 frame_size: 64,
-                encapsulation: Encapsulation::VLAN,
+                encapsulation: Encapsulation::Vlan,
                 traffic_rate: 80f32,
                 burst: 100,
                 vxlan: false,
@@ -53,7 +53,7 @@ lazy_static! {
     };
 
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
-        mode: GenerationMode::CBR,
+        mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
                 port: 128,
                 stream_id: 1,
@@ -117,7 +117,7 @@ lazy_static! {
     }];
 
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
-        mode: GenerationMode::CBR,
+        mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
                 port: 128,
                 stream_id: 1,
@@ -165,7 +165,7 @@ lazy_static! {
 };
 
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
-        mode: GenerationMode::CBR,
+        mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
                 port: 128,
                 stream_id: 1,
@@ -183,7 +183,7 @@ lazy_static! {
                 active: true,
                 mpls_stack: None,
                 vxlan: None,
-                vlan: Some(VLAN {
+                vlan: Some(Vlan {
                     pcp: 1,
                     dei: 0,
                     vlan_id: 5,
@@ -197,7 +197,7 @@ lazy_static! {
                 stream_id: 1,
                 app_id: 1,
                 frame_size: 64,
-                encapsulation: Encapsulation::VLAN,
+                encapsulation: Encapsulation::Vlan,
                 traffic_rate: 80f32,
                 burst: 100,
                 vxlan: false,
@@ -215,7 +215,7 @@ lazy_static! {
         stream_id: 1,
         app_id: 1,
         frame_size: 64,
-        encapsulation: Encapsulation::VLAN,
+        encapsulation: Encapsulation::Vlan,
         number_of_lse: None,
         traffic_rate: 80f32,
         burst: 100,
@@ -227,7 +227,7 @@ lazy_static! {
     }];
 
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
-        mode: GenerationMode::POISSON,
+        mode: GenerationMode::Poisson,
         port_tx_rx_mapping: HashMap::from([(68, 68)]),
         stream_settings: vec![
             StreamSetting {

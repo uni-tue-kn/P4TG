@@ -31,11 +31,11 @@ const ACTION_PREFIX: &str = "ingress.arp";
 
 /// This module handles the initialization of the `ingress.arp.arp_reply` table
 /// that decides if arp requests are answered
-pub struct ARP;
+pub struct Arp;
 
-impl ARP {
-    pub fn new() -> ARP {
-        ARP { }
+impl Arp {
+    pub fn new() -> Arp {
+        Arp { }
     }
 
     pub async fn init(&self, switch: &SwitchConnection, port_mapping: &HashMap<u32, PortMapping>) -> Result<(), RBFRTError> {
@@ -43,10 +43,10 @@ impl ARP {
 
         let mut reqs = vec![];
 
-        for (_, mapping) in port_mapping {
+        for mapping in port_mapping.values() {
             let req = table::Request::new(ARP_REPLY_TABLE)
                 .match_key("ig_intr_md.ingress_port", MatchValue::exact(mapping.rx_recirculation))
-                .action(&*format!("{}.answer_arp", ACTION_PREFIX))
+                .action(&format!("{}.answer_arp", ACTION_PREFIX))
                 .action_data("e_port", mapping.tx_recirculation)
                 .action_data("src_addr", mapping.mac.as_bytes().to_vec())
                 .action_data("valid", false);
@@ -64,7 +64,7 @@ impl ARP {
     pub async fn modify_arp(&self, switch: &SwitchConnection, port: &PortMapping, active: bool) -> Result<(), RBFRTError> {
         let req = table::Request::new(ARP_REPLY_TABLE)
             .match_key("ig_intr_md.ingress_port", MatchValue::exact(port.rx_recirculation))
-            .action(&*format!("{}.answer_arp", ACTION_PREFIX))
+            .action(&format!("{}.answer_arp", ACTION_PREFIX))
             .action_data("e_port", port.tx_recirculation)
             .action_data("src_addr", port.mac.as_bytes().to_vec())
             .action_data("valid", active);

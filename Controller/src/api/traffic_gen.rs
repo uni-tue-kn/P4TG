@@ -57,7 +57,7 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     }
     else {
         let tg_data = TrafficGenData {
-            mode: tg.mode.clone(),
+            mode: tg.mode,
             stream_settings: tg.stream_settings.clone(),
             streams: tg.streams.clone(),
             port_tx_rx_mapping: tg.port_mapping.clone()
@@ -114,14 +114,14 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
     let active_streams: Vec<Stream> = payload.streams.clone().into_iter().filter(|s| active_stream_ids.contains(&s.stream_id)).collect();
 
     // Poisson traffic is only allowed to have a single stream
-    if payload.mode == GenerationMode::POISSON {
+    if payload.mode == GenerationMode::Poisson {
         if active_streams.len() != 1 {
             return (StatusCode::BAD_REQUEST, Json(Error::new("Poisson generation mode only allows for one stream."))).into_response()
         }
     }
 
     // no streams should be generated in monitor/analyze mode
-    if payload.mode == GenerationMode::ANALYZE && active_streams.len() != 0 {
+    if payload.mode == GenerationMode::Analyze && !active_streams.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(Error::new("No stream definition in analyze mode allowed."))).into_response();
     }
 
@@ -142,7 +142,7 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
             tg.stream_settings = payload.stream_settings.clone();
             tg.streams = payload.streams.clone();
-            tg.mode = payload.mode.clone();
+            tg.mode = payload.mode;
 
             // experiment starts now
             // these values are used to show how long the experiment is running at the GUI
