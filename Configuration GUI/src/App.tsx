@@ -26,7 +26,7 @@ import styled from "styled-components"
 import ErrorView from "./components/ErrorView"
 import Navbar from "./components/Navbar"
 
-import Home from "./sites/Home"
+import Home, {GitHub} from "./sites/Home"
 import Setup from "./sites/Setup";
 import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
@@ -74,7 +74,9 @@ const App = () => {
                 return
             }
 
-            if(!stored_settings.every(s => Object.keys(defaultStreamSetting).every(key => Object.keys(s).includes(key)))) {
+            if(!stored_settings.every(s => Object.keys(defaultStreamSetting).every(key => {
+                return Object.keys(s).includes(key) && s.mpls_stack != undefined
+            }))) {
                 alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
                 localStorage.clear()
                 window.location.reload()
@@ -119,6 +121,7 @@ const App = () => {
                                     <Offline/>
                                 }
                             </Wrapper>
+
                         </Container>
                     </AxiosInterceptor>
                 </Col>

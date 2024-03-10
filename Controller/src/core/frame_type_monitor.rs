@@ -148,7 +148,7 @@ impl FrameTypeMonitor {
                 stats.frame_type_data.insert(*port, TypeCount::default());
             }
 
-            for t in vec![FRAME_TYPE_MONITOR, ETHERNET_TYPE_MONITOR] {
+            for t in [FRAME_TYPE_MONITOR, ETHERNET_TYPE_MONITOR] {
                 let request = table::Request::new(t);
                 let sync = table::Request::new(t).operation(table::TableOperation::SyncCounters);
 

@@ -28,7 +28,7 @@ use macaddr::MacAddr;
 use rbfrt::{SwitchConnection, table};
 use rbfrt::error::RBFRTError;
 use rbfrt::table::{MatchValue, Request};
-use crate::api::{Stream, StreamSetting};
+use crate::core::traffic_gen_core::types::{Stream, StreamSetting};
 use crate::core::{create_simple_multicast_group};
 use crate::core::multicast::delete_simple_multicast_group;
 use crate::{AppState, PortMapping};
@@ -637,8 +637,8 @@ impl TrafficGen {
                 }
 
                 let port = port_mapping.get(&setting.port).ok_or(P4TGError::Error { message: String::from("Port in stream settings does not exist on device.")})?;
-                let src_mac = MacAddr::from_str(&setting.eth_src).map_err(|_| P4TGError::Error { message: String::from("Source mac in stream settings not valid.")})?;
-                let dst_mac = MacAddr::from_str(&setting.eth_dst).map_err(|_| P4TGError::Error { message: String::from("Destination mac in stream settings not valid.")})?;
+                let src_mac = MacAddr::from_str(&setting.ethernet.eth_src).map_err(|_| P4TGError::Error { message: String::from("Source mac in stream settings not valid.")})?;
+                let dst_mac = MacAddr::from_str(&setting.ethernet.eth_dst).map_err(|_| P4TGError::Error { message: String::from("Destination mac in stream settings not valid.")})?;
 
                 let req = if s.vxlan { // we need to rewrite two Ethernet & IP headers
                     // validation method in API makes sure that setting.vxlan exists if s.vxlan is set
@@ -652,11 +652,11 @@ impl TrafficGen {
                         .action("egress.header_replace.rewrite_vxlan")
                         .action_data("inner_src_mac", src_mac.as_bytes().to_vec())
                         .action_data("inner_dst_mac", dst_mac.as_bytes().to_vec())
-                        .action_data("s_mask", setting.ip_src_mask)
-                        .action_data("d_mask", setting.ip_dst_mask)
-                        .action_data("inner_s_ip", setting.ip_src)
-                        .action_data("inner_d_ip", setting.ip_dst)
-                        .action_data("inner_tos", setting.ip_tos)
+                        .action_data("s_mask", setting.ip.ip_src_mask)
+                        .action_data("d_mask", setting.ip.ip_dst_mask)
+                        .action_data("inner_s_ip", setting.ip.ip_src)
+                        .action_data("inner_d_ip", setting.ip.ip_dst)
+                        .action_data("inner_tos", setting.ip.ip_tos)
                         .action_data("outer_src_mac", outer_src_mac.as_bytes().to_vec())
                         .action_data("outer_dst_mac", outer_dst_mac.as_bytes().to_vec())
                         .action_data("outer_s_ip", vxlan.ip_src)
@@ -672,42 +672,50 @@ impl TrafficGen {
                         .action("egress.header_replace.rewrite")
                         .action_data("src_mac", src_mac.as_bytes().to_vec())
                         .action_data("dst_mac", dst_mac.as_bytes().to_vec())
-                        .action_data("s_mask", setting.ip_src_mask)
-                        .action_data("d_mask", setting.ip_dst_mask)
-                        .action_data("s_ip", setting.ip_src)
-                        .action_data("d_ip", setting.ip_dst)
-                        .action_data("tos", setting.ip_tos)
+                        .action_data("s_mask", setting.ip.ip_src_mask)
+                        .action_data("d_mask", setting.ip.ip_dst_mask)
+                        .action_data("s_ip", setting.ip.ip_src)
+                        .action_data("d_ip", setting.ip.ip_dst)
+                        .action_data("tos", setting.ip.ip_tos)
                 };
 
                 reqs.push(req);
 
                 if s.encapsulation == Encapsulation::QinQ {
+                    // we checked in validation that vlan exists
+                    let vlan = setting.vlan.clone().unwrap();
+
                     let req = Request::new(VLAN_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
                         .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
                         .action("egress.header_replace.rewrite_q_in_q")
-                        .action_data("outer_pcp", setting.pcp)
-                        .action_data("outer_dei", setting.dei)
-                        .action_data("outer_vlan_id", setting.vlan_id)
-                        .action_data("inner_pcp", setting.inner_pcp)
-                        .action_data("inner_dei", setting.inner_dei)
-                        .action_data("inner_vlan_id", setting.inner_vlan_id);
+                        .action_data("outer_pcp", vlan.pcp)
+                        .action_data("outer_dei", vlan.dei)
+                        .action_data("outer_vlan_id", vlan.vlan_id)
+                        .action_data("inner_pcp", vlan.inner_pcp)
+                        .action_data("inner_dei", vlan.inner_dei)
+                        .action_data("inner_vlan_id", vlan.inner_vlan_id);
 
                     reqs.push(req);
                 }
                 else if s.encapsulation == Encapsulation::VLAN {
+                    // we checked in validation that vlan exists
+                    let vlan = setting.vlan.clone().unwrap();
+
                     let req = Request::new(VLAN_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
                         .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
                         .action("egress.header_replace.rewrite_vlan")
-                        .action_data("pcp", setting.pcp)
-                        .action_data("dei", setting.dei)
-                        .action_data("vlan_id", setting.vlan_id);
+                        .action_data("pcp", vlan.pcp)
+                        .action_data("dei", vlan.dei)
+                        .action_data("vlan_id", vlan.vlan_id);
 
                     reqs.push(req);
                 }
                 else if s.encapsulation == Encapsulation::MPLS {
-                    let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse, MAX_NUM_MPLS_LABEL));
+                    // we checked that mpls stack exists
+                    let mpls_stack = setting.mpls_stack.as_ref().unwrap();
+                    let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
 
                     let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
@@ -715,8 +723,8 @@ impl TrafficGen {
                         .action(&action_name);
 
                     // build generic action data
-                    for j in 1..cmp::min(s.number_of_lse+1, MAX_NUM_MPLS_LABEL+1) {
-                        let lse = &setting.mpls_stack[(j-1) as usize];
+                    for j in 1..cmp::min(s.number_of_lse.unwrap()+1, MAX_NUM_MPLS_LABEL+1) {
+                        let lse = &mpls_stack[(j-1) as usize];
 
                         let label_param = format!("label{}", j);
                         let ttl_param = format!("ttl{}", j);
@@ -933,15 +941,15 @@ impl TrafficGen {
                         ether_type: 0x8847, // MPLS ether type
                     };
 
-                    let mut result = Vec::<u8>::with_capacity((s.frame_size + s.number_of_lse as u32 * 4) as usize);
+                    let mut result = Vec::<u8>::with_capacity((s.frame_size + s.number_of_lse.unwrap() as u32 * 4) as usize);
 
                     pkt.write(&mut result).unwrap();
 
-                    for lse_count in 1..number_of_lse + 1 {
+                    for lse_count in 1..number_of_lse.unwrap() + 1 {
 
                         // Reuse the VLAN header as an MPLS LSE because both have 4 byte.
                         // This indicates the bottom of the MPLS stack through the "ethertype" field in the VLAN header
-                        let ether_type = if lse_count == number_of_lse { 256 } else { 0 };
+                        let ether_type = if lse_count == number_of_lse.unwrap() { 256 } else { 0 };
 
                         let vlan_header = etherparse::SingleVlanHeader {
                             priority_code_point: 0,

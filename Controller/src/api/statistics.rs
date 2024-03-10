@@ -24,14 +24,14 @@ use std::usize;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Json, IntoResponse, Response};
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use crate::AppState;
 use crate::core::statistics::{IATStatistics, IATValues, RangeCount, RTTStatistics, TimeStatistic, TypeCount};
 
-use crate::api::helper;
+use crate::api::{docs, helper};
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, ToSchema)]
 pub struct Statistics {
     /// Indicates whether the sample mode is used or not.
     /// In sampling mode, IATs are sampled and not calculated in the data plane.
@@ -67,6 +67,17 @@ pub struct Statistics {
     pub(crate) elapsed_time: u32
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/statistics",
+    responses(
+        (status = 200,
+        description = "Returns the statistics.",
+        body = Statistics,
+        example = json!(*docs::statistics::EXAMPLE_GET_1)
+        ))
+)]
+/// Returns the current statistics such as traffic rates, frame types, etc.
 pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
     let frame_size_monitor = &state.frame_size_monitor;
     let frame_type_monitor = &state.frame_type_monitor;

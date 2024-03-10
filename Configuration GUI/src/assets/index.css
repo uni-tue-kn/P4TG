@@ -131,6 +131,11 @@ table tr th {
     color: #FFF;
 }
 
+.accordion-button::after {
+    -webkit-filter: grayscale(1) invert(1);
+    filter: grayscale(1) invert(1);
+}
+
 @media only screen and (max-width: 450px) {
     .sidebar-nav .nav-link i {
         font-size: 20px;

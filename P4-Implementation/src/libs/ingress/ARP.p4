@@ -21,13 +21,16 @@
 control ARP(inout header_t hdr, inout ingress_metadata_t ig_md, in ingress_intrinsic_metadata_t ig_intr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
-    action answer_arp(PortId_t e_port, bit<1> valid) {
+    action answer_arp(PortId_t e_port, bit<1> valid, mac_addr_t src_addr) {
             hdr.arp.op = 2; // create arp response
             ipv4_addr_t tmp = hdr.arp.dst_ip_addr;
             hdr.arp.dst_ip_addr = hdr.arp.src_ip_addr;
             hdr.arp.src_ip_addr = tmp;
             ig_tm_md.ucast_egress_port = e_port;
             hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
+            hdr.ethernet.src_addr = src_addr;
+            hdr.arp.src_mac_addr = src_addr;
+            hdr.arp.dst_mac_addr = hdr.ethernet.dst_addr;
             ig_md.arp_reply = valid;
     }
 

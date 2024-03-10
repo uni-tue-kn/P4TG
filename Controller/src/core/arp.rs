@@ -48,6 +48,7 @@ impl ARP {
                 .match_key("ig_intr_md.ingress_port", MatchValue::exact(mapping.rx_recirculation))
                 .action(&*format!("{}.answer_arp", ACTION_PREFIX))
                 .action_data("e_port", mapping.tx_recirculation)
+                .action_data("src_addr", mapping.mac.as_bytes().to_vec())
                 .action_data("valid", false);
 
             reqs.push(req);
@@ -65,6 +66,7 @@ impl ARP {
             .match_key("ig_intr_md.ingress_port", MatchValue::exact(port.rx_recirculation))
             .action(&*format!("{}.answer_arp", ACTION_PREFIX))
             .action_data("e_port", port.tx_recirculation)
+            .action_data("src_addr", port.mac.as_bytes().to_vec())
             .action_data("valid", active);
 
         switch.update_table_entry(req).await?;

@@ -27,7 +27,6 @@ use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
 use rbfrt::util::port_manager::{AutoNegotiation, FEC, Loopback, Port, Speed};
 use rbfrt::util::PortManager;
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 mod core;
@@ -35,7 +34,7 @@ mod api;
 mod error;
 
 use core::FrameSizeMonitor;
-use crate::core::{ARP, FrameTypeMonitor, RateMonitor, TrafficGen};
+use crate::core::{ARP, Config, FrameTypeMonitor, RateMonitor, TrafficGen};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 
 #[derive(Debug, Copy, Clone)]
@@ -81,7 +80,7 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
             .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT);
 
         // we validated the mac address before
-        tg_ports.push((tg.port, MacAddr::from_str(&*tg.mac).unwrap()));
+        tg_ports.push((tg.port, MacAddr::from_str(&tg.mac).unwrap()));
 
         port_requests.push(pm_req);
     }
@@ -97,91 +96,26 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
         port_requests.push(pm_req);
     }
 
-    pm.add_ports(&switch, &port_requests).await?;
+    pm.add_ports(switch, &port_requests).await?;
 
     info!("Ports of device configured.");
 
-    // create port mapping
-    let mut offset = 0;
-
     port_mapping.clear();
 
-    for (index, (port, mac)) in tg_ports.iter().enumerate() {
+    for (offset, (index, (port, mac))) in tg_ports.iter().enumerate().enumerate() {
         let dev_port = pm.dev_port(*port, 0)?;
         let tx_port = pm.dev_port(*recirculation_ports.get(index+offset).unwrap(), 0)?;
         let rx_port = pm.dev_port(*recirculation_ports.get(index+offset+1).unwrap(), 0)?;
 
         port_mapping.insert(dev_port, PortMapping { tx_recirculation: tx_port, rx_recirculation: rx_port, mac: *mac });
-
-        offset += 1;
     }
 
     Ok(())
 }
 
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-struct PortDescription {
-    port: u32,
-    mac: String,
-    arp_reply: Option<bool>
-}
-
-
-#[derive(Deserialize, Debug, Serialize, Clone)]
-pub struct Config {
-    tg_ports: Vec<PortDescription>
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        let macs = vec!["fa:a6:68:e0:3d:70", "00:d0:67:a2:a9:42", "40:28:e3:cd:64:35", "be:6a:94:e8:3c:3c",
-                        "d6:67:75:a1:94:c3", "e2:bd:1e:02:dc:b4", "d0:b3:7f:59:2c:4a",  "84:08:f3:bc:2b:ac",
-                        "06:6c:cc:db:86:9c", "c0:db:54:17:15:0f"];
-        Config {
-            tg_ports: (1..11).collect::<Vec<_>>()
-                .iter()
-                .enumerate()
-                .map(|(i, v)| PortDescription { port: *v, mac: macs.get(i).unwrap().parse().unwrap(), arp_reply: None })
-                .collect()
-        }
-    }
-}
-
-impl Config {
-    pub fn contains(&self, other: u32) -> bool {
-        for i in &self.tg_ports {
-            if i.port == other {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    fn validate(&self) -> bool {
-        for port in &self.tg_ports {
-            if MacAddr::from_str(&*port.mac).is_err() {
-                return false
-            }
-        }
-
-        !(self.tg_ports.len() > 10
-            || self.tg_ports.clone().into_iter().filter(|p| p.port > 32).collect::<Vec<_>>().len() > 0)
-    }
-
-    fn update_arp_state(&mut self, port: u32, state: bool) {
-        for p in &mut self.tg_ports {
-            if p.port == port {
-                p.arp_reply = Some(state);
-            }
-        }
-    }
-}
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let sample_mode = env::var("SAMPLE").unwrap_or("0".to_owned()).parse().unwrap_or(0);
-    let sample_mode = if sample_mode == 1 { true } else { false };
+    let sample_mode = sample_mode == 1;
     let p4_name = env::var("P4_NAME").unwrap_or("traffic_gen".to_owned());
 
     info!("Start controller...");
@@ -232,7 +166,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut port_mapping: HashMap<u32, PortMapping> = HashMap::new();
 
-    let pm = PortManager::new(&mut switch).await;
+    let pm = PortManager::new(&switch).await;
 
     configure_ports(&mut switch, &pm, &config, &recirculation_ports, &mut port_mapping).await?;
 

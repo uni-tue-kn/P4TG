@@ -18,7 +18,7 @@
  */
 
 import React from 'react'
-import {Col, Row} from "react-bootstrap";
+import {Col} from "react-bootstrap";
 import styled from "styled-components";
 import {Statistics} from "../common/Interfaces";
 import Status from "../components/Status";

@@ -59,7 +59,7 @@ pub fn calculate_send_behaviour(frame_size: u32, traffic_rate: f32, max_burst: u
 
     match solved.status() {
         HighsModelStatus::Infeasible => {
-            warn!("No solution available.");
+            warn!("No solution available. Requested rate {} with frame size {}", traffic_rate, frame_size);
             (0, 100)
         }
         _ => {

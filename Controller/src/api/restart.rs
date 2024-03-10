@@ -25,19 +25,37 @@ use axum::extract::State;
 use std::sync::Arc;
 use std::time::SystemTime;
 use crate::AppState;
-use crate::api::{Stream, StreamSetting};
+use crate::core::traffic_gen_core::types::*;
+use crate::api::docs::traffic_gen::EXAMPLE_POST_1_RESPONSE;
 use crate::api::server::Error;
 
 #[debug_handler]
+#[utoipa::path(
+    get,
+    path = "/api/restart",
+    responses(
+    (status = 200,
+    description = "Restarts the currently running traffic generation.",
+    body = [Stream],
+    example = json!(*EXAMPLE_POST_1_RESPONSE)
+    ),
+    (status = 400,
+    description = "No traffic generation is running that could be restarted."))
+)]
+/// Restarts the current traffic generation
 pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
     let tg = &mut state.traffic_generator.lock().await;
+
+    if !tg.running {
+        return (StatusCode::BAD_REQUEST, Json(Error::new("Traffic generator not running. Nothing to restart."))).into_response();
+    }
 
     // contains the description of the stream, i.e., packet size and rate
     // only look at active stream settings
     let active_stream_settings: Vec<StreamSetting> = tg.stream_settings.clone().into_iter().filter(|s| s.active).collect();
     let active_stream_ids: Vec<u8> = active_stream_settings.iter().map(|s| s.stream_id).collect();
     let active_streams: Vec<Stream> = tg.streams.clone().into_iter().filter(|s| active_stream_ids.contains(&s.stream_id)).collect();
-    let mode = tg.mode.clone();
+    let mode = tg.mode;
     let mapping = tg.port_mapping.clone();
 
     match tg.start_traffic_generation(&state, active_streams, mode, active_stream_settings, &mapping).await {

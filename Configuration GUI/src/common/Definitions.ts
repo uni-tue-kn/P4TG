@@ -16,31 +16,28 @@
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
-mod frame_size_monitor;
-pub use frame_size_monitor::FrameSizeMonitor;
 
-mod frame_type_monitor;
+export const fec_mapping: { [name: string]: string } = {
+    "BF_FEC_TYP_NONE": "None",
+    "BF_FEC_TYP_FC": "Firecode",
+    "BF_FEC_TYP_REED_SOLOMON": "Reed Solomon"
+}
+export const auto_neg_mapping: { [name: string]: string } = {
+    "PM_AN_DEFAULT": "Auto",
+    "PM_AN_FORCE_DISABLE": "Off",
+    "PM_AN_FORCE_ENABLE": "On"
+}
 
-pub use frame_type_monitor::FrameTypeMonitor;
+export const speed_mapping: { [name: string]: string } = {
+    "BF_SPEED_1G": "1G",
+    "BF_SPEED_10G": "10G",
+    "BF_SPEED_25G": "25G",
+    "BF_SPEED_40G": "40G",
+    "BF_SPEED_50G": "50G",
+    "BF_SPEED_100G": "100G"
+}
 
-mod rate_monitor;
-pub mod statistics;
-pub mod traffic_gen;
-
-mod multicast;
-pub use multicast::create_simple_multicast_group;
-
-pub use traffic_gen::TrafficGen;
-
-pub use rate_monitor::RateMonitor;
-
-pub mod traffic_gen_core;
-mod arp;
-mod config;
-
-pub use config::Config;
-
-pub use arp::ARP;
-
-
-
+export const loopback_mapping: { [name: string]: string } = {
+    "BF_LPBK_NONE": "Off",
+    "BF_LPBK_MAC_NEAR": "On"
+}

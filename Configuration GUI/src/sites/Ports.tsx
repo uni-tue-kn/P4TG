@@ -23,8 +23,9 @@ import {get, post} from '../common/API'
 import {Button, Col, Form, Row, Table} from "react-bootstrap";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
-import Config from "../config";
 import {P4TGConfig} from "../common/Interfaces";
+import {auto_neg_mapping, fec_mapping, loopback_mapping, speed_mapping} from "../common/Definitions";
+import {GitHub} from "./Home";
 
 const StyledCol = styled.td`
     vertical-align: middle;
@@ -50,31 +51,6 @@ const Ports = () => {
     const [loaded, set_loaded] = useState(false)
     const [ports, set_ports] = useState([])
     const [config, set_config] = useState<P4TGConfig>({tg_ports: []})
-
-    const fec_mapping: { [name: string]: string } = {
-        "BF_FEC_TYP_NONE": "None",
-        "BF_FEC_TYP_FC": "Firecode",
-        "BF_FEC_TYP_REED_SOLOMON": "Reed Solomon"
-    }
-    const auto_neg_mapping: { [name: string]: string } = {
-        "PM_AN_DEFAULT": "Auto",
-        "PM_AN_FORCE_DISABLE": "Off",
-        "PM_AN_FORCE_ENABLE": "On"
-    }
-
-    const speed_mapping: { [name: string]: string } = {
-        "BF_SPEED_1G": "1G",
-        "BF_SPEED_10G": "10G",
-        "BF_SPEED_25G": "25G",
-        "BF_SPEED_40G": "40G",
-        "BF_SPEED_50G": "50G",
-        "BF_SPEED_100G": "100G"
-    }
-
-    const loopback_mapping: { [name: string]: string } = {
-        "BF_LPBK_NONE": "Off",
-        "BF_LPBK_MAC_NEAR": "On"
-    }
 
 
     const loadPorts = async () => {
@@ -158,14 +134,17 @@ const Ports = () => {
             <tr>
                 <th>PID</th>
                 <th>Port</th>
-                <th>MAC</th>
+                <th>MAC &nbsp; <InfoBox>
+                    <p>MAC address that is used to answer ARP requests (if enabled). The address can be changed in the config.json file of the controller.</p>
+                </InfoBox>
+                </th>
                 <th>Speed</th>
                 <th>Auto Negotiation</th>
                 <th>FEC</th>
                 <th>ARP Reply &nbsp;
                 <InfoBox>
-                    <p>If enabled, the port will answer all received ARP requests.</p></InfoBox></th>
-                {/*<th>Loopback</th>*/}
+                    <p>If enabled, the port will answer all received ARP requests.</p></InfoBox>
+                </th>
                 <th>Status</th>
             </tr>
             </thead>
@@ -219,6 +198,9 @@ const Ports = () => {
                 <Button onClick={refresh} className={"ml-3"}><i className="bi bi-arrow-clockwise"/> Refresh</Button>
             </Col>
         </Row>
+
+        <GitHub/>
+
     </Loader>
 }
 

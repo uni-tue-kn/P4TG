@@ -17,10 +17,11 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use axum::body;
+
+
 use axum::http::{header, HeaderValue, Response, StatusCode};
-use axum::body::{Empty, Full};
 use axum::extract::Path;
+use axum::body::Body;
 use axum::response::IntoResponse;
 use include_dir::{include_dir, Dir};
 
@@ -38,7 +39,7 @@ pub async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
     match GUI_BUILD_DIR.get_file(path) {
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .body(body::boxed(Empty::new()))
+            .body(Body::empty())
             .unwrap(),
         Some(file) => Response::builder()
             .status(StatusCode::OK)
@@ -46,7 +47,7 @@ pub async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
                 header::CONTENT_TYPE,
                 HeaderValue::from_str(mime_type.as_ref()).unwrap(),
             )
-            .body(body::boxed(Full::from(file.contents())))
+            .body(Body::from(file.contents()))
             .unwrap(),
     }
 }
@@ -55,7 +56,7 @@ pub async fn serve_index() -> impl IntoResponse {
     match GUI_BUILD_DIR.get_file("index.html") {
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .body(body::boxed(Empty::new()))
+            .body(Body::empty())
             .unwrap(),
         Some(file) => Response::builder()
             .status(StatusCode::OK)
@@ -63,7 +64,7 @@ pub async fn serve_index() -> impl IntoResponse {
                 header::CONTENT_TYPE,
                 "text/html"
             )
-            .body(body::boxed(Full::from(file.contents())))
-            .unwrap(),
+            .body(Body::from(file.contents()))
+            .unwrap()
     }
 }

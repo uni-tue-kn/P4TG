@@ -17,39 +17,76 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use crate::api::{Stream, StreamSetting};
+use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
 use crate::core::traffic_gen_core::const_definitions::MAX_NUM_MPLS_LABEL;
-use crate::core::traffic_gen_core::types::Encapsulation;
+use crate::core::traffic_gen_core::helper::calculate_overhead;
+use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 
 /// Validates an incoming traffic generation request.
 /// Checks if the MPLS configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
-pub fn validate_request(streams: &Vec<Stream>, settings: &Vec<StreamSetting>) -> Result<(), Error> {
-    // Validate if the configured number_of_lse per stream matches the MPLS stack size
+pub fn validate_request(streams: &Vec<Stream>, settings: &Vec<StreamSetting>, mode: &GenerationMode) -> Result<(), Error> {
     for stream in streams.iter(){
+        // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::MPLS {
-            if stream.number_of_lse > MAX_NUM_MPLS_LABEL {
+            if stream.number_of_lse.is_none() {
+                return Err(Error::new(format!("number_of_lse missing for stream #{}", stream.stream_id)))
+            }
+
+            if stream.number_of_lse.unwrap() > MAX_NUM_MPLS_LABEL {
                 return Err(Error::new(format!("Configured number of LSEs in stream with ID #{} exceeded maximum of {}.", stream.stream_id, MAX_NUM_MPLS_LABEL)));
             }
 
-            if stream.number_of_lse == 0 {
+            if stream.number_of_lse.unwrap() == 0 {
                 return Err(Error::new(format!("MPLS encapsulation selected for stream with ID #{} but #LSE is zero.", stream.stream_id)));
             }
+        }
 
-            for setting in settings.iter(){
-                if setting.stream_id == stream.stream_id && setting.mpls_stack.len() != stream.number_of_lse as usize {
+        for setting in settings.iter() {
+            if setting.stream_id == stream.stream_id {
+                // check VLAN settings
+                if (stream.encapsulation == Encapsulation::VLAN || stream.encapsulation == Encapsulation::QinQ) && setting.vlan.is_none() {
+                    return Err(Error::new(format!("VLAN encapsulation selected for stream with iD #{}, but no VLAN settings provided for port {}.", stream.stream_id, setting.port)))
+                }
+
+                // check MPLS
+                // check that mpls stack is set
+                if stream.encapsulation == Encapsulation::MPLS && setting.mpls_stack.is_none() {
+                    return Err(Error::new(format!("No MPLS stack provided for stream with ID #{} on port {}.", stream.stream_id, setting.port)))
+                }
+
+                // Validate if the configured number_of_lse per stream matches the MPLS stack size
+                if stream.encapsulation == Encapsulation::MPLS && setting.mpls_stack.as_ref().unwrap().len() != stream.number_of_lse.unwrap() as usize {
                     return Err(Error::new(format!("Number of LSEs in stream with ID #{} does not match length of the MPLS stack.", setting.stream_id)));
                 }
             }
-        }
 
-        if stream.vxlan {
-            for setting in settings.iter(){
-                if setting.stream_id == stream.stream_id && setting.vxlan.is_none() {
-                    return Err(Error::new(format!("Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.", stream.stream_id)));
-                }
+            // Check VxLAN
+            if stream.vxlan && setting.vxlan.is_none() {
+                return Err(Error::new(format!("Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.", stream.stream_id)));
             }
         }
+    }
+
+    if settings.len() == 0 {
+        return Err(Error::new("No active streams provided."));
+    }
+
+    if streams.len() == 0 {
+        return Err(Error::new("No stream provided."));
+    }
+
+    // Validate max sending rate
+    // at most 100 Gbps are supported
+    let rate: f32 = if *mode == GenerationMode::MPPS {
+        streams.iter().map(|x| (x.frame_size + calculate_overhead(&x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32).sum()
+    }
+    else {
+        streams.iter().map(|x| x.traffic_rate).sum()
+    };
+
+    if *mode != GenerationMode::ANALYZE && rate > 100f32 {
+        return Err(Error::new("Traffic rate in sum larger than 100 Gbps."))
     }
 
     Ok(())

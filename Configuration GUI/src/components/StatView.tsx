@@ -280,10 +280,6 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
     const rx_rate_l1 = addRates(stats.rx_rate_l1, Object.values(port_mapping).map(Number))
     const rx_rate_l2 = addRates(stats.rx_rate_l2, Object.values(port_mapping).map(Number))
 
-    const mean_frame_size_tx = (tx_rate_l1 - tx_rate_l2) <= 0 ? 0 : 20 * tx_rate_l2 / (tx_rate_l1 - tx_rate_l2)
-    //const mean_iat_tx = tx_rate_l1 > 0 ? (mean_frame_size_tx+20) * 8 / (tx_rate_l1 * 10**-9) : 0
-    const mean_iat_rx = rx_rate_l1 > 0 ? (mean_frame_size_tx + 20) * 8 / (rx_rate_l1 * 10 ** -9) : 0
-
 
     return <>
     { visual ?
@@ -417,10 +413,6 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
                             <td>{formatNanoSeconds(rtt.max)}</td>
                             <td>{formatNanoSeconds(rtt.jitter)}</td>
                             <td>{rtt.n}</td>
-                            {/*<td>{formatNanoSeconds(stats.min_rtt)}</td>*/}
-                            {/*<td>{formatNanoSeconds(stats.rtt)}</td>*/}
-                            {/*<td>{formatNanoSeconds(stats.max_rtt)}</td>*/}
-                            {/*<td>{formatNanoSeconds(stats.jitter)}</td>*/}
                         </tr>
                     </tbody>
                 </Table>
@@ -472,8 +464,6 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
                                 <td>{v != " " ? v : "\u00A0" }</td> {/* Quick hack for empty row */}
                                 <td>{v != " " ? formatFrameCount(data.tx) : null}</td>
                                 <td>{v != " " ? formatFrameCount(data.rx) : null}</td>
-                                {/*<td>{stats.frame_type_data.tx[key]}</td>*/}
-                                {/*<td>{stats.frame_type_data.rx[key]}</td>*/}
                             </tr>
                         })
                         }
@@ -498,8 +488,6 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
                                 <td>{v}</td>
                                 <td>{formatFrameCount(data.tx)}</td>
                                 <td>{formatFrameCount(data.rx)}</td>
-                                {/*<td>{stats.frame_type_data.tx[key]}</td>*/}
-                                {/*<td>{stats.frame_type_data.rx[key]}</td>*/}
                             </tr>
                         })
                         }

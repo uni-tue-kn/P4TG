@@ -42,7 +42,7 @@ pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
         (StatusCode::OK, Json(Reset { message: "Reset complete".to_owned() })).into_response()
     }
     else {
-        for error in vec![frame_size, frame_type, rate] {
+        for error in [frame_size, frame_type, rate] {
             if error.is_err() {
                 return (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:?}", error.err().unwrap())))).into_response();
             }
