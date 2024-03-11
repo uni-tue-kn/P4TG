@@ -52,7 +52,8 @@ use crate::core::traffic_gen_core::types::*;
         tables::tables,
         statistics::statistics,
         restart::restart,
-        reset::reset
+        reset::reset,
+        ports::ports
     ),
     components(
         schemas(TrafficGenData,

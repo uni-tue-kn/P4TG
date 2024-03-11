@@ -23,6 +23,7 @@ use axum::http::StatusCode;
 use axum::response::{Json, IntoResponse, Response};
 use rbfrt::util::port_manager::Port;
 use serde::{Deserialize, Serialize};
+use crate::api::docs;
 use crate::api::server::{Error};
 use crate::AppState;
 
@@ -35,11 +36,27 @@ pub struct PortConfiguration {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PortStats {
+    pid: u32
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ArpReply {
     pid: u32,
     arp_reply: bool
 }
 
+/// Returns the currently configured ports
+#[utoipa::path(
+    get,
+    path = "/api/ports",
+    responses(
+    (status = 200,
+    body = String,
+    description = "Returns the currently configured ports.",
+    example = json!(*docs::ports::EXAMPLE_GET_1)
+    ))
+)]
 pub async fn ports(State(state): State<Arc<AppState>>) -> Response {
     let pm = &state.pm;
     let switch = &state.switch;
