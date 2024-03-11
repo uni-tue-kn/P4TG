@@ -114,10 +114,8 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
     let active_streams: Vec<Stream> = payload.streams.clone().into_iter().filter(|s| active_stream_ids.contains(&s.stream_id)).collect();
 
     // Poisson traffic is only allowed to have a single stream
-    if payload.mode == GenerationMode::Poisson {
-        if active_streams.len() != 1 {
-            return (StatusCode::BAD_REQUEST, Json(Error::new("Poisson generation mode only allows for one stream."))).into_response()
-        }
+    if payload.mode == GenerationMode::Poisson && active_streams.len() != 1 {
+        return (StatusCode::BAD_REQUEST, Json(Error::new("Poisson generation mode only allows for one stream."))).into_response()
     }
 
     // no streams should be generated in monitor/analyze mode

@@ -20,18 +20,24 @@
 use std::sync::Arc;
 use axum::extract::State;
 use axum::http::StatusCode;
-use serde::Serialize;
 use crate::AppState;
 use axum::response::{Json, IntoResponse, Response};
-use schemars::JsonSchema;
 use crate::api::server::Error;
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
+use crate::core::traffic_gen_core::types::Reset;
 
-#[derive(Serialize, JsonSchema)]
-pub struct Reset {
-    pub(crate) message: String
-}
 
+/// Resets the statistics
+#[utoipa::path(
+    get,
+    path = "/api/reset",
+    responses(
+    (status = 200,
+    description = "Resets the statistics.",
+    body = Reset,
+    example = json!(Reset { message: "Reset complete".to_owned()})
+    ))
+)]
 pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
     let switch = &state.switch;
     let frame_size = state.frame_size_monitor.lock().await.on_reset(switch).await;

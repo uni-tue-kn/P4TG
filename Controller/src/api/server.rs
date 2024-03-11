@@ -51,7 +51,8 @@ use crate::core::traffic_gen_core::types::*;
         traffic_gen::stop_traffic_gen,
         tables::tables,
         statistics::statistics,
-        restart::restart
+        restart::restart,
+        reset::reset
     ),
     components(
         schemas(TrafficGenData,
@@ -60,6 +61,7 @@ use crate::core::traffic_gen_core::types::*;
         StreamSetting,
         Stream,
         EmptyResponse,
+        Reset,
         Ethernet,
         IPv4,
         Vlan,
@@ -159,7 +161,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
 
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
-        .await.expect(&format!("Unable to listen on 0.0.0.0:{}", port));
+        .await.unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{}", port));
 
     axum::serve(listener, app).await.unwrap();
 }

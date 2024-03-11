@@ -110,6 +110,20 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
         port_mapping.insert(dev_port, PortMapping { tx_recirculation: tx_port, rx_recirculation: rx_port, mac: *mac });
     }
 
+    // Verify that all recirculation ports are unique
+    let mut used_recirculation_ports = vec![];
+
+    for port in port_mapping.values() {
+        used_recirculation_ports.push(port.tx_recirculation);
+        used_recirculation_ports.push(port.rx_recirculation);
+    }
+
+    used_recirculation_ports.dedup();
+
+    if used_recirculation_ports.len() != tg_ports.len() * 2 {
+        panic!("Recirculation ports not unique.")
+    }
+
     Ok(())
 }
 
@@ -151,7 +165,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         }
         Err(_) => {
-            warn!("No config file for controller found. Using default config.");
+            warn!("No config file (/app/config.json) for controller found. Using default config.");
             Config::default()
         }
     };
@@ -251,7 +265,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 
 #[tokio::main]
-async fn main() -> () {
+async fn main() {
     env_logger::init();
 
     match run().await {

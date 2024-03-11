@@ -242,3 +242,8 @@ pub struct EmptyResponse {
     #[schema(example = "Not running.")]
     pub(crate) message: String
 }
+
+#[derive(Serialize, ToSchema)]
+pub struct Reset {
+    pub(crate) message: String
+}

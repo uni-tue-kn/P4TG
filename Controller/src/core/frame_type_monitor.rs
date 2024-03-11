@@ -161,15 +161,14 @@ impl FrameTypeMonitor {
                     }
 
                     // read counters
-                    let entries = match switch.get_table_entry(request).await {
+                    match switch.get_table_entry(request).await {
                         Ok(e) => e,
                         Err(err) => {
                             warn! {"Encountered error while retrieving {} table. Error: {}", t, format!("{:#?}", err)};
                             vec![]
                         }
-                    };
+                    }
 
-                    entries
                 };
 
                 for entry in entries {
@@ -179,7 +178,7 @@ impl FrameTypeMonitor {
 
                     let port = entry.match_key.get("ig_intr_md.ingress_port").unwrap().get_exact_value().to_u32();
 
-                    let frame_type: Vec<&str> = entry.get_action_name().split(".").collect();
+                    let frame_type: Vec<&str> = entry.get_action_name().split('.').collect();
                     let mut frame_type = frame_type.last().unwrap().to_owned();
 
                     if frame_type == "q_in_q" {
@@ -198,10 +197,10 @@ impl FrameTypeMonitor {
 
                     if tx_mapping.contains_key(&port) {
                         let port = tx_mapping.get(&port).unwrap();
-                        stats.frame_type_data.get_mut(&port).unwrap().tx.insert(frame_type.to_owned(), count);
+                        stats.frame_type_data.get_mut(port).unwrap().tx.insert(frame_type.to_owned(), count);
                     } else if rx_mapping.contains_key(&port) {
                         let port = rx_mapping.get(&port).unwrap();
-                        stats.frame_type_data.get_mut(&port).unwrap().rx.insert(frame_type.to_owned(), count);
+                        stats.frame_type_data.get_mut(port).unwrap().rx.insert(frame_type.to_owned(), count);
                     }
                 }
             }
