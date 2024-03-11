@@ -8,6 +8,8 @@
   - This may be the case if an update introduces new properties, but the old stored values in local storage dont have them
 - Refactor Configuration GUI code
 - Switch to utoipa + swagger-ui for REST-API docs
+- Add `config.json` file that can be used to specify the traffic generation (front panel) ports
+- Add `ARP Reply` option in UI. If enabled, the switch answers all ARP requests that it receives on that port.
 
 ### Refactor REST-API endpoint `/api/trafficgen` 
 - Endpoint `/api/trafficgen` refactored to better reflect encapsulation methods
