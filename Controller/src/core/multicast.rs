@@ -38,7 +38,7 @@ const MULTICAST_NODE_TABLE: &str = "$pre.node";
 /// * `ports`: List of dev ports for the multicast group
 pub async fn create_simple_multicast_group(switch: &SwitchConnection,
                                      mid: u16,
-                                     ports: &Vec<u32>) -> Result<(), RBFRTError> {
+                                     ports: &[u32]) -> Result<(), RBFRTError> {
     // create node id
     let req = table::Request::new("$pre.node")
         .match_key("$MULTICAST_NODE_ID", MatchValue::exact(mid))

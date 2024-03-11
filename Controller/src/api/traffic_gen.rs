@@ -17,8 +17,6 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::collections::HashMap;
-use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::SystemTime;
 use axum::debug_handler;
@@ -26,125 +24,31 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use crate::api::helper::validate::validate_request;
 
 use crate::api::server::Error;
 use crate::AppState;
-use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 
-/// Defines an VxLAN Tunnel
-#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
-pub struct VxLAN {
-    /// Outer Ethernet src
-    pub eth_src: String,
-    /// Outer Ethernet dst
-    pub eth_dst: String,
-    /// Outer IP src
-    pub ip_src: Ipv4Addr,
-    /// Outer IP dst
-    pub ip_dst: Ipv4Addr,
-    /// Outer IP tos
-    pub ip_tos: u8,
-    /// Outer UDP source
-    pub udp_source: u16,
-    /// VxLAN VNI
-    pub vni: u32
-}
-
-/// Defines an MPLS LSE
-#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
-pub struct MPLSHeader {
-    /// Label of this MPLS LSE
-    pub label: u32,
-    /// Traffic class field of this MPLS LSE
-    pub tc: u32,
-    /// Time-to-live of this MPLS LSE
-    pub ttl: u32
-}
-
-/// Represents the body of the GET / POST endpoints of /trafficgen
-#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
-pub struct TrafficGenData {
-    /// Generation mode that should be used.
-    pub(crate) mode: GenerationMode,
-    /// List of stream settings that should be applied.
-    /// This also configures which streams are replicated to which ports.
-    pub(crate) stream_settings: Vec<StreamSetting>,
-    pub(crate) streams: Vec<Stream>,
-    /// Mapping between TX (send) ports, and RX (receive) ports.
-    /// Traffic send on port TX are expected to be received on port RX.
-    pub(crate) port_tx_rx_mapping: HashMap<u32, u32>
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
-pub struct StreamSetting {
-    /// Egress port to which the stream should be sent.
-    pub port: u32,
-    /// ID of the stream. This stream_id maps to the stream_id in the Stream description.
-    pub stream_id: u8,
-    pub vlan_id: u16,
-    pub pcp: u8,
-    pub dei: u8,
-    pub inner_vlan_id: u16,
-    pub inner_pcp: u8,
-    /// An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.
-    pub mpls_stack: Vec<MPLSHeader>,
-    pub inner_dei: u8,
-    pub eth_src: String,
-    pub eth_dst: String,
-    pub ip_src: Ipv4Addr,
-    pub ip_dst: Ipv4Addr,
-    pub ip_tos: u8,
-    /// Mask that is used to randomize the IP src address.
-    /// 255.255.255.255 means that all bytes in the IP address are randomized.
-    pub ip_src_mask: Ipv4Addr,
-    /// Mask that is used to randomize the IP dst address.
-    /// 255.255.255.255 means that all bytes in the IP address are randomized.
-    pub ip_dst_mask: Ipv4Addr,
-    /// Indicates if this stream setting is active.
-    pub active: bool,
-    /// VxLAN tunnel settings
-    pub vxlan: Option<VxLAN>
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
-pub struct Stream {
-    /// Identifies the stream. The same value is used in stream settings to
-    /// configure that stream for an individual port
-    pub(crate) stream_id: u8,
-    /// Application id number. This number is used to configure the traffic generator.
-    /// App ids 1-7 are possible for streams.
-    pub(crate) app_id: u8,
-    /// L2 frame size of the stream.
-    pub(crate) frame_size: u32,
-    /// Encapsulation type.
-    pub(crate) encapsulation: Encapsulation,
-    /// Number of MPLS LSEs in this stream. The value has to equal the length of the MPLS stack in a stream setting.
-    pub(crate) number_of_lse: u8,
-    /// Traffic rate in Gbps that should be generated.
-    pub(crate) traffic_rate: f32,
-    /// Maximal allowed burst (= packets). Burst = 1 is used for IAT precision mode, Burst = 100 for Rate precision.
-    pub(crate) burst: u16,
-    /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
-    pub(crate) n_packets: Option<u16>,
-    /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
-    pub(crate) timeout: Option<u32>,
-    /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
-    pub(crate) generation_accuracy: Option<f32>,
-    /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
-    pub(crate) n_pipes: Option<u8>,
-    /// Flag that indicates if traffic should be encapsulation in VxLAN
-    pub(crate) vxlan: bool
-}
-
-#[derive(Serialize, JsonSchema)]
-pub struct EmptyResponse {
-    pub(crate) message: String
-}
+use crate::api::docs::traffic_gen::{EXAMPLE_GET_1, EXAMPLE_GET_2, EXAMPLE_POST_1_REQUEST, EXAMPLE_POST_1_RESPONSE, EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST};
+use crate::core::traffic_gen_core::types::*;
 
 /// Method called on GET /trafficgen
+/// Returns the currently configured traffic generation
+#[utoipa::path(
+        get,
+        path = "/api/trafficgen",
+        responses(
+            (status = 200,
+            description = "Returns the currently configured traffic generation.",
+            body = TrafficGenData,
+            examples(("Example 1" = (summary = "First example", value = json!(*EXAMPLE_GET_1))),
+                     ("Example 2" = (summary = "Second example", value = json!(*EXAMPLE_GET_2)))
+            )
+            ),
+            (status = 202, description = "Returned when no traffic generation is configured.", body = EmptyResponse)
+        )
+)]
 pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     let tg = &state.traffic_generator.lock().await;
 
@@ -153,7 +57,7 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     }
     else {
         let tg_data = TrafficGenData {
-            mode: tg.mode.clone(),
+            mode: tg.mode,
             stream_settings: tg.stream_settings.clone(),
             streams: tg.streams.clone(),
             port_tx_rx_mapping: tg.port_mapping.clone()
@@ -179,7 +83,27 @@ pub struct Result {
 }
 
 /// Method called on POST /trafficgen
+/// Starts the traffic generation with the specified settings in the POST body
 #[debug_handler]
+#[utoipa::path(
+    post,
+    path = "/api/trafficgen",
+    request_body(
+        content = TrafficGenData,
+        examples(("Example 1" = (summary = "VxLAN 1024 (+50) byte @ 100 Gbps", value = json!(*EXAMPLE_POST_1_REQUEST))),
+                 ("Example 2" = (summary = "VLAN 64 (+4) byte @ 80 Gbps", value = json!(*EXAMPLE_POST_2_REQUEST))),
+                 ("Example 3" = (summary = "Poisson @ 30 Gbps", value = json!(*EXAMPLE_POST_3_REQUEST)))
+        )
+    ),
+    responses(
+    (status = 200,
+    description = "Returns the configured traffic generation.",
+    body = [Stream],
+    examples(("Example 1" = (summary = "VxLAN 1024 (+50) byte @ 100 Gbps", value = json!(*EXAMPLE_POST_1_RESPONSE))),
+             ("Example 2" = (summary = "VLAN 64 (+4) byte @ 80 Gbps", value = json!(*EXAMPLE_POST_1_RESPONSE)))
+    )),
+    )
+)]
 pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: Json<TrafficGenData>) -> Response {
     let tg = &mut state.traffic_generator.lock().await;
 
@@ -190,23 +114,13 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
     let active_streams: Vec<Stream> = payload.streams.clone().into_iter().filter(|s| active_stream_ids.contains(&s.stream_id)).collect();
 
     // Poisson traffic is only allowed to have a single stream
-    if payload.mode == GenerationMode::POISSON {
-        if active_streams.len() != 1 {
-            return (StatusCode::BAD_REQUEST, Json(Error::new(format!("Poisson generation mode only allows for one stream.")))).into_response()
-        }
-    }
-
-    // overall rate
-    let rate: f32 = active_streams.iter().map(|x| x.traffic_rate).sum();
-
-    // at most 100 Gbps are supported
-    if rate > 100f32 {
-        return (StatusCode::BAD_REQUEST, Json(Error::new(format!("Traffic rate in sum larger than 100 Gbps.")))).into_response();
+    if payload.mode == GenerationMode::Poisson && active_streams.len() != 1 {
+        return (StatusCode::BAD_REQUEST, Json(Error::new("Poisson generation mode only allows for one stream."))).into_response()
     }
 
     // no streams should be generated in monitor/analyze mode
-    if payload.mode == GenerationMode::ANALYZE && active_streams.len() != 0 {
-        return (StatusCode::BAD_REQUEST, Json(Error::new(format!("No stream definition in analyze mode allowed.")))).into_response();
+    if payload.mode == GenerationMode::Analyze && !active_streams.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(Error::new("No stream definition in analyze mode allowed."))).into_response();
     }
 
     // contains the mapping of Send->Receive ports
@@ -214,7 +128,7 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
     let port_mapping = &payload.port_tx_rx_mapping;
 
     // validate request
-    match validate_request(&active_streams, &active_stream_settings) {
+    match validate_request(&active_streams, &active_stream_settings, &payload.mode) {
         Ok(_) => {},
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response()
     }
@@ -226,7 +140,7 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
             tg.stream_settings = payload.stream_settings.clone();
             tg.streams = payload.streams.clone();
-            tg.mode = payload.mode.clone();
+            tg.mode = payload.mode;
 
             // experiment starts now
             // these values are used to show how long the experiment is running at the GUI
@@ -240,6 +154,13 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/trafficgen",
+    responses(
+    (status = 200,
+    description = "Stops the currently running traffic generation."))
+)]
 /// Stops the current traffic generation
 pub async fn stop_traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     let tg = &state.traffic_generator;

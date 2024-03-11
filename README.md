@@ -56,7 +56,12 @@ It also serves the configuration gui at port `P4TG_PORT` and endpoint `/`.
 Set `SAMPLE=1` in `docker-compose.yml` to activate IAT sampling mode instead of data plane measurement.
 Data plane measurement mode (`SAMPLE=0`) is more accurate and the default
 
+#### Config file 
 
+The configuration file in `Controller/config.json` can be used to specify the ports that are used for traffic generation.
+If no config file is provided, the first 10 ports are used. 
+
+Further, the MAC address can be specified that should be used to answer ARP requests when the `ARP reply` option is enabled in the UI.
 ### Configuration GUI
 
 The configuration GUI is based on react & nodejs.

@@ -74,6 +74,10 @@ control Frame_Type_Monitor(
         ethernet_type_counter.count();
     }
 
+    action arp() {
+         ethernet_type_counter.count();
+    }
+
     action ipv4() {
         ethernet_type_counter.count();
     }
@@ -96,6 +100,7 @@ control Frame_Type_Monitor(
             vlan;
             q_in_q;
             ipv4;
+            arp;
             ipv6;
             unknown;
         }

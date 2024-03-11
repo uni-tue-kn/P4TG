@@ -52,7 +52,7 @@ impl FrameTypeMonitor {
     pub fn new(port_mapping: HashMap<u32, PortMapping>) -> FrameTypeMonitor {
         // (IP adress, LPM)
         let ip_lpm_entries = vec![([224, 0, 0, 0], 8, 0, "multicast".to_owned()), ([0, 0, 0, 0], 0, 0, "unicast".to_owned()), ([0, 0, 0, 0], 0, 1, "vxlan".to_owned())];
-        let ethernet_types = vec![(0x800, "ipv4".to_owned()), (0x86DD, "ipv6".to_owned()), (0x8100, "vlan".to_owned()), (0x88a8, "q_in_q".to_owned()), (0x8847, "mpls".to_owned())];
+        let ethernet_types = vec![(0x800, "ipv4".to_owned()), (0x86DD, "ipv6".to_owned()), (0x8100, "vlan".to_owned()), (0x88a8, "q_in_q".to_owned()), (0x0806, "arp".to_owned()), (0x8847, "mpls".to_owned())];
         FrameTypeMonitor {port_mapping, ip_lpm_entries, ethernet_types, statistics: FrameTypeStatistics::default() }
     }
 
@@ -148,7 +148,7 @@ impl FrameTypeMonitor {
                 stats.frame_type_data.insert(*port, TypeCount::default());
             }
 
-            for t in vec![FRAME_TYPE_MONITOR, ETHERNET_TYPE_MONITOR] {
+            for t in [FRAME_TYPE_MONITOR, ETHERNET_TYPE_MONITOR] {
                 let request = table::Request::new(t);
                 let sync = table::Request::new(t).operation(table::TableOperation::SyncCounters);
 
@@ -161,15 +161,14 @@ impl FrameTypeMonitor {
                     }
 
                     // read counters
-                    let entries = match switch.get_table_entry(request).await {
+                    match switch.get_table_entry(request).await {
                         Ok(e) => e,
                         Err(err) => {
                             warn! {"Encountered error while retrieving {} table. Error: {}", t, format!("{:#?}", err)};
                             vec![]
                         }
-                    };
+                    }
 
-                    entries
                 };
 
                 for entry in entries {
@@ -179,7 +178,7 @@ impl FrameTypeMonitor {
 
                     let port = entry.match_key.get("ig_intr_md.ingress_port").unwrap().get_exact_value().to_u32();
 
-                    let frame_type: Vec<&str> = entry.get_action_name().split(".").collect();
+                    let frame_type: Vec<&str> = entry.get_action_name().split('.').collect();
                     let mut frame_type = frame_type.last().unwrap().to_owned();
 
                     if frame_type == "q_in_q" {
@@ -198,10 +197,10 @@ impl FrameTypeMonitor {
 
                     if tx_mapping.contains_key(&port) {
                         let port = tx_mapping.get(&port).unwrap();
-                        stats.frame_type_data.get_mut(&port).unwrap().tx.insert(frame_type.to_owned(), count);
+                        stats.frame_type_data.get_mut(port).unwrap().tx.insert(frame_type.to_owned(), count);
                     } else if rx_mapping.contains_key(&port) {
                         let port = rx_mapping.get(&port).unwrap();
-                        stats.frame_type_data.get_mut(&port).unwrap().rx.insert(frame_type.to_owned(), count);
+                        stats.frame_type_data.get_mut(port).unwrap().rx.insert(frame_type.to_owned(), count);
                     }
                 }
             }

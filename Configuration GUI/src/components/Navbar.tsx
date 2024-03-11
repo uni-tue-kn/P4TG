@@ -26,8 +26,7 @@ import {Row} from 'react-bootstrap'
 
 import P4TGLogo from "../assets/p4tg_logo_white.png"
 import config from "../config";
-
-const StyledLink = styled(Link) <{ active?: boolean }>`
+styled(Link) <{ active?: boolean }>`
     text-decoration: none;
     margin-right: 15px;
     color: var(--cui-nav-link-color);
@@ -37,8 +36,7 @@ const StyledLink = styled(Link) <{ active?: boolean }>`
     :hover {
         background: #5c636a;
     }
-`
-
+`;
 const StyledImg = styled.img`
     width: 80px;
 `
@@ -102,14 +100,11 @@ const Navbar = () => {
             <NavLink to={"/ports"} text={""} icon={"bi bi-ethernet"}/>
             <NavLink to={"/tables"} text={""} icon={"bi bi-table"}/>
             <NavLink to={"/settings"} text={""} icon={"bi bi-gear-wide-connected"}/>
-            {/*<NavLink to={config.API_URL + "/docs"} text={""} icon={"bi bi-file-earmark-text"}/>*/}
             <Row className="flex-grow-1">
             </Row>
             <Row>
                 <CNavItem className="flex-grow-1 mb-2">
                     <span>v2.2.0</span>
-                    {/*<a href={"#"} role="button" onClick={() => setup()} className={"nav-link logout"}>*/}
-                    {/*    <i className="bi bi-box-arrow-left me-2"></i></a>*/}
                 </CNavItem>
             </Row>
         </CSidebarNav>

@@ -101,7 +101,7 @@ impl RateMonitor {
 
         let mut entries = vec![];
 
-        for (_, mapping) in self.port_mapping.iter().by_ref() {
+        for mapping in self.port_mapping.values() {
             entries.push(table::Request::new(IS_INGRESS_TABLE).match_key("ig_intr_md.ingress_port", MatchValue::exact(mapping.rx_recirculation)).action("ingress.p4tg.nop"));
         }
 
@@ -116,7 +116,7 @@ impl RateMonitor {
 
         let mut valid_ports = vec![];
 
-        for (_, mapping) in &self.port_mapping {
+        for mapping in self.port_mapping.values() {
             valid_ports.push(mapping.tx_recirculation);
             valid_ports.push(mapping.rx_recirculation);
         }
@@ -158,7 +158,7 @@ impl RateMonitor {
 
         let mut valid_ports = vec![];
 
-        for (_, mapping) in &self.port_mapping {
+        for mapping in self.port_mapping.values() {
             valid_ports.push(mapping.tx_recirculation);
             valid_ports.push(mapping.rx_recirculation);
         }
@@ -291,7 +291,7 @@ impl RateMonitor {
 
                         if tx_mapping.contains_key(index) {
                             let port = tx_mapping.get(index).unwrap();
-                            let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(|| IATStatistics::default());
+                            let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(IATStatistics::default);
 
                             iat_stats.tx.mean = (sum as f64 / n as f64) as f32;
                             iat_stats.tx.n = n as u32;
@@ -299,7 +299,7 @@ impl RateMonitor {
                             update_requests.push(register::Request::new(CURRENT_MEAN_IAT_REGISTER).index(*index).data(&format!("{}.f1", CURRENT_MEAN_IAT_REGISTER), iat_stats.tx.mean.round() as u32));
                         } else if rx_mapping.contains_key(index) {
                             let port = rx_mapping.get(index).unwrap();
-                            let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(|| IATStatistics::default());
+                            let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(IATStatistics::default);
                             iat_stats.rx.mean = (sum as f64 / n as f64) as f32;
                             iat_stats.rx.n = n as u32;
 
@@ -329,12 +329,12 @@ impl RateMonitor {
 
                         if tx_mapping.contains_key(index) {
                             let port = tx_mapping.get(index).unwrap();
-                            let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(|| IATStatistics::default());
+                            let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(IATStatistics::default);
 
                             iat_stats.tx.mae = (sum as f64 / n as f64) as f32;
                         } else if rx_mapping.contains_key(index) {
                             let port = rx_mapping.get(index).unwrap();
-                            let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(|| IATStatistics::default());
+                            let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(IATStatistics::default);
                             iat_stats.rx.mae = (sum as f64 / n as f64) as f32;
                         }
                     }
@@ -408,14 +408,14 @@ impl RateMonitor {
                 rate_monitor.statistics.app_rx_l2.insert(*port, HashMap::new());
 
                 for app_id in 1..8 {
-                    rate_monitor.statistics.app_tx_l2.get_mut(&port).unwrap().insert(app_id, 0.0f64);
-                    rate_monitor.statistics.app_rx_l2.get_mut(&port).unwrap().insert(app_id, 0.0f64);
+                    rate_monitor.statistics.app_tx_l2.get_mut(port).unwrap().insert(app_id, 0.0f64);
+                    rate_monitor.statistics.app_rx_l2.get_mut(port).unwrap().insert(app_id, 0.0f64);
                 }
             }
         }
 
         // initialize app storage
-        for (index, _) in index_mapping {
+        for index in index_mapping.keys() {
             last_app_tx.insert(*index, DataRate::new(0, 0, 0, 0.0, 0.0));
             last_app_rx.insert(*index, DataRate::new(0, 0, 0, 0.0, 0.0));
         }
@@ -470,7 +470,7 @@ impl RateMonitor {
                 // get the front panel dev port number
                 let port = if is_tx { tx_reverse_mapping.get(&port).unwrap() } else { rx_reverse_mapping.get(&port).unwrap() };
 
-                let last = last_update.get(&port).unwrap();
+                let last = last_update.get(port).unwrap();
 
                 let index_port_app_mapping = index_mapping.get(&app_index);
 
@@ -478,8 +478,8 @@ impl RateMonitor {
                     let new_rate = RateMonitor::calculate_rate((l1_byte, l2_byte, time), last);
 
                     if is_tx {
-                        state.rate_monitor.lock().await.statistics.tx_rate_l1.insert(*port, new_rate.rate_l1.clone());
-                        state.rate_monitor.lock().await.statistics.tx_rate_l2.insert(*port, new_rate.rate_l2.clone());
+                        state.rate_monitor.lock().await.statistics.tx_rate_l1.insert(*port, new_rate.rate_l1);
+                        state.rate_monitor.lock().await.statistics.tx_rate_l2.insert(*port, new_rate.rate_l2);
 
                         // time statistic
                         if running {
@@ -490,8 +490,8 @@ impl RateMonitor {
                         }
 
                     } else {
-                        state.rate_monitor.lock().await.statistics.rx_rate_l1.insert(*port, new_rate.rate_l1.clone());
-                        state.rate_monitor.lock().await.statistics.rx_rate_l2.insert(*port, new_rate.rate_l2.clone());
+                        state.rate_monitor.lock().await.statistics.rx_rate_l1.insert(*port, new_rate.rate_l1);
+                        state.rate_monitor.lock().await.statistics.rx_rate_l2.insert(*port, new_rate.rate_l2);
 
                         // time statistics
                         if running {
@@ -527,9 +527,9 @@ impl RateMonitor {
                         let mapping = index_mapping.get(&app_index).unwrap();
 
                         if is_tx {
-                            state.rate_monitor.lock().await.statistics.app_tx_l2.get_mut(&port).unwrap().insert(mapping.app_id as u32, new_app_rate.rate_l2.clone());
+                            state.rate_monitor.lock().await.statistics.app_tx_l2.get_mut(port).unwrap().insert(mapping.app_id as u32, new_app_rate.rate_l2);
                         } else {
-                            state.rate_monitor.lock().await.statistics.app_rx_l2.get_mut(&port).unwrap().insert(mapping.app_id as u32, new_app_rate.rate_l2.clone());
+                            state.rate_monitor.lock().await.statistics.app_rx_l2.get_mut(port).unwrap().insert(mapping.app_id as u32, new_app_rate.rate_l2);
                         }
 
                         last_update_app.insert(app_index, new_app_rate);
@@ -548,17 +548,16 @@ impl RateMonitor {
 
 
                 // catch timestamp overflow
-                if rtt > 0 && rtt < (u32::MAX / 2) as u64 {
-                    if rx_reverse_mapping.contains_key(&port) {
-                        let port = rx_reverse_mapping.get(&port).unwrap();
+                if rtt > 0 && rtt < (u32::MAX / 2) as u64 && rx_reverse_mapping.contains_key(&port) {
+                    let port = rx_reverse_mapping.get(&port).unwrap();
 
-                        state.rate_monitor.lock().await.rtt_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(rtt);
-                        state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, rtt);
+                    state.rate_monitor.lock().await.rtt_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(rtt);
+                    state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, rtt);
 
-                        // remove potential old data
-                        state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
-                    }
+                    // remove potential old data
+                    state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
                 }
+
 
                 if sample_mode {
                     let experiment = state.experiment.lock().await;
@@ -601,7 +600,7 @@ impl TrafficGenEvent for RateMonitor {
 
         // only do monitoring rules if we are not monitoring other traffic
         // these rules enable RTT monitoring which is not needed for analyze mode
-        if *mode != GenerationMode::ANALYZE {
+        if *mode != GenerationMode::Analyze {
             self.init_monitoring_rules(switch).await?;
         }
 

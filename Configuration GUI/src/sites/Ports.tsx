@@ -22,6 +22,10 @@ import Loader from "../components/Loader";
 import {get, post} from '../common/API'
 import {Button, Col, Form, Row, Table} from "react-bootstrap";
 import styled from "styled-components";
+import InfoBox from "../components/InfoBox";
+import {P4TGConfig} from "../common/Interfaces";
+import {auto_neg_mapping, fec_mapping, loopback_mapping, speed_mapping} from "../common/Definitions";
+import {GitHub} from "./Home";
 
 const StyledCol = styled.td`
     vertical-align: middle;
@@ -46,38 +50,16 @@ export const PortStatus = ({active}: { active: boolean }) => {
 const Ports = () => {
     const [loaded, set_loaded] = useState(false)
     const [ports, set_ports] = useState([])
-
-    const fec_mapping: { [name: string]: string } = {
-        "BF_FEC_TYP_NONE": "None",
-        "BF_FEC_TYP_FC": "Firecode",
-        "BF_FEC_TYP_REED_SOLOMON": "Reed Solomon"
-    }
-    const auto_neg_mapping: { [name: string]: string } = {
-        "PM_AN_DEFAULT": "Auto",
-        "PM_AN_FORCE_DISABLE": "Off",
-        "PM_AN_FORCE_ENABLE": "On"
-    }
-
-    const speed_mapping: { [name: string]: string } = {
-        "BF_SPEED_1G": "1G",
-        "BF_SPEED_10G": "10G",
-        "BF_SPEED_25G": "25G",
-        "BF_SPEED_40G": "40G",
-        "BF_SPEED_50G": "50G",
-        "BF_SPEED_100G": "100G"
-    }
-
-    const loopback_mapping: { [name: string]: string } = {
-        "BF_LPBK_NONE": "Off",
-        "BF_LPBK_MAC_NEAR": "On"
-    }
+    const [config, set_config] = useState<P4TGConfig>({tg_ports: []})
 
 
     const loadPorts = async () => {
         let stats = await get({route: "/ports"})
+        let config = await get({route: "/config"})
 
         if (stats.status === 200) {
             set_ports(stats.data)
+            set_config(config.data)
             set_loaded(true)
         }
     }
@@ -97,6 +79,44 @@ const Ports = () => {
         }
     }
 
+    const updateArp = async (pid: number, state: boolean) => {
+        console.log(state)
+        let update = await post({
+            route: "/ports/arp", body: {
+                pid: pid,
+                arp_reply: state
+            }
+        })
+
+        if (update.status === 201) {
+            refresh()
+        }
+    }
+
+    const getMac = (port: number) => {
+        let mac = "Unknown"
+
+        config.tg_ports.forEach(p => {
+            if(p.port == port) {
+                mac = p.mac
+            }
+        })
+
+        return mac
+    }
+
+    const getArpReply = (port: number) => {
+        let reply = false
+
+        config.tg_ports.forEach(p => {
+            if(p.port == port) {
+                reply = p.arp_reply ?? false
+            }
+        })
+
+        return reply
+    }
+
     const refresh = () => {
         set_loaded(false)
         loadPorts()
@@ -114,10 +134,17 @@ const Ports = () => {
             <tr>
                 <th>PID</th>
                 <th>Port</th>
+                <th>MAC &nbsp; <InfoBox>
+                    <p>MAC address that is used to answer ARP requests (if enabled). The address can be changed in the config.json file of the controller.</p>
+                </InfoBox>
+                </th>
                 <th>Speed</th>
                 <th>Auto Negotiation</th>
                 <th>FEC</th>
-                {/*<th>Loopback</th>*/}
+                <th>ARP Reply &nbsp;
+                <InfoBox>
+                    <p>If enabled, the port will answer all received ARP requests.</p></InfoBox>
+                </th>
                 <th>Status</th>
             </tr>
             </thead>
@@ -125,10 +152,11 @@ const Ports = () => {
             {ports.map((v: any, i: number) => {
                 if (loopback_mapping[v["loopback"]] == "Off") {
                     return <tr key={i}>
-                        <StyledCol>{v["pid"]}</StyledCol>
-                        <StyledCol>{v['port']}/{v["channel"]}</StyledCol>
-                        <StyledCol>{speed_mapping[(v['speed']) as string]}</StyledCol>
-                        <StyledCol>
+                        <StyledCol className={"col-1"}>{v["pid"]}</StyledCol>
+                        <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>
+                        <StyledCol className={"col-2"}>{getMac(v['port'])}</StyledCol>
+                        <StyledCol className={"col-2"}>{speed_mapping[(v['speed']) as string]}</StyledCol>
+                        <StyledCol className={"col-2"}>
                             <Form.Select onChange={async (event: any) => {
                                 await updatePort(v["pid"], v["speed"], v["fec"], event.target.value)
                             }}>
@@ -137,7 +165,7 @@ const Ports = () => {
                                                    value={f}>{auto_neg_mapping[f]}</option>
                                 })}
                             </Form.Select></StyledCol>
-                        <StyledCol><Form.Select onChange={async (event: any) => {
+                        <StyledCol className={"col-2"}><Form.Select onChange={async (event: any) => {
                             await updatePort(v["pid"], v["speed"], event.target.value, v["auto_neg"])
                         }}>
                             {Object.keys(fec_mapping).map(f => {
@@ -146,11 +174,18 @@ const Ports = () => {
                                 }
                             })}
                         </Form.Select>
-                            {//{fec_mapping[v['fec']]}
-                            }
                         </StyledCol>
-                        {/*<td>{loopback_mapping[v["loopback"]]}</td>*/}
-                        <StyledCol><PortStatus active={v['status']}/></StyledCol>
+                        <StyledCol className={"col-1"}>
+                            <Form.Check
+                                defaultChecked={getArpReply(v['port'])}
+                                onChange={async (event: any) => {
+                                    await updateArp(v["pid"], event.target.checked)
+                                }}
+                                type={"switch"}
+                                >
+                            </Form.Check>
+                        </StyledCol>
+                        <StyledCol className={"col-1"}><PortStatus active={v['status']}/></StyledCol>
                     </tr>
                 }
             })
@@ -163,6 +198,9 @@ const Ports = () => {
                 <Button onClick={refresh} className={"ml-3"}><i className="bi bi-arrow-clockwise"/> Refresh</Button>
             </Col>
         </Row>
+
+        <GitHub/>
+
     </Loader>
 }
 

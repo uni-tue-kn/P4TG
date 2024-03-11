@@ -407,7 +407,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
         ],
     }
 
-    let ethernet_type_label = ["VLAN", "QinQ", "IPv4", "IPv6", "MPLS", "Unknown"]
+    let ethernet_type_label = ["VLAN", "QinQ", "IPv4", "IPv6", "MPLS", "ARP", "Unknown"]
 
     const ethernet_type_data = {
         labels: ethernet_type_label,
@@ -420,6 +420,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                     get_frame_types(stats, port_mapping, "ipv4").tx,
                     get_frame_types(stats, port_mapping, "ipv6").tx,
                     get_frame_types(stats, port_mapping, "mpls").tx,
+                    get_frame_types(stats, port_mapping, "arp").tx,
                     get_frame_types(stats, port_mapping, "unknown").tx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
@@ -427,6 +428,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                     'rgb(255, 205, 86)',
                     'rgb(18,194,0)',
                     'rgb(178,0,255)',
+                    'rgb(131,63,14)',
                     'rgb(255,104,42)'
                 ],
                 hoverOffset: 4
@@ -439,6 +441,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                     get_frame_types(stats, port_mapping, "ipv4").rx,
                     get_frame_types(stats, port_mapping, "ipv6").rx,
                     get_frame_types(stats, port_mapping, "mpls").rx,
+                    get_frame_types(stats, port_mapping, "arp").tx,
                     get_frame_types(stats, port_mapping, "unknown").rx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
@@ -446,6 +449,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                     'rgb(255, 205, 86)',
                     'rgb(18,194,0)',
                     'rgb(178,0,255)',
+                    'rgb(131,63,14)',
                     'rgb(255,104,42)'
                 ],
                 hoverOffset: 4

@@ -78,12 +78,18 @@ parser SwitchIngressParser(
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
             ETHERTYPE_MONITOR: parse_monitor;
+            ETHERTYPE_ARP: parse_arp;
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
             ETHERTYPE_MPLS: parse_mpls;
             default: accept;
         }
+    }
+
+    state parse_arp {
+        pkt.extract(hdr.arp);
+        transition accept;
     }
 
     state parse_vlan {
@@ -184,6 +190,7 @@ control SwitchIngressDeparser(
        }
 
         pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.arp);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
         pkt.emit(hdr.vxlan);

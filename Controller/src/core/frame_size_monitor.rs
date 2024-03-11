@@ -116,16 +116,11 @@ impl FrameSizeMonitor {
                 }
 
                 // read counters
-                let entries = match switch.get_table_entry(request).await {
-                    Ok(e) => e,
-                    Err(err) => {
-                        warn! {"Encountered error while retrieving {} table. Error: {}", FRAME_SIZE_MONITOR, format!("{:#?}", err)}
-                        ;
-                        vec![]
-                    }
-                };
-
-                entries
+                switch.get_table_entry(request).await.unwrap_or_else(|err| {
+                    warn! {"Encountered error while retrieving {} table. Error: {}", FRAME_SIZE_MONITOR, format!("{:#?}", err)}
+                    ;
+                    vec![]
+                })
             };
 
 
@@ -166,7 +161,7 @@ impl FrameSizeMonitor {
                     stats.frame_size.get_mut(&port).unwrap().tx.push(RangeCountValue::new(lower, upper, count));
                 } else if rx_mapping.contains_key(&port) {
                     let port = rx_mapping.get(&port).unwrap();
-                    stats.frame_size.get_mut(&port).unwrap().rx.push(RangeCountValue::new(lower, upper, count));
+                    stats.frame_size.get_mut(port).unwrap().rx.push(RangeCountValue::new(lower, upper, count));
                 }
             }
 
