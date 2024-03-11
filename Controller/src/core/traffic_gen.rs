@@ -21,14 +21,12 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::cmp;
 
-use etherparse::PacketBuilder;
-
 use log::info;
 use macaddr::MacAddr;
 use rbfrt::{SwitchConnection, table};
 use rbfrt::error::RBFRTError;
 use rbfrt::table::{MatchValue, Request};
-use crate::api::{Stream, StreamSetting};
+use crate::core::traffic_gen_core::types::{Stream, StreamSetting};
 use crate::core::{create_simple_multicast_group};
 use crate::core::multicast::delete_simple_multicast_group;
 use crate::{AppState, PortMapping};
@@ -36,6 +34,7 @@ use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::error::P4TGError;
 
 use crate::core::traffic_gen_core::const_definitions::*;
+use crate::core::traffic_gen_core::helper::{calculate_overhead, create_packet};
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
 
@@ -72,7 +71,7 @@ impl TrafficGen {
             running: false,
             stream_settings: vec![],
             streams: vec![],
-            mode: GenerationMode::CBR,
+            mode: GenerationMode::Cbr,
             port_mapping: HashMap::new()
         }
     }
@@ -147,7 +146,7 @@ impl TrafficGen {
         // create a multicast group for the monitoring packet
         // that replicates a generated monitoring packet to all TX recirculation ports
         // this results in "parallel" monitoring of each traffic generation port
-        let multicast_ports = port_mapping.iter().map(|(_, p)| p.tx_recirculation).collect();
+        let multicast_ports = port_mapping.iter().map(|(_, p)| p.tx_recirculation).collect::<Vec<_>>();
 
         create_simple_multicast_group(switch, MONITORING_PACKET_MID, &multicast_ports).await?;
 
@@ -182,7 +181,7 @@ impl TrafficGen {
         let mut return_mapping = HashMap::new();
         let mut reverse_mapping = HashMap::new();
 
-        for (_, mapping) in port_mapping {
+        for mapping in port_mapping.values() {
             for app_id in 1..9 {
                 return_mapping.insert(index, MonitoringMapping {
                     index,
@@ -215,7 +214,7 @@ impl TrafficGen {
             .action_data("mcid", MONITORING_PACKET_MID));
 
         // create table entries for [MONITORING_INIT_TABLE]
-        for (_, mapping) in port_mapping {
+        for mapping in port_mapping.values() {
             // initialize monitoring packets in egress
             let req = table::Request::new(MONITORING_INIT_TABLE)
                 .match_key("eg_intr_md.egress_port", MatchValue::exact(mapping.tx_recirculation))
@@ -441,7 +440,7 @@ impl TrafficGen {
 
         // configure default forwarding
         // this pushes rules for RX -> RX Recirc and TX Recirc -> TX
-        self.configure_default_forwarding_path(&switch, &state.port_mapping).await?;
+        self.configure_default_forwarding_path(switch, &state.port_mapping).await?;
 
         // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on two pipes
         // therefore timeout is twice as high
@@ -451,19 +450,14 @@ impl TrafficGen {
         // calculate sending behaviour via ILP optimization
         // further adds number of packets per time to the stream
         let mut active_streams: Vec<Stream> = streams.into_iter().map(|mut s| {
-            let encapsulation_overhead = match s.encapsulation {
-                Encapsulation::None => 0,
-                Encapsulation::VLAN => 4, // VLAN adds 4 bytes
-                Encapsulation::QinQ => 8, // QinQ adds 8 bytes
-                Encapsulation::MPLS => s.number_of_lse as u32 * 4 // each mpls label has 4 bytes
-            };
+            let encapsulation_overhead = calculate_overhead(&s);
 
             // preamble + inter frame gap (IFG) = 20 bytes
             let encapsulation_overhead = encapsulation_overhead + 20;
 
             // traffic rate has MPPS semantics
             // rewrite traffic rate to reflect MPPS in Gbps
-            if mode == GenerationMode::MPPS {
+            if mode == GenerationMode::Mpps {
                 // recompute "correct" traffic rate in Gbps
                 s.traffic_rate = (s.frame_size + encapsulation_overhead) as f32 * 8f32 * s.traffic_rate / 1000f32;
             }
@@ -486,17 +480,10 @@ impl TrafficGen {
 
         // poisson mode
         // send with full capacity and then randomly drop in data plane to get geometric IAT distribution
-        if mode == GenerationMode::POISSON {
+        if mode == GenerationMode::Poisson {
             // send with full capacity
             let stream = active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?;
-            let encap_overhead = 20 + {
-                match stream.encapsulation {
-                    Encapsulation::None => {0}
-                    Encapsulation::VLAN => {4}
-                    Encapsulation::QinQ => {8}
-                    Encapsulation::MPLS => stream.number_of_lse as u32 * 4
-                }
-            };
+            let encap_overhead = 20 + calculate_overhead(stream);
 
             let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, 100f32, 25);
             active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.n_packets = Some(n_packets);
@@ -509,35 +496,35 @@ impl TrafficGen {
 
         for stream in &stream_settings {
             let out_port = port_mapping.get(&stream.port).unwrap().tx_recirculation;
-            stream_to_ports.entry(stream.stream_id).or_insert(HashSet::new()).insert(out_port);
+            stream_to_ports.entry(stream.stream_id).or_default().insert(out_port);
         }
 
         // delete and create simple multicast group for each stream
         for stream in &active_streams {
             let _ = delete_simple_multicast_group(switch, stream.app_id as u16).await;
-            let ports = stream_to_ports.get(&stream.stream_id).unwrap().clone().into_iter().collect();
+            let ports = stream_to_ports.get(&stream.stream_id).unwrap().clone().into_iter().collect::<Vec<_>>();
 
             create_simple_multicast_group(switch, stream.app_id as u16, &ports).await?;
         }
 
         let packet_bytes: Vec<StreamPacket> = active_streams.iter().map(|s| {
-            let packet = self.create_packet(s);
+            let packet = create_packet(s);
             StreamPacket { app_id: s.app_id, bytes: packet, buffer_offset: None, timer: s.timeout.unwrap(), n_packets: s.n_packets.unwrap() }
         }).collect();
 
         // configure egress table rules
         // we dont want to rewrite tx seq and timestamp of potential
         // other P4TG traffic when we are in analyze mode
-        if mode != GenerationMode::ANALYZE {
+        if mode != GenerationMode::Analyze {
             // write packet content to traffic gen table
             let packet_mapping: HashMap<u8, StreamPacket> = self.configure_traffic_gen_table(switch, packet_bytes.clone()).await?;
 
             // write forwarding entries for newly generated stream traffic
             self.configure_traffic_gen_forwarding_table(switch, &active_streams, mode).await?;
-            self.configure_egress_rules(switch, &port_mapping).await?;
+            self.configure_egress_rules(switch, port_mapping).await?;
 
             // configure packet header rewrite table rules
-            self.configure_packet_header_rewrite(switch, &active_streams, &stream_settings, &port_mapping).await?;
+            self.configure_packet_header_rewrite(switch, &active_streams, &stream_settings, port_mapping).await?;
             self.activate_traffic_gen_applications(switch, &packet_mapping).await?;
         }
         else {
@@ -552,7 +539,7 @@ impl TrafficGen {
     }
 
 
-    /// This method configures the forwarding rules in the case of [GenerationMode::ANALYZE].
+    /// This method configures the forwarding rules in the case of [GenerationMode::Analyze].
     /// It installs the rules for RX recirc -> TX recirc according to the `tx_rx_mapping`
     ///
     /// # Arguments
@@ -581,7 +568,7 @@ impl TrafficGen {
     }
 
     /// Configures the forwarding table for generated traffic.
-    /// For [GenerationMode::POISSON], it also calculates the drop probability.
+    /// For [GenerationMode::Poisson], it also calculates the drop probability.
     async fn configure_traffic_gen_forwarding_table(&self, switch: &SwitchConnection, streams: &Vec<Stream>, mode: GenerationMode) -> Result<(), RBFRTError> {
         // first clear table
         switch.clear_table(STREAM_FORWARD_TABLE).await?;
@@ -591,7 +578,7 @@ impl TrafficGen {
         let overall_traffic_rate: f32 = streams.iter().map(|x| x.traffic_rate).sum();
 
         // we generate on both pipes if the overall rate is larger than the threshold or if we do poisson traffic
-        let generation_ports = if overall_traffic_rate < TWO_PIPE_GENERATION_THRESHOLD && mode != GenerationMode::POISSON {
+        let generation_ports = if overall_traffic_rate < TWO_PIPE_GENERATION_THRESHOLD && mode != GenerationMode::Poisson {
             vec![TG_PIPE_PORTS[0]]
         }
         else {
@@ -602,18 +589,11 @@ impl TrafficGen {
             for port in &generation_ports {
                 let rand_value = {
                     // compute drop probability for poisson traffic
-                    if mode != GenerationMode::POISSON { // no poisson, dont drop
+                    if mode != GenerationMode::Poisson { // no poisson, dont drop
                         MatchValue::range(0, u16::MAX)
                     }
                     else {
-                        let addition = 20 + {
-                            match s.encapsulation {
-                                Encapsulation::None => {0}
-                                Encapsulation::VLAN => {4}
-                                Encapsulation::QinQ => {8}
-                                Encapsulation::MPLS => s.number_of_lse as u32 * 4
-                            }
-                        };
+                        let addition = 20 + calculate_overhead(s);
 
                         let const_iat = (s.frame_size + addition) as f32 / 100f32;
                         let target_iat = (s.frame_size + addition) as f32 / s.traffic_rate;
@@ -655,50 +635,85 @@ impl TrafficGen {
                 }
 
                 let port = port_mapping.get(&setting.port).ok_or(P4TGError::Error { message: String::from("Port in stream settings does not exist on device.")})?;
-                let src_mac = MacAddr::from_str(&setting.eth_src).map_err(|_| P4TGError::Error { message: String::from("Source mac in stream settings not valid.")})?;
-                let dst_mac = MacAddr::from_str(&setting.eth_dst).map_err(|_| P4TGError::Error { message: String::from("Destination mac in stream settings not valid.")})?;
+                let src_mac = MacAddr::from_str(&setting.ethernet.eth_src).map_err(|_| P4TGError::Error { message: String::from("Source mac in stream settings not valid.")})?;
+                let dst_mac = MacAddr::from_str(&setting.ethernet.eth_dst).map_err(|_| P4TGError::Error { message: String::from("Destination mac in stream settings not valid.")})?;
 
-                let req = Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
-                    .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                    .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                    .action("egress.header_replace.rewrite")
-                    .action_data("src_mac", src_mac.as_bytes().to_vec())
-                    .action_data("dst_mac", dst_mac.as_bytes().to_vec())
-                    .action_data("s_mask", setting.ip_src_mask)
-                    .action_data("d_mask", setting.ip_dst_mask)
-                    .action_data("s_ip", setting.ip_src)
-                    .action_data("d_ip", setting.ip_dst)
-                    .action_data("tos", setting.ip_tos);
+                let req = if s.vxlan { // we need to rewrite two Ethernet & IP headers
+                    // validation method in API makes sure that setting.vxlan exists if s.vxlan is set
+                    let vxlan = setting.vxlan.as_ref().unwrap();
+                    let outer_src_mac = MacAddr::from_str(&vxlan.eth_src).map_err(|_| P4TGError::Error { message: String::from("VxLAN source mac in stream settings not valid.")})?;
+                    let outer_dst_mac = MacAddr::from_str(&vxlan.eth_dst).map_err(|_| P4TGError::Error { message: String::from("VxLAN destination mac in stream settings not valid.")})?;
+
+                    Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action("egress.header_replace.rewrite_vxlan")
+                        .action_data("inner_src_mac", src_mac.as_bytes().to_vec())
+                        .action_data("inner_dst_mac", dst_mac.as_bytes().to_vec())
+                        .action_data("s_mask", setting.ip.ip_src_mask)
+                        .action_data("d_mask", setting.ip.ip_dst_mask)
+                        .action_data("inner_s_ip", setting.ip.ip_src)
+                        .action_data("inner_d_ip", setting.ip.ip_dst)
+                        .action_data("inner_tos", setting.ip.ip_tos)
+                        .action_data("outer_src_mac", outer_src_mac.as_bytes().to_vec())
+                        .action_data("outer_dst_mac", outer_dst_mac.as_bytes().to_vec())
+                        .action_data("outer_s_ip", vxlan.ip_src)
+                        .action_data("outer_d_ip", vxlan.ip_dst)
+                        .action_data("outer_tos", vxlan.ip_tos)
+                        .action_data("udp_source", vxlan.udp_source)
+                        .action_data("vni", vxlan.vni)
+                }
+                else {
+                    Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action("egress.header_replace.rewrite")
+                        .action_data("src_mac", src_mac.as_bytes().to_vec())
+                        .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                        .action_data("s_mask", setting.ip.ip_src_mask)
+                        .action_data("d_mask", setting.ip.ip_dst_mask)
+                        .action_data("s_ip", setting.ip.ip_src)
+                        .action_data("d_ip", setting.ip.ip_dst)
+                        .action_data("tos", setting.ip.ip_tos)
+                };
 
                 reqs.push(req);
 
                 if s.encapsulation == Encapsulation::QinQ {
+                    // we checked in validation that vlan exists
+                    let vlan = setting.vlan.clone().unwrap();
+
                     let req = Request::new(VLAN_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
                         .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
                         .action("egress.header_replace.rewrite_q_in_q")
-                        .action_data("outer_pcp", setting.pcp)
-                        .action_data("outer_dei", setting.dei)
-                        .action_data("outer_vlan_id", setting.vlan_id)
-                        .action_data("inner_pcp", setting.inner_pcp)
-                        .action_data("inner_dei", setting.inner_dei)
-                        .action_data("inner_vlan_id", setting.inner_vlan_id);
+                        .action_data("outer_pcp", vlan.pcp)
+                        .action_data("outer_dei", vlan.dei)
+                        .action_data("outer_vlan_id", vlan.vlan_id)
+                        .action_data("inner_pcp", vlan.inner_pcp)
+                        .action_data("inner_dei", vlan.inner_dei)
+                        .action_data("inner_vlan_id", vlan.inner_vlan_id);
 
                     reqs.push(req);
                 }
-                else if s.encapsulation == Encapsulation::VLAN {
+                else if s.encapsulation == Encapsulation::Vlan {
+                    // we checked in validation that vlan exists
+                    let vlan = setting.vlan.clone().unwrap();
+
                     let req = Request::new(VLAN_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
                         .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
                         .action("egress.header_replace.rewrite_vlan")
-                        .action_data("pcp", setting.pcp)
-                        .action_data("dei", setting.dei)
-                        .action_data("vlan_id", setting.vlan_id);
+                        .action_data("pcp", vlan.pcp)
+                        .action_data("dei", vlan.dei)
+                        .action_data("vlan_id", vlan.vlan_id);
 
                     reqs.push(req);
                 }
-                else if s.encapsulation == Encapsulation::MPLS {
-                    let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse, MAX_NUM_MPLS_LABEL));
+                else if s.encapsulation == Encapsulation::Mpls {
+                    // we checked that mpls stack exists
+                    let mpls_stack = setting.mpls_stack.as_ref().unwrap();
+                    let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
 
                     let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
@@ -706,8 +721,8 @@ impl TrafficGen {
                         .action(&action_name);
 
                     // build generic action data
-                    for j in 1..cmp::min(s.number_of_lse+1, MAX_NUM_MPLS_LABEL+1) {
-                        let lse = &setting.mpls_stack[(j-1) as usize];
+                    for j in 1..cmp::min(s.number_of_lse.unwrap()+1, MAX_NUM_MPLS_LABEL+1) {
+                        let lse = &mpls_stack[(j-1) as usize];
 
                         let label_param = format!("label{}", j);
                         let ttl_param = format!("ttl{}", j);
@@ -765,164 +780,6 @@ impl TrafficGen {
         switch.update_table_entries(requests).await?;
 
         Ok(app_to_offset)
-    }
-
-    /// Creates a packet with `frame_size` bytes and `encapsulation` (e.g., VLAN)
-    ///
-    /// `frame_size` is L2 size **WITHOUT** encapsulation and without preamble and IFG.
-    /// Therefore the remaining filler bytes take the encapsulation into account.
-    fn create_packet(&self, s: &Stream) -> Vec<u8> {
-        let frame_size = s.frame_size;
-        let encapsulation = s.encapsulation;
-        let app_id = s.app_id;
-        let number_of_lse = s.number_of_lse;
-
-        // this represents the P4TG header
-        // sequence number and tx_timestamp are initially zero and take 10 bytes
-        // last byte is app id
-        let mut payload = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, app_id].to_vec();
-
-
-        let packet = match encapsulation {
-            Encapsulation::None => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .ipv4([192, 168, 0, 0],
-                    [192, 168, 0, 0],
-                    64)
-                    .udp(P4TG_SOURCE_PORT,
-                    P4TG_DST_PORT);
-
-                let size = builder.size(payload.len());
-                let encap_overhead = 0;
-
-                // calculate how many remaining bytes need to be generated
-                // crc will be added by phy, therefore subtract 4 byte
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
-                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
-
-                payload.extend_from_slice(&padding);
-
-                let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
-
-                builder.write(&mut result, &payload).unwrap();
-
-                result
-            }
-            Encapsulation::VLAN => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .single_vlan(0)
-                    .ipv4([192, 168, 0, 0],
-                          [192, 168, 0, 0],
-                          64)
-                    .udp(P4TG_SOURCE_PORT,
-                         P4TG_DST_PORT);
-
-                let size = builder.size(payload.len());
-                let encap_overhead = 4;
-
-                // calculate how many remaining bytes need to be generated
-                // crc will be added by phy, therefore subtract 4 byte
-                // but also add 4 byte from overhead
-                // crc overhead cancels each other
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
-                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
-
-                payload.extend_from_slice(&padding);
-
-
-
-                let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
-
-                builder.write(&mut result, &payload).unwrap();
-
-                result
-            }
-            Encapsulation::QinQ => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .double_vlan(0, 0)
-                    .ipv4([192, 168, 0, 0],
-                          [192, 168, 0, 0],
-                          64)
-                    .udp(P4TG_SOURCE_PORT,
-                         P4TG_DST_PORT);
-
-                let size = builder.size(payload.len());
-                let encap_overhead = 8;
-
-                // calculate how many remaining bytes need to be generated
-                // crc will be added by phy, therefore subtract 4 byte
-                // but also add 8 bytes from overhead
-                // results in + 4
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
-                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
-
-                payload.extend_from_slice(&padding);
-
-                let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
-
-                builder.write(&mut result, &payload).unwrap();
-
-                result
-            }
-
-            
-            Encapsulation::MPLS => {
-                let pkt = etherparse::Ethernet2Header {
-                    source: [0, 0, 0, 0, 0, 0],
-                    destination: [0, 0, 0, 0, 0, 0],
-                    ether_type: 0x8847, // MPLS ether type
-                };
-
-                let mut result = Vec::<u8>::with_capacity((s.frame_size + s.number_of_lse as u32 * 4) as usize);
-    
-                pkt.write(&mut result).unwrap();
-
-                for lse_count in 1..number_of_lse + 1 {
-
-                    // Reuse the VLAN header as an MPLS LSE because both have 4 byte.
-                    // This indicates the bottom of the MPLS stack through the "ethertype" field in the VLAN header
-                    let ether_type = if lse_count == number_of_lse {256} else {0};
-
-                    let vlan_header = etherparse::SingleVlanHeader {
-                        priority_code_point: 0,
-                        drop_eligible_indicator: false,
-                        vlan_identifier: 0,
-                        ether_type,
-                    };
-
-                    vlan_header.write(&mut result).unwrap();
-
-                }
-    
-                // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
-                let ip_header  = etherparse::Ipv4Header::new((frame_size - 20 - 14 - 4) as u16, 64, 17, [0, 0, 0, 0], [0, 0, 0, 0]);
-                ip_header.write(&mut result).unwrap();
-
-                
-                let mut udp_header = etherparse::UdpHeader {
-                    source_port: P4TG_SOURCE_PORT,
-                    destination_port: P4TG_DST_PORT,
-                    // Subtract IP, Ethernet, CRC size 
-                    length: (frame_size - 20 - 14 - 4) as u16,
-                    checksum: 0,
-                };
-
-                // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = result.capacity() - result.len() - 8 - payload.len() -4;
-                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
-
-                payload.extend_from_slice(&padding);
-                udp_header.checksum = udp_header.calc_checksum_ipv4(&ip_header, &payload).unwrap();
-
-                udp_header.write(&mut result).unwrap();
-
-                result.extend_from_slice(&payload);
-    
-                result
-            }
-        };
-
-        packet
     }
 
     /// Clears various tables that are refilled during traffic gen setup

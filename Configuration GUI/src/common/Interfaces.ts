@@ -86,20 +86,35 @@ export interface StreamSettings {
     mpls_stack: MPLSHeader[],
     port: number,
     stream_id: number,
-    vlan_id: number,
-    pcp: number,
-    dei: number,
-    inner_vlan_id: number,
-    inner_pcp: number,
-    inner_dei: number,
-    eth_src: string,
-    eth_dst: string,
-    ip_src: string,
-    ip_dst: string,
-    ip_tos: number,
-    ip_src_mask: string,
-    ip_dst_mask: string,
+    vlan: {
+        vlan_id: number,
+        pcp: number,
+        dei: number,
+        inner_vlan_id: number,
+        inner_pcp: number,
+        inner_dei: number,
+    }
+    ethernet: {
+        eth_src: string,
+        eth_dst: string,
+    },
+    ip: {
+        ip_src: string,
+        ip_dst: string,
+        ip_tos: number,
+        ip_src_mask: string,
+        ip_dst_mask: string,
+    }
     active: boolean
+    vxlan: {
+        eth_src: string,
+        eth_dst: string,
+        ip_src: string,
+        ip_dst: string,
+        ip_tos: number,
+        udp_source: number,
+        vni: number
+    }
 }
 
 export enum Encapsulation {
@@ -120,6 +135,7 @@ export interface Stream {
     stream_id: number,
     frame_size: number,
     encapsulation: Encapsulation,
+    vxlan: boolean,
     number_of_lse: number,
     traffic_rate: number,
     app_id: number
@@ -143,7 +159,8 @@ export const DefaultStream = (id: number) => {
         encapsulation: Encapsulation.None,
         number_of_lse: 0,
         traffic_rate: 1,
-        burst: 1
+        burst: 1,
+        vxlan: false
     }
 
     return stream
@@ -153,22 +170,45 @@ export const DefaultStreamSettings = (id: number, port: number) => {
     let stream: StreamSettings = {
         port: port,
         stream_id: id,
-        vlan_id: 1,
-        pcp: 0,
-        dei: 0,
-        inner_vlan_id: 1,
-        inner_pcp: 0,
-        inner_dei: 0,
+        vlan: {
+            vlan_id: 1,
+            pcp: 0,
+            dei: 0,
+            inner_vlan_id: 1,
+            inner_pcp: 0,
+            inner_dei: 0
+        },
         mpls_stack: [],
-        eth_src: "3B:D5:42:2A:F6:92",
-        eth_dst: "81:E7:9D:E3:AD:47",
-        ip_src: "192.168.178.10",
-        ip_dst: "192.168.178.11",
-        ip_tos: 0,
-        ip_src_mask: "0.0.0.0",
-        ip_dst_mask: "0.0.0.0",
-        active: false
+        ethernet: {
+            eth_src: "32:D5:42:2A:F6:92",
+            eth_dst: "81:E7:9D:E3:AD:47"
+        },
+        ip: {
+            ip_src: "192.168.178.10",
+            ip_dst: "192.168.178.11",
+            ip_tos: 0,
+            ip_src_mask: "0.0.0.0",
+            ip_dst_mask: "0.0.0.0"
+        },
+        active: false,
+        vxlan: {
+            eth_src: "32:D5:42:2A:F6:92",
+            eth_dst: "81:E7:9D:E3:AD:47",
+            ip_src: "192.168.178.10",
+            ip_dst: "192.168.178.11",
+            ip_tos: 0,
+            udp_source: 49152,
+            vni: 1
+        }
     }
 
     return stream
+}
+
+export interface P4TGConfig {
+    tg_ports: {
+        port: number,
+        mac: string,
+        arp_reply: boolean
+    }[]
 }

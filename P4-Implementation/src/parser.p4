@@ -52,6 +52,7 @@ parser SwitchIngressParser(
     state start {
         ig_md.iat = 0;
         ig_md.rtt = 0;
+        ig_md.vxlan = 0;
         tofino_parser.apply(pkt, ig_intr_md);
         transition select(ig_intr_md.ingress_port) {
             68: parse_pkt_gen;
@@ -77,6 +78,7 @@ parser SwitchIngressParser(
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
             ETHERTYPE_MONITOR: parse_monitor;
+            ETHERTYPE_ARP: parse_arp;
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
@@ -85,26 +87,59 @@ parser SwitchIngressParser(
         }
     }
 
+    state parse_arp {
+        pkt.extract(hdr.arp);
+        transition accept;
+    }
+
     state parse_vlan {
         pkt.extract(hdr.vlan);
         transition select (hdr.vlan.ether_type) {
-            ETHERTYPE_IPV4: parse_ipv4;
+            ETHERTYPE_IPV4: parse_path;
             default: accept;
         }
     }
 
     state parse_q_in_q{
         pkt.extract(hdr.q_in_q);
-        transition parse_ipv4;
+        transition parse_path;
     }
 
     state parse_ipv4 {
-        pkt.extract(hdr.ipv4);
-        transition select(hdr.ipv4.protocol) {
-            IP_PROTOCOL_UDP: parse_path;
-            default: accept;
+        ipv4_udp_lookahead_t ip_udp = pkt.lookahead<ipv4_udp_lookahead_t>();
+
+        // check if we have a VxLAN packet
+        transition select(ip_udp.protocol, ip_udp.dst_port) {
+            (IP_PROTOCOL_UDP, UDP_P4TG_PORT): parse_path;
+            (IP_PROTOCOL_UDP, UDP_VxLAN_PORT): parse_vxlan;
+            default: parse_only_ipv4;
         }
     }
+
+    state parse_only_ipv4 {
+        pkt.extract(hdr.inner_ipv4);
+        transition accept;
+    }
+
+    state parse_vxlan {
+        pkt.extract(hdr.ipv4);
+        pkt.extract(hdr.udp);
+        pkt.extract(hdr.vxlan);
+        ig_md.vxlan = 1;
+        transition parse_inner_ethernet;
+    }
+
+    state parse_inner_ethernet {
+        pkt.extract(hdr.inner_ethernet);
+        transition select(hdr.inner_ethernet.ether_type) {
+                ETHERTYPE_VLANQ: parse_vlan;
+                ETHERTYPE_QinQ: parse_q_in_q;
+                ETHERTYPE_IPV4: parse_path;
+                ETHERTYPE_MPLS: parse_mpls;
+                default: accept;
+        }
+    }
+
 
     state parse_monitor {
         pkt.extract(hdr.monitor);
@@ -120,6 +155,7 @@ parser SwitchIngressParser(
     }
 
     state parse_path {
+        pkt.extract(hdr.inner_ipv4);
         pkt.extract(hdr.path);
         transition accept;
     }
@@ -128,7 +164,7 @@ parser SwitchIngressParser(
         pkt.extract(hdr.mpls_stack.next);
         transition select (hdr.mpls_stack.last.bos){
             0x0: parse_mpls;
-            0x1: parse_ipv4;
+            0x1: parse_path;
         }
     }
 
@@ -154,10 +190,15 @@ control SwitchIngressDeparser(
        }
 
         pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.arp);
+        pkt.emit(hdr.ipv4);
+        pkt.emit(hdr.udp);
+        pkt.emit(hdr.vxlan);
+        pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
-        pkt.emit(hdr.ipv4);
+        pkt.emit(hdr.inner_ipv4);
         pkt.emit(hdr.path);
         pkt.emit(hdr.monitor);
     }
@@ -175,9 +216,7 @@ parser SwitchEgressParser(
 
     TofinoEgressParser() tofino_parser;
 
-    #if __NO_UDP_CHECKSUM__ == 0
     Checksum() udp_checksum;
-    #endif
 
     state start {
         tofino_parser.apply(pkt, eg_intr_md);
@@ -195,35 +234,54 @@ parser SwitchEgressParser(
 
      state parse_vlan {
         pkt.extract(hdr.vlan);
-        transition parse_ipv4;
+        transition parse_path;
     }
 
     state parse_q_in_q {
         pkt.extract(hdr.q_in_q);
-        transition parse_ipv4;
+        transition parse_path;
     }
 
     state parse_mpls {
         pkt.extract(hdr.mpls_stack.next);
         transition select (hdr.mpls_stack.last.bos){
             0x0: parse_mpls;
-            0x1: parse_ipv4;
+            0x1: parse_path;
         }
     }
 
     state parse_ipv4 {
-        pkt.extract(hdr.ipv4);
-        
-        #if __NO_UDP_CHECKSUM__ == 0
-        udp_checksum.subtract({hdr.ipv4.src_addr});
-        udp_checksum.subtract({hdr.ipv4.dst_addr});
+        ipv4_udp_lookahead_t ip_udp = pkt.lookahead<ipv4_udp_lookahead_t>();
 
-        transition parse_path;
-        #else 
-        pkt.extract(hdr.path);
+        // check if we have a VxLAN packet
+        transition select(ip_udp.protocol, ip_udp.dst_port) {
+            (IP_PROTOCOL_UDP, UDP_P4TG_PORT): parse_path;
+            (IP_PROTOCOL_UDP, UDP_VxLAN_PORT): parse_vxlan;
+            default: parse_only_ipv4;
+        }
+    }
+
+    state parse_only_ipv4 {
+        pkt.extract(hdr.inner_ipv4);
         transition accept;
-        #endif
+    }
 
+    state parse_vxlan {
+        pkt.extract(hdr.ipv4);
+        pkt.extract(hdr.udp);
+        pkt.extract(hdr.vxlan);
+        transition parse_inner_ethernet;
+    }
+
+    state parse_inner_ethernet {
+        pkt.extract(hdr.inner_ethernet);
+        transition select(hdr.inner_ethernet.ether_type) {
+               ETHERTYPE_VLANQ: parse_vlan;
+               ETHERTYPE_QinQ: parse_q_in_q;
+               ETHERTYPE_IPV4: parse_path;
+               ETHERTYPE_MPLS: parse_mpls;
+               default: accept;
+           }
     }
 
     state parse_monitor {
@@ -231,18 +289,20 @@ parser SwitchEgressParser(
         transition accept;
     }
 
-
-
     state parse_path {
+        pkt.extract(hdr.inner_ipv4);
+
+        // subtract old checksum components
+        udp_checksum.subtract({hdr.inner_ipv4.src_addr});
+        udp_checksum.subtract({hdr.inner_ipv4.dst_addr});
+
         pkt.extract(hdr.path);
 
         // subtract old checksum components
-        #if __NO_UDP_CHECKSUM__ == 0
         udp_checksum.subtract({hdr.path.checksum});
         udp_checksum.subtract({hdr.path.tx_tstmp});
         udp_checksum.subtract({hdr.path.seq});
-        eg_md.checksum_udp_tmp = udp_checksum.get();
-        #endif
+        udp_checksum.subtract_all_and_deposit(eg_md.checksum_udp_tmp);
 
         transition accept;
     }
@@ -259,9 +319,7 @@ control SwitchEgressDeparser(
 
     Checksum() ipv4_checksum;
 
-    #if __NO_UDP_CHECKSUM__ == 0
     Checksum() udp_checksum;
-    #endif
 
     apply {
 
@@ -278,22 +336,37 @@ control SwitchEgressDeparser(
              hdr.ipv4.src_addr,
              hdr.ipv4.dst_addr});
 
+        hdr.inner_ipv4.hdr_checksum = ipv4_checksum.update(
+                    {hdr.inner_ipv4.version,
+                     hdr.inner_ipv4.ihl,
+                     hdr.inner_ipv4.diffserv,
+                     hdr.inner_ipv4.total_len,
+                     hdr.inner_ipv4.identification,
+                     hdr.inner_ipv4.flags,
+                     hdr.inner_ipv4.frag_offset,
+                     hdr.inner_ipv4.ttl,
+                     hdr.inner_ipv4.protocol,
+                     hdr.inner_ipv4.src_addr,
+                     hdr.inner_ipv4.dst_addr});
+
         // compute new udp checksum
-        #if __NO_UDP_CHECKSUM__ == 0
         hdr.path.checksum = udp_checksum.update(data = {
-                hdr.ipv4.src_addr,
-                hdr.ipv4.dst_addr,
+                eg_md.ipv4_src,
+                eg_md.ipv4_dst,
                 hdr.path.tx_tstmp,
                 hdr.path.seq,
                 eg_md.checksum_udp_tmp
             }, zeros_as_ones = true);
-        #endif
 
         pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.ipv4);
+        pkt.emit(hdr.udp);
+        pkt.emit(hdr.vxlan);
+        pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
-        pkt.emit(hdr.ipv4);
+        pkt.emit(hdr.inner_ipv4);
         pkt.emit(hdr.path);
         pkt.emit(hdr.monitor);
 

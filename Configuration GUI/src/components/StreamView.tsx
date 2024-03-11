@@ -74,11 +74,6 @@ const StreamView = ({stats, port_mapping, stream_id, frame_size}: {
                         <td>{formatBits(rx_rate_l2)}</td>
                         <td>{frame_size} B</td>
                         <td>{tx_rate_l2 > 0 && (1 - rx_rate_l2 / tx_rate_l2) > 0 ? (100 * (1 - rx_rate_l2 / tx_rate_l2)).toFixed(2) : "0.00"}%</td>
-                        {/*<td>{formatBits(tx_rate * (stream.frame_size + 20)/stream.frame_size)}</td>*/}
-                        {/*<td>{formatBits(rx_rate * (stream.frame_size + 20)/stream.frame_size)}</td>*/}
-                        {/*<td>{formatBits(tx_rate)}</td>*/}
-                        {/*<td>{formatBits(rx_rate)}</td>*/}
-                        {/*<td>{tx_rate > 0  && (1 - rx_rate / tx_rate) > 0 ? (100 * (1 - rx_rate / tx_rate)).toFixed(2) : "0.00"}%</td>*/}
                     </tr>
                     </tbody>
                 </Table>

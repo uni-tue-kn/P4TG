@@ -26,6 +26,8 @@ mod tables;
 mod helper;
 mod reset;
 mod restart;
+
+mod config;
 mod docs;
 
 pub use online::online;
@@ -33,8 +35,8 @@ pub use statistics::statistics;
 pub use traffic_gen::traffic_gen;
 pub use traffic_gen::configure_traffic_gen;
 pub use traffic_gen::stop_traffic_gen;
-pub use traffic_gen::{Stream, StreamSetting};
 pub use ports::ports;
 pub use ports::add_port;
 pub use reset::reset;
 pub use restart::restart;
+pub use config::config;

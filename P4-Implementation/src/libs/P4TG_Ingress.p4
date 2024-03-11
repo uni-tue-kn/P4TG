@@ -159,17 +159,16 @@ control P4TG_Ingress (
         }
 
         // monitor frame types
-        frame_type.apply(hdr, ig_intr_md);
+        frame_type.apply(hdr, ig_md, ig_intr_md);
 
         // random value used for poisson traffic
         ig_md.rand_value = rand.get();
 
         ig_md.ig_port = ig_intr_md.ingress_port;
 
-
         bit<64> dummy = 0;
 
-        if(hdr.path.isValid() && hdr.path.dst_port == 50083) { // this is P4TG traffic
+        if(hdr.path.isValid() && hdr.path.dst_port == UDP_P4TG_PORT) { // this is P4TG traffic
                                                                // identified through the dst port in the UDP frame
             if(is_ingress.apply().hit) {
 

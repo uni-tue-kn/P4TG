@@ -22,6 +22,7 @@ Monitors the frame types (multicast, unicast, broadcast) using a DirectCounter
 */
 control Frame_Type_Monitor(
     inout header_t hdr,
+    inout ingress_metadata_t ig_md,
     in ingress_intrinsic_metadata_t ig_intr_md) {
 
     DirectCounter<bit<64>>(CounterType_t.PACKETS_AND_BYTES) frame_type_counter;
@@ -40,15 +41,21 @@ control Frame_Type_Monitor(
         frame_type_counter.count();
     }
 
+    action vxlan() {
+        frame_type_counter.count();
+    }
+
     table frame_type_monitor {
         key = {
-            hdr.ipv4.dst_addr: lpm;
+            hdr.inner_ipv4.dst_addr: lpm;
             ig_intr_md.ingress_port: exact;
+            ig_md.vxlan: exact;
         }
         actions = {
             unicast;
             multicast;
             broadcast;
+            vxlan;
         }
         default_action = unicast;
         counters = frame_type_counter;
@@ -65,6 +72,10 @@ control Frame_Type_Monitor(
 
     action q_in_q() {
         ethernet_type_counter.count();
+    }
+
+    action arp() {
+         ethernet_type_counter.count();
     }
 
     action ipv4() {
@@ -89,6 +100,7 @@ control Frame_Type_Monitor(
             vlan;
             q_in_q;
             ipv4;
+            arp;
             ipv6;
             unknown;
         }
@@ -98,7 +110,7 @@ control Frame_Type_Monitor(
     }
 
     apply {
-        if(hdr.ipv4.isValid()) {
+        if(hdr.inner_ipv4.isValid()) {
             frame_type_monitor.apply();
         }
 

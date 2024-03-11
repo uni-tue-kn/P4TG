@@ -1,84 +1,1541 @@
-use std::collections::{HashMap};
-use aide::transform::TransformOperation;
-use crate::api::docs::extractor::Json;
-use crate::api::statistics::Statistics;
-use crate::core::statistics::{IATStatistics, IATValues, RangeCount, RangeCountValue, RTTStatistics, TypeCount};
+use lazy_static::lazy_static;
+use serde_json::json;
 
-pub fn get_statistics(op: TransformOperation) -> TransformOperation {
-    op.description("The GET /statistics endpoint is used to query the current statistics of the traffic generator.")
-        .summary("/statistics")
-        .tag("Statistics")
-        .response_with::<200, Json<Statistics>, _>(|res| {
-            res.example(Statistics {
-                sample_mode: false,
-                frame_size: HashMap::from([(52, RangeCount {
-                    tx: vec![
-                        RangeCountValue {
-                            low: 0,
-                            high: 63,
-                            packets: 0,
-                        },
-                        RangeCountValue {
-                            low: 64,
-                            high: 64,
-                            packets: 20,
-                        },
-                        RangeCountValue {
-                            low: 65,
-                            high: 127,
-                            packets: 200,
-                        }],
-                    rx: vec![
-                        RangeCountValue {
-                            low: 0,
-                            high: 63,
-                            packets: 0,
-                        },
-                        RangeCountValue {
-                            low: 64,
-                            high: 64,
-                            packets: 20,
-                        },
-                        RangeCountValue {
-                            low: 65,
-                            high: 127,
-                            packets: 200,
-                        }],
-                })]),
-                tx_rate_l1: HashMap::from([(152, 98921071153.39397), (184, 0.0)]),
-                tx_rate_l2: HashMap::from([(152, 94848020788.1936), (184, 0.0)]),
-                rx_rate_l1: HashMap::from([(152, 98921071153.39397), (184, 0.0)]),
-                rx_rate_l2: HashMap::from([(152, 94848020788.1936), (184, 0.0)]),
-                app_tx_l2: HashMap::from([(152, HashMap::from([(1, 94848020788.1936), (2, 0.0), (3, 0.0)]))]),
-                app_rx_l2: HashMap::from([(152, HashMap::from([(1, 94848020788.1936), (2, 0.0), (3, 0.0)]))]),
-                frame_type_data: HashMap::from([(184, TypeCount {
-                    tx: HashMap::from([("ipv6".to_owned(), 0), ("ipv4".to_owned(), 100), ("unicast".to_owned(), 100), ("multicast".to_owned(), 0), ("qinq".to_owned(), 0), ("vlan".to_owned(), 0), ("unknown".to_owned(), 0)]),
-                    rx: HashMap::from([("ipv6".to_owned(), 0), ("ipv4".to_owned(), 100), ("unicast".to_owned(), 100), ("multicast".to_owned(), 0), ("qinq".to_owned(), 0), ("vlan".to_owned(), 0), ("unknown".to_owned(), 0)])
-                })]),
-                iats: HashMap::from([(152, IATStatistics{
-                    tx: IATValues {
-                        mean: 8.5,
-                        std: None,
-                        mae: 1.1,
-                        n: 1,
-                    },
-                    rx: IATValues {
-                        mean: 8.5,
-                        std: None,
-                        mae: 1.1,
-                        n: 1,
-                    } })]),
-                rtts: HashMap::from([(152, RTTStatistics{
-                    mean: 1134.09,
-                    min: 1112,
-                    max: 1159,
-                    current: 1133,
-                    jitter: 17.64,
-                    n: 50,
-                })]),
-                packet_loss: HashMap::from([(152, 5), (184, 0)]),
-                out_of_order: HashMap::from([(152, 0), (184, 0)]),
-                elapsed_time: 50,
-            }).description("Statistics successfully fetched.")
-        })
-}
+lazy_static!(
+    pub static ref EXAMPLE_GET_1: String = json!({
+    "sample_mode": false,
+    "frame_size": {
+        "144": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "160": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "152": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "128": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 1763654244
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "60": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "184": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "168": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "176": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "136": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 1763654244
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        },
+        "52": {
+            "tx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ],
+            "rx": [
+                {
+                    "low": 0,
+                    "high": 63,
+                    "packets": 0
+                },
+                {
+                    "low": 64,
+                    "high": 64,
+                    "packets": 0
+                },
+                {
+                    "low": 65,
+                    "high": 127,
+                    "packets": 0
+                },
+                {
+                    "low": 128,
+                    "high": 255,
+                    "packets": 0
+                },
+                {
+                    "low": 256,
+                    "high": 511,
+                    "packets": 0
+                },
+                {
+                    "low": 512,
+                    "high": 1023,
+                    "packets": 0
+                },
+                {
+                    "low": 1024,
+                    "high": 1518,
+                    "packets": 0
+                },
+                {
+                    "low": 1519,
+                    "high": 21519,
+                    "packets": 0
+                }
+            ]
+        }
+    },
+    "tx_rate_l1": {
+        "152": 0.0,
+        "128": 0.0,
+        "52": 0.0,
+        "144": 0.0,
+        "184": 0.0,
+        "136": 0.0,
+        "168": 0.0,
+        "176": 0.0,
+        "160": 0.0,
+        "60": 0.0
+    },
+    "tx_rate_l2": {
+        "160": 0.0,
+        "176": 0.0,
+        "152": 0.0,
+        "52": 0.0,
+        "184": 0.0,
+        "128": 0.0,
+        "168": 0.0,
+        "60": 0.0,
+        "136": 0.0,
+        "144": 0.0
+    },
+    "rx_rate_l1": {
+        "52": 0.0,
+        "152": 0.0,
+        "136": 0.0,
+        "144": 0.0,
+        "160": 0.0,
+        "184": 0.0,
+        "168": 0.0,
+        "60": 0.0,
+        "128": 0.0,
+        "176": 0.0
+    },
+    "rx_rate_l2": {
+        "152": 0.0,
+        "176": 0.0,
+        "144": 0.0,
+        "168": 0.0,
+        "52": 0.0,
+        "136": 0.0,
+        "60": 0.0,
+        "184": 0.0,
+        "128": 0.0,
+        "160": 0.0
+    },
+    "app_tx_l2": {
+        "152": {
+            "6": 0.0,
+            "2": 0.0,
+            "5": 0.0,
+            "3": 0.0,
+            "1": 0.0,
+            "7": 0.0,
+            "4": 0.0
+        },
+        "176": {
+            "1": 0.0,
+            "3": 0.0,
+            "6": 0.0,
+            "5": 0.0,
+            "7": 0.0,
+            "2": 0.0,
+            "4": 0.0
+        },
+        "52": {
+            "1": 0.0,
+            "6": 0.0,
+            "7": 0.0,
+            "4": 0.0,
+            "2": 0.0,
+            "5": 0.0,
+            "3": 0.0
+        },
+        "144": {
+            "6": 0.0,
+            "2": 0.0,
+            "7": 0.0,
+            "4": 0.0,
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+        },
+        "160": {
+            "1": 0.0,
+            "4": 0.0,
+            "3": 0.0,
+            "7": 0.0,
+            "5": 0.0,
+            "6": 0.0,
+            "2": 0.0
+        },
+        "136": {
+            "3": 0.0,
+            "5": 0.0,
+            "7": 0.0,
+            "1": 0.0,
+            "4": 0.0,
+            "2": 0.0,
+            "6": 0.0
+        },
+        "128": {
+            "7": 0.0,
+            "1": 0.0,
+            "6": 0.0,
+            "5": 0.0,
+            "3": 0.0,
+            "4": 0.0,
+            "2": 0.0
+        },
+        "60": {
+            "5": 0.0,
+            "3": 0.0,
+            "7": 0.0,
+            "1": 0.0,
+            "2": 0.0,
+            "6": 0.0,
+            "4": 0.0
+        },
+        "168": {
+            "2": 0.0,
+            "1": 0.0,
+            "7": 0.0,
+            "3": 0.0,
+            "4": 0.0,
+            "6": 0.0,
+            "5": 0.0
+        },
+        "184": {
+            "2": 0.0,
+            "7": 0.0,
+            "6": 0.0,
+            "1": 0.0,
+            "4": 0.0,
+            "5": 0.0,
+            "3": 0.0
+        }
+    },
+    "app_rx_l2": {
+        "60": {
+            "5": 0.0,
+            "3": 0.0,
+            "7": 0.0,
+            "2": 0.0,
+            "1": 0.0,
+            "4": 0.0,
+            "6": 0.0
+        },
+        "176": {
+            "1": 0.0,
+            "4": 0.0,
+            "6": 0.0,
+            "7": 0.0,
+            "2": 0.0,
+            "5": 0.0,
+            "3": 0.0
+        },
+        "184": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "7": 0.0,
+            "6": 0.0,
+            "4": 0.0,
+            "2": 0.0
+        },
+        "168": {
+            "1": 0.0,
+            "5": 0.0,
+            "6": 0.0,
+            "2": 0.0,
+            "4": 0.0,
+            "3": 0.0,
+            "7": 0.0
+        },
+        "128": {
+            "1": 0.0,
+            "7": 0.0,
+            "5": 0.0,
+            "6": 0.0,
+            "3": 0.0,
+            "4": 0.0,
+            "2": 0.0
+        },
+        "160": {
+            "1": 0.0,
+            "6": 0.0,
+            "3": 0.0,
+            "4": 0.0,
+            "7": 0.0,
+            "2": 0.0,
+            "5": 0.0
+        },
+        "152": {
+            "5": 0.0,
+            "3": 0.0,
+            "4": 0.0,
+            "1": 0.0,
+            "6": 0.0,
+            "7": 0.0,
+            "2": 0.0
+        },
+        "144": {
+            "7": 0.0,
+            "2": 0.0,
+            "5": 0.0,
+            "4": 0.0,
+            "1": 0.0,
+            "3": 0.0,
+            "6": 0.0
+        },
+        "52": {
+            "7": 0.0,
+            "4": 0.0,
+            "3": 0.0,
+            "1": 0.0,
+            "2": 0.0,
+            "5": 0.0,
+            "6": 0.0
+        },
+        "136": {
+            "4": 0.0,
+            "6": 0.0,
+            "5": 0.0,
+            "1": 0.0,
+            "2": 0.0,
+            "3": 0.0,
+            "7": 0.0
+        }
+    },
+    "frame_type_data": {
+        "152": {
+            "tx": {
+                "vlan": 0,
+                "unknown": 0,
+                "ipv4": 0,
+                "multicast": 0,
+                "unicast": 0,
+                "mpls": 0,
+                "vxlan": 0,
+                "ipv6": 0,
+                "qinq": 0,
+                "arp": 0
+            },
+            "rx": {
+                "qinq": 0,
+                "vxlan": 0,
+                "arp": 0,
+                "ipv4": 0,
+                "mpls": 0,
+                "vlan": 0,
+                "unknown": 0,
+                "multicast": 0,
+                "ipv6": 0,
+                "unicast": 0
+            }
+        },
+        "60": {
+            "tx": {
+                "vxlan": 0,
+                "vlan": 0,
+                "multicast": 0,
+                "arp": 0,
+                "unicast": 0,
+                "ipv4": 0,
+                "qinq": 0,
+                "mpls": 0,
+                "unknown": 0,
+                "ipv6": 0
+            },
+            "rx": {
+                "unknown": 0,
+                "multicast": 0,
+                "arp": 0,
+                "unicast": 0,
+                "ipv4": 0,
+                "vxlan": 0,
+                "vlan": 0,
+                "ipv6": 0,
+                "qinq": 0,
+                "mpls": 0
+            }
+        },
+        "184": {
+            "tx": {
+                "qinq": 0,
+                "ipv6": 0,
+                "arp": 0,
+                "mpls": 0,
+                "multicast": 0,
+                "ipv4": 0,
+                "unknown": 0,
+                "vxlan": 0,
+                "vlan": 0,
+                "unicast": 0
+            },
+            "rx": {
+                "qinq": 0,
+                "mpls": 0,
+                "arp": 0,
+                "vxlan": 0,
+                "unicast": 0,
+                "vlan": 0,
+                "multicast": 0,
+                "ipv6": 0,
+                "unknown": 0,
+                "ipv4": 0
+            }
+        },
+        "52": {
+            "tx": {
+                "mpls": 0,
+                "ipv4": 0,
+                "qinq": 0,
+                "unknown": 0,
+                "vlan": 0,
+                "ipv6": 0,
+                "multicast": 0,
+                "unicast": 0,
+                "arp": 0,
+                "vxlan": 0
+            },
+            "rx": {
+                "qinq": 0,
+                "ipv4": 0,
+                "vlan": 0,
+                "arp": 0,
+                "multicast": 0,
+                "unknown": 0,
+                "vxlan": 0,
+                "ipv6": 0,
+                "unicast": 0,
+                "mpls": 0
+            }
+        },
+        "168": {
+            "tx": {
+                "arp": 0,
+                "vxlan": 0,
+                "ipv4": 0,
+                "qinq": 0,
+                "mpls": 0,
+                "unknown": 0,
+                "multicast": 0,
+                "ipv6": 0,
+                "unicast": 0,
+                "vlan": 0
+            },
+            "rx": {
+                "arp": 0,
+                "mpls": 0,
+                "multicast": 0,
+                "vlan": 0,
+                "vxlan": 0,
+                "unicast": 0,
+                "unknown": 0,
+                "ipv6": 0,
+                "ipv4": 0,
+                "qinq": 0
+            }
+        },
+        "144": {
+            "tx": {
+                "vxlan": 0,
+                "ipv4": 0,
+                "vlan": 0,
+                "mpls": 0,
+                "unicast": 0,
+                "arp": 0,
+                "unknown": 0,
+                "ipv6": 0,
+                "qinq": 0,
+                "multicast": 0
+            },
+            "rx": {
+                "mpls": 0,
+                "ipv4": 0,
+                "vlan": 0,
+                "multicast": 0,
+                "ipv6": 0,
+                "vxlan": 0,
+                "unicast": 0,
+                "arp": 0,
+                "qinq": 0,
+                "unknown": 0
+            }
+        },
+        "128": {
+            "tx": {
+                "arp": 0,
+                "mpls": 0,
+                "unknown": 0,
+                "multicast": 0,
+                "ipv4": 1763654244,
+                "unicast": 0,
+                "vlan": 0,
+                "ipv6": 0,
+                "qinq": 0,
+                "vxlan": 1763654244
+            },
+            "rx": {
+                "ipv6": 0,
+                "mpls": 0,
+                "ipv4": 0,
+                "vlan": 0,
+                "unicast": 0,
+                "arp": 0,
+                "qinq": 0,
+                "vxlan": 0,
+                "multicast": 0,
+                "unknown": 0
+            }
+        },
+        "176": {
+            "tx": {
+                "mpls": 0,
+                "vlan": 0,
+                "ipv6": 0,
+                "vxlan": 0,
+                "arp": 0,
+                "multicast": 0,
+                "ipv4": 0,
+                "qinq": 0,
+                "unknown": 0,
+                "unicast": 0
+            },
+            "rx": {
+                "ipv4": 0,
+                "mpls": 0,
+                "multicast": 0,
+                "vxlan": 0,
+                "arp": 0,
+                "ipv6": 0,
+                "unknown": 0,
+                "qinq": 0,
+                "unicast": 0,
+                "vlan": 0
+            }
+        },
+        "160": {
+            "tx": {
+                "ipv4": 0,
+                "vlan": 0,
+                "arp": 0,
+                "unknown": 0,
+                "multicast": 0,
+                "ipv6": 0,
+                "vxlan": 0,
+                "unicast": 0,
+                "mpls": 0,
+                "qinq": 0
+            },
+            "rx": {
+                "ipv4": 0,
+                "qinq": 0,
+                "vxlan": 0,
+                "ipv6": 0,
+                "arp": 0,
+                "multicast": 0,
+                "vlan": 0,
+                "unicast": 0,
+                "unknown": 0,
+                "mpls": 0
+            }
+        },
+        "136": {
+            "tx": {
+                "unknown": 0,
+                "vlan": 0,
+                "multicast": 0,
+                "arp": 0,
+                "qinq": 0,
+                "vxlan": 0,
+                "ipv4": 0,
+                "ipv6": 0,
+                "mpls": 0,
+                "unicast": 0
+            },
+            "rx": {
+                "vxlan": 1763654244,
+                "ipv6": 0,
+                "arp": 0,
+                "mpls": 0,
+                "unknown": 0,
+                "vlan": 0,
+                "qinq": 0,
+                "ipv4": 1763654244,
+                "unicast": 0,
+                "multicast": 0
+            }
+        }
+    },
+    "iats": {
+        "128": {
+            "tx": {
+                "mean": 10.758202,
+                "std": null,
+                "mae": 1.0767169,
+                "n": 166744604
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        },
+        "60": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        },
+        "52": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        },
+        "184": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        },
+        "160": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        },
+        "144": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        },
+        "168": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        },
+        "136": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 10.758202,
+                "std": null,
+                "mae": 1.0738868,
+                "n": 166744605
+            }
+        },
+        "152": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        },
+        "176": {
+            "tx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            },
+            "rx": {
+                "mean": 0.0,
+                "std": null,
+                "mae": 0.0,
+                "n": 1
+            }
+        }
+    },
+    "rtts": {
+        "136": {
+            "mean": 1040.6738382099827,
+            "min": 1020,
+            "max": 1060,
+            "current": 1040,
+            "jitter": 5.407541284205046,
+            "n": 1162
+        }
+    },
+    "packet_loss": {
+        "60": 0,
+        "52": 0,
+        "144": 0,
+        "128": 0,
+        "184": 0,
+        "152": 0,
+        "160": 0,
+        "168": 0,
+        "136": 0,
+        "176": 0
+    },
+    "out_of_order": {
+        "144": 0,
+        "184": 0,
+        "160": 0,
+        "136": 0,
+        "168": 0,
+        "128": 0,
+        "152": 0,
+        "52": 0,
+        "176": 0,
+        "60": 0
+    },
+    "elapsed_time": 0
+}).to_string();
+);

@@ -34,16 +34,13 @@ import {
 } from '../common/Interfaces'
 import styled from "styled-components";
 import StreamView from "../components/StreamView";
-
-const StyledRow = styled(Row)`
+styled(Row)`
     display: flex;
     align-items: center;
-`
-
-const StyledCol = styled(Col)`
+`;
+styled(Col)`
     padding-left: 0;
-`
-
+`;
 const StyledLink = styled.a`
     color: var(--color-secondary);
     text-decoration: none;
@@ -140,6 +137,10 @@ const Home = () => {
                 }
                 else if (v.encapsulation == Encapsulation.MPLS) {
                     ret += v.number_of_lse * 4 // 4 bytes per LSE
+                }
+
+                if (v.vxlan) {
+                    ret += 50 // 50 bytes overhead
                 }
 
                 return

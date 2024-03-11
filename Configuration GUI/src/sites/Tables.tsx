@@ -21,6 +21,7 @@ import React, {useEffect, useState} from 'react'
 import {get} from "../common/API";
 import Loader from "../components/Loader";
 import {Button, Tab, Table, Tabs} from "react-bootstrap";
+import {GitHub} from "./Home";
 
 
 interface TableViewProps {
@@ -134,6 +135,9 @@ const Tables = () => {
             }
         </Tabs>
         <Button onClick={refresh} className={"mt-3"}><i className="bi bi-arrow-clockwise"/> Refresh</Button>
+
+        <GitHub/>
+
     </Loader>
 }
 

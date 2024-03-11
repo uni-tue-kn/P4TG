@@ -17,35 +17,86 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::net::SocketAddr;
 use std::sync::{Arc};
 use std::env;
 
-use aide::{
-    axum::ApiRouter,
-    openapi::OpenApi,
-    transform::TransformOpenApi,
-};
-use aide::axum::routing::{delete_with, get_with, post_with};
 use log::{info, warn};
 use serde::Serialize;
-use axum::{routing::get, Extension, Json};
+use axum::{routing::get, Json, Router};
 use axum::http::Method;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 
+use utoipa::{openapi::security::{ApiKey, ApiKeyValue, SecurityScheme}, Modify, OpenApi};
+use utoipa_swagger_ui::SwaggerUi;
+
 use tower_http::cors::{Any, CorsLayer};
-use crate::api::{configure_traffic_gen, online, ports, reset, statistics, stop_traffic_gen, traffic_gen, restart, add_port};
-use crate::api::docs::doc_route;
-use crate::api::docs::online::get_online;
-use crate::api::docs::reset::get_reset;
-use crate::api::docs::restart::get_restart;
-use crate::api::docs::statistics::{get_statistics};
-use crate::api::docs::traffic_gen::{delete_traffic_gen, get_traffic_gen, post_traffic_gen};
+use crate::api::{configure_traffic_gen, online, ports, reset, statistics, stop_traffic_gen, traffic_gen, restart, add_port, config};
+
+
 use crate::api::helper::serve_static_files::{serve_index, static_path};
+use crate::api::ports::arp_reply;
 use crate::api::statistics::time_statistics;
 use crate::api::tables::tables;
 use crate::AppState;
+use crate::api::tables;
+
+use crate::core::traffic_gen_core::types::*;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        traffic_gen::traffic_gen,
+        traffic_gen::configure_traffic_gen,
+        traffic_gen::stop_traffic_gen,
+        tables::tables,
+        statistics::statistics,
+        restart::restart,
+        reset::reset,
+        ports::ports
+    ),
+    components(
+        schemas(TrafficGenData,
+        GenerationMode,
+        Encapsulation,
+        StreamSetting,
+        Stream,
+        EmptyResponse,
+        Reset,
+        Ethernet,
+        IPv4,
+        Vlan,
+        VxLAN,
+        MPLSHeader,
+        tables::TableDescriptor,
+        statistics::Statistics,
+        crate::core::statistics::RangeCount,
+        crate::core::statistics::RangeCountValue,
+        crate::core::statistics::TypeCount,
+        crate::core::statistics::IATStatistics,
+        crate::core::statistics::RTTStatistics,
+        crate::core::statistics::IATValues
+        )
+    ),
+    modifiers(&SecurityAddon),
+    tags(
+        (name = "P4TG REST-API", description = "Documentation of the REST-API of P4TG.")
+    )
+)]
+struct ApiDoc;
+
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "api_key",
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("todo_apikey"))),
+            )
+        }
+    }
+}
 
 
 #[derive(Serialize)]
@@ -54,9 +105,9 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new(message: String) -> Error {
-        warn!("Error from REST API: {}", message);
-        Error { message }
+    pub fn new<T: Into<String> + AsRef<str>>(message: T)-> Error {
+        warn!("Error from REST API: {}", message.as_ref());
+        Error { message: message.into() }
     }
 }
 
@@ -68,8 +119,6 @@ impl IntoResponse for Error {
 
 
 pub async fn start_api_server(state: Arc<AppState>) {
-    aide::gen::extract_schemas(true);
-    let mut api = OpenApi::default();
 
     let port = env::var("P4TG_PORT").unwrap_or("8000".to_owned()).parse().unwrap_or(8000);
 
@@ -80,27 +129,26 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .allow_origin(Any)
         .allow_headers(Any);
 
+
     // Router for the REST API
-    let api_router = ApiRouter::new()
-        .api_route("/online", get_with(online, get_online))
-        .api_route("/statistics", get_with(statistics, get_statistics))
+    let api_router = Router::new()
+        .route("/online", get(online))
+        .route("/statistics", get(statistics))
         .route("/time_statistics", get(time_statistics))
-        .api_route("/trafficgen", get_with(traffic_gen, get_traffic_gen))
-        .api_route("/trafficgen", post_with(configure_traffic_gen, post_traffic_gen))
-        .api_route("/trafficgen", delete_with(stop_traffic_gen, delete_traffic_gen))
-        .api_route("/reset", get_with(reset, get_reset))
-        .api_route("/restart", get_with(restart, get_restart))
+        .route("/trafficgen", get(traffic_gen).post(configure_traffic_gen).delete(stop_traffic_gen))
+        .route("/reset", get(reset))
+        .route("/restart", get(restart))
         .route("/ports", get(ports))
         .route("/ports", post(add_port))
+        .route("/ports/arp", post(arp_reply))
         .route("/tables", get(tables))
-        .nest_api_service("/docs", doc_route::docs_routes())
+        .route("/config", get(config))
         .layer(cors)
-        .finish_api_with(&mut api, api_docs)
-        .layer(Extension(Arc::new(api)))
         .with_state(Arc::clone(&state));
 
     // Router for the static configuration gui
-    let app = ApiRouter::new()
+    let app = Router::new()
+        .merge(SwaggerUi::new("/api/docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .nest_service("/api", api_router)
         .route("/", get(serve_index)) // create react routing endpoints
         .route("/home", get(serve_index))
@@ -112,21 +160,13 @@ pub async fn start_api_server(state: Arc<AppState>) {
 
     info!("Starting rest api server on port {}.", port);
 
-    let addr = SocketAddr::from(([0,0,0,0], port));
 
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+        .await.unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{}", port));
 
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
-fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
-    api.title("P4TG Rest API documentation")
-        .summary("Documentation for the rest api of P4TG.")
-        .description("This documentation covers the REST API of the P4TG controller. \
-                       The REST API offers endpoint to configure the traffic generator.")
-}
 
 
 

@@ -25,6 +25,8 @@ use axum::response::{Json, IntoResponse, Response};
 use rbfrt::table;
 use rbfrt::table::{MatchValue, TableEntry, ToBytes};
 use serde::{Serialize, Serializer};
+use utoipa::ToSchema;
+use crate::api::docs;
 use crate::api::server::Error;
 use crate::AppState;
 
@@ -39,13 +41,13 @@ fn ordered_map<S, K: Ord + Serialize, V: Serialize>(
     ordered.serialize(serializer)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct Tables {
     #[serde(serialize_with = "ordered_map")]
     tables: HashMap<String, Vec<TableDescriptor>>
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct TableDescriptor {
     #[serde(serialize_with = "ordered_map")]
     key: HashMap<String, Value>,
@@ -58,12 +60,24 @@ pub struct Value {
     value: String
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/tables",
+    responses(
+    (status = 200,
+    description = "Returns the content of various P4 tables.",
+    body = HashMap<String, Vec<TableDescriptor>>,
+    example = json!(*docs::tables::EXAMPLE_GET_1)
+))
+)]
+/// Returns the content of the P4 tables
 pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
     let table_names = ["ingress.p4tg.monitor_forward",
         "ingress.p4tg.forward",
         "ingress.p4tg.frame_type.frame_type_monitor",
         "ingress.p4tg.frame_type.ethernet_type_monitor",
         "ingress.p4tg.tg_forward",
+        "ingress.arp.arp_reply",
         "egress.frame_size_monitor",
         "egress.is_egress",
         "egress.is_tx_recirc",
