@@ -88,7 +88,7 @@ control IAT(inout header_t hdr,
     };
 
     // used to limit the digest rate
-    Meter<bit<9>>(256, MeterType_t.BYTES) digest_rate;
+    Meter<bit<9>>(512, MeterType_t.BYTES) digest_rate;
 
     RegisterAction<bit<32>, PortId_t, bit<32>>(lower_last_rx) set_lower_last_rx = {
             void apply(inout bit<32> value, out bit<32> read_value) {

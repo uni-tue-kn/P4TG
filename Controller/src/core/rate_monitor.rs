@@ -123,7 +123,7 @@ impl RateMonitor {
 
         let mut meter_requests = vec![];
 
-        for x in 0..256 {
+        for x in 0..512 {
             let mut cir_kbps = (target_pps * packet_size * 0.001) as u32;
             let mut pir_kbps = cir_kbps;
             let mut cbs = cir_kbps;
@@ -165,7 +165,7 @@ impl RateMonitor {
 
         let mut meter_requests = vec![];
 
-        for x in 0..256 {
+        for x in 0..512 {
             let mut cir_kbps = (target_pps * packet_size * 0.001) as u32;
             let mut pir_kbps = cir_kbps;
             let mut cbs = cir_kbps;
