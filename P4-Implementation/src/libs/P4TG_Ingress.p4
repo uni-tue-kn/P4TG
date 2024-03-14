@@ -34,10 +34,10 @@ control P4TG_Ingress (
     // poisson
     Random<bit<16>>() rand;
 
-    Register<bit<32>, PortId_t>(256, 0) rx_seq;
+    Register<bit<32>, PortId_t>(512, 0) rx_seq;
     //Register<bit<32>, _>(32, 0) lost_packets;
-    Add_64_64(256) lost_packets;
-    Add_64_64(256) out_of_order;
+    Add_64_64(512) lost_packets;
+    Add_64_64(512) out_of_order;
 
     RegisterAction<bit<32>, PortId_t, bit<32>>(rx_seq) get_rx = {
         void apply(inout bit<32> value, out bit<32> read_value) {

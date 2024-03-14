@@ -34,11 +34,11 @@ control IAT(inout header_t hdr,
             inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
     // IAT monitoring
-    Register<bit<32>, PortId_t>(256, 0) lower_last_rx;
-    Register<bit<16>, PortId_t>(256, 0) higher_last_rx;
-    Register<mean_iat_t, PortId_t>(256, {0, 0}) mean_iat;
-    Register<bit<32>, PortId_t>(256, 0) current_mean_iat; // written by control plane
-    Register<mean_iat_t, PortId_t>(256, {0, 0}) mae_iat;
+    Register<bit<32>, PortId_t>(512, 0) lower_last_rx;
+    Register<bit<16>, PortId_t>(512, 0) higher_last_rx;
+    Register<mean_iat_t, PortId_t>(512, {0, 0}) mean_iat;
+    Register<bit<32>, PortId_t>(512, 0) current_mean_iat; // written by control plane
+    Register<mean_iat_t, PortId_t>(512, {0, 0}) mae_iat;
 
     RegisterAction<mean_iat_t, PortId_t, bit<1>>(mean_iat) count_iat = {
             void apply(inout mean_iat_t value, out bit<1> read_value) {
