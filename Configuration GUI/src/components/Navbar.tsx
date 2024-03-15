@@ -104,7 +104,7 @@ const Navbar = () => {
             </Row>
             <Row>
                 <CNavItem className="flex-grow-1 mb-2">
-                    <span>v2.2.0</span>
+                    <span>v2.2.1</span>
                 </CNavItem>
             </Row>
         </CSidebarNav>

@@ -212,3 +212,10 @@ export interface P4TGConfig {
         arp_reply: boolean
     }[]
 }
+
+export interface TrafficGenData {
+    mode: GenerationMode,
+    streams: Stream[],
+    stream_settings: StreamSettings[],
+    port_tx_rx_mapping: { [name: number]: number}[]
+}

@@ -1,5 +1,11 @@
 # Changelog 
 
+## v2.2.1
+- Better support for 4-pipe Tofino
+  - Increase meter entries & register entries to 512 to be able to use ports with PID > 255
+- Bug in analyze mode that returned an error when no streams / stream settings were provided
+- Preliminary import/export function for settings
+
 ## v2.2.0
 - Added VxLAN support
 - Added infobox in UI to get further information on features

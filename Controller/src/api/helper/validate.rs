@@ -68,11 +68,11 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
         }
     }
 
-    if settings.is_empty() {
+    if settings.is_empty() && *mode != GenerationMode::Analyze {
         return Err(Error::new("No active streams provided."));
     }
 
-    if streams.is_empty() {
+    if streams.is_empty() && *mode != GenerationMode::Analyze {
         return Err(Error::new("No stream provided."));
     }
 

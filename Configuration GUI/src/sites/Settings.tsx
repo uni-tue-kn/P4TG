@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
+import React, {useEffect, useRef, useState} from 'react'
 import {Button, Col, Form, Row, Table} from "react-bootstrap";
 import {get} from "../common/API";
 import Loader from "../components/Loader";
@@ -26,7 +26,7 @@ import {
     DefaultStreamSettings,
     GenerationMode,
     Stream,
-    StreamSettings,
+    StreamSettings, TrafficGenData,
 } from "../common/Interfaces";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
@@ -34,6 +34,7 @@ import InfoBox from "../components/InfoBox";
 import {GitHub} from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
+import {validateStreams, validateStreamSettings} from "../common/Validators";
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -66,6 +67,7 @@ const Settings = () => {
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [loaded, set_loaded] = useState(false)
+    const ref = useRef()
 
     const loadPorts = async () => {
         let stats = await get({route: "/ports"})
@@ -163,6 +165,61 @@ const Settings = () => {
         set_stream_settings(stream_settings.filter(v => v.stream_id != id))
     }
 
+    const exportSettings = () => {
+        const settings = {
+            "mode": mode,
+            "stream_settings": stream_settings,
+            "streams": streams,
+            "port_tx_rx_mapping": port_tx_rx_mapping
+        }
+
+        const json = `data:text/json;charset=utf-8,${encodeURIComponent(
+            JSON.stringify(settings, null, "\t")
+        )}`
+
+        const link = document.createElement("a");
+        link.href = json
+        link.download = "settings.json"
+
+        link.click()
+    }
+
+    const importSettings = (e: any) => {
+        // @ts-ignore
+        ref.current.click()
+    }
+
+    const loadSettings = (e: any) => {
+        e.preventDefault()
+
+        const fileReader = new FileReader();
+        fileReader.readAsText(e.target.files[0], "UTF-8");
+
+        fileReader.onload = (e: any) => {
+            let data: TrafficGenData = JSON.parse(e.target.result)
+
+            if(!validateStreams(data.streams) || !validateStreamSettings(data.stream_settings)) {
+                alert("Settings not valid.")
+                // @ts-ignore
+                ref.current.value = ""
+            }
+            else {
+                localStorage.setItem("streams", JSON.stringify(data.streams))
+                localStorage.setItem("gen-mode", String(data.mode))
+
+                localStorage.setItem("streamSettings", JSON.stringify(data.stream_settings))
+
+                localStorage.setItem("port_tx_rx_mapping", JSON.stringify(data.port_tx_rx_mapping))
+
+                alert("Import successfull. Reloading...")
+
+                window.location.reload()
+            }
+        }
+    }
+
+    // @ts-ignore
+    // @ts-ignore
     return <Loader loaded={loaded}>
         <Row>
             <Col className={"col-2"}>
@@ -193,7 +250,8 @@ const Settings = () => {
 
                         <h5>Poisson</h5>
 
-                        <p>Poisson traffic is traffic with random inter-arrival times but a constant average traffic rate.</p>
+                        <p>Poisson traffic is traffic with random inter-arrival times but a constant average traffic
+                            rate.</p>
 
                         <h5>Mpps</h5>
 
@@ -201,10 +259,20 @@ const Settings = () => {
 
                         <h5>Monitor/Analyze</h5>
 
-                        <p>In monitor/analyze mode, P4TG forwards traffic received on its ports and measures L1/L2 rates, packet sizes/types and inter-arrival times.</p>
+                        <p>In monitor/analyze mode, P4TG forwards traffic received on its ports and measures L1/L2
+                            rates, packet sizes/types and inter-arrival times.</p>
 
                     </>
                 </InfoBox>
+            </Col>
+            <Col className={"text-end"}>
+                <Button onClick={importSettings} disabled={running} variant={"primary"}>
+                    <i className="bi bi-cloud-arrow-down-fill"/> Import
+                </Button>
+                {" "}
+                <Button onClick={exportSettings} disabled={running} variant={"danger"}>
+                    <i className="bi bi-cloud-arrow-up-fill"/> Export
+                </Button>
             </Col>
         </Row>
         <Row>
@@ -222,7 +290,9 @@ const Settings = () => {
                             <th>Mode</th>
                             <th>VxLAN &nbsp;
                                 <InfoBox>
-                                    <p>VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC 7348</a>) adds an additional outer Ethernet, IP and VxLAN header to the packet.</p>
+                                    <p>VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC
+                                        7348</a>) adds an additional outer Ethernet, IP and VxLAN header to the packet.
+                                    </p>
                                 </InfoBox>
                             </th>
                             <th>Encapsulation &nbsp;
@@ -318,9 +388,22 @@ const Settings = () => {
             null
         }
 
-        <Button onClick={save} disabled={running} variant="primary"><i className="bi bi-check"/> Save</Button>
-        {" "}
-        <Button onClick={reset} disabled={running} variant="danger"><i className="bi bi-x-octagon-fill"/> Reset</Button>
+        <Row>
+            <Col>
+                <Button onClick={save} disabled={running} variant="primary"><i className="bi bi-check"/> Save</Button>
+                {" "}
+                <Button onClick={reset} disabled={running} variant="danger"><i className="bi bi-x-octagon-fill"/> Reset</Button>
+            </Col>
+        </Row>
+
+        <input
+            style={{display: "none"}}
+            accept=".json"
+            // @ts-ignore
+            ref={ref}
+            onChange={loadSettings}
+            type="file"
+        />
 
         <GitHub/>
 
