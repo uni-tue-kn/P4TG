@@ -55,6 +55,9 @@ pub const MONITORING_FORWARD_TABLE: &str = "ingress.p4tg.monitor_forward";
 /// Triggers monitoring in egress for individual streams
 pub const MONITORING_EGRESS_TABLE: &str = "egress.monitor_stream";
 
+/// Indicates the current generation type
+pub const TRAFFIC_GEN_MODE: &str = "ingress.tg_mode";
+
 /// Table that indicates that a packet is on a front panel egress port.
 /// If thats the case, the packet is timestamped for RTT calculation.
 pub const IS_EGRESS_TABLE: &str = "egress.is_egress";

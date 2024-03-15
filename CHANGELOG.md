@@ -5,6 +5,7 @@
   - Increase meter entries & register entries to 512 to be able to use ports with PID > 255
 - Bug in analyze mode that returned an error when no streams / stream settings were provided
 - Preliminary import/export function for settings
+- Fix bug that prevents that ARP replies are always generated in ANALYZE mode
 
 ## v2.2.0
 - Added VxLAN support

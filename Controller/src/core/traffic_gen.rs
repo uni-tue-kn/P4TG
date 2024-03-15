@@ -438,6 +438,9 @@ impl TrafficGen {
         state.frame_type_monitor.lock().await.on_start(switch, &mode).await?;
         state.rate_monitor.lock().await.on_start(switch, &mode).await?;
 
+        // configure tg mode
+        self.configure_traffic_gen_mode_table(switch, &mode).await?;
+
         // configure default forwarding
         // this pushes rules for RX -> RX Recirc and TX Recirc -> TX
         self.configure_default_forwarding_path(switch, &state.port_mapping).await?;
@@ -782,9 +785,22 @@ impl TrafficGen {
         Ok(app_to_offset)
     }
 
+    /// Configures the traffic gen mode table in the data plane
+    /// that is used to detect the generation mode
+    async fn configure_traffic_gen_mode_table(&self, switch: &SwitchConnection, mode: &GenerationMode) -> Result<(), RBFRTError> {
+        let req = Request::new(TRAFFIC_GEN_MODE)
+            .match_key("ig_intr_md.ingress_port", MatchValue::lpm(0, 0))
+            .action("ingress.set_mode")
+            .action_data("mode", *mode as u8);
+
+        switch.write_table_entry(req).await?;
+
+        Ok(())
+    }
+
     /// Clears various tables that are refilled during traffic gen setup
     async fn reset_tables(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        switch.clear_tables(vec![IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE,  ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE,  ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
 
         Ok(())
     }

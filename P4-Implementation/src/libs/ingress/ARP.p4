@@ -45,7 +45,7 @@ control ARP(inout header_t hdr, inout ingress_metadata_t ig_md, in ingress_intri
     }
 
     apply {
-        if(hdr.arp.isValid() && hdr.arp.op == 1) { // it's an arp request
+        if(hdr.arp.isValid() && hdr.arp.op == 1 && ig_md.tg_mode != TG_MODE_ANALYZE) { // it's an arp request
             if(arp_reply.apply().hit) {
                 if(ig_md.arp_reply == 0) {
                     invalidate(ig_tm_md.ucast_egress_port);

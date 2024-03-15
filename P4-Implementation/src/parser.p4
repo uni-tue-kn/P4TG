@@ -53,6 +53,7 @@ parser SwitchIngressParser(
         ig_md.iat = 0;
         ig_md.rtt = 0;
         ig_md.vxlan = 0;
+        ig_md.tg_mode = 0;
         tofino_parser.apply(pkt, ig_intr_md);
         transition select(ig_intr_md.ingress_port) {
             68: parse_pkt_gen;
