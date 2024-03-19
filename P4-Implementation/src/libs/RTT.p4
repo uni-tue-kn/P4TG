@@ -26,7 +26,7 @@ control RTT(inout header_t hdr,
             inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
     // used to limit the digest rate
-    Meter<bit<9>>(256, MeterType_t.BYTES) digest_rate;
+    Meter<bit<9>>(512, MeterType_t.BYTES) digest_rate;
 
     action calculate_rtt(in bit<48> tx_stamp, out bit<32> ret_rtt) {
         ret_rtt = (bit<32>) (ig_intr_md.ingress_mac_tstamp - tx_stamp);

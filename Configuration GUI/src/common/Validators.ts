@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import {MPLSHeader} from "./Interfaces";
+import {DefaultStream, DefaultStreamSettings, MPLSHeader, Stream, StreamSettings} from "./Interfaces";
 
 export const validateMAC = (mac: string) => {
     let regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
@@ -49,4 +49,25 @@ export const validateUdpPort = (port: number) => {
 
 export const validateVNI = (vni: number) => {
     return !isNaN(vni) && (0 <= vni) && vni <= (2 ** 24 - 1)
+}
+
+export const validateStreams = (s: Stream[]) => {
+    const defaultStream = DefaultStream(1)
+
+    return s.every(s => Object.keys(defaultStream).every(key => Object.keys(s).includes(key)))
+}
+
+export const validateStreamSettings = (s: StreamSettings[]) => {
+    const defaultStreamSetting = DefaultStreamSettings(1, 5)
+    return s.every(s => Object.keys(defaultStreamSetting).every(key => {
+        return Object.keys(s).includes(key) && s.mpls_stack != undefined && Object.keys(defaultStreamSetting.vlan).every(key => {
+            return Object.keys(s.vlan).includes(key)
+        }) && Object.keys(defaultStreamSetting.ethernet).every(key => { // ethernet
+            return Object.keys(s.ethernet).includes(key)
+        }) && Object.keys(defaultStreamSetting.ip).every(key => { // ip
+            return Object.keys(s.ip).includes(key)
+        }) && Object.keys(defaultStreamSetting.vxlan).every(key => {
+            return Object.keys(s.vxlan).includes(key) // VxLAN
+        })
+    }))
 }

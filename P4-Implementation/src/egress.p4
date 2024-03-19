@@ -34,7 +34,7 @@ control egress(
 
     bit<64> dummy = 0;
 
-    Register<bit<32>, PortId_t>(256, 0) tx_seq;
+    Register<bit<32>, PortId_t>(512, 0) tx_seq;
 
     RegisterAction<bit<32>, PortId_t, bit<32>>(tx_seq) get_next_tx_seq = {
             void apply(inout bit<32> value, out bit<32> read_value) {
