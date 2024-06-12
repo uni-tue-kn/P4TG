@@ -113,13 +113,16 @@ control Header_Replace(
     }
 
     apply {
+        bit<32> s_tmp = src_rand.get();
+        bit<32> d_tmp = dst_rand.get();
+
         // we only rewrite IP header for P4TG packets
         // identified by valid path header and UDP port
         if(hdr.path.isValid() && hdr.path.dst_port == 50083) {
             if(header_replace.apply().hit) {
                 // get random 32 bit number and make bitwise AND with network mask
-                bit<32> s_tmp = src_rand.get() & src_mask;
-                bit<32> d_tmp = dst_rand.get() & dst_mask;
+                s_tmp = s_tmp & src_mask;
+                d_tmp = d_tmp & dst_mask;
 
                 // apply random sub ip string to ip address
                 hdr.inner_ipv4.src_addr = hdr.inner_ipv4.src_addr | s_tmp;
