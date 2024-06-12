@@ -22,7 +22,7 @@ parser TofinoIngressParser(
 
     state start {
         pkt.extract(ig_intr_md);
-        #if __TOFINO_TARGET__ == 2
+        #if __TARGET_TOFINO__ == 2
                 pkt.advance(192);
         #else
                 pkt.advance(64);
@@ -61,7 +61,7 @@ parser SwitchIngressParser(
         tofino_parser.apply(pkt, ig_intr_md);
 
         transition select(ig_intr_md.ingress_port) {
-            #if __TOFINO_TARGET__ == 2
+            #if __TARGET_TOFINO__ == 2
             6: parse_pkt_gen;
             134: parse_pkt_gen;
             262: parse_pkt_gen;
