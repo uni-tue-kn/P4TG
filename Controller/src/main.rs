@@ -25,7 +25,9 @@ use rbfrt::{SwitchConnection};
 use log::{info, warn};
 use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
+use rbfrt::table::Request;
 use rbfrt::util::port_manager::{AutoNegotiation, FEC, Loopback, Port, Speed};
+use rbfrt::util::port_manager::FEC::BF_FEC_TYP_REED_SOLOMON;
 use rbfrt::util::PortManager;
 use tokio::sync::Mutex;
 
@@ -65,7 +67,7 @@ pub struct AppState {
     pub(crate) arp_handler: Arp
 }
 
-async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config: &Config, recirculation_ports: &Vec<u32>, port_mapping: &mut HashMap<u32, PortMapping>) -> Result<(), RBFRTError> {
+async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config: &Config, recirculation_ports: &Vec<u32>, port_mapping: &mut HashMap<u32, PortMapping>, is_tofino2: bool) -> Result<(), RBFRTError> {
     // Delete previously configured ports
     switch.clear_table("$PORT").await?;
 
@@ -75,9 +77,10 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
     // TG_PORTS
     for tg in &config.tg_ports {
         let pm_req = Port::new(tg.port , 0)
-            .speed(Speed::BF_SPEED_100G)
-            .fec(FEC::BF_FEC_TYP_NONE)
-            .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT);
+            .speed(is_tofino2.then(||Speed::BF_SPEED_400G).unwrap_or(Speed::BF_SPEED_100G))
+            .fec(is_tofino2.then(||BF_FEC_TYP_REED_SOLOMON).unwrap_or(FEC::BF_FEC_TYP_NONE))
+            .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
+            .loopback(Loopback::BF_LPBK_MAC_NEAR); // testing only
 
         // we validated the mac address before
         tg_ports.push((tg.port, MacAddr::from_str(&tg.mac).unwrap()));
@@ -88,8 +91,8 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
     // Recirculation ports
     for port in recirculation_ports {
         let pm_req = Port::new(*port , 0)
-            .speed(Speed::BF_SPEED_100G)
-            .fec(FEC::BF_FEC_TYP_NONE)
+            .speed(is_tofino2.then(||Speed::BF_SPEED_400G).unwrap_or(Speed::BF_SPEED_100G))
+            .fec(is_tofino2.then(||BF_FEC_TYP_REED_SOLOMON).unwrap_or(FEC::BF_FEC_TYP_NONE))
             .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
             .loopback(Loopback::BF_LPBK_MAC_NEAR);
 
@@ -141,6 +144,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .connect()
         .await?;
 
+    // check if its tofino 1 or tofino 2
+    // this could be done more intelligent
+    // we simply check if a table in tf1 cope exists
+    let is_tofino2 = switch.get_table_entry(
+        Request::new("tf1.pktgen")
+    ).await.is_err();
+
+    if is_tofino2 {
+        info!("ASIC: Tofino2");
+    }
+    else {
+        info!("ASIC: Tofino1");
+    }
+
     // Front panel ports that can be used for traffic generation.
     // At default, the first 10 ports are used for traffic generation.
     let all_ports: Vec<u32> = (1..33).collect(); // we dont have a 64-port Tofino for testing purposes
@@ -182,7 +199,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let pm = PortManager::new(&switch).await;
 
-    configure_ports(&mut switch, &pm, &config, &recirculation_ports, &mut port_mapping).await?;
+    configure_ports(&mut switch, &pm, &config, &recirculation_ports, &mut port_mapping, is_tofino2).await?;
 
     // configures frame size count tables
     let frame_size_monitor = FrameSizeMonitor::new(port_mapping.clone());
@@ -196,7 +213,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     rate_monitor.init_iat_meter(&switch, sample_mode).await?;
     rate_monitor.on_reset(&switch).await?;
 
-    let mut traffic_generator = TrafficGen::new();
+    let mut traffic_generator = TrafficGen::new(is_tofino2);
     traffic_generator.stop(&switch).await?;
 
     let index_mapping = traffic_generator.init_monitoring_packet(&switch, &port_mapping).await?;
