@@ -37,6 +37,8 @@ const bit<8> IP_PROTOCOL_P4TG = 110;
 const bit<16> UDP_VxLAN_PORT = 4789;
 const bit<16> UDP_P4TG_PORT = 50083;
 
+const bit<8> TG_MODE_ANALYZE = 4;
+
 
 
 header ethernet_h {
@@ -192,6 +194,7 @@ struct ingress_metadata_t {
     PortId_t ig_port;
     bit<1> vxlan;
     bit<1> arp_reply;
+    bit<8> tg_mode;
 }
 
 struct egress_metadata_t {

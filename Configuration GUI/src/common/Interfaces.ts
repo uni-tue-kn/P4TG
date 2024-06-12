@@ -239,3 +239,10 @@ export interface P4TGInfos {
     version: String,
     asic: ASIC
 }
+
+export interface TrafficGenData {
+    mode: GenerationMode,
+    streams: Stream[],
+    stream_settings: StreamSettings[],
+    port_tx_rx_mapping: { [name: number]: number}[]
+}

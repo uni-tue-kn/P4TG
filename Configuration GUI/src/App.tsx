@@ -31,9 +31,11 @@ import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
 import Offline from "./sites/Offline"
 import Tables from "./sites/Tables";
-import {ASIC, DefaultStream, DefaultStreamSettings, P4TGInfos, StreamSettings} from "./common/Interfaces";
+import {ASIC, P4TGInfos, StreamSettings} from "./common/Interfaces";
 import {Stream} from "./common/Interfaces";
 import Loader from "./components/Loader";
+import {validateStreams, validateStreamSettings} from "./common/Validators";
+
 
 const App = () => {
     const [error, set_error] = useState(false)
@@ -62,28 +64,25 @@ const App = () => {
         set_loaded(true)
     }
 
+
+
     // Validates the stored streams and stream settings in the local storage
     // Clears local storage if some streams/settings are not valid
     // This may be needed if the UI got an update (new stream properties), but the local storage
     // holds "old" streams/settings without the new property
     const validateLocalStorage = () => {
-        const defaultStream = DefaultStream(1)
-        const defaultStreamSetting = DefaultStreamSettings(1, 5)
-
         try {
             let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
             let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
 
-            if(!stored_streams.every(s => Object.keys(defaultStream).every(key => Object.keys(s).includes(key)))) {
+            if(!validateStreams(stored_streams)) {
                 alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
                 localStorage.clear()
                 window.location.reload()
                 return
             }
 
-            if(!stored_settings.every(s => Object.keys(defaultStreamSetting).every(key => {
-                return Object.keys(s).includes(key) && s.mpls_stack != undefined
-            }))) {
+            if(!validateStreamSettings(stored_settings)) {
                 alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
                 localStorage.clear()
                 window.location.reload()

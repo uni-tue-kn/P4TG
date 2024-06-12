@@ -68,16 +68,16 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
         }
     }
 
-    if settings.is_empty() {
+    if settings.is_empty() && *mode != GenerationMode::Analyze {
         return Err(Error::new("No active streams provided."));
     }
 
-    if streams.is_empty() {
+    if streams.is_empty() && *mode != GenerationMode::Analyze {
         return Err(Error::new("No stream provided."));
     }
 
     // Validate max sending rate
-    // at most 100 Gbps are supported
+    // at most 100 or 400 Gbps are supported
     let rate: f32 = if *mode == GenerationMode::Mpps {
         streams.iter().map(|x| (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32).sum()
     }
