@@ -7,7 +7,7 @@ control Add_64_64(
 {
 // simply use 64 bit register if we are on tofino2
 // does not yet work
-#if __TOFINO_TARGET__ == 3
+#if __TARGET_TOFINO__ == 3
     Register<bit<64>, reg_index_t>(reg_size) reg;
     RegisterAction<bit<64>, reg_index_t, bit<64>>(reg) add = {
             void apply(inout bit<64> value, out bit<64> result) {
