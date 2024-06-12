@@ -19,13 +19,13 @@
 
 use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
-use crate::core::traffic_gen_core::const_definitions::MAX_NUM_MPLS_LABEL;
+use crate::core::traffic_gen_core::const_definitions::{MAX_NUM_MPLS_LABEL, TG_MAX_RATE, TG_MAX_RATE_TF2};
 use crate::core::traffic_gen_core::helper::calculate_overhead;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 
 /// Validates an incoming traffic generation request.
 /// Checks if the MPLS configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
-pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode) -> Result<(), Error> {
+pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode, is_tofino2: bool) -> Result<(), Error> {
     for stream in streams.iter(){
         // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::Mpls {
@@ -77,7 +77,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
     }
 
     // Validate max sending rate
-    // at most 100 Gbps are supported
+    // at most 100 or 400 Gbps are supported
     let rate: f32 = if *mode == GenerationMode::Mpps {
         streams.iter().map(|x| (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32).sum()
     }
@@ -85,8 +85,8 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
         streams.iter().map(|x| x.traffic_rate).sum()
     };
 
-    if *mode != GenerationMode::Analyze && rate > 100f32 {
-        return Err(Error::new("Traffic rate in sum larger than 100 Gbps."))
+    if *mode != GenerationMode::Analyze && rate > is_tofino2.then(||TG_MAX_RATE_TF2).unwrap_or(TG_MAX_RATE) {
+        return Err(Error::new("Traffic rate in sum larger than maximal supported rate."))
     }
 
     Ok(())

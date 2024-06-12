@@ -21,7 +21,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{Json, IntoResponse, Response};
-use rbfrt::util::port_manager::Port;
+use rbfrt::util::port_manager::{Loopback, Port};
 use serde::{Deserialize, Serialize};
 use crate::api::docs;
 use crate::api::server::{Error};

@@ -153,7 +153,7 @@ const Settings = () => {
             set_streams(old => [...old, DefaultStream(id + 1)])
 
             ports.map((v, i) => {
-                if (v.loopback == "BF_LPBK_NONE") {
+                if (v.loopback != "BF_LPBK_NONE") {
                     set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.pid)])
                 }
             })
@@ -344,7 +344,7 @@ const Settings = () => {
                         </thead>
                         <tbody>
                         {ports.map((v, i) => {
-                            if (v.loopback == "BF_LPBK_NONE") {
+                            if (v.loopback != "BF_LPBK_NONE") {
                                 return <tr key={i}>
                                     <StyledCol>{v.port} ({v.pid})</StyledCol>
                                     <StyledCol>
@@ -363,7 +363,7 @@ const Settings = () => {
                                                      }}>
                                             <option value={-1}>Select RX Port</option>
                                             {ports.map((v, i) => {
-                                                if (v.loopback == "BF_LPBK_NONE") {
+                                                if (v.loopback != "BF_LPBK_NONE") {
                                                     return <option key={i}
                                                                    value={v.pid}>{v.port} ({v.pid})</option>
                                                 }

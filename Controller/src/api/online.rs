@@ -17,18 +17,33 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
+use std::sync::Arc;
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::Serialize;
+use crate::AppState;
+
+#[derive(Serialize, JsonSchema)]
+pub enum ASIC {
+    Tofino1,
+    Tofino2
+}
 
 #[derive(Serialize, JsonSchema)]
 pub struct Online {
-    pub(crate) status: String
+    pub(crate) status: String,
+    pub(crate) version: String,
+    pub(crate) asic: ASIC
 }
 
 /// Online endpoint
-pub async fn online() -> (StatusCode, Json<Online>) {
-    (StatusCode::OK, Json(Online {status: "online".to_owned()}))
+pub async fn online(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Online>) {
+    (StatusCode::OK, Json(Online {status: "online".to_owned(),
+        version: env!("CARGO_PKG_VERSION").parse().unwrap(),
+        asic: state.traffic_generator.lock().await.is_tofino2.then(||ASIC::Tofino2).unwrap_or(ASIC::Tofino1)
+    }
+    ))
 }
 

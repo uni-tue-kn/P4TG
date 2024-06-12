@@ -87,7 +87,7 @@ parser SwitchIngressParser(
         }
     }
 
-    state parse_ethernet {
+    state parse_ethernegt {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
             ETHERTYPE_MONITOR: parse_monitor;

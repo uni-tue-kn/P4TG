@@ -26,6 +26,7 @@ import {Row} from 'react-bootstrap'
 
 import P4TGLogo from "../assets/p4tg_logo_white.png"
 import config from "../config";
+import {P4TGInfos} from "../common/Interfaces";
 styled(Link) <{ active?: boolean }>`
     text-decoration: none;
     margin-right: 15px;
@@ -68,7 +69,7 @@ export const NavLink = ({to, icon, text, overlay}: Props) => {
 }
 
 
-const Navbar = () => {
+const Navbar = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const [online, set_online] = useState(false)
 
     const setup = () => {
@@ -104,7 +105,7 @@ const Navbar = () => {
             </Row>
             <Row>
                 <CNavItem className="flex-grow-1 mb-2">
-                    <span>v2.2.1</span>
+                    <span>v{p4tg_infos.version}</span>
                 </CNavItem>
             </Row>
         </CSidebarNav>

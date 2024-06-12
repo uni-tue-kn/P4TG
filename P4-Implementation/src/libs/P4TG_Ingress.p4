@@ -35,7 +35,6 @@ control P4TG_Ingress (
     Random<bit<16>>() rand;
 
     Register<seq_t, PortId_t>(512, 0) rx_seq;
-    //Register<bit<32>, _>(32, 0) lost_packets;
     Add_64_64(512) lost_packets;
     Add_64_64(512) out_of_order;
 
