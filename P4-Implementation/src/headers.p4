@@ -24,7 +24,12 @@ typedef bit<48> mac_addr_t;
 typedef bit<32> ipv4_addr_t;
 typedef bit<16> ether_type_t;
 typedef bit<32> reg_index_t;
+
+#if __TOFINO_TARGET__ == 2
+typedef bit<32> seq_t; // due to higher data rates we need larger seq number space
+#else
 typedef bit<32> seq_t;
+#endif
 const ether_type_t ETHERTYPE_IPV4 = 0x800;
 const ether_type_t ETHERTYPE_MONITOR = 0xBB02;
 const ether_type_t ETHERTYPE_QinQ = 0x88a8;
