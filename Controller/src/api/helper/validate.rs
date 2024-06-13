@@ -85,7 +85,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
         streams.iter().map(|x| x.traffic_rate).sum()
     };
 
-    if *mode != GenerationMode::Analyze && rate > is_tofino2.then(||TG_MAX_RATE_TF2).unwrap_or(TG_MAX_RATE) {
+    if *mode != GenerationMode::Analyze && rate > if is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE} {
         return Err(Error::new("Traffic rate in sum larger than maximal supported rate."))
     }
 

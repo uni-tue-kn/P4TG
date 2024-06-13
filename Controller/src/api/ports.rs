@@ -75,6 +75,7 @@ pub async fn add_port(State(state): State<Arc<AppState>>, payload: Json<PortConf
             let req = Port::new(port , channel)
                 .speed(payload.speed.clone())
                 .fec(payload.fec.clone())
+                .loopback(Loopback::BF_LPBK_MAC_NEAR)
                 .auto_negotiation(payload.auto_neg.clone());
 
             match pm.update_port(&state.switch, &req).await {

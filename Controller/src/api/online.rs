@@ -42,7 +42,7 @@ pub struct Online {
 pub async fn online(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Online>) {
     (StatusCode::OK, Json(Online {status: "online".to_owned(),
         version: env!("CARGO_PKG_VERSION").parse().unwrap(),
-        asic: state.traffic_generator.lock().await.is_tofino2.then(||ASIC::Tofino2).unwrap_or(ASIC::Tofino1)
+        asic: if state.traffic_generator.lock().await.is_tofino2 {ASIC::Tofino2} else {ASIC::Tofino1}
     }
     ))
 }

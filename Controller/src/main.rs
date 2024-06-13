@@ -77,8 +77,8 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
     // TG_PORTS
     for tg in &config.tg_ports {
         let pm_req = Port::new(tg.port , 0)
-            .speed(is_tofino2.then(||Speed::BF_SPEED_400G).unwrap_or(Speed::BF_SPEED_100G))
-            .fec(is_tofino2.then(||BF_FEC_TYP_REED_SOLOMON).unwrap_or(FEC::BF_FEC_TYP_NONE))
+            .speed(if is_tofino2 {Speed::BF_SPEED_400G} else {Speed::BF_SPEED_100G})
+            .fec(if is_tofino2 {BF_FEC_TYP_REED_SOLOMON} else {FEC::BF_FEC_TYP_NONE})
             .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
             .loopback(Loopback::BF_LPBK_MAC_NEAR); // testing only
 
@@ -91,8 +91,8 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
     // Recirculation ports
     for port in recirculation_ports {
         let pm_req = Port::new(*port , 0)
-            .speed(is_tofino2.then(||Speed::BF_SPEED_400G).unwrap_or(Speed::BF_SPEED_100G))
-            .fec(is_tofino2.then(||BF_FEC_TYP_REED_SOLOMON).unwrap_or(FEC::BF_FEC_TYP_NONE))
+            .speed(if is_tofino2 {Speed::BF_SPEED_400G} else {Speed::BF_SPEED_100G})
+            .fec(if is_tofino2 {BF_FEC_TYP_REED_SOLOMON} else {FEC::BF_FEC_TYP_NONE})
             .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
             .loopback(Loopback::BF_LPBK_MAC_NEAR);
 
