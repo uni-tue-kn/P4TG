@@ -72,11 +72,14 @@ pub async fn add_port(State(state): State<Arc<AppState>>, payload: Json<PortConf
 
     match pm.frontpanel_port(payload.pid) {
         Ok((port, channel)) => {
-            let req = Port::new(port , channel)
+            let mut req = Port::new(port , channel)
                 .speed(payload.speed.clone())
                 .fec(payload.fec.clone())
-                .loopback(Loopback::BF_LPBK_MAC_NEAR)
                 .auto_negotiation(payload.auto_neg.clone());
+
+            if state.loopback_mode {
+                req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+            }
 
             match pm.update_port(&state.switch, &req).await {
                 Ok(_) => {
