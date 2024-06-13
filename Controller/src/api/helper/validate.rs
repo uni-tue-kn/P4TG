@@ -19,7 +19,7 @@
 
 use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
-use crate::core::traffic_gen_core::const_definitions::{MAX_NUM_MPLS_LABEL, TG_MAX_RATE, TG_MAX_RATE_TF2};
+use crate::core::traffic_gen_core::const_definitions::{MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, TG_MAX_RATE, TG_MAX_RATE_TF2};
 use crate::core::traffic_gen_core::helper::calculate_overhead;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 
@@ -66,6 +66,10 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
                 return Err(Error::new(format!("Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.", stream.stream_id)));
             }
         }
+    }
+
+    if streams.iter().map(|s| s.frame_size).collect::<Vec<u32>>().iter().sum::<u32>() > MAX_BUFFER_SIZE {
+        return Err(Error::new(format!("Sum of packet size too large. Maximal sum of packets size: {}B", MAX_BUFFER_SIZE)));
     }
 
     if settings.is_empty() && *mode != GenerationMode::Analyze {

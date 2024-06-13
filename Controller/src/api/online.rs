@@ -26,7 +26,7 @@ use serde::Serialize;
 use crate::AppState;
 
 #[derive(Serialize, JsonSchema)]
-pub enum ASIC {
+pub enum Asic {
     Tofino1,
     Tofino2
 }
@@ -35,14 +35,16 @@ pub enum ASIC {
 pub struct Online {
     pub(crate) status: String,
     pub(crate) version: String,
-    pub(crate) asic: ASIC
+    pub(crate) asic: Asic,
+    pub(crate) loopback: bool
 }
 
 /// Online endpoint
 pub async fn online(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Online>) {
     (StatusCode::OK, Json(Online {status: "online".to_owned(),
         version: env!("CARGO_PKG_VERSION").parse().unwrap(),
-        asic: if state.traffic_generator.lock().await.is_tofino2 {ASIC::Tofino2} else {ASIC::Tofino1}
+        asic: if state.tofino2 {Asic::Tofino2} else {Asic::Tofino1},
+        loopback: state.loopback_mode
     }
     ))
 }

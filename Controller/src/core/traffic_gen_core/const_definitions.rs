@@ -106,3 +106,6 @@ pub const MAX_NUM_MPLS_LABEL: u8 = 15;
 
 /// VxLAN UDP port
 pub const VX_LAN_UDP_PORT: u16 = 4789;
+
+/// Max buffer size in bytes usable with P4TG
+pub const MAX_BUFFER_SIZE: u32 = 12000;
