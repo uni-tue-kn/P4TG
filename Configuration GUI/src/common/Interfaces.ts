@@ -237,7 +237,8 @@ export enum ASIC {
 export interface P4TGInfos {
     status: String,
     version: String,
-    asic: ASIC
+    asic: ASIC,
+    loopback: boolean
 }
 
 export interface TrafficGenData {

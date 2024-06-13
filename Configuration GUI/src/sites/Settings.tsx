@@ -24,7 +24,7 @@ import Loader from "../components/Loader";
 import {
     DefaultStream,
     DefaultStreamSettings,
-    GenerationMode,
+    GenerationMode, P4TGInfos,
     Stream,
     StreamSettings, TrafficGenData,
 } from "../common/Interfaces";
@@ -48,7 +48,7 @@ export const StyledCol = styled.td`
 `
 
 
-const Settings = () => {
+const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const [ports, set_ports] = useState<{
         pid: number,
         port: number,
@@ -153,7 +153,7 @@ const Settings = () => {
             set_streams(old => [...old, DefaultStream(id + 1)])
 
             ports.map((v, i) => {
-                if (v.loopback != "BF_LPBK_NONE") {
+                if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                     set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.pid)])
                 }
             })
@@ -344,7 +344,7 @@ const Settings = () => {
                         </thead>
                         <tbody>
                         {ports.map((v, i) => {
-                            if (v.loopback != "BF_LPBK_NONE") {
+                            if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                                 return <tr key={i}>
                                     <StyledCol>{v.port} ({v.pid})</StyledCol>
                                     <StyledCol>
@@ -363,7 +363,7 @@ const Settings = () => {
                                                      }}>
                                             <option value={-1}>Select RX Port</option>
                                             {ports.map((v, i) => {
-                                                if (v.loopback != "BF_LPBK_NONE") {
+                                                if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                                                     return <option key={i}
                                                                    value={v.pid}>{v.port} ({v.pid})</option>
                                                 }

@@ -150,7 +150,7 @@ const Ports = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
             </thead>
             <tbody>
             {ports.map((v: any, i: number) => {
-                if (loopback_mapping[v["loopback"]] == "On") {
+                if (loopback_mapping[v["loopback"]] != "On" || p4tg_infos.loopback) {
                     return <tr key={i}>
                         <StyledCol className={"col-1"}>{v["pid"]}</StyledCol>
                         <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>

@@ -43,7 +43,7 @@ const App = () => {
     const [time, set_time] = useState("00:00")
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
-    const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({status: "", version: "", asic: ASIC.Tofino1})
+    const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({status: "", version: "", asic: ASIC.Tofino1, loopback: false})
 
     const setError = (msg: string) => {
         set_error(true)
@@ -135,7 +135,7 @@ const App = () => {
                                         <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos}/>}/>
                                         <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos}/>}/>
                                         <Route path={"/tables"} element={<Tables/>}/>
-                                        <Route path={"/settings"} element={<Settings/>}/>
+                                        <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos}/>}/>
                                     </Routes>
                                     :
                                     <Offline/>
