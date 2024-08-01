@@ -25,18 +25,19 @@ import {StyledCol} from "../../sites/Settings";
 
 const StreamSettingsElement = ({
                                    running,
+                                   port_status,
                                    stream,
                                    stream_data
-                               }: { running: boolean, stream: StreamSettings, stream_data: Stream }) => {
+                               }: { running: boolean, port_status: boolean, stream: StreamSettings, stream_data: Stream }) => {
     const [show, set_show] = useState(false)
 
     return <>
-        <SettingsModal running={running} data={stream} stream={stream_data} show={show} hide={() => set_show(false)}/>
+        <SettingsModal running={running || !port_status} data={stream} stream={stream_data} show={show} hide={() => set_show(false)}/>
         <StyledCol>
             <Form.Check
                 className={"d-inline"}
-                disabled={running}
-                defaultChecked={stream.active}
+                disabled={running || !port_status}
+                defaultChecked={stream.active && port_status}
                 type={"switch"}
                 onChange={(event) => {
                     stream.active = !stream.active
