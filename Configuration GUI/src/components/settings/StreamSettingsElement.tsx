@@ -31,15 +31,19 @@ const StreamSettingsElement = ({
                                }: { running: boolean, port_status: boolean, stream: StreamSettings, stream_data: Stream }) => {
     const [show, set_show] = useState(false)
 
+    // Needed to update the view immediately
+    const [isActive, setIsActive] = useState(stream.active);
+
     return <>
         <SettingsModal running={running || !port_status} data={stream} stream={stream_data} show={show} hide={() => set_show(false)}/>
         <StyledCol>
             <Form.Check
                 className={"d-inline"}
-                disabled={running || !port_status}
-                defaultChecked={stream.active && port_status}
+                disabled={!isActive && (running || !port_status)}
+                defaultChecked={isActive}
                 type={"switch"}
                 onChange={(event) => {
+                    setIsActive(!isActive);
                     stream.active = !stream.active
                 }
                 }
