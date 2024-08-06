@@ -41,7 +41,7 @@ const StreamSettingsList = ({stream_settings, streams, running, port}: {
                 console.log(s, streams)
             }
             if (s.port == port.pid && stream != null) {
-                return <StreamSettingsElement key={i} running={running || !port.status} stream_data={stream}
+                return <StreamSettingsElement key={i} running={running} port_status={port.status} stream_data={stream}
                                               stream={s}/>
             }
 
