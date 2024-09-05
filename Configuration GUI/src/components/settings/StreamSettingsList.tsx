@@ -17,36 +17,58 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import {Stream, StreamSettings} from "../../common/Interfaces";
+import { Stream, StreamSettings, Port } from "../../common/Interfaces";
 import StreamSettingsElement from "./StreamSettingsElement";
 import React from "react";
 
-const StreamSettingsList = ({stream_settings, streams, running, port}: {
-    stream_settings: StreamSettings[],
-    streams: Stream[],
-    running: boolean,
-    port: { pid: number, port: number, channel: number, loopback: string, status: boolean }
+const StreamSettingsList = ({
+  stream_settings,
+  streams,
+  running,
+  port,
+  activateAllInRow = false,
+}: {
+  stream_settings: StreamSettings[];
+  streams: Stream[];
+  running: boolean;
+  port: Port;
+  activateAllInRow?: boolean;
 }) => {
-    return <>
-        {stream_settings.map((s: StreamSettings, i: number) => {
-            let stream = null;
+  const handleActivateStream = (stream_id: number, active: boolean) => {
+    if (activateAllInRow) {
+      stream_settings.forEach((s: StreamSettings) => {
+        const stream = streams.find(
+          (st: Stream) => st.stream_id === s.stream_id
+        );
+        if (s.port === port.pid && stream) {
+          s.active = active;
+        }
+      });
+    }
+  };
 
-            streams.forEach((st: Stream) => {
-                if (st.stream_id == s.stream_id) {
-                    stream = st;
-                }
-            })
+  return (
+    <>
+      {stream_settings.map((s: StreamSettings, i: number) => {
+        const stream = streams.find(
+          (st: Stream) => st.stream_id === s.stream_id
+        );
 
-            if (stream == null) {
-                console.log(s, streams)
-            }
-            if (s.port == port.pid && stream != null) {
-                return <StreamSettingsElement key={i} running={running || !port.status} stream_data={stream}
-                                              stream={s}/>
-            }
-
-        })}
+        if (s.port === port.pid && stream) {
+          return (
+            <StreamSettingsElement
+              key={i}
+              running={running || !port.status}
+              stream_data={stream}
+              stream={s}
+              onActivateStream={handleActivateStream}
+            />
+          );
+        }
+        return null;
+      })}
     </>
-}
+  );
+};
 
-export default StreamSettingsList
+export default StreamSettingsList;

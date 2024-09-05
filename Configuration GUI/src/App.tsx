@@ -17,120 +17,134 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
-import Config from "./config"
-import {BrowserRouter as Router, Route, Routes} from "react-router-dom"
-import {Col, Container, Row} from "react-bootstrap"
-import {AxiosInterceptor} from "./common/API"
-import styled from "styled-components"
-import ErrorView from "./components/ErrorView"
-import Navbar from "./components/Navbar"
+import React, { useEffect, useState } from "react";
+import Config from "./config";
+import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import { Col, Container, Row } from "react-bootstrap";
+import { AxiosInterceptor } from "./common/API";
+import styled from "styled-components";
+import ErrorView from "./components/ErrorView";
+import Navbar from "./components/Navbar";
 
-import Home, {GitHub} from "./sites/Home"
+import Home, { GitHub } from "./sites/Home";
 import Setup from "./sites/Setup";
 import Ports from "./sites/Ports";
-import Settings from "./sites/Settings";
-import Offline from "./sites/Offline"
+import Offline from "./sites/Offline";
 import Tables from "./sites/Tables";
 import config from "./config";
-import {StreamSettings} from "./common/Interfaces";
-import {Stream} from "./common/Interfaces";
-import {validateStreams, validateStreamSettings} from "./common/Validators";
-
+import { StreamSettings } from "./common/Interfaces";
+import { Stream } from "./common/Interfaces";
+import { validateStreams, validateStreamSettings } from "./common/Validators";
+import Settings from "./sites/Settings";
 
 const App = () => {
-    const [error, set_error] = useState(false)
-    const [message, set_message] = useState("")
-    const [time, set_time] = useState("00:00")
-    const [online, set_online] = useState(true)
+  const [error, set_error] = useState(false);
+  const [message, set_message] = useState("");
+  const [time, set_time] = useState("00:00");
+  const [online, set_online] = useState(true);
 
-    const setError = (msg: string) => {
-        set_error(true)
-        set_message(msg)
+  const setError = (msg: string) => {
+    set_error(true);
+    set_message(msg);
 
-        let now = new Date()
+    let now = new Date();
 
-        set_time(now.getHours() + ":" + now.getMinutes())
+    set_time(now.getHours() + ":" + now.getMinutes());
+  };
+
+  const Wrapper = styled.div``;
+
+  // needs to be updated to fit the new local storage structure
+
+  // Validates the stored streams and stream settings in the local storage
+  // Clears local storage if some streams/settings are not valid
+  // This may be needed if the UI got an update (new stream properties), but the local storage
+  // holds "old" streams/settings without the new property
+  const validateLocalStorage = () => {
+    try {
+      let stored_streams: Stream[] = JSON.parse(
+        localStorage.getItem("streams") ?? "[]"
+      );
+      let stored_settings: StreamSettings[] = JSON.parse(
+        localStorage.getItem("streamSettings") ?? "[]"
+      );
+
+      if (!validateStreams(stored_streams)) {
+        alert(
+          "Incompatible stream description found. This may be due to an update. Resetting local storage."
+        );
+        localStorage.clear();
+        window.location.reload();
+        return;
+      }
+
+      if (!validateStreamSettings(stored_settings)) {
+        alert(
+          "Incompatible stream description found. This may be due to an update. Resetting local storage."
+        );
+        localStorage.clear();
+        window.location.reload();
+        return;
+      }
+    } catch {
+      alert("Error in reading local storage. Resetting local storage.");
+      localStorage.clear();
+      window.location.reload();
     }
+  };
 
-    const Wrapper = styled.div`
-
-    `
-
-
-
-    // Validates the stored streams and stream settings in the local storage
-    // Clears local storage if some streams/settings are not valid
-    // This may be needed if the UI got an update (new stream properties), but the local storage
-    // holds "old" streams/settings without the new property
-    const validateLocalStorage = () => {
-        try {
-            let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
-            let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
-
-            if(!validateStreams(stored_streams)) {
-                alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
-                localStorage.clear()
-                window.location.reload()
-                return
+  useEffect(() => {
+    validateLocalStorage();
+  }, []);
+  return (
+    <>
+      <Router basename={Config.BASE_PATH}>
+        <Row>
+          <Col className={"col-2 col-sm-2 col-xl-1 fixed-navbar"}>
+            <Navbar />
+          </Col>
+          <Col
+            className={
+              "col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-5"
             }
-
-            if(!validateStreamSettings(stored_settings)) {
-                alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
-                localStorage.clear()
-                window.location.reload()
-                return
-            }
-        }
-        catch {
-            alert("Error in reading local storage. Resetting local storage.")
-            localStorage.clear()
-            window.location.reload()
-        }
-    }
-
-    useEffect(() => {
-        validateLocalStorage()
-    }, [])
-    return <>
-        <Router basename={Config.BASE_PATH}>
-            <Row>
-                <Col className={'col-2 col-sm-2 col-xl-1 fixed-navbar'}>
-                    <Navbar/>
-                </Col>
-                <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-5"}>
-                    <ErrorView error={error} message={message} time={time} close={() => set_error(false)}/>
-                    <AxiosInterceptor onError={setError} onOffline={() => set_online(false)}
-                                      onOnline={() => set_online(true)}>
-                        <Container fluid className={"pb-2"}>
-                            <Wrapper>
-                                {//<h2>P4TG: 100 Gbps traffic generation for Ethernet/IP networks</h2>
-                                    //  <Navbar/>
-                                }
-                                {online ?
-                                    <Routes>
-                                        <Route path={""} element={<Home/>}/>
-                                        <Route path={"/"} element={<Home/>}/>
-                                        <Route path={"/home"} element={<Home/>}/>
-                                        <Route path={"/ports"} element={<Ports/>}/>
-                                        <Route path={"/tables"} element={<Tables/>}/>
-                                        <Route path={"/settings"} element={<Settings/>}/>
-                                    </Routes>
-                                    :
-                                    <Offline/>
-                                }
-                            </Wrapper>
-
-                        </Container>
-                    </AxiosInterceptor>
-                </Col>
-            </Row>
-        </Router>
-
-
+          >
+            <ErrorView
+              error={error}
+              message={message}
+              time={time}
+              close={() => set_error(false)}
+            />
+            <AxiosInterceptor
+              onError={setError}
+              onOffline={() => set_online(false)}
+              onOnline={() => set_online(true)}
+            >
+              <Container fluid className={"pb-2"}>
+                <Wrapper>
+                  {
+                    //<h2>P4TG: 100 Gbps traffic generation for Ethernet/IP networks</h2>
+                    //  <Navbar/>
+                  }
+                  {online ? (
+                    <Routes>
+                      <Route path={""} element={<Home />} />
+                      <Route path={"/"} element={<Home />} />
+                      <Route path={"/home"} element={<Home />} />
+                      <Route path={"/ports"} element={<Ports />} />
+                      <Route path={"/tables"} element={<Tables />} />
+                      <Route path={"/settings"} element={<Settings />} />
+                    </Routes>
+                  ) : (
+                    <Offline />
+                  )}
+                </Wrapper>
+              </Container>
+            </AxiosInterceptor>
+          </Col>
+        </Row>
+      </Router>
     </>
-
-
-}
+  );
+};
 
 export default App;

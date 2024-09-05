@@ -17,11 +17,10 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-
 const config = {
-    //API_URL: "http://localhost:8082/api",
-    API_URL: window.location.protocol + "//" + window.location.host + "/api",
-    BASE_PATH: "/"
-}
+  //API_URL: "http://localhost:8082/api",
+  API_URL: window.location.protocol + "//" + window.location.host + "/api",
+  BASE_PATH: "/",
+};
 
-export default config
+export default config;

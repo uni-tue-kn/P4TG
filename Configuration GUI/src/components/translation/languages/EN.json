@@ -1,0 +1,300 @@
+{
+  "buttons": {
+    "reset": "Reset",
+    "save": "Save",
+    "import": "Import",
+    "export": "Export",
+    "addStream": "Add Stream",
+    "restart": "Restart",
+    "download": "Download",
+    "totalDuration": "Total Duration",
+    "refresh": "Refresh"
+  },
+  "tabs": {
+    "throughput": "Throughput",
+    "latency": "Latency",
+    "frame loss rate": "Frame Loss Rate",
+    "reset": "Reset"
+  },
+  "input": {
+    "testDuration": "Enter Test Duration",
+    "generationMode": "Generation Mode",
+    "selectRxPort": "Select RX Port",
+    "testMode": {
+      "title": "Test Mode",
+      "options": {
+        "standard": "Standard",
+        "automaticTests": "Automatic",
+        "profile": "Profil"
+      }
+    },
+    "rfcMode": {
+      "title": "Selected Test",
+      "options": {
+        "all": "All",
+        "throughput": "Throughput",
+        "latency": "Latency",
+        "frameLoss": "Frame Loss Rate",
+        "reset": "Reset"
+      }
+    }
+  },
+  "visualization": {
+    "visualization": "Visualization",
+    "title": "Visualization",
+    "currentTest": "Current Test",
+    "summary": "Summary",
+    "overview": "Overview",
+    "packetLoss": "Packet Loss",
+    "packetLoss/outOfOrder": "Packet Loss/Out of Order",
+    "trafficRates": "Traffic Rates"
+  },
+  "statistics": {
+    "minimum": "Minimum",
+    "maximum": "Maximum",
+    "average": "Average",
+    "current": "Current",
+    "frameSize": "Frame Size",
+    "frameType": "Frame Type",
+    "ethernetType": "Ethernet Type",
+    "lossRate": "Frame Loss Rate",
+    "encapsulation": "Encapsulation",
+    "bandwidth": "Bandwidth",
+    "meanFrameLoss": "Mean Frame Loss Rate",
+    "percentage": "Percentage",
+    "rate": "Rate",
+    "lostFrames": "Lost Frames",
+    "outOfOrder": "Out of Order"
+  },
+  "pdf": {
+    "networkGraphs": "Network Graphs",
+    "networkGraphsSummary": "Network Graphs Summary",
+    "testGraph": "Test Graph",
+    "header": "P4TG Network Report - ",
+    "headerTOC": "P4TG Network Report",
+    "testDuration": "Test Duration:",
+    "page": "Page ",
+    "testExplanation": "Test explanation",
+    "termExplanation": "Term explanation",
+    "tableOfContents": "Table of Contents",
+    "reportGenerated": "Report was generated on:",
+    "term": "Term",
+    "explanation": "Explanation",
+    "streamConfig": "Stream Configuration in",
+    "channel": "Channel",
+    "infoText": {
+      "reportExplanation": "This report provides a comprehensive overview of the network performance tests conducted using the P4-based 1 Tb/s traffic generator (P4TG). The P4TG is utilized to generate high-speed network traffic, enabling the evaluation of various network parameters under controlled conditions. These tests are designed to measure the network's ability to handle high-speed data transfer, ensuring both efficiency and reliability. Key metrics such as packet loss, round-trip time (RTT), inter-arrival times (IAT), and jitter were recorded to provide insights into the network's performance. The following sections summarize the recorded statistics in the form of data and corresponding graphs, highlighting the network's strengths and identifying potential areas for improvement.",
+      "rfcExplanation": "The Request for Comments (RFC) 2544 outlines a standardized testing methodology to assess the performance of network devices operating at Layer 2 of the ISO/OSI model. This methodology enables consistent comparisons across different manufacturers and devices. In this test run, several of the RFC 2544 tests were conducted, including the throughput test, which determines the maximum data rate (measured in frames per second) at which no frames are lost. Latency was also measured, specifically the one-way latency, which is the time it takes for a frame to travel from the source to the destination device. Additionally, the frame loss rate was assessed to quantify the percentage of frames that were not successfully forwarded by the device under test (DUT) under constant load conditions. Finally, the reset test was performed to measure the time required for the DUT to resume normal operation after a device or software reset."
+    },
+    "glossary": {
+      "CBR": {
+        "title": "CBR (Constant Bit Rate)",
+        "description": "A transmission mode where the data rate remains constant regardless of the amount of data being transmitted."
+      },
+      "PoissonMode": {
+        "title": "Poisson Mode",
+        "description": "A traffic generation mode where packets are sent according to a Poisson distribution, which is used to model random traffic arrivals."
+      },
+      "MonitorMode": {
+        "title": "Monitor Mode",
+        "description": "A mode in which the network traffic is monitored without injecting any additional traffic, used for passive analysis."
+      },
+      "P4TG": {
+        "title": "P4TG (P4-based 1 Tb/s traffic generator)",
+        "description": "A traffic generator based on the P4 programming model capable of generating data at a rate of 1 Terabit per second."
+      },
+      "PacketLoss": {
+        "title": "Packet Loss",
+        "description": "The failure of one or more transmitted packets to arrive at their destination, indicating network inefficiency."
+      },
+      "RTT": {
+        "title": "RTT (Round-Trip Time)",
+        "description": "The time it takes for a signal to travel from the source to the destination and back again, used to measure network latency."
+      },
+      "IAT": {
+        "title": "IAT (Inter-Arrival Time)",
+        "description": "The time interval between the arrivals of consecutive packets, used to assess the consistency of packet delivery."
+      },
+      "Jitter": {
+        "title": "Jitter",
+        "description": "The variation in packet arrival times, which can impact the quality of real-time communications like voice and video."
+      },
+      "TX": {
+        "title": "TX (Transmit)",
+        "description": "Refers to the transmission of data packets from a source port."
+      },
+      "RX": {
+        "title": "RX (Receive)",
+        "description": "Refers to the reception of data packets at a destination port."
+      },
+      "VxLan": {
+        "title": "VxLan (Virtual Extensible LAN)",
+        "description": "A network virtualization technology that improves scalability by encapsulating Ethernet frames within UDP packets."
+      },
+      "FrameSize": {
+        "title": "Frame Size",
+        "description": "The size of a data packet or frame measured in bytes."
+      },
+      "FrameLossRatio": {
+        "title": "Frame Loss Ratio",
+        "description": "The ratio of lost frames to the total transmitted frames, indicating the efficiency of data transmission."
+      },
+      "MAE": {
+        "title": "MAE (Mean Absolute Error)",
+        "description": "A measure of the average absolute difference between the transmitted and received inter-arrival times, indicating timing precision."
+      },
+      "Multicast": {
+        "title": "Multicast",
+        "description": "The transmission of data to multiple recipients simultaneously within a network."
+      },
+      "Unicast": {
+        "title": "Unicast",
+        "description": "The transmission of data to a single specific recipient within a network."
+      },
+      "VLAN": {
+        "title": "VLAN (Virtual Local Area Network)",
+        "description": "A network configuration that allows multiple distinct networks to coexist on a single physical network infrastructure."
+      },
+      "QinQ": {
+        "title": "QinQ (802.1ad)",
+        "description": "A network protocol that allows for multiple VLANs to be nested within each other, providing increased scalability."
+      },
+      "MPLS": {
+        "title": "MPLS (Multiprotocol Label Switching)",
+        "description": "A technique for directing data packets through a network based on short path labels rather than long network addresses."
+      },
+      "IATPrecision": {
+        "title": "IAT Precision",
+        "description": "A mode where the traffic generator aims to maintain precise inter-arrival times between packets."
+      },
+      "RatePrecision": {
+        "title": "Rate Precision",
+        "description": "A mode where the traffic generator aims to maintain a precise data rate for packet transmission."
+      }
+    }
+  },
+  "units": {
+    "seconds": "Seconds"
+  },
+  "infoBoxes": {
+    "stream": {
+      "rate": "In this mode, several packets may be generated at once (burst) to fit the configured traffic rate more precisely.",
+      "iat": "In this mode, a single packet is generated at once and all packets have the same inter-arrival times. This mode should be used if the traffic should be very 'smooth', i.e., without bursts. However, the configured traffic rate may not be met precisely."
+    },
+    "mac": "MAC address that is used to answer ARP requests (if enabled). The address can be changed in the config.json file of the controller.",
+    "arp": "If enabled, the port will answer all received ARP requests.",
+    "rfc": {
+      "title": "RFC 2544",
+      "description": "RFC 2544 defines methods for evaluating the performance of network devices. The implemented tests are:",
+      "tests": {
+        "throughput": "Throughput",
+        "latency": "Latency",
+        "frameLoss": "Frame Loss Rate",
+        "reset": "Reset"
+      },
+      "steps": {
+        "step1": "Search for the maximum data rate at which no frames are lost.",
+        "step2": "Find the one-way latency for different frame sizes.",
+        "step3": "Determine the degree of frame loss at different data rates caused by the DUT.",
+        "step4": "Determine the time it takes for the DUT to return to normal operation after a reset."
+      }
+    },
+
+    "throughput": {
+      "title": "Throughput Test",
+      "description": "The goal of this test is to determine the unknown throughput rates of a DUT (Device Under Test). The throughput rates for frame sizes 64, 128, 512, 1024, and 1518 bytes are determined. The unit for the throughput rate is Frames per second.",
+      "details": {
+        "streamRate": "The initial stream rate corresponds to the rate defined in the stream table.",
+        "step1": "First, exponential search is used to find the interval in which the sending rate is located.",
+        "step2": "Then, a binary search is conducted within this interval.",
+        "step3": "In each iteration, the frame loss rate is calculated to adjust the interval boundaries."
+      },
+      "code": {
+        "frameLossRate": "Frame Loss Rate"
+      },
+      "threshold": "If there is no or less than 0.01% packet loss, the lower interval boundary is increased, otherwise the upper boundary is decreased.",
+      "procedure": {
+        "title": "Procedure",
+        "step1": "Start with the specified stream send rate and perform exponential search to find the sending rate interval.",
+        "step2": "Conduct a binary search within the identified interval."
+      }
+    },
+    "latency": {
+      "title": "Latency Test",
+      "description": "Determine the one-way latency for the specified frame size.",
+      "details": {
+        "frameSize": "A stream with a set frame size and previously determined throughput is sent through the DUT.",
+        "streamThroughput": "If the latency test is run separately, the set frame rate of the stream(s) is used."
+      },
+      "duration": "This test lasts 120 seconds and is repeated 20 times.",
+      "procedure": {
+        "title": "Procedure",
+        "step1": "Determine the throughput for the specified frame size.",
+        "step2": "Send a stream with the specified frame size and determined throughput through the DUT.",
+        "step3": "At least 120 seconds of sending time.",
+        "step4": "Determine latency by calculating the average RTT (Round-Trip-Time) across all ports.",
+        "step5": "Divide the average RTT by 2 to calculate the one-way latency.",
+        "step6": "Repeat the test 20 times."
+      },
+      "summary": "The reported latency value is the average of the latency values calculated after each test run."
+    },
+    "frameLoss": {
+      "title": "Frame Loss Rate Test",
+      "description": "A stream with a specified frame size and a fraction of the maximum transmission rate of the medium is sent through the DUT.",
+      "procedure": {
+        "title": "Procedure",
+        "step1": "Send a number of frames at a specified rate through the DUT and count the received frames.",
+        "step2": "Calculate the frame loss rate.",
+        "step3": "First test run at a transmission rate of 100% of the maximum transmission rate of the medium.",
+        "step4": "Repeat at 90%, 80% of the maximum rate, and so on."
+      },
+      "summary": "The maximum transmission rate of the medium for P4TG is 100 Gbit/s per port."
+    },
+    "reset": {
+      "title": "Reset Test",
+      "description": "Starts a stream with a minimal frame size (64 bytes) and a duration of 120 seconds. During this time interval, a reset is triggered on the DUT, and the time until normal operation is restored is measured."
+    }
+  },
+  "imixInfo": {
+    "description": "Internet-Mixture (IMIX) describes a distribution of frame sizes used to simulate internet traffic. Unlike RFC 2544, which tests individual frame sizes separately, IMIX presents a mixed distribution that better reflects real network conditions. It is important to note that IMIX does not define specific tests, but rather a method to emulate mixed traffic.",
+    "table": {
+      "packetSize": "Packet Size (Bytes)",
+      "proportion": "Proportion of Total",
+      "bandwidth": "Bandwidth (Load)"
+    },
+    "sizes": {
+      "size1": "64",
+      "size2": "512",
+      "size3": "1518",
+      "proportion1": "7 parts",
+      "proportion2": "4 parts",
+      "proportion3": "1 part",
+      "bandwidth1": "13.8%",
+      "bandwidth2": "50.09%",
+      "bandwidth3": "36.13%"
+    },
+    "note": "Note: All three streams are automatically selected to create the IMIX profile. Pressing \"Save\" will save the Simple IMIX Profile."
+  },
+  "tooltip": {
+    "profil": "Profile info",
+    "rfc": "RFC 2544 Profile",
+    "simpleImix": "Simple IMIX Profile"
+  },
+  "alert": {
+    "saved": "Settings saved.",
+    "reset": "Settings reset.",
+    "streamLimit": "Only 7 different streams allowed.",
+    "selected": "No test selected."
+  },
+  "other": {
+    "mode": "Mode",
+    "options": "Options",
+    "notRunning": "Not Running",
+    "notFinished": "Not Finished",
+    "speed": "Speed",
+    "arpReply": "ARP Reply",
+    "of": "of",
+    "testInfo": "Test Info",
+    "duration": "Duration"
+  }
+}

@@ -31,7 +31,7 @@ use crate::core::statistics::{IATStatistics, IATValues, RangeCount, RTTStatistic
 
 use crate::api::{docs, helper};
 
-#[derive(Serialize, ToSchema)]
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct Statistics {
     /// Indicates whether the sample mode is used or not.
     /// In sampling mode, IATs are sampled and not calculated in the data plane.
@@ -64,7 +64,11 @@ pub struct Statistics {
     /// Number of out of order packets per port.
     pub(crate) out_of_order: HashMap<u32, u64>,
     /// Elapsed time since the traffic generation has started in seconds.
-    pub(crate) elapsed_time: u32
+    pub(crate) elapsed_time: u32,
+    /// Save previous statistics, where the key is the test number of the statistics. 
+    /// Skip serializing if there are no previous statistics.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) previous_statistics: Option<BTreeMap<u32, Statistics>>,
 }
 
 #[utoipa::path(
@@ -82,6 +86,21 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
     let frame_size_monitor = &state.frame_size_monitor;
     let frame_type_monitor = &state.frame_type_monitor;
     let rate_monitor = &state.rate_monitor;
+    let collected_statistics = state.multi_test_state.collected_statistics.lock().await.clone();
+
+    // Single test no previous statistics
+    let mut previous_statistics_map: Option<BTreeMap<u32, Statistics>> = None;
+
+    // Multiple statistics
+    if !collected_statistics.is_empty() {
+        // Convert collected_statistics into BTreeMap
+        let mut map: BTreeMap<u32, Statistics> = BTreeMap::new();
+        for (index, stats) in collected_statistics.iter().enumerate() {
+            map.insert((index + 1) as u32, stats.clone());
+        }
+        previous_statistics_map = Some(map);
+    }
+
 
     let mut stats = Statistics {
         sample_mode: state.sample_mode,
@@ -97,7 +116,8 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
         rtts: Default::default(),
         packet_loss: Default::default(),
         out_of_order: Default::default(),
-        elapsed_time: 0
+        elapsed_time: 0,
+        previous_statistics: previous_statistics_map,
     };
 
 
@@ -182,7 +202,7 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
     (StatusCode::OK, Json(stats)).into_response()
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct Params {
     limit: Option<usize>,
 }
@@ -190,6 +210,14 @@ pub struct Params {
 pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): Query<Params>) -> Response {
     let rate_monitor = &state.rate_monitor;
     let stats = rate_monitor.lock().await.time_statistics.clone();
+    let collected_time_statistics = state.multi_test_state.collected_time_statistics.lock().await.clone();
+
+    // Convert collected_statistics into BTreeMap
+    let mut previous_time_statistics_map: BTreeMap<u32, TimeStatistic> = BTreeMap::new();
+    for (index, stats) in collected_time_statistics.iter().enumerate() {
+        previous_time_statistics_map.insert((index + 1) as u32, stats.clone());
+    }
+    
 
     let limit = params.limit.unwrap_or(usize::MAX);
 
@@ -236,7 +264,8 @@ pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): 
         rx_rate_l1: rx,
         packet_loss,
         out_of_order,
-        rtt
+        rtt,
+        previous_time_statistics: Some(previous_time_statistics_map),
     };
 
     (StatusCode::OK, Json(stats)).into_response()

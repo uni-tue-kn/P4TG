@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::Ipv4Addr;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -126,7 +126,16 @@ pub struct TrafficGenData {
     pub(crate) streams: Vec<Stream>,
     /// Mapping between TX (send) ports, and RX (receive) ports.
     /// Traffic send on port TX are expected to be received on port RX.
-    pub(crate) port_tx_rx_mapping: HashMap<u32, u32>
+    pub(crate) port_tx_rx_mapping: HashMap<u32, u32>,
+    /// Optional duration for each traffic generation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) duration: Option<u64>,
+    /// Optional test name for each traffic generation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) name: Option<String>,
+    /// Optional all traffic configurations
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) all_test: Option<BTreeMap<u32, TrafficGenData>>
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -246,4 +255,15 @@ pub struct EmptyResponse {
 #[derive(Serialize, ToSchema)]
 pub struct Reset {
     pub(crate) message: String
+}
+
+// Stores test results of RFC2544 test 
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct TestResult {
+    pub(crate) throughput: Option<BTreeMap<u32, f32>>,
+    pub(crate) latency: Option<BTreeMap<u32, f64>>,
+    pub(crate) frame_loss_rate: Option<BTreeMap<u32, BTreeMap<u32, f64>>>, 
+    pub(crate) reset: Option<BTreeMap<u32, f64>>,
+    pub(crate) running: bool,
+    pub(crate) current_test: Option<String>,
 }

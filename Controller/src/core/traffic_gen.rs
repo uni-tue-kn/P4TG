@@ -62,6 +62,8 @@ pub struct TrafficGen {
     /// The port mapping indicates which ports are used for traffic generation and on which port the returning traffic
     /// is expected.
     pub port_mapping: HashMap<u32, u32>,
+    /// Optional duration for the traffic generation.
+    pub duration: Option<u64>, 
 }
 
 impl TrafficGen {
@@ -72,7 +74,8 @@ impl TrafficGen {
             stream_settings: vec![],
             streams: vec![],
             mode: GenerationMode::Cbr,
-            port_mapping: HashMap::new()
+            port_mapping: HashMap::new(),
+            duration: None,
         }
     }
 
@@ -400,7 +403,13 @@ impl TrafficGen {
             .action_data("timer_nanosec", packet.timer)
             .action_data("packets_per_batch_cfg", packet.n_packets - 1)
             .action_data("pipe_local_source_port", TG_PIPE_PORTS[0]) // traffic gen port
-            .action_data("pkt_buffer_offset", packet.buffer_offset.unwrap())).collect();
+            .action_data("pkt_buffer_offset", packet.buffer_offset.unwrap())        
+        ).collect();
+
+        if let Some((_, packet)) = packets.iter().next() {
+            info!("packets_per_batch_cfg: {}", packet.n_packets - 1);
+        }
+
         switch.update_table_entries(update_requests).await?;
 
         Ok(())

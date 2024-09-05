@@ -1,0 +1,301 @@
+{
+  "buttons": {
+    "reset": "Zurücksetzen",
+    "save": "Sichern",
+    "import": "Importieren",
+    "export": "Exportieren",
+    "addStream": "Stream hinzufügen",
+    "restart": "Neustart",
+    "download": "Herunterladen",
+    "totalDuration": "Gesamtdauer",
+    "refresh": "Aktualisieren"
+  },
+  "tabs": {
+    "throughput": "Durchsatz",
+    "latency": "Latenz",
+    "frame loss rate": "Frame Verlust Rate",
+    "reset": "Reset"
+  },
+  "input": {
+    "testDuration": "Eingabe der Testlaufzeit",
+    "generationMode": "Generierungsmodus",
+    "selectRxPort": "Auswahl RX-Port",
+    "testMode": {
+      "title": "Testmodus",
+      "options": {
+        "standard": "Standard",
+        "automaticTests": "Automatisiert",
+        "profile": "Profil"
+      }
+    },
+    "rfcMode": {
+      "title": "Ausgewählter Test",
+      "options": {
+        "all": "Alle",
+        "throughput": "Durchsatz",
+        "latency": "Latenz",
+        "frameLoss": "Frame-Verlust Rate",
+        "reset": "Reset"
+      }
+    }
+  },
+
+  "visualization": {
+    "visualization": "Graphische Darstellung",
+    "title": "Graphische Darstellung",
+    "currentTest": "Aktueller Test",
+    "summary": "Zusammenfassung",
+    "overview": "Übersicht",
+    "packetLoss": "Paketverlust",
+    "packetLoss/outOfOrder": "Paketverlust/Falsche Reihenfolge",
+    "trafficRates": "Verkehrsrate"
+  },
+  "statistics": {
+    "minimum": "Minimale",
+    "maximum": "Maximale",
+    "average": "Durchschnittliche",
+    "current": "Aktuelle",
+    "frameSize": "Frame Größe",
+    "frameType": "Frame Typ",
+    "ethernetType": "Ethernet Typ",
+    "lossRate": "Frame Verlust Rate",
+    "encapsulation": "Datenkapselung",
+    "bandwidth": "Bandbreite",
+    "meanFrameLoss": "Durchschnittliche Frame-Verlust Rate",
+    "percentage": "Prozentsatz",
+    "rate": "Übertragungsrate",
+    "lostFrames": "Verlorene Frames",
+    "outOfOrder": "Ungeordnet"
+  },
+  "pdf": {
+    "networkGraphs": "Netzwerkdiagramme",
+    "networkGraphsSummary": "Zusammenfassung der Netzwerkdiagramme",
+    "testGraph": "Testdiagramm",
+    "header": "P4TG Netzwerkbericht - ",
+    "headerTOC": "P4TG Netzwerkbericht",
+    "testDuration": "Testdauer:",
+    "page": "Seite ",
+    "testExplanation": "Testbeschreibung",
+    "termExplanation": "Begriffserklärung",
+    "tableOfContents": "Inhaltsverzeichnis",
+    "reportGenerated": "Bericht wurde erstellt am:",
+    "term": "Begriff",
+    "explanation": "Erklärung",
+    "streamConfig": "Stream Konfiguration in",
+    "channel": "Kanal",
+    "infoText": {
+      "reportExplanation": "Dieser Bericht bietet einen umfassenden Überblick über die durchgeführten Netzwerktests mithilfe des P4-basierten 1-Tb/s-Traffic-Generators (P4TG). Der P4TG wird verwendet, um Hochgeschwindigkeitsnetzwerkverkehr zu erzeugen, wodurch die Bewertung verschiedener Netzwerkparameter unter kontrollierten Bedingungen ermöglicht wird. Diese Tests sind darauf ausgelegt, die Fähigkeit des Netzwerks zur Bewältigung von Hochgeschwindigkeitsdatenübertragungen zu messen und sowohl Effizienz als auch Zuverlässigkeit sicherzustellen. Wichtige Metriken wie Paketverlust, Round-Trip-Time (RTT), Zwischenankunftszeiten (IAT) und Jitter wurden aufgezeichnet, um Einblicke in die Netzwerkleistung zu geben. Die folgenden Abschnitte fassen die aufgezeichneten Statistiken in Form von Daten und entsprechenden Grafiken zusammen, wobei die Stärken des Netzwerks hervorgehoben und mögliche Verbesserungsbereiche identifiziert werden.",
+      "rfcExplanation": "Die Request for Comments (RFC) 2544 definiert eine Testmethodik zur Bewertung der Leistungsmerkmale von Netzwerkgeräten auf Layer 2 des ISO/OSI-Modells. Diese Methodik ermöglicht einen konsistenten Vergleich zwischen verschiedenen Herstellern und Geräten. In diesem Testdurchlauf wurden einige der RFC 2544-Tests durchgeführt, darunter der Durchsatztest, der die maximale Datenrate (gemessen in Frames pro Sekunde) bestimmt, bei der keine Frames verloren gehen. Außerdem wurde die Latenz gemessen, insbesondere die Einweg-Latenz, die die Zeitspanne beschreibt, die ein Frame benötigt, um vom Quell- zum Zielgerät zu gelangen. Zusätzlich wurde die Frame-Verlustquote ermittelt, um den Prozentsatz der Frames zu quantifizieren, die unter konstanten Lastbedingungen vom zu testenden Gerät (DUT) nicht erfolgreich weitergeleitet wurden. Abschließend wurde der Reset-Test durchgeführt, um die Zeit zu messen, die das DUT benötigt, um nach einem Geräte- oder Software-Reset wieder in den normalen Betrieb zurückzukehren."
+    },
+    "glossary": {
+      "CBR": {
+        "title": "CBR (Constant Bit Rate)",
+        "description": "Ein Übertragungsmodus, bei dem die Datenrate konstant bleibt, unabhängig von der übertragenen Datenmenge."
+      },
+      "PoissonMode": {
+        "title": "Poisson-Modus",
+        "description": "Ein Traffic-Generierungsmodus, bei dem Pakete gemäß einer Poisson-Verteilung gesendet werden."
+      },
+      "MonitorMode": {
+        "title": "Monitor-Modus",
+        "description": "Ein Modus zur Überwachung des Netzwerkverkehrs, ohne zusätzlichen Traffic zu erzeugen."
+      },
+      "P4TG": {
+        "title": "P4TG (P4-basierter 1 Tb/s Traffic-Generator)",
+        "description": "Ein Traffic-Generator, der Daten mit 1 Terabit pro Sekunde basierend auf dem P4-Modell erzeugt."
+      },
+      "PacketLoss": {
+        "title": "Paketverlust",
+        "description": "Das Ausbleiben eines oder mehrerer Pakete am Ziel, was auf Netzwerkineffizienz hinweist."
+      },
+      "RTT": {
+        "title": "RTT (Round-Trip Time)",
+        "description": "Die Zeit für ein Signal, um zum Ziel und zurück zu gelangen, zur Messung der Latenz."
+      },
+      "IAT": {
+        "title": "IAT (Inter-Arrival Time)",
+        "description": "Das Zeitintervall zwischen aufeinanderfolgenden Paketen zur Bewertung der Zustellkonsistenz."
+      },
+      "Jitter": {
+        "title": "Jitter",
+        "description": "Die Variation der Paketankunftszeiten, die die Qualität der Echtzeitkommunikation beeinträchtigen kann."
+      },
+      "TX": {
+        "title": "TX (Transmit)",
+        "description": "Die Übertragung von Datenpaketen von einem Quellport."
+      },
+      "RX": {
+        "title": "RX (Receive)",
+        "description": "Der Empfang von Datenpaketen an einem Zielport."
+      },
+      "VxLan": {
+        "title": "VxLan (Virtual Extensible LAN)",
+        "description": "Eine Technologie zur Verbesserung der Skalierbarkeit durch Kapselung von Ethernet-Frames in UDP-Pakete."
+      },
+      "FrameSize": {
+        "title": "Frame-Größe",
+        "description": "Die Größe eines Datenpakets oder Frames, gemessen in Bytes."
+      },
+      "FrameLossRatio": {
+        "title": "Frame-Verlustquote",
+        "description": "Das Verhältnis von verlorenen zu gesendeten Frames, das die Effizienz der Übertragung anzeigt."
+      },
+      "MAE": {
+        "title": "MAE (Mittlerer Absoluter Fehler)",
+        "description": "Der durchschnittliche absolute Unterschied zwischen gesendeten und empfangenen Zwischenankunftszeiten."
+      },
+      "Multicast": {
+        "title": "Multicast",
+        "description": "Die gleichzeitige Übertragung von Daten an mehrere Empfänger in einem Netzwerk."
+      },
+      "Unicast": {
+        "title": "Unicast",
+        "description": "Die Übertragung von Daten an einen einzelnen Empfänger in einem Netzwerk."
+      },
+      "VLAN": {
+        "title": "VLAN (Virtual Local Area Network)",
+        "description": "Eine Konfiguration, die es ermöglicht, dass mehrere Netzwerke auf einer physischen Infrastruktur koexistieren."
+      },
+      "QinQ": {
+        "title": "QinQ (802.1ad)",
+        "description": "Ein Protokoll, das verschachtelte VLANs für erhöhte Skalierbarkeit ermöglicht."
+      },
+      "MPLS": {
+        "title": "MPLS (Multiprotocol Label Switching)",
+        "description": "Eine Technik zur Steuerung von Datenpaketen in einem Netzwerk über kurze Pfadlabels."
+      },
+      "IATPrecision": {
+        "title": "IAT-Precision",
+        "description": "Ein Modus zur genauen Kontrolle der Zwischenankunftszeiten von Paketen."
+      },
+      "RatePrecision": {
+        "title": "Rate-Precision",
+        "description": "Ein Modus zur genauen Kontrolle der Übertragungsrate von Paketen."
+      }
+    }
+  },
+  "units": {
+    "seconds": "Sekunden"
+  },
+  "infoBoxes": {
+    "stream": {
+      "rate": "In diesem Modus können mehrere Pakete gleichzeitig (Burst) erzeugt werden, um die konfigurierte Verkehrsrate genauer zu erreichen.",
+      "iat": "In diesem Modus wird jeweils ein einzelnes Paket erzeugt, und alle Pakete haben die gleichen Zwischenankunftszeiten. Dieser Modus sollte verwendet werden, wenn der Verkehr sehr 'glatt' sein soll, also ohne Bursts. Allerdings kann die konfigurierte Verkehrsrate möglicherweise nicht genau eingehalten werden."
+    },
+    "mac": "MAC-Adresse, die zur Beantwortung von ARP-Anfragen verwendet wird (falls aktiviert). Die Adresse kann in der config.json-Datei des Controllers geändert werden.",
+    "arp": "Falls aktiviert, wird der Port alle empfangenen ARP-Anfragen beantworten.",
+    "rfc": {
+      "title": "RFC 2544",
+      "description": "RFC 2544 definiert Methoden zur Leistungsbewertung von Netzwerkgeräten. Die implementierte Tests sind:",
+      "tests": {
+        "throughput": "Durchsatz",
+        "latency": "Latenz",
+        "frameLoss": "Frame-Verlust Rate",
+        "reset": "Reset"
+      },
+      "steps": {
+        "step1": "Suche nach der maximalen Datenrate, bei der keine Frames verloren gehen.",
+        "step2": "Finde die One-Way-Latenz für verschiedene Frame-Größen.",
+        "step3": "Bestimme Grad an Frame-Verlust bei verschiedenen Datenraten der durch DUT entsteht.",
+        "step4": "Ermittle die Zeit, die das DUT benötigt, um nach einem Reset wieder in den normalen Betrieb zurückzukehren."
+      }
+    },
+
+    "throughput": {
+      "title": "Durchsatz-Test",
+      "description": "Ziel dieses Tests ist die Ermittlung der unbekannten Durchsatzraten eines DUT (Device Under Test). Dabei werden die Durchsatzraten für die Frame-Größen 64, 128, 512, 1024 und 1518 Bytes ermittelt. Der Durchsatz wird dabei in der Einheit Frames pro Sekunde angegeben.",
+      "details": {
+        "streamRate": "Die anfängliche Stream-Rate entspricht der in der Stream-Tabelle definierten Rate.",
+        "step1": "Zunächst wird mittels exponentieller Suche das Intervall ermittelt, in dem sich die Senderate befindet.",
+        "step2": "Anschließend wird innerhalb dieses Intervalls eine binäre Suche durchgeführt.",
+        "step3": "Dabei wird in jeder Iteration wird die Frame Loss Rate berechnet, um die Anpassung der Intervallgrenzen zu bestimmen."
+      },
+      "code": {
+        "frameLossRate": "Frame Loss Rate"
+      },
+      "threshold": "Bei keinem oder weniger als 0,01% Paketverlust wird die untere Intervallgrenze erhöht, andernfalls die obere Grenze verringert.",
+      "procedure": {
+        "title": "Vorgehensweise",
+        "step1": "Starte mit der angegebenen Stream-Sende-Rate die exponentielle Suche und finde das Senderaten-Intervall.",
+        "step2": "Führe eine binäre Suche innerhalb des ermittelten Intervalls durch."
+      }
+    },
+    "latency": {
+      "title": "Latenz-Test",
+      "description": "Ermitteln der Einweg Latenz für die angegebene Framegröße.",
+      "details": {
+        "frameSize": "Ein Stream mit einer eingestellten Frame-Größe und dem zuvor ermittelten Durchsatz wird durch das DUT gesendet.",
+        "streamThroughput": "Falls der Latency-Test einzeln ausgeführt wird, so wird die eingestellte Frame-Rate der Stream(s) verwendet."
+      },
+      "duration": "Dieser Test dauert 120 Sekunden und wird 20 Mal wiederholt.",
+      "procedure": {
+        "title": "Vorgehensweise",
+        "step1": "Ermitteln des Throughput für die angegebene Framegröße.",
+        "step2": "Stream mit angegebener Frame-Größe und ermitteltem Durchsatz durch das DUT senden.",
+        "step3": "Mindestens 120 Sekunden Sendezeit.",
+        "step4": "Ermittle Latenz durch Berechnung der Durchschnitt RTT (Round-Trip-Time) über alle Ports.",
+        "step5": "Teile die durchschnittliche RTT durch 2, um die Einweg-Latenz zu berechnen.",
+        "step6": "Test 20 Mal wiederholen."
+      },
+      "summary": "Der berichtete Latenz-Wert ist der Durchschnitt der nach jedem Testdurchlauf berechneten Latenz-Werte."
+    },
+    "frameLoss": {
+      "title": "Frame-Verlust-Rate-Test",
+      "description": "Ein Stream mit einer angegebenen Frame-Größe, sowie einen Bruchteil der maximalen Senderate des Mediums wird durch das DUT gesendet.",
+      "procedure": {
+        "title": "Vorgehensweise",
+        "step1": "Anzahl von Frames mit bestimmter Rate durch das DUT senden und empfangene Frames zählen.",
+        "step2": "Berechnung der Frame-Verlust-Rate.",
+        "step3": "Erster Testlauf mit einer Senderate von 100% der maximalen Senderate des Mediums.",
+        "step4": "Wiederholung bei 90%, 80% der maximalen Rate, usw..."
+      },
+      "summary": "Maximale Senderate des Mediums für P4TG beträgt je Port 100 Gbit/s."
+    },
+    "reset": {
+      "title": "Reset-Test",
+      "description": "Startet einen Stream, mit minimaler Frame-Größe (64 Byte) und einer Dauer von 120 Sekunden. In diesem Zeitintervall wird am DUT Reset ausgelöst und die Zeit bis zur Wiederherstellung des normalen Betriebs gemessen."
+    }
+  },
+  "imixInfo": {
+    "description": "Internet-Mixture (IMIX) beschreibt eine Verteilung von Frame-Größen, die zur Simulation von Internetverkehr verwendet wird. Im Gegensatz zu RFC 2544, das Tests auf einzelnen Frame-Größen durchführt, stellt IMIX eine gemischte Verteilung vor, die reale Netzwerkbedingungen besser widerspiegelt. Es ist wichtig zu beachten, dass IMIX keine spezifischen Tests definiert, sondern lediglich eine Methode zur Nachbildung von gemischtem Traffic darstellt.",
+    "table": {
+      "packetSize": "Frame-Größe (Bytes)",
+      "proportion": "Anteil am Gesamtverkehr",
+      "bandwidth": "Bandbreite (Last)"
+    },
+    "sizes": {
+      "size1": "64",
+      "size2": "512",
+      "size3": "1518",
+      "proportion1": "7 parts",
+      "proportion2": "4 parts",
+      "proportion3": "1 part",
+      "bandwidth1": "13.8%",
+      "bandwidth2": "50.09%",
+      "bandwidth3": "36.13%"
+    },
+    "note": "Hinweis: Alle drei Streams werden automatisch ausgewählt, um das IMIX-Profil zu erstellen. Durch das Drücken von \"Sichern\" wird das Simple IMIX Profil gespeichert."
+  },
+  "tooltip": {
+    "profil": "Profil Info",
+    "rfc": "RFC 2544 Profil",
+    "simpleImix": "Einfaches IMIX Profil"
+  },
+  "alert": {
+    "saved": "Einstellungen wurden gesichert.",
+    "reset": "Einstellungen wurden zurückgesetzt.",
+    "streamLimit": "Nur 7 Streams können gleichzeitig aktiv sein.",
+    "selected": "Kein Test ausgewählt."
+  },
+  "other": {
+    "mode": "Modus",
+    "options": "Optionen",
+    "notRunning": "Nicht aktiv",
+    "notFinished": "Nicht abgeschlossen",
+    "speed": "Geschwindigkeit",
+    "arpReply": "ARP Antwort",
+    "of": "von",
+    "testInfo": "Test Info",
+    "duration": "Dauer"
+  }
+}

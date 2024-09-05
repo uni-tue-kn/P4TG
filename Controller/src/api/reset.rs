@@ -43,8 +43,14 @@ pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
     let frame_size = state.frame_size_monitor.lock().await.on_reset(switch).await;
     let frame_type = state.frame_type_monitor.lock().await.on_reset(switch).await;
     let rate = state.rate_monitor.lock().await.on_reset(switch).await;
+    let mut collected_statistics = state.multi_test_state.collected_statistics.lock().await;
+    let mut collected_time_statistics = state.multi_test_state.collected_time_statistics.lock().await;
 
     if frame_size.is_ok() && frame_type.is_ok() && rate.is_ok() {
+        // Clear the statistics
+        collected_statistics.clear();    
+        collected_time_statistics.clear();
+    
         (StatusCode::OK, Json(Reset { message: "Reset complete".to_owned() })).into_response()
     }
     else {

@@ -49,7 +49,7 @@ pub fn calculate_send_behaviour(frame_size: u32, traffic_rate: f32, max_burst: u
     let timeout = problem.add_integer_column(0., 1..u32::MAX); // timeout in 32bit ns
 
     // c1: calc - timeout * rate + (num_packets * frame_size * 8) == 0
-    problem.add_row(0..0, [(calculation, 1.), (timeout, (-1f32 * traffic_rate) as f64), (num_packets, (frame_size * 8) as f64)]);
+    problem.add_row(0..1, [(calculation, 1.), (timeout, (-1f32 * traffic_rate) as f64), (num_packets, (frame_size * 8) as f64)]);
     problem.add_row(0..u32::MAX, [(calculation, 1.)]);
 
     let mut solver = problem.optimise(Sense::Minimise);
