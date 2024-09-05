@@ -26,6 +26,7 @@ import { Row } from "react-bootstrap";
 
 import P4TGLogo from "../assets/p4tg_logo_white.png";
 import config from "../config";
+import {P4TGInfos} from "../common/Interfaces";
 import Selector from "./translation/LanguageSelector";
 import ThemeBtn from "./ThemeToggle";
 styled(Link)<{ active?: boolean }>`
@@ -77,8 +78,8 @@ export const NavLink = ({ to, icon, text, overlay }: Props) => {
   );
 };
 
-const Navbar = () => {
-  const [online, set_online] = useState(false);
+const Navbar = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
+    const [online, set_online] = useState(false)
 
   const setup = () => {
     localStorage.clear();
@@ -99,31 +100,24 @@ const Navbar = () => {
     loadStatus();
   }, []);
 
-  return (
-    <CSidebar className={"h-100"}>
-      <CSidebarNav className="h-100">
-        <CSidebarBrand className="mb-0">
-          <StyledImg src={P4TGLogo} alt="P4TG log" />
-        </CSidebarBrand>
-        <NavLink to={"/"} text={""} icon={"bi bi-speedometer"} />
-        <NavLink to={"/ports"} text={""} icon={"bi bi-ethernet"} />
-        <NavLink to={"/tables"} text={""} icon={"bi bi-table"} />
-        <NavLink
-          to={"/settings"}
-          text={""}
-          icon={"bi bi-gear-wide-connected"}
-        />
-        <Row className="flex-grow-1"></Row>
-        <Selector />
-        <ThemeBtn />
-        <Row>
-          <CNavItem className="flex-grow-1 mb-2">
-            <span style={{ color: "var(--color-text)" }}>v2.2.1</span>
-          </CNavItem>
-        </Row>
-      </CSidebarNav>
+     return <CSidebar className={"h-100"}>
+        <CSidebarNav className="h-100">
+            <CSidebarBrand className="mb-0"><StyledImg src={P4TGLogo} alt="P4TG logo"/></CSidebarBrand>
+            <NavLink to={"/"} text={""} icon={"bi bi-speedometer"}/>
+            <NavLink to={"/ports"} text={""} icon={"bi bi-ethernet"}/>
+            <NavLink to={"/tables"} text={""} icon={"bi bi-table"}/>
+            <NavLink to={"/settings"} text={""} icon={"bi bi-gear-wide-connected"}/>
+            <Row className="flex-grow-1">
+            </Row>
+            <Selector />
+            <ThemeBtn />
+            <Row>
+                <CNavItem className="flex-grow-1 mb-2">
+                    <span>v{p4tg_infos.version}</span>
+                </CNavItem>
+            </Row>
+        </CSidebarNav>
     </CSidebar>
-  );
 };
 
 export default Navbar;

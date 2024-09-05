@@ -54,19 +54,15 @@ const StreamSettingsList = ({
           (st: Stream) => st.stream_id === s.stream_id
         );
 
-        if (s.port === port.pid && stream) {
-          return (
-            <StreamSettingsElement
-              key={i}
-              running={running || !port.status}
-              stream_data={stream}
-              stream={s}
-              onActivateStream={handleActivateStream}
-            />
-          );
-        }
-        return null;
-      })}
+            if (stream == null) {
+                console.log(s, streams)
+            }
+            if (s.port == port.pid && stream != null) {
+                return <StreamSettingsElement key={i} running={running} port_status={port.status} stream_data={stream}
+                                              stream={s}/>
+            }
+
+        })}
     </>
   );
 };

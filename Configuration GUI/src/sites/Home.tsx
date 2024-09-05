@@ -1,13 +1,38 @@
+/* Copyright 2022-present University of Tuebingen, Chair of Communication Networks
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ */
+
 import { useEffect, useState } from "react";
-import { Button, Col, Form, Row, Alert } from "react-bootstrap";
-import { del, post } from "../common/API";
+import { Button, Col, Form, Row, Alert} from "react-bootstrap";
+import { del, get, post } from "../common/API";
 import SendReceiveMonitor from "../components/SendReceiveMonitor";
 import Loader from "../components/Loader";
+
 import {
+  ASIC,
+  Encapsulation,
   GenerationMode,
+  P4TGInfos,
   TestMode,
   Statistics as StatInterface,
   StatisticsObject,
+  Stream,
+  StreamSettings,
   TimeStatistics,
   TimeStatisticsObject,
   TrafficGenData,
@@ -16,6 +41,7 @@ import {
   RFCTestSelection,
   ProfileMode,
 } from "../common/Interfaces";
+
 import styled from "styled-components";
 import translate from "../components/translation/Translate";
 import HiddenGraphs from "../components/pdf/HiddenVisuals";
@@ -42,6 +68,14 @@ import {
   restart,
 } from "../common/utils/Home/Api";
 
+styled(Row)`
+    display: flex;
+    align-items: center;
+`;
+styled(Col)`
+    padding-left: 0;
+`;
+
 const StyledLink = styled.a`
   color: var(--color-secondary);
   text-decoration: none;
@@ -65,11 +99,20 @@ export const GitHub = () => {
   );
 };
 
-const Home = () => {
-  const [loaded, set_loaded] = useState(false);
-  const [overlay, set_overlay] = useState(false);
-  const [running, set_running] = useState(false);
-  const [visual, set_visual] = useState(true);
+const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
+    const [loaded, set_loaded] = useState(false)
+    const [overlay, set_overlay] = useState(false)
+    const [running, set_running] = useState(false)
+    const [visual, set_visual] = useState(true)
+
+    // @ts-ignore
+    const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
+    // @ts-ignore
+    const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
+    const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
+
+    // @ts-ignore
+    const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
 
   const [imageData, setImageData] = useState<{
     [key: number]: { Summary: string[]; [key: string]: string[] };
@@ -170,9 +213,71 @@ const Home = () => {
     return () => clearInterval(interval);
   }, [currentLanguage]);
 
+  const activePorts = (): { "tx": number, "rx": number }[] => {
+    let active_ports: { tx: number, rx: number }[] = []
+    let exists: number[] = []
+
+    Object.keys(port_tx_rx_mapping).forEach((tx_port: string) => {
+        let port = parseInt(tx_port)
+        exists.push(port)
+        active_ports.push({tx: port, rx: port_tx_rx_mapping[port]})
+    })
+
+    return active_ports
+}
+
+  const getStreamIDsByPort = (pid: number): number[] => {
+      let ret: number[] = []
+
+      stream_settings.forEach(v => {
+          if (v.port == pid && v.active) {
+              streams.forEach(s => {
+                  if (s.stream_id == v.stream_id) {
+                      ret.push(s.app_id)
+                      return
+                  }
+              })
+          }
+      })
+
+      return ret
+  }
+
+  const getStreamFrameSize = (stream_id: number): number => {
+      let ret = 0
+
+      streams.forEach(v => {
+          if (v.app_id == stream_id) {
+              ret = v.frame_size
+              if (v.encapsulation == Encapsulation.Q) {
+                  ret += 4
+              } else if (v.encapsulation == Encapsulation.QinQ) {
+                  ret += 8
+              }
+              else if (v.encapsulation == Encapsulation.MPLS) {
+                  ret += v.number_of_lse * 4 // 4 bytes per LSE
+              }
+
+              if (v.vxlan) {
+                  ret += 50 // 50 bytes overhead
+              }
+
+              return
+          }
+      })
+
+      return ret
+  }
+
   const onSubmit = async (event: any) => {
     event.preventDefault();
     set_overlay(true);
+
+    let max_rate = 100;
+
+    if(p4tg_infos.asic == ASIC.Tofino2) {
+        max_rate = 400;
+    }
 
     if (running) {
       if (test_mode === TestMode.PROFILE) {
@@ -210,7 +315,7 @@ const Home = () => {
         );
 
         if (oneModeMPPS && max_rate > 100) {
-          alert("Sum of stream rates > 100 Gbps!");
+          alert("Sum of stream rates > " + max_rate + " Gbps!")
         } else {
           if (test_mode === TestMode.SINGLE) {
             const singleTest = traffic_gen_list[1];
@@ -274,6 +379,7 @@ const Home = () => {
     }
     set_overlay(false);
   };
+
 
   const loadInfo = async () => {
     if (test_mode === TestMode.MULTI) {
@@ -350,54 +456,47 @@ const Home = () => {
     });
   };
 
-  return (
-    <Loader loaded={loaded} overlay={overlay}>
-      <form onSubmit={onSubmit}>
-        <Row className={"mb-3"}>
-          {running &&
-            test_mode === TestMode.PROFILE &&
-            selectedProfile === ProfileMode.RFC2544 &&
-            currentProfileTest === "Reset - 64 Bytes" && (
-              <Col className="col-12">
-                <Alert variant={"primary"}>
-                  Cause a Reset in the DUT in the next 120 Seconds
-                </Alert>
-              </Col>
-            )}
-          <SendReceiveMonitor stats={statistics} running={running} />
-          <Col className={"text-end col-4"}>
-            {running ? (
-              <>
-                <Button type={"submit"} className="mb-1" variant="danger">
-                  <i className="bi bi-stop-fill" /> Stop
-                </Button>{" "}
-                <Button
-                  onClick={() => restart(set_overlay)}
-                  className="mb-1"
-                  variant="primary"
-                >
-                  <i className="bi bi-arrow-clockwise" />{" "}
-                  {translate("buttons.restart", currentLanguage)}{" "}
-                </Button>
-              </>
-            ) : (
-              <>
-                <div style={{ display: "inline-block", position: "relative" }}>
-                  <div>
-                    <Button type={"submit"} className="mb-1" variant="primary">
-                      <i className="bi bi-play-circle-fill" /> Start{" "}
-                    </Button>{" "}
-                    <Button
-                      onClick={() => {
-                        reset(set_overlay);
-                      }}
-                      className="mb-1"
-                      variant="warning"
-                    >
-                      <i className="bi bi-trash-fill" />{" "}
-                      {translate("buttons.reset", currentLanguage)}{" "}
-                    </Button>{" "}
-                  </div>
+    return <Loader loaded={loaded} overlay={overlay}>
+        <form onSubmit={onSubmit}>
+            <Row className={"mb-3"}>
+              {running &&
+              test_mode === TestMode.PROFILE &&
+              selectedProfile === ProfileMode.RFC2544 &&
+              currentProfileTest === "Reset - 64 Bytes" && (
+                <Col className="col-12">
+                  <Alert variant={"primary"}>
+                    Cause a Reset in the DUT in the next 120 Seconds
+                  </Alert>
+                </Col>
+              )}
+                <SendReceiveMonitor stats={statistics} running={running}/>
+                <Col className={"text-end col-4"}>
+                    {running ?
+                        <>
+                            <Button type={"submit"} className="mb-1" variant="danger"><i
+                                className="bi bi-stop-fill"/> Stop</Button>
+                            {" "}
+                            <Button onClick={() => restart(set_overlay)} className="mb-1" variant="primary"><i
+                                className="bi bi-arrow-clockwise"/>{" "}
+                  {translate("buttons.restart", currentLanguage)}{" "}</Button>
+                        </>
+                        :
+                        <>
+                          <div style={{ display: "inline-block", position: "relative" }}>
+                            <div>
+                            <Button type={"submit"} className="mb-1" variant="primary">
+                              <i className="bi bi-play-circle-fill"/> Start{" "}
+                              </Button>{" "}
+                            <Button
+                             onClick={() => {reset(set_overlay);
+                             }}
+                              className="mb-1"
+                              variant="warning"
+                              >
+                              <i className="bi bi-trash-fill"/>{" "}
+                                {translate("buttons.reset", currentLanguage)}{" "}
+                              </Button>{" "}
+                            </div>
                   {shouldShowDownloadButton(
                     running,
                     time_statistics,
@@ -431,10 +530,11 @@ const Home = () => {
                   )}
                 </div>
               </>
-            )}
+            }
           </Col>
         </Row>
       </form>
+  
       <Row className="d-flex align-items-center">
         <Col className={"col-auto"}>
           <Form>
@@ -473,7 +573,6 @@ const Home = () => {
       />
       <GitHub />
     </Loader>
-  );
 };
 
 export default Home;

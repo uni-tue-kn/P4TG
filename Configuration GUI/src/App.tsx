@@ -21,7 +21,7 @@ import React, { useEffect, useState } from "react";
 import Config from "./config";
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 import { Col, Container, Row } from "react-bootstrap";
-import { AxiosInterceptor } from "./common/API";
+import { AxiosInterceptor, get } from "./common/API";
 import styled from "styled-components";
 import ErrorView from "./components/ErrorView";
 import Navbar from "./components/Navbar";
@@ -29,19 +29,22 @@ import Navbar from "./components/Navbar";
 import Home, { GitHub } from "./sites/Home";
 import Setup from "./sites/Setup";
 import Ports from "./sites/Ports";
+import Settings from "./sites/Settings";
 import Offline from "./sites/Offline";
 import Tables from "./sites/Tables";
-import config from "./config";
-import { StreamSettings } from "./common/Interfaces";
-import { Stream } from "./common/Interfaces";
-import { validateStreams, validateStreamSettings } from "./common/Validators";
-import Settings from "./sites/Settings";
+import {ASIC, P4TGInfos, StreamSettings} from "./common/Interfaces";
+import {Stream} from "./common/Interfaces";
+import Loader from "./components/Loader";
+import {validateStreams, validateStreamSettings} from "./common/Validators";
+
 
 const App = () => {
-  const [error, set_error] = useState(false);
-  const [message, set_message] = useState("");
-  const [time, set_time] = useState("00:00");
-  const [online, set_online] = useState(true);
+    const [error, set_error] = useState(false)
+    const [message, set_message] = useState("")
+    const [time, set_time] = useState("00:00")
+    const [online, set_online] = useState(true)
+    const [loaded, set_loaded] = useState(false)
+    const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({status: "", version: "", asic: ASIC.Tofino1, loopback: false})
 
   const setError = (msg: string) => {
     set_error(true);
@@ -52,99 +55,103 @@ const App = () => {
     set_time(now.getHours() + ":" + now.getMinutes());
   };
 
-  const Wrapper = styled.div``;
+  const loadInfos = async () => {
+    let stats = await get({route: "/online"})
 
-  // needs to be updated to fit the new local storage structure
-
-  // Validates the stored streams and stream settings in the local storage
-  // Clears local storage if some streams/settings are not valid
-  // This may be needed if the UI got an update (new stream properties), but the local storage
-  // holds "old" streams/settings without the new property
-  const validateLocalStorage = () => {
-    try {
-      let stored_streams: Stream[] = JSON.parse(
-        localStorage.getItem("streams") ?? "[]"
-      );
-      let stored_settings: StreamSettings[] = JSON.parse(
-        localStorage.getItem("streamSettings") ?? "[]"
-      );
-
-      if (!validateStreams(stored_streams)) {
-        alert(
-          "Incompatible stream description found. This may be due to an update. Resetting local storage."
-        );
-        localStorage.clear();
-        window.location.reload();
-        return;
-      }
-
-      if (!validateStreamSettings(stored_settings)) {
-        alert(
-          "Incompatible stream description found. This may be due to an update. Resetting local storage."
-        );
-        localStorage.clear();
-        window.location.reload();
-        return;
-      }
-    } catch {
-      alert("Error in reading local storage. Resetting local storage.");
-      localStorage.clear();
-      window.location.reload();
+    if (stats != undefined && stats.status === 200) {
+        set_p4tg_infos(stats.data)
     }
-  };
+
+    set_loaded(true)
+  }  
+
+
+    // Validates the stored streams and stream settings in the local storage
+    // Clears local storage if some streams/settings are not valid
+    // This may be needed if the UI got an update (new stream properties), but the local storage
+    // holds "old" streams/settings without the new property
+    const validateLocalStorage = () => {
+      try {
+          let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
+          let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
+
+          if(!validateStreams(stored_streams)) {
+              alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
+              localStorage.clear()
+              window.location.reload()
+              return
+          }
+
+          if(!validateStreamSettings(stored_settings)) {
+              alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
+              localStorage.clear()
+              window.location.reload()
+              return
+          }
+      }
+      catch {
+          alert("Error in reading local storage. Resetting local storage.")
+          localStorage.clear()
+          window.location.reload()
+      }
+  }
 
   useEffect(() => {
-    validateLocalStorage();
-  }, []);
-  return (
-    <>
-      <Router basename={Config.BASE_PATH}>
-        <Row>
-          <Col className={"col-2 col-sm-2 col-xl-1 fixed-navbar"}>
-            <Navbar />
-          </Col>
-          <Col
-            className={
-              "col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-5"
-            }
-          >
-            <ErrorView
-              error={error}
-              message={message}
-              time={time}
-              close={() => set_error(false)}
-            />
-            <AxiosInterceptor
-              onError={setError}
-              onOffline={() => set_online(false)}
-              onOnline={() => set_online(true)}
-            >
-              <Container fluid className={"pb-2"}>
-                <Wrapper>
-                  {
-                    //<h2>P4TG: 100 Gbps traffic generation for Ethernet/IP networks</h2>
-                    //  <Navbar/>
-                  }
-                  {online ? (
-                    <Routes>
-                      <Route path={""} element={<Home />} />
-                      <Route path={"/"} element={<Home />} />
-                      <Route path={"/home"} element={<Home />} />
-                      <Route path={"/ports"} element={<Ports />} />
-                      <Route path={"/tables"} element={<Tables />} />
-                      <Route path={"/settings"} element={<Settings />} />
-                    </Routes>
-                  ) : (
-                    <Offline />
-                  )}
-                </Wrapper>
-              </Container>
-            </AxiosInterceptor>
-          </Col>
-        </Row>
-      </Router>
-    </>
-  );
-};
+      validateLocalStorage()
+      loadInfos()
+
+  }, [])
+
+  const Wrapper = styled.div``
+
+  const ASICVersion = styled.div`
+    margin-right: 10px;
+    margin-bottom: 10px;
+    background: var(--color-primary);
+    padding: 5px 25px 5px 25px;
+    color: #FFF;
+    border-radius: 10px;
+    text-align: center;
+    display: inline-block;
+  `
+
+    return <Loader loaded={loaded}>
+        <Router basename={Config.BASE_PATH}>
+            <Row>
+                <Col className={'col-2 col-sm-2 col-xl-1 fixed-navbar'}>
+                    <Navbar p4tg_infos={p4tg_infos}/>
+                </Col>
+                <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-3"}>
+                    <ErrorView error={error} message={message} time={time} close={() => set_error(false)}/>
+                    <AxiosInterceptor onError={setError} onOffline={() => set_online(false)}
+                                      onOnline={() => set_online(true)}>
+                        <Container fluid className={"pb-2"}>
+                            <Wrapper>
+                                <ASICVersion>{p4tg_infos.asic}</ASICVersion>
+                                {online ?
+                                    <Routes>
+                                        <Route path={""} element={<Home p4tg_infos={p4tg_infos}/>}/>
+                                        <Route path={"/"} element={<Home p4tg_infos={p4tg_infos}/>}/>
+                                        <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos}/>}/>
+                                        <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos}/>}/>
+                                        <Route path={"/tables"} element={<Tables/>}/>
+                                        <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos}/>}/>
+                                    </Routes>
+                                    :
+                                    <Offline/>
+                                }
+                            </Wrapper>
+
+                        </Container>
+                    </AxiosInterceptor>
+                </Col>
+            </Row>
+        </Router>
+
+
+    </Loader>
+
+
+}
 
 export default App;

@@ -343,9 +343,11 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
         Speed::BF_SPEED_1G => 1.0,
         Speed::BF_SPEED_10G => 10.0,
         Speed::BF_SPEED_20G => 20.0,
+        Speed::BF_SPEED_25G => 25.0,
         Speed::BF_SPEED_40G => 40.0,
         Speed::BF_SPEED_50G => 50.0,
         Speed::BF_SPEED_100G => 100.0,
+        Speed::BF_SPEED_400G => 400.0,
     }).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(1.0);
 
     for &frame_size in &frame_sizes {

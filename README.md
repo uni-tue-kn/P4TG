@@ -1,8 +1,8 @@
 <div align="center">
  <img src="./logo.png" />
- <h2>P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks</h2>
+ <h2>P4TG: Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.2.1-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.3.0-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml)
 
 </div>
 
@@ -16,13 +16,18 @@
 - [Preview](#preview-of-p4tg)
 
 ## Overview 
-This repository contains the source code for a P4 based 1 Tb/s traffic generator based on the Intel Tofino(TM) ASIC, called P4TG (<a href="https://ieeexplore.ieee.org/document/10048513">Paper</a>).
+This repository contains the source code for a P4 based traffic generator based on the Intel Tofino(TM) ASIC, called P4TG (<a href="https://ieeexplore.ieee.org/document/10048513">Paper</a>).
 The paper version corresponds to *v.1.0.0*.
 
-In generation mode, P4TG is capable of generating traffic up to 1 Tb/s split across 10x 100 Gb/s ports. Thereby it measures rates directly in the data plane. Generated traffic may be fed back from the output to the input ports, possibly through other equipment, to record packet loss, packet reordering, IATs and sampled RTTs. In analysis mode, P4TG measures rates on the input ports, measures IATs, and forwards traffic through its output ports. 
+In generation mode, P4TG is capable of generating traffic up to 1 Tb/s split across 10x 100 Gb/s ports. 
+With Intel Tofino(TM) 2, P4TG is capable of generating traffic up to 4 Tb/s split across 10x 400 Gb/s ports.
+Thereby it measures rates directly in the data plane. Generated traffic may be fed back from the output to the input ports, possibly through other equipment, to record packet loss, packet reordering, IATs and sampled RTTs. 
+In analysis mode, P4TG measures rates on the input ports, measures IATs, and forwards traffic through its output ports. 
 
-P4TG (v2.0.0) supports VLAN (802.1Q) and QinQ (802.1ad) encapsulation.
-P4TG (v2.1.0) further supports MPLS and P4TG (v2.2.0) supports VxLAN.
+- P4TG (v2.0.0) supports VLAN (802.1Q) and QinQ (802.1ad) encapsulation
+- P4TG (v2.1.0) further supports MPLS 
+- P4TG (v2.2.0) supports VxLAN
+- P4TG (v2.3.0) supports the Intel Tofino 2 with up to 4 Tb/s
 
 P4TG consist of:
 
@@ -34,15 +39,19 @@ P4TG consist of:
 
 ### Data plane
 
-Go to `P4-Implementation` and compile p4tg via `make compile`. This compiles the program and copies the resulting configs to the target directory.
+Go to `P4-Implementation` and compile p4tg via `make compile`. 
+This compiles the program and copies the resulting configs to the target directory.
 
 Afterwards, start p4tg via `make start`.
+
+**For Intel Tofino2**, run `make compile TARGET=tofino2` and `make start TARGET=tofino2`.
 
 This requires a fully setup SDE with set `$SDE` and `$SDE_INSTALL` environment variables.
 
 Tested on:
   - SDE 9.9.0 (up to v2.0.0)
   - SDE 9.13.0 
+  - SDE 9.13.1
 
 ### Control plane
 
@@ -62,6 +71,7 @@ The configuration file in `Controller/config.json` can be used to specify the po
 If no config file is provided, the first 10 ports are used. 
 
 Further, the MAC address can be specified that should be used to answer ARP requests when the `ARP reply` option is enabled in the UI.
+
 ### Configuration GUI
 
 The configuration GUI is based on react & nodejs.

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Col, Form, Row, Tab, Tabs } from "react-bootstrap";
+import { Button, Table, Col, Form, Row, Tab, Tabs } from "react-bootstrap";
 import { get } from "../common/API";
 import {
   GenerationMode,
+  P4TGInfos,
   DefaultStream,
+  Stream,
+  StreamSettings,
   DefaultStreamSettings,
   TestMode,
   TrafficGenData,
@@ -14,6 +17,8 @@ import {
 } from "../common/Interfaces";
 import Loader from "../components/Loader";
 import { GitHub } from "./Home";
+import StreamSettingsList from "../components/settings/StreamSettingsList";
+import StreamElement from "../components/settings/StreamElement";
 import translate from "../components/translation/Translate";
 
 import { loadPorts } from "../common/utils/Home/Api";
@@ -46,6 +51,7 @@ import PortMappingTable from "../components/settings/PortMappingTable";
 import { validateStreamSettings, validateStreams } from "../common/Validators";
 import Profile from "../components/settings/SettingsProfile";
 import styled from "styled-components";
+import InfoBox from "../components/InfoBox";
 
 export const StyledRow = styled.tr`
   display: flex;
@@ -62,8 +68,15 @@ export const StyledCol = styled.td`
 Ich sollte außerdem überlegen welche Funktionen ich in eine ListSettingsUtils Datei auslagern kann (vereinen mit den bereits ausgelagerten Teilen von Utils.tsx)
 */
 
-const Settings = () => {
-  const [traffic_gen_list, set_traffic_gen_list] = useState<TrafficGenList>(
+const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
+    const [ports, set_ports] = useState<{
+        pid: number,
+        port: number,
+        channel: number,
+        loopback: string,
+        status: boolean
+    }[]>([])
+    const [traffic_gen_list, set_traffic_gen_list] = useState<TrafficGenList>(
     JSON.parse(localStorage.getItem("traffic_gen") ?? "{}")
   );
   const [currentTest, setCurrentTest] = useState<TrafficGenData | null>(null);
@@ -78,7 +91,16 @@ const Settings = () => {
   const [key, setKey] = useState<string>("");
   const [currentTabIndex, setCurrentTabIndex] = useState<string | null>(null);
   const [running, set_running] = useState(false);
-  const [ports, set_ports] = useState<Port[]>([]);
+  // @ts-ignore
+  const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
+  // @ts-ignore
+  const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
+
+  // @ts-ignore
+  const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
+
+  const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
+  
   const [totalDuration, setTotalDuration] = useState<number>(0);
   const ref = useRef();
 
@@ -680,8 +702,9 @@ const Settings = () => {
     return () => clearInterval(interval);
   }, [currentLanguage]);
 
-  return (
-    <Loader loaded={loaded}>
+
+    // @ts-ignore
+    return <Loader loaded={loaded}>
       <Row className="align-items-end justify-content-between">
         <TestModeSelection
           currentTestMode={currentTestMode}
@@ -889,7 +912,6 @@ const Settings = () => {
       />
       <GitHub />
     </Loader>
-  );
 };
 
 export default Settings;

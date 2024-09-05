@@ -19,12 +19,15 @@
 
 /// Table for internal traffic generation
 pub const APP_CFG: &str = "tf1.pktgen.app_cfg";
+pub const APP_CFG_TF2: &str = "tf2.pktgen.app_cfg";
 
 /// Table for internal packet buffer
 pub const APP_BUFFER_CFG: &str = "tf1.pktgen.pkt_buffer";
+pub const APP_BUFFER_CFG_TF2: &str = "tf2.pktgen.pkt_buffer";
 
 /// Table to activate internal traffic generation on ports
 pub const PORT_CFG: &str = "tf1.pktgen.port_cfg";
+pub const PORT_CFG_TF2: &str = "tf2.pktgen.port_cfg";
 
 /// Source port used for P4TG based UDP packets
 pub const P4TG_SOURCE_PORT: u16 = 50081;
@@ -75,6 +78,13 @@ pub const STREAM_FORWARD_TABLE: &str = "ingress.p4tg.tg_forward";
 
 /// We use traffic generation on the two internal tg ports
 pub const TG_PIPE_PORTS: [u16; 2] = [68, 196];
+/// We use traffic generation on the four internal tg ports on tofino2
+pub const TG_PIPE_PORTS_TF2: [u16; 4] = [6, 134, 262, 390];
+
+/// Maximal traffic rate on tofino1 per port
+pub const TG_MAX_RATE: f32 = 100f32;
+/// Maximal traffic rate on tofino2 per port
+pub const TG_MAX_RATE_TF2: f32 = 400f32;
 
 /// Threshold in Gbps to use both generation pipes
 pub const TWO_PIPE_GENERATION_THRESHOLD: f32 = 75.0;
@@ -96,3 +106,6 @@ pub const MAX_NUM_MPLS_LABEL: u8 = 15;
 
 /// VxLAN UDP port
 pub const VX_LAN_UDP_PORT: u16 = 4789;
+
+/// Max buffer size in bytes usable with P4TG
+pub const MAX_BUFFER_SIZE: u32 = 12000;

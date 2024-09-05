@@ -22,7 +22,11 @@ parser TofinoIngressParser(
 
     state start {
         pkt.extract(ig_intr_md);
-        pkt.advance(64);
+        #if __TARGET_TOFINO__ == 2
+                pkt.advance(192);
+        #else
+                pkt.advance(64);
+        #endif
         transition accept;
     }
 }
@@ -55,9 +59,17 @@ parser SwitchIngressParser(
         ig_md.vxlan = 0;
         ig_md.tg_mode = 0;
         tofino_parser.apply(pkt, ig_intr_md);
+
         transition select(ig_intr_md.ingress_port) {
+            #if __TARGET_TOFINO__ == 2
+            6: parse_pkt_gen;
+            134: parse_pkt_gen;
+            262: parse_pkt_gen;
+            390: parse_pkt_gen;
+            #else
             68: parse_pkt_gen;
             196: parse_pkt_gen;
+            #endif
             default: parse_ethernet;
         }
     }

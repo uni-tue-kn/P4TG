@@ -24,7 +24,12 @@ typedef bit<48> mac_addr_t;
 typedef bit<32> ipv4_addr_t;
 typedef bit<16> ether_type_t;
 typedef bit<32> reg_index_t;
+
+#if __TARGET_TOFINO__ == 2
+typedef bit<32> seq_t; // due to higher data rates we need larger seq number space
+#else
 typedef bit<32> seq_t;
+#endif
 const ether_type_t ETHERTYPE_IPV4 = 0x800;
 const ether_type_t ETHERTYPE_MONITOR = 0xBB02;
 const ether_type_t ETHERTYPE_QinQ = 0x88a8;
@@ -110,15 +115,6 @@ header path_monitor_t {
     bit<8> app_id;
 }
 
-header pkg_gen_t {
-    bit<3> pad;
-    bit<2> pipe;
-    bit<3> app_id;
-    bit<8> pad1;
-    bit<16> batch_id;
-    bit<16> pkt_id;
-}
-
 header monitor_t {
     bit<48> tstmp;
     bit<64> byte_counter_l1;
@@ -169,7 +165,7 @@ struct header_t {
     mpls_h[15] mpls_stack;
     ipv4_t ipv4;
     ipv4_t inner_ipv4;
-    pkg_gen_t pkt_gen;
+    pktgen_timer_header_t pkt_gen;
     udp_t udp;
     monitor_t monitor;
     path_monitor_t path;

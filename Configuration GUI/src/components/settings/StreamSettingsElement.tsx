@@ -24,54 +24,37 @@ import { Form } from "react-bootstrap";
 import { StyledCol } from "../../sites/Settings";
 
 const StreamSettingsElement = ({
-  running,
-  stream,
-  stream_data,
-  onActivateStream,
-}: {
-  running: boolean;
-  stream: StreamSettings;
-  stream_data: Stream;
-  onActivateStream: (stream_id: number, active: boolean) => void;
-}) => {
-  const [show, set_show] = useState(false);
-  const [isActive, setIsActive] = useState(stream.active);
+                                   running,
+                                   port_status,
+                                   stream,
+                                   stream_data
+                               }: { running: boolean, port_status: boolean, stream: StreamSettings, stream_data: Stream }) => {
+    const [show, set_show] = useState(false)
 
-  useEffect(() => {
-    setIsActive(stream.active);
-  }, [stream.active]);
+    // Needed to update the view immediately
+    const [isActive, setIsActive] = useState(stream.active);
 
-  return (
-    <>
-      <SettingsModal
-        running={running}
-        data={stream}
-        stream={stream_data}
-        show={show}
-        hide={() => set_show(false)}
-      />
-      <StyledCol>
-        <Form.Check
-          className={"d-inline"}
-          disabled={running}
-          checked={isActive}
-          type={"switch"}
-          onChange={() => {
-            const newActive = !isActive;
-            setIsActive(newActive);
-            stream.active = newActive;
-            onActivateStream(stream.stream_id, newActive);
-          }}
-        />
+    return <>
+        <SettingsModal running={running || !port_status} data={stream} stream={stream_data} show={show} hide={() => set_show(false)}/>
+        <StyledCol>
+            <Form.Check
+                className={"d-inline"}
+                disabled={!isActive && (running || !port_status)}
+                defaultChecked={isActive}
+                type={"switch"}
+                onChange={(event) => {
+                    setIsActive(!isActive);
+                    stream.active = !stream.active
+                }
+                }
+            />
 
-        <i
-          role={"button"}
-          onClick={() => set_show(true)}
-          className="bi bi-gear-wide-connected ms-3"
-        />
-      </StyledCol>
+            <i role={"button"}
+               onClick={() => set_show(true)}
+               className="bi bi-gear-wide-connected ms-3"/>
+        </StyledCol>
+
     </>
-  );
 };
 
 export default StreamSettingsElement;
