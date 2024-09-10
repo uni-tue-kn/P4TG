@@ -19,11 +19,12 @@ import {
 } from "../../common/utils/Settings/Profile/Selection";
 import { RFCContent } from "../../common/utils/Settings/Profile/Content/Rfc";
 import { IMIXContent } from "../../common/utils/Settings/Profile/Content/IMIX";
+import translate from "../translation/Translate";
 
 const Profile = ({ ports }: { ports: Port[] }) => {
   const [running, set_running] = useState(false);
 
-  const [trafficGenList, set_trafficGenList] = useState<TrafficGenList>(
+  const [traffic_gen_list, set_traffic_gen_list] = useState<TrafficGenList>(
     JSON.parse(localStorage.getItem("traffic_gen") ?? "{}")
   );
 
@@ -52,15 +53,15 @@ const Profile = ({ ports }: { ports: Port[] }) => {
   };
 
   const loadDefaultGen = async () => {
-    if (Object.keys(trafficGenList).length === 0) {
+    if (Object.keys(traffic_gen_list).length === 0) {
       const defaultData = DefaultTrafficGenData(ports);
-      set_trafficGenList({
-        ...trafficGenList,
+      set_traffic_gen_list({
+        ...traffic_gen_list,
         [selected_profile]: defaultData,
       });
       setCurrentTest(defaultData);
     } else {
-      const savedCurrentTest = trafficGenList[selected_profile];
+      const savedCurrentTest = traffic_gen_list[selected_profile];
       setCurrentTest(savedCurrentTest);
 
       const testObj = JSON.parse(localStorage.getItem("test") || "{}");
@@ -98,7 +99,7 @@ const Profile = ({ ports }: { ports: Port[] }) => {
     const savedTrafficGenList = JSON.parse(
       localStorage.getItem("traffic_gen") ?? "{}"
     );
-    set_trafficGenList(savedTrafficGenList);
+    set_traffic_gen_list(savedTrafficGenList);
     setCurrentTest(savedTrafficGenList[0] || null);
     loadDefaultGen();
     return () => {
@@ -145,7 +146,7 @@ const Profile = ({ ports }: { ports: Port[] }) => {
       })
     );
     localStorage.setItem("traffic_gen", JSON.stringify(updatedTrafficGenList));
-    set_trafficGenList(updatedTrafficGenList);
+    set_traffic_gen_list(updatedTrafficGenList);
     alert("Settings saved.");
   };
 
@@ -179,8 +180,9 @@ const Profile = ({ ports }: { ports: Port[] }) => {
         profile: ProfileMode.RFC2544,
       })
     );
-    set_trafficGenList(updatedTrafficGenList);
+    set_traffic_gen_list(updatedTrafficGenList);
     setCurrentTest(updatedTest);
+    alert(translate("alert.reset", currentLanguage));
     window.location.reload();
   };
 
@@ -188,19 +190,14 @@ const Profile = ({ ports }: { ports: Port[] }) => {
     if (profile !== null) {
       const profileNumber = parseInt(profile, 10);
 
-      // Setze das ausgewählte Profil in den State
       setSelectedProfile(profileNumber as ProfileMode);
 
-      // Lösche das `traffic_gen`-Objekt aus dem lokalen Speicher
       localStorage.removeItem("traffic_gen");
+      set_traffic_gen_list({});
 
-      // Aktualisiere das `test`-Objekt im lokalen Speicher
       const testObj = JSON.parse(localStorage.getItem("test") || "{}");
       testObj.profile = profileNumber;
       localStorage.setItem("test", JSON.stringify(testObj));
-
-      // Lade die Seite neu, um die Änderungen anzuwenden
-      window.location.reload();
     }
   };
 
@@ -224,6 +221,7 @@ const Profile = ({ ports }: { ports: Port[] }) => {
         {renderProfileDropdown(
           selected_profile,
           handleProfileChange,
+          running,
           currentLanguage
         )}
         <Col className="col-2">

@@ -65,6 +65,18 @@ const StreamElement = ({
     }
   };
 
+  // no encapsulation -> no LSE dropdown
+  useEffect(() => {
+    if (data.encapsulation === Encapsulation.MPLS) {
+      set_show(true);
+    } else {
+      set_show(false);
+      data.number_of_lse = 0;
+      set_number_of_lse(0);
+      update_settings();
+    }
+  }, [data.encapsulation]);
+
   const update_settings = () => {
     stream_settings_c.map((s, i) => {
       if (s.stream_id == data.stream_id) {

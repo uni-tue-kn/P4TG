@@ -1,7 +1,6 @@
 import {
   Statistics,
   TimeStatistics,
-  TestMode,
   TrafficGenList,
   ProfileMode,
 } from "../../Interfaces";

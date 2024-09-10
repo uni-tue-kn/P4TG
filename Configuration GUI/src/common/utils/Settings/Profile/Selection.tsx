@@ -24,6 +24,7 @@ const getProfileName = (profile: ProfileMode): string => {
 const renderProfileDropdown = (
   selected_profile: ProfileMode,
   handleProfileChange: (profile: string | null) => void,
+  running: boolean,
   currentLanguage: string
 ) => {
   return (
@@ -35,6 +36,7 @@ const renderProfileDropdown = (
         key={"Select Profile"}
         title={getProfileName(selected_profile)}
         onSelect={handleProfileChange}
+        disabled={running}
       >
         <Dropdown.Item
           eventKey={ProfileMode.RFC2544.toString()}

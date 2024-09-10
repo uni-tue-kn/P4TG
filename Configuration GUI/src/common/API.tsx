@@ -17,102 +17,113 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-
-import axios from "axios"
-import {AxiosResponse} from "axios"
+import axios from "axios";
+import { AxiosResponse } from "axios";
 import Config from "../config";
-import { ReactNode, useEffect} from "react";
-import {useNavigate} from "react-router-dom";
+import { useEffect } from "react";
 
 const instance = axios.create({
-    baseURL: Config.API_URL
-})
+  baseURL: Config.API_URL,
+});
 
 interface Request {
-    route: string,
-    body?: any,
-    token?: string
+  route: string;
+  body?: any;
+  token?: string;
 }
 
 const getHeader = (token?: string) => {
-    const headers: {} = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'headers': {
-            'Authorization': token
-        },
-        timeout: 0
-    }
+  const headers: {} = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    headers: {
+      Authorization: token,
+    },
+    timeout: 0,
+  };
 
-    return headers
-}
+  return headers;
+};
 
+const AxiosInterceptor = ({
+  onError,
+  children,
+  onOffline,
+  onOnline,
+}: {
+  onError: (message: string) => void;
+  onOffline: () => void;
+  onOnline: () => void;
+  children: JSX.Element;
+}) => {
+  useEffect(() => {
+    const resInterceptor = (response: AxiosResponse) => {
+      onOnline();
+      return response;
+    };
 
-const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError: (message: string) => void, onOffline: () => void, onOnline: () => void, children: JSX.Element}) => {
+    const errInterceptor = (error: any) => {
+      if (
+        !("response" in error) ||
+        ("code" in error && error.code === "ERR_NETWORK")
+      ) {
+        onOffline();
+      }
 
-    useEffect(() => {
+      if (error.response.status === 400) {
+        console.log(error.response);
+        onError(error.response.data.message);
+      } else if (error.response.status === 401) {
+        onError(error.response.data.message);
+      } else if (error.response.status === 422) {
+        onError(error.response.data);
+      } else if (error.response.status === 500) {
+        if ("data" in error.response && "message" in error.repsonse.data) {
+          onError("Internal Server Error: " + error.response.data.message);
+        } else {
+          onError("Internal Server Error.");
+        }
+      } else if (error.response.status === 404) {
+        onError("Request endpoint not found.");
+      }
 
-        const resInterceptor = (response: AxiosResponse) => {
-            onOnline()
-            return response;
-        };
+      return Promise.resolve();
+    };
 
-        const errInterceptor = (error: any) => {
-            if (!("response" in error) || ("code" in error && error.code === "ERR_NETWORK")) {
-                onOffline()
-            }
+    const interceptor = instance.interceptors.response.use(
+      resInterceptor,
+      errInterceptor
+    );
 
-            if(error.response.status === 400) {
-                console.log(error.response)
-                onError(error.response.data.message)
-            }
-            else if (error.response.status === 401) {
-                onError(error.response.data.message)
-            }
-            else if (error.response.status === 422) {
-                onError(error.response.data)
-            }
-            else if(error.response.status === 500) {
-                if ("data" in error.response && "message" in error.repsonse.data) {
-                    onError("Internal Server Error: " + error.response.data.message)
-                } else {
-                    onError("Internal Server Error.")
-                }
-            }
-            else if(error.response.status === 404) {
-                onError("Request endpoint not found.")
-            }
+    return () => instance.interceptors.response.eject(interceptor);
+  }, []);
 
-            return Promise.resolve();
-        };
-
-        const interceptor = instance.interceptors.response.use(
-            resInterceptor,
-            errInterceptor
-        );
-
-        return () => instance.interceptors.response.eject(interceptor);
-    }, []);
-
-    return children;
+  return children;
 };
 
 const get = async (request: Request) => {
-    return await instance.get(request.route, getHeader(request.token))
-}
+  return await instance.get(request.route, getHeader(request.token));
+};
 
 const post = async (request: Request) => {
-    return await instance.post(request.route, request.body, getHeader(request.token))
-}
+  return await instance.post(
+    request.route,
+    request.body,
+    getHeader(request.token)
+  );
+};
 
 const del = async (request: Request) => {
-    return await instance.delete(request.route, getHeader(request.token))
-}
+  return await instance.delete(request.route, getHeader(request.token));
+};
 
 const put = async (request: Request) => {
-    return await instance.put(request.route, request.body, getHeader(request.token))
-}
+  return await instance.put(
+    request.route,
+    request.body,
+    getHeader(request.token)
+  );
+};
 
-
-export default instance
-export { AxiosInterceptor, get, post, del, put }
+export default instance;
+export { AxiosInterceptor, get, post, del, put };

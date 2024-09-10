@@ -40,6 +40,9 @@
 
   /* Selector Colors */
   --color-selector: #ffffff;
+
+  /* Loader Colors */
+  --color-loader-overlay: #ffffffcc;
 }
 
 [data-theme="dark"] {
@@ -62,6 +65,9 @@
 
   /* Selector Colors */
   --color-selector: var(--color-light-grey);
+
+  /* Loader Colors */
+  --color-loader-overlay: #2c2c2ccc;
 }
 
 body {
@@ -340,6 +346,15 @@ table {
   &:not(.collapsed) {
     background-color: var(--color-secondary);
     color: #fff;
+  }
+}
+
+.accordion {
+  [data-theme="dark"] & {
+    .accordion-body {
+      background-color: var(--color-background);
+      color: #fff;
+    }
   }
 }
 

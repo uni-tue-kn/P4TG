@@ -1,6 +1,10 @@
 {
   "buttons": {
     "reset": "Zurücksetzen",
+    "runTest": "Tests starten",
+    "runProfile": "Profil starten",
+    "stopProfile": "Profil stoppen",
+    "skipTest": "Test überspringen",
     "save": "Sichern",
     "import": "Importieren",
     "export": "Exportieren",
@@ -39,7 +43,6 @@
       }
     }
   },
-
   "visualization": {
     "visualization": "Graphische Darstellung",
     "title": "Graphische Darstellung",
@@ -200,7 +203,6 @@
         "step4": "Ermittle die Zeit, die das DUT benötigt, um nach einem Reset wieder in den normalen Betrieb zurückzukehren."
       }
     },
-
     "throughput": {
       "title": "Durchsatz-Test",
       "description": "Ziel dieses Tests ist die Ermittlung der unbekannten Durchsatzraten eines DUT (Device Under Test). Dabei werden die Durchsatzraten für die Frame-Größen 64, 128, 512, 1024 und 1518 Bytes ermittelt. Der Durchsatz wird dabei in der Einheit Frames pro Sekunde angegeben.",
@@ -285,7 +287,8 @@
     "saved": "Einstellungen wurden gesichert.",
     "reset": "Einstellungen wurden zurückgesetzt.",
     "streamLimit": "Nur 7 Streams können gleichzeitig aktiv sein.",
-    "selected": "Kein Test ausgewählt."
+    "selected": "Kein Test ausgewählt.",
+    "dutReset": "Löse einen DUT-Reset in den nächsten 120 Sekunden aus"
   },
   "other": {
     "mode": "Modus",
@@ -296,6 +299,7 @@
     "arpReply": "ARP Antwort",
     "of": "von",
     "testInfo": "Test Info",
-    "duration": "Dauer"
+    "duration": "Dauer",
+    "testDuration": "Anzahl der Sekunden"
   }
 }

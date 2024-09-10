@@ -80,7 +80,7 @@ const Visuals = ({
   useEffect(() => {
     const interval = setInterval(() => {
       const storedLanguage = localStorage.getItem("language") || "en-US";
-      if (storedLanguage != currentLanguage) {
+      if (storedLanguage !== currentLanguage) {
         setCurrentLanguage(storedLanguage);
       }
 
@@ -117,15 +117,15 @@ const Visuals = ({
   // @ts-ignore
   return (
     <>
-      {visual_select == "rate" ? (
+      {visual_select === "rate" ? (
         <Line options={rate_options} data={rate_data} />
       ) : null}
 
-      {visual_select == "loss" ? (
+      {visual_select === "loss" ? (
         <Line options={loss_options} data={loss_data} />
       ) : null}
 
-      {visual_select == "frame" ? (
+      {visual_select === "frame" ? (
         <Row>
           <Col className={"col-4"}>
             <Doughnut
@@ -143,7 +143,7 @@ const Visuals = ({
         </Row>
       ) : null}
 
-      {visual_select == "rtt" ? (
+      {visual_select === "rtt" ? (
         <Line options={rtt_options} data={rtt_data} />
       ) : null}
 
@@ -154,7 +154,7 @@ const Visuals = ({
             label={translate("visualization.trafficRates", currentLanguage)}
             type="radio"
             name={"visuals"}
-            checked={visual_select == "rate"}
+            checked={visual_select === "rate"}
             id={`rate`}
           />
           <Form.Check
@@ -165,7 +165,7 @@ const Visuals = ({
             )}
             type="radio"
             name={"visuals"}
-            checked={visual_select == "loss"}
+            checked={visual_select === "loss"}
             id={`loss`}
           />
           <Form.Check
@@ -173,7 +173,7 @@ const Visuals = ({
             label="RTT"
             type="radio"
             name={"visuals"}
-            checked={visual_select == "rtt"}
+            checked={visual_select === "rtt"}
             id={`rtt`}
           />
           <Form.Check
@@ -181,7 +181,7 @@ const Visuals = ({
             label="Frames"
             type="radio"
             name={"visuals"}
-            checked={visual_select == "frame"}
+            checked={visual_select === "frame"}
             id={`frame`}
           />
         </Form>

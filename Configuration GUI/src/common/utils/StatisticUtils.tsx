@@ -18,7 +18,7 @@ export const get_frame_types = (
   //     return ret
   // }
 
-  if (stats.frame_type_data == undefined) {
+  if (stats.frame_type_data === undefined) {
     return ret;
   }
 
@@ -83,19 +83,19 @@ export const get_frame_stats = (
 ) => {
   let ret = 0;
 
-  if (stats.frame_size == undefined || port_mapping == undefined) {
+  if (stats.frame_size === undefined || port_mapping === undefined) {
     return ret;
   }
 
   Object.keys(stats.frame_size).forEach((v) => {
     if (
-      (type == "tx" && Object.keys(port_mapping).includes(v)) ||
-      (type == "rx" &&
+      (type === "tx" && Object.keys(port_mapping).includes(v)) ||
+      (type === "rx" &&
         Object.values(port_mapping).map(Number).includes(parseInt(v)))
     ) {
       // @ts-ignore
       stats.frame_size[v][type].forEach((f) => {
-        if (f.low == low && f.high == high) {
+        if (f.low === low && f.high === high) {
           ret += f.packets;
         }
       });
@@ -123,7 +123,7 @@ export const formatNanoSeconds = (
   ns: number | string,
   decimals: number = 2
 ) => {
-  if (typeof ns == "string") {
+  if (typeof ns === "string") {
     return ns;
   }
 
@@ -151,9 +151,9 @@ export const getStreamIDsByPort = (
   let ret: number[] = [];
 
   stream_settings.forEach((v) => {
-    if (v.port == pid && v.active) {
+    if (v.port === pid && v.active) {
       streams.forEach((s) => {
-        if (s.stream_id == v.stream_id) {
+        if (s.stream_id === v.stream_id) {
           ret.push(s.app_id);
           return;
         }
@@ -251,7 +251,7 @@ export const addRates = (
 ) => {
   let ret = 0;
 
-  if (object == undefined) {
+  if (object === undefined) {
     return 0;
   }
 
@@ -363,13 +363,13 @@ export const getStreamFrameSize = (
   let ret = 0;
 
   streams.forEach((v) => {
-    if (v.app_id == stream_id) {
+    if (v.app_id === stream_id) {
       ret = v.frame_size;
-      if (v.encapsulation == Encapsulation.Q) {
+      if (v.encapsulation === Encapsulation.Q) {
         ret += 4;
-      } else if (v.encapsulation == Encapsulation.QinQ) {
+      } else if (v.encapsulation === Encapsulation.QinQ) {
         ret += 8;
-      } else if (v.encapsulation == Encapsulation.MPLS) {
+      } else if (v.encapsulation === Encapsulation.MPLS) {
         ret += v.number_of_lse * 4; // 4 bytes per LSE
       }
 

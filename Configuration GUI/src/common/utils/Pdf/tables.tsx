@@ -33,7 +33,7 @@ export const createAutoTableConfig = (
       const shouldDraw =
         !applyRttRowColSkip ||
         (applyRttRowColSkip &&
-          ((data.column.index != 3 && data.column.index != 4) ||
+          ((data.column.index !== 3 && data.column.index !== 4) ||
             data.row.index <= 3));
 
       if (shouldDraw && shouldDrawLine(data.column.index, indicesToDraw)) {
@@ -88,7 +88,7 @@ export const formatActiveStreamRows = (
     stream.app_id,
     stream.frame_size + " bytes",
     stream.traffic_rate + " Gbps",
-    stream.burst == 1 ? "IAT Precision" : "Rate Precision",
+    stream.burst === 1 ? "IAT Precision" : "Rate Precision",
     stream.vxlan,
     encapsulation[stream.encapsulation],
     stream.number_of_lse,
@@ -173,25 +173,25 @@ export const frameEthernetRow = (
   } else {
     frameData1 = label1
       ? [
-          formatFrameCount(
-            get_frame_types(stats, mapping, label1.toLowerCase())["tx"]
-          ),
-          formatFrameCount(
-            get_frame_types(stats, mapping, label1.toLowerCase())["rx"]
-          ),
-        ]
+        formatFrameCount(
+          get_frame_types(stats, mapping, label1.toLowerCase())["tx"]
+        ),
+        formatFrameCount(
+          get_frame_types(stats, mapping, label1.toLowerCase())["rx"]
+        ),
+      ]
       : ["", ""];
   }
 
   const frameData2 = label2
     ? [
-        formatFrameCount(
-          get_frame_types(stats, mapping, label2.toLowerCase())["tx"]
-        ),
-        formatFrameCount(
-          get_frame_types(stats, mapping, label2.toLowerCase())["rx"]
-        ),
-      ]
+      formatFrameCount(
+        get_frame_types(stats, mapping, label2.toLowerCase())["tx"]
+      ),
+      formatFrameCount(
+        get_frame_types(stats, mapping, label2.toLowerCase())["rx"]
+      ),
+    ]
     : ["0", "0"];
 
   return [
@@ -285,9 +285,9 @@ export const createRfcTable = (
     graphType === "reset"
       ? [translate("statistics.frameSize", currentLanguage), "64 Bytes"]
       : [
-          translate("statistics.frameSize", currentLanguage),
-          ...frameSizes.map((size) => `${size} Bytes`),
-        ];
+        translate("statistics.frameSize", currentLanguage),
+        ...frameSizes.map((size) => `${size} Bytes`),
+      ];
 
   const calculateAverage = (data: { [key: string]: number }): number => {
     const values = Object.values(data);

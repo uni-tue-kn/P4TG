@@ -32,7 +32,6 @@ export const generateLineData = (
 
   let ret_data = cum_data.reduce((acc, current) => {
     const key = Object.keys(current);
-    const found = Object.keys(acc);
 
     key.forEach((k) => {
       if (Object.keys(acc).includes(k)) {
@@ -262,7 +261,7 @@ export const get_loss_data = (
     data,
     port_mapping
   );
-  const [labels_out_of_order, line_data_out_of_order] = generateLineData(
+  const [, line_data_out_of_order] = generateLineData(
     "out_of_order",
     false,
     data,
@@ -358,7 +357,7 @@ export const get_rate_data = (
     data,
     port_mapping
   );
-  const [labels_rx, line_data_rx] = generateLineData(
+  const [, line_data_rx] = generateLineData(
     "rx_rate_l1",
     false,
     data,

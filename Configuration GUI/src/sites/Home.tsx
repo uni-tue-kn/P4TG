@@ -18,21 +18,18 @@
  */
 
 import { useEffect, useState } from "react";
-import { Button, Col, Form, Row, Alert} from "react-bootstrap";
-import { del, get, post } from "../common/API";
+import { Col, Form, Row } from "react-bootstrap";
+import { del, post } from "../common/API";
 import SendReceiveMonitor from "../components/SendReceiveMonitor";
 import Loader from "../components/Loader";
 
 import {
   ASIC,
-  Encapsulation,
   GenerationMode,
   P4TGInfos,
   TestMode,
   Statistics as StatInterface,
   StatisticsObject,
-  Stream,
-  StreamSettings,
   TimeStatistics,
   TimeStatisticsObject,
   TrafficGenData,
@@ -47,8 +44,13 @@ import translate from "../components/translation/Translate";
 import HiddenGraphs from "../components/pdf/HiddenVisuals";
 import Download from "../components/Download";
 
-import RenderTabs from "../common/utils/Home/Tabs";
-import TestInfoTooltip from "../common/utils/Home/Tooltip";
+import RenderTabs from "../common/utils/Home/Tabs/Tabs";
+import {
+  TestInfoTooltip,
+  ActionButtonsRunning,
+  ActionButtonsNotRunning,
+  ResetAlert,
+} from "../common/utils/Home/Components";
 
 import {
   convertTestData,
@@ -69,15 +71,15 @@ import {
 } from "../common/utils/Home/Api";
 
 styled(Row)`
-    display: flex;
-    align-items: center;
+  display: flex;
+  align-items: center;
 `;
 styled(Col)`
-    padding-left: 0;
+  padding-left: 0;
 `;
 
 const StyledLink = styled.a`
-  color: var(--color-secondary);
+  color: var(--color-text);
   text-decoration: none;
   opacity: 0.5;
 
@@ -99,23 +101,14 @@ export const GitHub = () => {
   );
 };
 
-const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
-    const [loaded, set_loaded] = useState(false)
-    const [overlay, set_overlay] = useState(false)
-    const [running, set_running] = useState(false)
-    const [visual, set_visual] = useState(true)
-
-    // @ts-ignore
-    const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
-    // @ts-ignore
-    const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
-    const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
-
-    // @ts-ignore
-    const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
+const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
+  const [loaded, set_loaded] = useState(false);
+  const [overlay, set_overlay] = useState(false);
+  const [running, set_running] = useState(false);
+  const [visual, set_visual] = useState(true);
 
   const [imageData, setImageData] = useState<{
-    [key: number]: { Summary: string[]; [key: string]: string[] };
+    [key: number]: { Summary: string[];[key: string]: string[] };
   }>({});
 
   const [traffic_gen_list, set_traffic_gen_list] = useState<TrafficGenList>(
@@ -179,7 +172,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     const interval_loadgen = setInterval(
       async () =>
         await Promise.all([loadGen(set_traffic_gen_list, set_running)]),
-      5000
+      1000
     );
     const interval_default_loadgen = setInterval(
       async () => await Promise.all([loadDefaultGen(set_traffic_gen_list)]),
@@ -213,70 +206,14 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     return () => clearInterval(interval);
   }, [currentLanguage]);
 
-  const activePorts = (): { "tx": number, "rx": number }[] => {
-    let active_ports: { tx: number, rx: number }[] = []
-    let exists: number[] = []
-
-    Object.keys(port_tx_rx_mapping).forEach((tx_port: string) => {
-        let port = parseInt(tx_port)
-        exists.push(port)
-        active_ports.push({tx: port, rx: port_tx_rx_mapping[port]})
-    })
-
-    return active_ports
-}
-
-  const getStreamIDsByPort = (pid: number): number[] => {
-      let ret: number[] = []
-
-      stream_settings.forEach(v => {
-          if (v.port == pid && v.active) {
-              streams.forEach(s => {
-                  if (s.stream_id == v.stream_id) {
-                      ret.push(s.app_id)
-                      return
-                  }
-              })
-          }
-      })
-
-      return ret
-  }
-
-  const getStreamFrameSize = (stream_id: number): number => {
-      let ret = 0
-
-      streams.forEach(v => {
-          if (v.app_id == stream_id) {
-              ret = v.frame_size
-              if (v.encapsulation == Encapsulation.Q) {
-                  ret += 4
-              } else if (v.encapsulation == Encapsulation.QinQ) {
-                  ret += 8
-              }
-              else if (v.encapsulation == Encapsulation.MPLS) {
-                  ret += v.number_of_lse * 4 // 4 bytes per LSE
-              }
-
-              if (v.vxlan) {
-                  ret += 50 // 50 bytes overhead
-              }
-
-              return
-          }
-      })
-
-      return ret
-  }
-
   const onSubmit = async (event: any) => {
     event.preventDefault();
     set_overlay(true);
 
     let max_rate = 100;
 
-    if(p4tg_infos.asic == ASIC.Tofino2) {
-        max_rate = 400;
+    if (p4tg_infos.asic == ASIC.Tofino2) {
+      max_rate = 400;
     }
 
     if (running) {
@@ -315,7 +252,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
         );
 
         if (oneModeMPPS && max_rate > 100) {
-          alert("Sum of stream rates > " + max_rate + " Gbps!")
+          alert("Sum of stream rates > " + max_rate + " Gbps!");
         } else {
           if (test_mode === TestMode.SINGLE) {
             const singleTest = traffic_gen_list[1];
@@ -380,7 +317,6 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     set_overlay(false);
   };
 
-
   const loadInfo = async () => {
     if (test_mode === TestMode.MULTI) {
       await loadTestInfo(
@@ -416,7 +352,6 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
         return allTestsValid && profileData.running === false;
       } else {
         const profileKey = profileKeys[selectedRFC - 1];
-        console.log(profileKey);
         return (
           profileData[profileKey] !== null && profileData.running === false
         );
@@ -456,47 +391,39 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     });
   };
 
-    return <Loader loaded={loaded} overlay={overlay}>
-        <form onSubmit={onSubmit}>
-            <Row className={"mb-3"}>
-              {running &&
-              test_mode === TestMode.PROFILE &&
-              selectedProfile === ProfileMode.RFC2544 &&
-              currentProfileTest === "Reset - 64 Bytes" && (
-                <Col className="col-12">
-                  <Alert variant={"primary"}>
-                    Cause a Reset in the DUT in the next 120 Seconds
-                  </Alert>
-                </Col>
-              )}
-                <SendReceiveMonitor stats={statistics} running={running}/>
-                <Col className={"text-end col-4"}>
-                    {running ?
-                        <>
-                            <Button type={"submit"} className="mb-1" variant="danger"><i
-                                className="bi bi-stop-fill"/> Stop</Button>
-                            {" "}
-                            <Button onClick={() => restart(set_overlay)} className="mb-1" variant="primary"><i
-                                className="bi bi-arrow-clockwise"/>{" "}
-                  {translate("buttons.restart", currentLanguage)}{" "}</Button>
-                        </>
-                        :
-                        <>
-                          <div style={{ display: "inline-block", position: "relative" }}>
-                            <div>
-                            <Button type={"submit"} className="mb-1" variant="primary">
-                              <i className="bi bi-play-circle-fill"/> Start{" "}
-                              </Button>{" "}
-                            <Button
-                             onClick={() => {reset(set_overlay);
-                             }}
-                              className="mb-1"
-                              variant="warning"
-                              >
-                              <i className="bi bi-trash-fill"/>{" "}
-                                {translate("buttons.reset", currentLanguage)}{" "}
-                              </Button>{" "}
-                            </div>
+  return (
+    <Loader loaded={loaded} overlay={overlay}>
+      <form onSubmit={onSubmit}>
+        <Row className={"mb-3"}>
+          <ResetAlert
+            running={running}
+            testMode={test_mode}
+            selectedProfile={selectedProfile}
+            currentProfileTest={currentProfileTest}
+            currentLanguage={currentLanguage}
+          />
+          <SendReceiveMonitor stats={statistics} running={running} />
+          <Col className={"text-end col-4"}>
+            {running ||
+              (test_mode === TestMode.MULTI &&
+                currentTestNumber !== totalTestsNumber) ? (
+              <ActionButtonsRunning
+                restart={restart}
+                setOverlay={set_overlay}
+                testMode={test_mode}
+                currentLanguage={currentLanguage}
+                translate={translate}
+              />
+            ) : (
+              <>
+                <div style={{ display: "inline-block", position: "relative" }}>
+                  <ActionButtonsNotRunning
+                    reset={reset}
+                    setOverlay={set_overlay}
+                    testMode={test_mode}
+                    currentLanguage={currentLanguage}
+                    translate={translate}
+                  />
                   {shouldShowDownloadButton(
                     running,
                     time_statistics,
@@ -505,36 +432,36 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
                     selectedRFC,
                     profileData
                   ) && (
-                    <>
-                      <HiddenGraphs
-                        data={time_statistics}
-                        stats={statistics}
-                        traffic_gen_list={traffic_gen_list}
-                        testMode={test_mode}
-                        selectedProfile={selectedProfile}
-                        selectedRFC={selectedRFC}
-                        onConvert={handleGraphConvert}
-                      />
-                      <Download
-                        data={time_statistics}
-                        stats={statistics}
-                        traffic_gen_list={traffic_gen_list}
-                        test_mode={test_mode}
-                        selectedProfile={selectedProfile}
-                        selectedRFC={selectedRFC}
-                        profileData={profileData}
-                        graph_images={imageData}
-                        currentLanguage={currentLanguage}
-                      />
-                    </>
-                  )}
+                      <>
+                        <HiddenGraphs
+                          data={time_statistics}
+                          stats={statistics}
+                          traffic_gen_list={traffic_gen_list}
+                          testMode={test_mode}
+                          selectedProfile={selectedProfile}
+                          selectedRFC={selectedRFC}
+                          onConvert={handleGraphConvert}
+                        />
+                        <Download
+                          data={time_statistics}
+                          stats={statistics}
+                          traffic_gen_list={traffic_gen_list}
+                          test_mode={test_mode}
+                          selectedProfile={selectedProfile}
+                          selectedRFC={selectedRFC}
+                          profileData={profileData}
+                          graph_images={imageData}
+                          currentLanguage={currentLanguage}
+                        />
+                      </>
+                    )}
                 </div>
               </>
-            }
+            )}
           </Col>
         </Row>
       </form>
-  
+
       <Row className="d-flex align-items-center">
         <Col className={"col-auto"}>
           <Form>
@@ -561,6 +488,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
       <RenderTabs
         test_mode={test_mode}
         selectedRFC={selectedRFC}
+        selectedProfile={selectedProfile}
         statistics={statistics}
         time_statistics={time_statistics}
         traffic_gen_list={traffic_gen_list}
@@ -573,6 +501,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
       />
       <GitHub />
     </Loader>
+  );
 };
 
 export default Home;

@@ -24,6 +24,9 @@ use rbfrt::table::{MatchValue, ToBytes};
 use std::collections::HashMap;
 
 
+const FRAME_SIZES: [u32; 5] = [64, 128, 512, 1024, 1518];
+const IAT_PRECISION: u16 = 1;
+const RATE_PRECISION: u16 = 100;
 
 
 // Throughput test defined in RFC 2544 section 25.1
@@ -35,12 +38,11 @@ pub async fn throughput_test(
     abort_current_test(Arc::clone(&state)).await;
     info!("Starting throughput test for all frame sizes");
 
-    let frame_sizes = [64, 128, 512, 1024, 1518];
     let mut frame_rate_results = BTreeMap::new();
 
-    for &frame_size in frame_sizes.iter() {
+    for &frame_size in FRAME_SIZES.iter() {
         let mut test_payload = payload.clone();
-        test_payload.streams[0].burst = 100;
+        test_payload.streams[0].burst = RATE_PRECISION;
         test_payload.streams[0].frame_size = frame_size;
 
         
@@ -107,6 +109,7 @@ async fn binary_search_for_rate(
 
     let max_iterrations = 20;
     let epsilon = 0.001;
+    // Change to 0.01 for 1% tolerance
     let tolerance = 0.03;
     
     
@@ -184,8 +187,9 @@ async fn exponential_search_for_max_rate(
         let test_rate = initial_tx_rate * 2f32.powi(k);
 
         if test_rate > 100.0 {
-            info!("Test rate exceeds 100 Gbps, stopping search");
-            break;
+            let lower_bound = initial_tx_rate * 2f32.powi(k - 1);
+            info!("Test rate exceeds 100 Gbps, returning interval [{}, 100]", lower_bound);
+            return Ok((lower_bound, 100.0));
         }
 
         info!("Exponential search iteration {}: testing rate {}", k, test_rate);
@@ -250,17 +254,16 @@ pub async fn latency_test(State(state): State<Arc<AppState>>, Json(payload): Jso
     abort_current_test(Arc::clone(&state)).await;
     info!("Starting latency test for all frame sizes");
 
-    let frame_sizes = [64, 128, 512, 1024, 1518];
     let mut latency_results = BTreeMap::new();
 
-    for &frame_size in frame_sizes.iter() {
+    for &frame_size in FRAME_SIZES.iter() {
         let frame_rate = {
             let test_results = state.multi_test_state.rfc_results.lock().await;
             test_results.throughput.as_ref().and_then(|throughput_map| throughput_map.get(&frame_size).cloned())
         };
 
         let mut adjusted_payload = payload.clone();
-        adjusted_payload.streams[0].burst = 100;
+        adjusted_payload.streams[0].burst = RATE_PRECISION;
 
         if let Some(rate) = frame_rate {
             adjusted_payload.streams[0].traffic_rate = rate * frame_size as f32 * 8.0 / 1e9;
@@ -330,7 +333,6 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
     info!("Starting frame loss rate test with multiple frame sizes and rates");
 
     let mut abort_rx = create_and_store_abort_sender(Arc::clone(&state)).await;
-    let frame_sizes = vec![64, 128, 512, 1024, 1518];
     let mut results = BTreeMap::new();
 
     let ports = state.pm.get_ports(&state.switch).await.map_err(|err| {
@@ -350,9 +352,9 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
         Speed::BF_SPEED_400G => 400.0,
     }).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(1.0);
 
-    for &frame_size in &frame_sizes {
+    for &frame_size in &FRAME_SIZES {
         let mut test_payload = payload.clone();
-        test_payload.streams[0].burst = 100;
+        test_payload.streams[0].burst = RATE_PRECISION;
         test_payload.streams[0].traffic_rate = max_speed;
         test_payload.streams[0].frame_size = frame_size;
 
@@ -460,7 +462,7 @@ pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<
     let mut adjusted_payload = payload.clone();
     adjusted_payload.streams[0].traffic_rate = frame_rate * frame_size as f32 * 8.0 / 1e9;
     adjusted_payload.streams[0].frame_size = frame_size;
-    adjusted_payload.streams[0].burst = 1;
+    adjusted_payload.streams[0].burst = IAT_PRECISION;
 
     save_tg(Arc::clone(&state), adjusted_payload.clone(), format!("Reset - {} Bytes", frame_size)).await;
 
@@ -560,8 +562,13 @@ async fn monitor_packet_loss(
     abort_rx: &mut tokio::sync::watch::Receiver<()>
 ) -> Result<(Option<Instant>, Option<Instant>), Response> {
     
-    let mut previous_packets_received = wait_for_first_packet(state, interval).await;
+    let mut previous_packets_received = wait_for_first_packet(state, interval, abort_rx).await;
 
+    if previous_packets_received == 0 {
+        info!("Monitoring aborted during wait for first packet.");
+        return Ok((None, None));
+    }
+    
     let start_time = Instant::now();
     let mut time_point_a: Option<Instant> = None;
     let mut time_point_b: Option<Instant>;
@@ -626,22 +633,47 @@ async fn monitor_packet_loss(
 
 
 // Waits for the first packet to be received
-async fn wait_for_first_packet(state: &Arc<AppState>, interval: Duration) -> u64 {
+async fn wait_for_first_packet(
+    state: &Arc<AppState>,
+    interval: Duration,
+    abort_rx: &mut tokio::sync::watch::Receiver<()>
+) -> u64 {
+    // Wait until the experiment is running
     loop {
-        // Check total received packets
-        let total_packets_received = get_total_received_packets(state).await;
-
-        // If packets have been received, return the count
-        if total_packets_received > 0 {
-            info!("First packet received: {}", total_packets_received);
-            return total_packets_received;
+        tokio::select! {
+            _ = tokio::time::sleep(interval) => {
+                let running = state.experiment.lock().await.running;
+                if running {
+                    break;
+                }
+                info!("Experiment not running yet, waiting...");
+            }
+            _ = abort_rx.changed() => {
+                info!("Abort signal received, stopping wait for first packet.");
+                return 0; // You can return a default value or handle it differently
+            }
         }
+    }
 
-        // Sleep for the interval duration before checking again
-        info!("No packets yet, waiting...");
-        tokio::time::sleep(interval).await;
+    // Wait until the first frame is received
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(interval) => {
+                let total_packets_received = get_total_received_packets(state).await;
+                if total_packets_received > 0 {
+                    info!("First packet received: {}", total_packets_received);
+                    return total_packets_received;
+                }
+                info!("No packets yet, waiting...");
+            }
+            _ = abort_rx.changed() => {
+                info!("Abort signal received, stopping wait for first packet.");
+                return 0; // Again, handle this however you see fit
+            }
+        }
     }
 }
+
 
 
 

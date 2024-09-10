@@ -1,6 +1,10 @@
 {
   "buttons": {
     "reset": "Reset",
+    "runTest": "Run Tests",
+    "runProfile": "Run Profile",
+    "stopProfile": "Stop Profile",
+    "skipTest": "Skip Test",
     "save": "Save",
     "import": "Import",
     "export": "Export",
@@ -199,7 +203,6 @@
         "step4": "Determine the time it takes for the DUT to return to normal operation after a reset."
       }
     },
-
     "throughput": {
       "title": "Throughput Test",
       "description": "The goal of this test is to determine the unknown throughput rates of a DUT (Device Under Test). The throughput rates for frame sizes 64, 128, 512, 1024, and 1518 bytes are determined. The unit for the throughput rate is Frames per second.",
@@ -284,7 +287,8 @@
     "saved": "Settings saved.",
     "reset": "Settings reset.",
     "streamLimit": "Only 7 different streams allowed.",
-    "selected": "No test selected."
+    "selected": "No test selected.",
+    "dutReset": "Cause a Reset in the DUT in the next 120 Seconds"
   },
   "other": {
     "mode": "Mode",
@@ -295,6 +299,7 @@
     "arpReply": "ARP Reply",
     "of": "of",
     "testInfo": "Test Info",
-    "duration": "Duration"
+    "duration": "Duration",
+    "testDuration": "Number of seconds"
   }
 }

@@ -57,7 +57,7 @@ const LoadWrapperAbsolute = styled.div`
   color: var(--color-primary);
   text-align: center;
   height: 100%;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--color-loader-overlay);
   width: 100%;
   z-index: 1;
   overflow-x: hidden;

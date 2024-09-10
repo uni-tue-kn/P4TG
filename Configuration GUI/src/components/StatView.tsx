@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Col, Row, Table } from "react-bootstrap";
 import {
   GenerationMode,
@@ -225,9 +225,8 @@ const StatView = ({
             bordered
             hover
             size="sm"
-            className={`mt-3 mb-3 ${
-              mode == GenerationMode.ANALYZE ? "opacity-50" : ""
-            }`}
+            className={`mt-3 mb-3 ${mode == GenerationMode.ANALYZE ? "opacity-50" : ""
+              }`}
           >
             <thead className={"table-dark"}>
               <tr>
@@ -242,9 +241,9 @@ const StatView = ({
                 <td>
                   {lost_packets > 0
                     ? (
-                        (lost_packets * 100) /
-                        (lost_packets + total_rx)
-                      ).toFixed(2) + " %"
+                      (lost_packets * 100) /
+                      (lost_packets + total_rx)
+                    ).toFixed(2) + " %"
                     : "0.00 %"}
                 </td>
                 <td>{formatFrameCount(out_of_order_packets)}</td>
@@ -258,9 +257,8 @@ const StatView = ({
             bordered
             hover
             size="sm"
-            className={`mt-3 mb-3 ${
-              mode == GenerationMode.ANALYZE ? "opacity-50" : ""
-            }`}
+            className={`mt-3 mb-3 ${mode == GenerationMode.ANALYZE ? "opacity-50" : ""
+              }`}
           >
             <thead className={"table-dark"}>
               <tr>

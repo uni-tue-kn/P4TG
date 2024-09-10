@@ -1,24 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Table, Col, Form, Row, Tab, Tabs } from "react-bootstrap";
+import { Col, Form, Row, Tab, Tabs } from "react-bootstrap";
 import { get } from "../common/API";
 import {
   GenerationMode,
   P4TGInfos,
   DefaultStream,
-  Stream,
-  StreamSettings,
   DefaultStreamSettings,
   TestMode,
   TrafficGenData,
   TrafficGenList,
   DefaultTrafficGenData,
-  Port,
   TabInterface,
+  Port,
 } from "../common/Interfaces";
 import Loader from "../components/Loader";
 import { GitHub } from "./Home";
-import StreamSettingsList from "../components/settings/StreamSettingsList";
-import StreamElement from "../components/settings/StreamElement";
 import translate from "../components/translation/Translate";
 
 import { loadPorts } from "../common/utils/Home/Api";
@@ -51,7 +47,6 @@ import PortMappingTable from "../components/settings/PortMappingTable";
 import { validateStreamSettings, validateStreams } from "../common/Validators";
 import Profile from "../components/settings/SettingsProfile";
 import styled from "styled-components";
-import InfoBox from "../components/InfoBox";
 
 export const StyledRow = styled.tr`
   display: flex;
@@ -64,22 +59,11 @@ export const StyledCol = styled.td`
   text-indent: 5px;
 `;
 
-/* 
-Ich sollte außerdem überlegen welche Funktionen ich in eine ListSettingsUtils Datei auslagern kann (vereinen mit den bereits ausgelagerten Teilen von Utils.tsx)
-*/
-
-const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
-    const [ports, set_ports] = useState<{
-        pid: number,
-        port: number,
-        channel: number,
-        loopback: string,
-        status: boolean
-    }[]>([])
-    const [traffic_gen_list, set_traffic_gen_list] = useState<TrafficGenList>(
+const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
+  const [ports, set_ports] = useState<Port[]>([]);
+  const [traffic_gen_list, set_traffic_gen_list] = useState<TrafficGenList>(
     JSON.parse(localStorage.getItem("traffic_gen") ?? "{}")
   );
-  const [currentTest, setCurrentTest] = useState<TrafficGenData | null>(null);
 
   const [currentTestMode, setCurrentTestMode] = useState(
     JSON.parse(
@@ -87,52 +71,46 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     ).mode
   );
 
+  const [currentTabIndex, setCurrentTabIndex] = useState<string | null>(
+    Object.keys(traffic_gen_list)[0] ?? null
+  );
+  const [currentTest, setCurrentTest] = useState<TrafficGenData | null>(
+    traffic_gen_list[Object.keys(traffic_gen_list)[0] as any] ?? null
+  );
+  const [key, setKey] = useState<string>("tab-1");
+
   const [tabs, setTabs] = useState<TabInterface[]>([]);
-  const [key, setKey] = useState<string>("");
-  const [currentTabIndex, setCurrentTabIndex] = useState<string | null>(null);
   const [running, set_running] = useState(false);
-  // @ts-ignore
-  const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
-  // @ts-ignore
-  const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
 
-  // @ts-ignore
-  const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
-
-  const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
-  
   const [totalDuration, setTotalDuration] = useState<number>(0);
-  const ref = useRef();
-
-  const handleTestModeChange = (event: any) => {
-    const newValue = Number(event.target.value);
-
-    const isProfileToSingleOrMulti =
-      currentTestMode === TestMode.PROFILE &&
-      (newValue === TestMode.SINGLE || newValue === TestMode.MULTI);
-
-    const isMultiToProfile =
-      currentTestMode === TestMode.MULTI && newValue === TestMode.PROFILE;
-
-    const isSingleToProfile =
-      currentTestMode === TestMode.SINGLE && newValue === TestMode.PROFILE;
-
-    if (isProfileToSingleOrMulti || isMultiToProfile || isSingleToProfile) {
-      localStorage.removeItem("traffic_gen");
-      set_traffic_gen_list({});
-      setTabs([]);
-      setTotalDuration(0);
-    }
-
-    localStorage.setItem("test", JSON.stringify({ mode: newValue }));
-    setCurrentTestMode(newValue);
-  };
 
   const [currentLanguage, setCurrentLanguage] = useState(
     localStorage.getItem("language") || "en-US"
   );
 
   const [loaded, set_loaded] = useState(true);
+
+  const ref = useRef();
+
+  const handleTestModeChange = async (event: any) => {
+    const newValue = Number(event.target.value);
+
+    const isProfileToSingleOrMulti =
+      currentTestMode === TestMode.PROFILE &&
+      (newValue === TestMode.SINGLE || newValue === TestMode.MULTI);
+
+    if (isProfileToSingleOrMulti) {
+      await get({ route: "/reset" });
+    }
+    localStorage.removeItem("traffic_gen");
+    set_traffic_gen_list({});
+    setCurrentTest(DefaultTrafficGenData(ports));
+    setTabs([]);
+    setTotalDuration(0);
+
+    localStorage.setItem("test", JSON.stringify({ mode: newValue }));
+    setCurrentTestMode(newValue);
+  };
 
   const handleTitleChange = (eventKey: string, newTitle: string) => {
     if (currentTestMode === TestMode.MULTI) {
@@ -171,6 +149,12 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     }
   };
 
+  useEffect(() => {
+    if (Object.keys(traffic_gen_list).length > 0) {
+      initializeTabs();
+    }
+  }, [Object.keys(traffic_gen_list).length]);
+
   const initializeTabs = () => {
     if (currentTestMode === TestMode.MULTI) {
       const initializedTabs: TabInterface[] = Object.keys(traffic_gen_list).map(
@@ -189,14 +173,6 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         titleEditable: false,
       });
       setTabs(initializedTabs);
-
-      if (initializedTabs.length > 0) {
-        setKey(initializedTabs[0].eventKey);
-        setCurrentTabIndex(Object.keys(traffic_gen_list)[0]);
-        setCurrentTest(
-          traffic_gen_list[Object.keys(traffic_gen_list)[0] as any]
-        );
-      }
     } else {
       const initializedTabs: TabInterface[] = [
         {
@@ -259,7 +235,6 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const updatedTrafficGenList = { ...traffic_gen_list };
     delete updatedTrafficGenList[key as any];
 
-    // Update keys to ensure no gaps
     const newTrafficGenList: any = {};
     let newIndex = 1;
     Object.keys(updatedTrafficGenList).forEach((k) => {
@@ -294,7 +269,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
       setCurrentTabIndex(newTabs[newActiveTabIndex].eventKey.split("-")[1]);
       setCurrentTest(
         traffic_gen_list[
-          newTabs[newActiveTabIndex].eventKey.split("-")[1] as any
+        newTabs[newActiveTabIndex].eventKey.split("-")[1] as any
         ]
       );
     } else if (newTabs.length === 1) {
@@ -321,12 +296,10 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         const defaultData = DefaultTrafficGenData(stats.data);
         set_traffic_gen_list({ 1: defaultData });
         localStorage.setItem("traffic_gen", JSON.stringify({ 1: defaultData }));
-        window.location.reload();
       }
       if (!localStorage.getItem("test")) {
         localStorage.setItem("test", JSON.stringify({ mode: TestMode.SINGLE }));
         setCurrentTestMode(TestMode.SINGLE);
-        window.location.reload();
       }
     }
   };
@@ -356,6 +329,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     set_traffic_gen_list(updatedTrafficGenList);
     setCurrentTest(updatedTest);
   };
+  console.log(currentTest);
 
   const save = () => {
     if (currentTabIndex && currentTest) {
@@ -702,9 +676,9 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     return () => clearInterval(interval);
   }, [currentLanguage]);
 
-
-    // @ts-ignore
-    return <Loader loaded={loaded}>
+  // @ts-ignore
+  return (
+    <Loader loaded={loaded}>
       <Row className="align-items-end justify-content-between">
         <TestModeSelection
           currentTestMode={currentTestMode}
@@ -799,7 +773,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                       </span>
                     )}
 
-                    {tab.eventKey !== "tab-1" ? (
+                    {tab.eventKey !== "tab-1" && (
                       <button
                         className="outline-none border-0 bg-transparent"
                         onClick={(e) => {
@@ -809,8 +783,6 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                       >
                         <i className="bi bi-x"></i>
                       </button>
-                    ) : (
-                      <></>
                     )}
                   </div>
                 ) : (
@@ -852,7 +824,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                           type="number"
                           min={0}
                           placeholder={translate(
-                            "Number of seconds",
+                            "other.testDuration",
                             currentLanguage
                           )}
                           value={currentTest?.duration}
@@ -912,6 +884,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
       />
       <GitHub />
     </Loader>
+  );
 };
 
 export default Settings;

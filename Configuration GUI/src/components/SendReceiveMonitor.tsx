@@ -26,7 +26,7 @@ import Status from "../components/Status";
 const Stat = styled.span<{ active: boolean }>`
   i {
     color: ${(props) =>
-      props.active ? "var(--color-okay)" : "var(--color-yellow)"};
+    props.active ? "var(--color-okay)" : "var(--color-yellow)"};
     padding-right: 5px;
   }
 
@@ -42,7 +42,7 @@ const Stat = styled.span<{ active: boolean }>`
   display: inline-block;
 `;
 
-const Time = styled.span`
+export const Time = styled.span`
   margin-right: 10px;
   min-width: 140px;
   max-width: 140px;

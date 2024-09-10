@@ -19,7 +19,7 @@ const IMIXContent = ({
   ports: Port[];
 }) => {
   const storedTest = JSON.parse(localStorage.getItem("test") || "{}");
-  const [trafficGen, setTrafficGen] = useState(
+  const [traffic_gen_list, set_traffic_gen_list] = useState(
     JSON.parse(localStorage.getItem("traffic_gen") || "{}")
   );
 
@@ -27,7 +27,7 @@ const IMIXContent = ({
     storedTest.selectedIMIX || IMIXTestSelection.SIMPLE;
 
   const [portMapping, setPortMapping] = useState(
-    trafficGen["1"]?.port_tx_rx_mapping || {}
+    traffic_gen_list["1"]?.port_tx_rx_mapping || {}
   );
 
   const defaultStreams = useMemo(
@@ -79,7 +79,7 @@ const IMIXContent = ({
   );
 
   const [streamSettings, setStreamSettings] = useState(() => {
-    const savedStreamSettings = trafficGen["1"]?.stream_settings;
+    const savedStreamSettings = traffic_gen_list["1"]?.stream_settings;
     if (savedStreamSettings) {
       // Merge saved settings with default settings
       return defaultStreamSettings.map((defaultSetting) => {
@@ -97,22 +97,23 @@ const IMIXContent = ({
   });
 
   useEffect(() => {
-    const storedMapping = trafficGen["1"]?.port_tx_rx_mapping || {};
+    const storedMapping = traffic_gen_list["1"]?.port_tx_rx_mapping || {};
     setPortMapping(storedMapping);
-  }, [trafficGen, ports]);
+  }, [traffic_gen_list, ports]);
 
-  const onSave = () => {
+  const save = () => {
     const updatedTrafficGen = {
-      ...trafficGen,
+      ...traffic_gen_list,
       "1": {
-        ...trafficGen["1"],
+        ...traffic_gen_list["1"],
+        mode: 1,
         streams: defaultStreams,
         stream_settings: streamSettings,
         port_tx_rx_mapping: portMapping,
       },
     };
 
-    setTrafficGen(updatedTrafficGen);
+    set_traffic_gen_list(updatedTrafficGen);
 
     localStorage.setItem("traffic_gen", JSON.stringify(updatedTrafficGen));
     localStorage.setItem(
@@ -126,11 +127,12 @@ const IMIXContent = ({
     alert(translate("alert.saved", currentLanguage));
   };
 
-  const onReset = () => {
-    const resetMapping = {};
-    setPortMapping(resetMapping);
+  const reset = () => {
+    setPortMapping({});
     setStreamSettings(defaultStreamSettings);
+    localStorage.removeItem("traffic_gen");
     alert(translate("alert.reset", currentLanguage));
+    window.location.reload();
   };
 
   const handlePortChange = (event: any, pid: number) => {
@@ -155,8 +157,8 @@ const IMIXContent = ({
         activateAllInRow={true}
       />
       <SaveResetButtons
-        onSave={onSave}
-        onReset={onReset}
+        onSave={save}
+        onReset={reset}
         running={running}
         currentLanguage={currentLanguage}
       />

@@ -35,7 +35,7 @@ const DownloadPdf = ({
   selectedProfile: ProfileMode;
   selectedRFC: number;
   graph_images: {
-    [key: number]: { Summary: string[]; [key: string]: string[] };
+    [key: number]: { Summary: string[];[key: string]: string[] };
   };
 }) => {
   const [ports, set_ports] = useState<Port[]>([]);
@@ -80,7 +80,7 @@ const DownloadPdf = ({
   useEffect(() => {
     const interval = setInterval(() => {
       const storedLanguage = localStorage.getItem("language") || "en-US";
-      if (storedLanguage != currentLanguage) {
+      if (storedLanguage !== currentLanguage) {
         setCurrentLanguage(storedLanguage);
       }
     }, 200);
