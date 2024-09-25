@@ -111,7 +111,8 @@ async fn binary_search_for_rate(
     let epsilon = 0.001;
     // Change to 0.01 for 1% tolerance
     let tolerance = 0.03;
-    
+
+    let test_duration = 10.0;
     
     let mut abort_rx = create_and_store_abort_sender(Arc::clone(&state)).await;
     let mut max_successful_rate = 0.0;
@@ -124,7 +125,7 @@ async fn binary_search_for_rate(
         // Adjusting traffic rate for single stream
         test_payload.streams[0].traffic_rate = current_rate;
         
-        match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), 0, Some(10.0), &mut abort_rx).await {
+        match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), 0, Some(test_duration), &mut abort_rx).await {
             Ok(_) => {
                 info!("Successfully completed traffic generation with current rate: {}", current_rate);
 
@@ -181,6 +182,7 @@ async fn exponential_search_for_max_rate(
     let mut current_rate = initial_tx_rate;
 
     let max_iterrations = 10;
+    let test_duration = 10.0;
 
     // Limiting k to avoid infinite loop in case of errors
     while k < max_iterrations {
@@ -196,7 +198,7 @@ async fn exponential_search_for_max_rate(
 
         test_payload.streams[0].traffic_rate = test_rate;
 
-        match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), 0, Some(10.0), &mut create_and_store_abort_sender(Arc::clone(&state)).await).await {
+        match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), 0, Some(test_duration), &mut create_and_store_abort_sender(Arc::clone(&state)).await).await {
             Ok(_) => {
                 info!("Successfully completed traffic generation with test rate: {}", test_rate);
 
@@ -332,25 +334,12 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
     abort_current_test(Arc::clone(&state)).await;
     info!("Starting frame loss rate test with multiple frame sizes and rates");
 
+    let test_duration = 45.0;
+
     let mut abort_rx = create_and_store_abort_sender(Arc::clone(&state)).await;
     let mut results = BTreeMap::new();
 
-    let ports = state.pm.get_ports(&state.switch).await.map_err(|err| {
-        error!("Failed to get ports: {:?}", err);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Failed to get ports: {:?}", err)))).into_response()
-    })?;
-
-    // Determine the maximum speed from the sending ports
-    let max_speed = ports.iter().map(|port| match port.get_speed() {
-        Speed::BF_SPEED_1G => 1.0,
-        Speed::BF_SPEED_10G => 10.0,
-        Speed::BF_SPEED_20G => 20.0,
-        Speed::BF_SPEED_25G => 25.0,
-        Speed::BF_SPEED_40G => 40.0,
-        Speed::BF_SPEED_50G => 50.0,
-        Speed::BF_SPEED_100G => 100.0,
-        Speed::BF_SPEED_400G => 400.0,
-    }).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(1.0);
+    let max_speed = max_rate_of_media(Arc::clone(&state)).await?;
 
     for &frame_size in &FRAME_SIZES {
         let mut test_payload = payload.clone();
@@ -369,7 +358,7 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
 
             test_payload.streams[0].traffic_rate = test_rate;
 
-            match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), i, Some(10.0), &mut abort_rx).await {
+            match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), i, Some(test_duration), &mut abort_rx).await {
                 Ok(_) => {
                     info!("Successfully completed traffic generation {} for frame size {}", i + 1, frame_size);
 
@@ -380,10 +369,15 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
                             .map(|v| v.packets as u64)
                             .sum();
 
-                        let packet_loss: u64 = stats.packet_loss.values().sum();
+                        let total_packets_received: u64 = stats.frame_size.values()
+                            .flat_map(|f| f.rx.iter())
+                            .map(|v| v.packets as u64)
+                            .sum();
 
+                        let packet_loss = total_packets_sent - total_packets_received;    
+                        
                         let mut packet_loss_percent = if total_packets_sent > 0 {
-                            round_to_three_places((packet_loss as f64 / total_packets_sent as f64) * 100.0)
+                            (packet_loss as f64 / total_packets_sent as f64) * 100.0
                         } else {
                             0.0
                         };
@@ -442,7 +436,7 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
 pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<TrafficGenData>) -> Result<(StatusCode, Json<f64>), Response> {
     info!("Starting reset test for the minimum frame size (64 Bytes)");
 
-    let duration = Duration::from_secs(120);
+    let test_duration = Duration::from_secs(120);
     let interval = Duration::from_millis(100); 
 
     let frame_size = 64;
@@ -479,7 +473,7 @@ pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<
             state_clone,
             adjusted_payload,
             0,
-            Some(duration.as_secs_f64()),
+            Some(test_duration.as_secs_f64()),
             &mut tg_abort_rx
         ).await
     });
@@ -487,7 +481,7 @@ pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<
     // Monitoring task
     let state_clone = Arc::clone(&state);
     let monitor_task = tokio::spawn(async move {
-        monitor_packet_loss(&state_clone, duration, interval, &mut monitor_abort_rx).await
+        monitor_packet_loss(&state_clone, test_duration, interval, &mut monitor_abort_rx).await
     });
 
     let (tg_result, monitor_result) = tokio::join!(tg_task, monitor_task);
@@ -587,7 +581,7 @@ async fn monitor_packet_loss(
 
         info!("{:?} - {:?}", Instant::now().duration_since(start_time), monitoring_duration);
         
-
+        // get_total_received_packets is used since the frame_size_monitor table is not updated in real-time
         let total_packets_received = get_total_received_packets(state).await;
 
             
@@ -650,7 +644,7 @@ async fn wait_for_first_packet(
             }
             _ = abort_rx.changed() => {
                 info!("Abort signal received, stopping wait for first packet.");
-                return 0; // You can return a default value or handle it differently
+                return 0; 
             }
         }
     }
@@ -668,7 +662,7 @@ async fn wait_for_first_packet(
             }
             _ = abort_rx.changed() => {
                 info!("Abort signal received, stopping wait for first packet.");
-                return 0; // Again, handle this however you see fit
+                return 0; 
             }
         }
     }
@@ -787,3 +781,24 @@ async fn get_total_received_packets(state: &Arc<AppState>) -> u64 {
     total_packets_received
 }
 
+
+async fn max_rate_of_media(state: Arc<AppState>) -> Result<f32, Response> {
+    let ports = state.pm.get_ports(&state.switch).await.map_err(|err| {
+        error!("Failed to get ports: {:?}", err);
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Failed to get ports: {:?}", err)))).into_response()
+    })?;
+
+    // Determine the maximum speed from the sending ports
+    let max_speed = ports.iter().map(|port| match port.get_speed() {
+        Speed::BF_SPEED_1G => 1.0,
+        Speed::BF_SPEED_10G => 10.0,
+        Speed::BF_SPEED_20G => 20.0,
+        Speed::BF_SPEED_25G => 25.0,
+        Speed::BF_SPEED_40G => 40.0,
+        Speed::BF_SPEED_50G => 50.0,
+        Speed::BF_SPEED_100G => 100.0,
+        Speed::BF_SPEED_400G => 400.0,
+    }).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(1.0);
+
+    Ok(max_speed)
+}

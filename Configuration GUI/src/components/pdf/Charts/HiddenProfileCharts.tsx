@@ -429,7 +429,7 @@ const latencyChartOptions = createChartOptions("Latency (μs)");
 const frameLossRateChartOptions = createChartOptions(
   "Frame Loss Rate (%)",
   undefined,
-  "Bandwidth (%)"
+  "Bandwidth (%) of Medium"
 );
 
 const resetChartOptions = createChartOptions("Seconds");
