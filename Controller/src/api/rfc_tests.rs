@@ -1,39 +1,36 @@
-use crate::core::traffic_gen_core::types::*;
 use crate::api::multiple_traffic_gen::{
-    start_traffic_gen_with_duration, create_and_store_abort_sender, abort_current_test, 
-    save_statistics, parse_response,
+    abort_current_test, create_and_store_abort_sender, parse_response, save_statistics,
+    start_traffic_gen_with_duration,
 };
-use crate::api::statistics::{Statistics, statistics};
+use crate::api::statistics::{statistics, Statistics};
+use crate::core::traffic_gen_core::types::*;
 use crate::AppState;
 
 use rbfrt::util::port_manager::Speed;
 
-use std::sync::Arc;
+use crate::api::server::Error;
 use axum::extract::State;
 use axum::http::StatusCode;
-use crate::api::server::Error;
 use axum::response::{IntoResponse, Json, Response};
 use log::{error, info, warn};
-use tokio::time::{sleep, Duration};
-use std::time::Instant;
 use std::collections::BTreeMap;
-
+use std::sync::Arc;
+use std::time::Instant;
+use tokio::time::{sleep, Duration};
 
 use rbfrt::table;
 use rbfrt::table::{MatchValue, ToBytes};
 use std::collections::HashMap;
 
-
 const FRAME_SIZES: [u32; 5] = [64, 128, 512, 1024, 1518];
 const IAT_PRECISION: u16 = 1;
 const RATE_PRECISION: u16 = 100;
 
-
 // Throughput test defined in RFC 2544 section 25.1
 // Uses Exponential and Binary search to find the optimal throughput
 pub async fn throughput_test(
-    State(state): State<Arc<AppState>>, 
-    Json(payload): Json<TrafficGenData>
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<TrafficGenData>,
 ) -> Result<(StatusCode, Json<BTreeMap<u32, f32>>), Response> {
     abort_current_test(Arc::clone(&state)).await;
     info!("Starting throughput test for all frame sizes");
@@ -45,8 +42,12 @@ pub async fn throughput_test(
         test_payload.streams[0].burst = RATE_PRECISION;
         test_payload.streams[0].frame_size = frame_size;
 
-        
-        save_tg(Arc::clone(&state), test_payload.clone(), format!("Throughput - {} Bytes", frame_size)).await;
+        save_tg(
+            Arc::clone(&state),
+            test_payload.clone(),
+            format!("Throughput - {} Bytes", frame_size),
+        )
+        .await;
 
         let initial_tx_rate = test_payload.streams[0].traffic_rate;
 
@@ -55,22 +56,23 @@ pub async fn throughput_test(
             Arc::clone(&state),
             test_payload.clone(),
             initial_tx_rate,
-        ).await?;
+        )
+        .await?;
 
-        warn!("Interval of Exponential search for {} Bytes: [{}, {}]", frame_size, lower_bound, upper_bound);
+        warn!(
+            "Interval of Exponential search for {} Bytes: [{}, {}]",
+            frame_size, lower_bound, upper_bound
+        );
 
         // Perform binary search within the found interval, to find the maximum successful rate
-        let max_successful_rate = binary_search_for_rate(
-            Arc::clone(&state),
-            test_payload,
-            lower_bound,
-            upper_bound,
-        ).await?;
+        let max_successful_rate =
+            binary_search_for_rate(Arc::clone(&state), test_payload, lower_bound, upper_bound)
+                .await?;
 
         info!("MAX SUCCESSFUL RATE: {}", max_successful_rate);
-        
+
         let frame_rate = max_successful_rate * 1e9 / (frame_size as f32 * 8.0);
-        
+
         info!("FRAME RATE: {}", frame_rate);
 
         let calculated_max_rate = frame_rate * frame_size as f32 * 8.0 / 1e9;
@@ -85,14 +87,23 @@ pub async fn throughput_test(
         // Save the results to the state
         let mut test_result = state.multi_test_state.rfc_results.lock().await;
         test_result.throughput = Some(frame_rate_results.clone());
-        
 
         // Save the statistics
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         if let Err(err) = save_statistics(Arc::clone(&state), 2).await {
-            error!("Failed to save the statistics of the throughput test for {} Bytes: {}", frame_size, err);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Failed to save the statistics of the throughput test for {} Bytes: {}", frame_size, err)))).into_response());
+            error!(
+                "Failed to save the statistics of the throughput test for {} Bytes: {}",
+                frame_size, err
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error::new(format!(
+                    "Failed to save the statistics of the throughput test for {} Bytes: {}",
+                    frame_size, err
+                ))),
+            )
+                .into_response());
         }
     }
 
@@ -106,40 +117,57 @@ async fn binary_search_for_rate(
     mut lower_bound: f32,
     mut upper_bound: f32,
 ) -> Result<f32, Response> {
-
     let max_iterrations = 20;
     let epsilon = 0.001;
     // Change to 0.01 for 1% tolerance
     let tolerance = 0.03;
 
     let test_duration = 10.0;
-    
+
     let mut abort_rx = create_and_store_abort_sender(Arc::clone(&state)).await;
     let mut max_successful_rate = 0.0;
 
     for _ in 0..max_iterrations {
         let current_rate = (lower_bound + upper_bound) / 2.0;
 
-        info!("current_rate: {}, [{},{}] ", current_rate, lower_bound, upper_bound);
+        info!(
+            "current_rate: {}, [{},{}] ",
+            current_rate, lower_bound, upper_bound
+        );
 
         // Adjusting traffic rate for single stream
         test_payload.streams[0].traffic_rate = current_rate;
-        
-        match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), 0, Some(test_duration), &mut abort_rx).await {
+
+        match start_traffic_gen_with_duration(
+            Arc::clone(&state),
+            test_payload.clone(),
+            0,
+            Some(test_duration),
+            &mut abort_rx,
+        )
+        .await
+        {
             Ok(_) => {
-                info!("Successfully completed traffic generation with current rate: {}", current_rate);
+                info!(
+                    "Successfully completed traffic generation with current rate: {}",
+                    current_rate
+                );
 
                 let stats_response = statistics(State(Arc::clone(&state))).await;
                 if let Ok(stats) = parse_response::<Statistics>(stats_response).await {
-                    let total_packets_sent: u64 = stats.frame_size.values()
+                    let total_packets_sent: u64 = stats
+                        .frame_size
+                        .values()
                         .flat_map(|f| f.tx.iter())
                         .map(|v| v.packets as u64)
                         .sum();
-                    
+
                     let packet_loss: u64 = stats.packet_loss.values().sum();
 
                     let packet_loss_percent = if total_packets_sent > 0 {
-                        round_to_three_places((packet_loss as f64 / total_packets_sent as f64) * 100.0)
+                        round_to_three_places(
+                            (packet_loss as f64 / total_packets_sent as f64) * 100.0,
+                        )
                     } else {
                         0.0
                     };
@@ -155,17 +183,33 @@ async fn binary_search_for_rate(
                         upper_bound = current_rate;
                     }
                 } else {
-                    error!("Failed to retrieve statistics for current rate: {}", current_rate);
+                    error!(
+                        "Failed to retrieve statistics for current rate: {}",
+                        current_rate
+                    );
                 }
-            },
+            }
             Err(err) => {
-                error!("Error in traffic generation with current rate: {}: {}", current_rate, err);
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Error in traffic generation with current rate: {}: {}", current_rate, err)))).into_response());
+                error!(
+                    "Error in traffic generation with current rate: {}: {}",
+                    current_rate, err
+                );
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(Error::new(format!(
+                        "Error in traffic generation with current rate: {}: {}",
+                        current_rate, err
+                    ))),
+                )
+                    .into_response());
             }
         }
 
         if (upper_bound - lower_bound).abs() < epsilon {
-            info!("Binary search converged, returning max_successful_rate: {}", max_successful_rate);
+            info!(
+                "Binary search converged, returning max_successful_rate: {}",
+                max_successful_rate
+            );
             break;
         }
     }
@@ -190,28 +234,49 @@ async fn exponential_search_for_max_rate(
 
         if test_rate > 100.0 {
             let lower_bound = initial_tx_rate * 2f32.powi(k - 1);
-            info!("Test rate exceeds 100 Gbps, returning interval [{}, 100]", lower_bound);
+            info!(
+                "Test rate exceeds 100 Gbps, returning interval [{}, 100]",
+                lower_bound
+            );
             return Ok((lower_bound, 100.0));
         }
 
-        info!("Exponential search iteration {}: testing rate {}", k, test_rate);
+        info!(
+            "Exponential search iteration {}: testing rate {}",
+            k, test_rate
+        );
 
         test_payload.streams[0].traffic_rate = test_rate;
 
-        match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), 0, Some(test_duration), &mut create_and_store_abort_sender(Arc::clone(&state)).await).await {
+        match start_traffic_gen_with_duration(
+            Arc::clone(&state),
+            test_payload.clone(),
+            0,
+            Some(test_duration),
+            &mut create_and_store_abort_sender(Arc::clone(&state)).await,
+        )
+        .await
+        {
             Ok(_) => {
-                info!("Successfully completed traffic generation with test rate: {}", test_rate);
+                info!(
+                    "Successfully completed traffic generation with test rate: {}",
+                    test_rate
+                );
 
                 let stats_response = statistics(State(Arc::clone(&state))).await;
                 if let Ok(stats) = parse_response::<Statistics>(stats_response).await {
-                    let total_packets_sent: u64 = stats.frame_size.values()
+                    let total_packets_sent: u64 = stats
+                        .frame_size
+                        .values()
                         .flat_map(|f| f.tx.iter())
                         .map(|v| v.packets as u64)
                         .sum();
 
                     let packet_loss: u64 = stats.packet_loss.values().sum();
                     let packet_loss_percent = if total_packets_sent > 0 {
-                        round_to_three_places((packet_loss as f64 / total_packets_sent as f64) * 100.0)
+                        round_to_three_places(
+                            (packet_loss as f64 / total_packets_sent as f64) * 100.0,
+                        )
                     } else {
                         0.0
                     };
@@ -224,18 +289,42 @@ async fn exponential_search_for_max_rate(
                         current_rate = test_rate;
                         k += 1;
                     } else {
-                        let lower_bound = if k == 0 { 0.0 } else { initial_tx_rate * 2f32.powi(k - 1) };
-                        info!("Packet loss detected: {}%, returning interval [{}, {}]", packet_loss_percent, lower_bound, test_rate);
+                        let lower_bound = if k == 0 {
+                            0.0
+                        } else {
+                            initial_tx_rate * 2f32.powi(k - 1)
+                        };
+                        info!(
+                            "Packet loss detected: {}%, returning interval [{}, {}]",
+                            packet_loss_percent, lower_bound, test_rate
+                        );
                         return Ok((lower_bound, test_rate));
                     }
                 } else {
                     error!("Failed to retrieve statistics for test rate: {}", test_rate);
-                    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Failed to retrieve statistics for test rate: {}", test_rate)))).into_response());
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(Error::new(format!(
+                            "Failed to retrieve statistics for test rate: {}",
+                            test_rate
+                        ))),
+                    )
+                        .into_response());
                 }
-            },
+            }
             Err(err) => {
-                error!("Error in traffic generation with test rate: {}: {}", test_rate, err);
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Error in traffic generation with test rate: {}: {}", test_rate, err)))).into_response());
+                error!(
+                    "Error in traffic generation with test rate: {}: {}",
+                    test_rate, err
+                );
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(Error::new(format!(
+                        "Error in traffic generation with test rate: {}: {}",
+                        test_rate, err
+                    ))),
+                )
+                    .into_response());
             }
         }
     }
@@ -245,14 +334,12 @@ async fn exponential_search_for_max_rate(
     Ok((lower_bound, upper_bound))
 }
 
-
-
-
-
-
 // Latency test defined in RFC 2544 section 25.2
 // Uses One-Way Latency to measure the average latency
-pub async fn latency_test(State(state): State<Arc<AppState>>, Json(payload): Json<TrafficGenData>) -> Result<(StatusCode, Json<BTreeMap<u32, f64>>), Response> {
+pub async fn latency_test(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<TrafficGenData>,
+) -> Result<(StatusCode, Json<BTreeMap<u32, f64>>), Response> {
     abort_current_test(Arc::clone(&state)).await;
     info!("Starting latency test for all frame sizes");
 
@@ -261,7 +348,10 @@ pub async fn latency_test(State(state): State<Arc<AppState>>, Json(payload): Jso
     for &frame_size in FRAME_SIZES.iter() {
         let frame_rate = {
             let test_results = state.multi_test_state.rfc_results.lock().await;
-            test_results.throughput.as_ref().and_then(|throughput_map| throughput_map.get(&frame_size).cloned())
+            test_results
+                .throughput
+                .as_ref()
+                .and_then(|throughput_map| throughput_map.get(&frame_size).cloned())
         };
 
         let mut adjusted_payload = payload.clone();
@@ -275,25 +365,46 @@ pub async fn latency_test(State(state): State<Arc<AppState>>, Json(payload): Jso
 
         adjusted_payload.streams[0].frame_size = frame_size;
 
-        save_tg(Arc::clone(&state), adjusted_payload.clone(), format!("Latency - {} Bytes", frame_size)).await;
+        save_tg(
+            Arc::clone(&state),
+            adjusted_payload.clone(),
+            format!("Latency - {} Bytes", frame_size),
+        )
+        .await;
 
         let mut abort_rx = create_and_store_abort_sender(Arc::clone(&state)).await;
         let mut rtt_values_for_frame_size = Vec::new();
 
-        for i in 0..10 { 
-            match start_traffic_gen_with_duration(Arc::clone(&state), adjusted_payload.clone(), i, Some(10.0), &mut abort_rx).await {
+        for i in 0..10 {
+            match start_traffic_gen_with_duration(
+                Arc::clone(&state),
+                adjusted_payload.clone(),
+                i,
+                Some(10.0),
+                &mut abort_rx,
+            )
+            .await
+            {
                 Ok(_) => {
                     info!("Successfully completed traffic generation {}", i + 1);
-                    
-                    // RTT-Value from rtt_storage 
+
+                    // RTT-Value from rtt_storage
                     let rtt_storage = state.rate_monitor.lock().await.rtt_storage.clone();
                     for (_, rtts) in rtt_storage.iter() {
                         rtt_values_for_frame_size.extend(rtts.iter().copied());
                     }
-                },
+                }
                 Err(err) => {
                     error!("Error in traffic generation {}: {}", i + 1, err);
-                    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Error in traffic generation {}: {}", i + 1, err)))).into_response());
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(Error::new(format!(
+                            "Error in traffic generation {}: {}",
+                            i + 1,
+                            err
+                        ))),
+                    )
+                        .into_response());
                 }
             }
         }
@@ -301,22 +412,37 @@ pub async fn latency_test(State(state): State<Arc<AppState>>, Json(payload): Jso
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         if let Err(err) = save_statistics(Arc::clone(&state), 2).await {
-            error!("Failed to save the statistics of the latency test for {} Bytes: {}", frame_size, err);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Failed to save the statistics of the latency test for {} Bytes: {}", frame_size, err)))).into_response());
+            error!(
+                "Failed to save the statistics of the latency test for {} Bytes: {}",
+                frame_size, err
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error::new(format!(
+                    "Failed to save the statistics of the latency test for {} Bytes: {}",
+                    frame_size, err
+                ))),
+            )
+                .into_response());
         }
-
 
         if !rtt_values_for_frame_size.is_empty() {
             let overall_mean_ns = calculate_mean(&rtt_values_for_frame_size);
             let overall_mean_us = overall_mean_ns / 1000.0;
             let one_way_latency = overall_mean_us / 2.0;
             latency_results.insert(frame_size, one_way_latency);
-            info!("Overall Mean RTT for {} Bytes: {:.4} µs", frame_size, overall_mean_us);
+            info!(
+                "Overall Mean RTT for {} Bytes: {:.4} µs",
+                frame_size, overall_mean_us
+            );
         } else {
-            warn!("No RTT values collected for frame size {}. Skipping.", frame_size);
+            warn!(
+                "No RTT values collected for frame size {}. Skipping.",
+                frame_size
+            );
             latency_results.insert(frame_size, f64::NAN);
         }
-        
+
         let mut test_result = state.multi_test_state.rfc_results.lock().await;
         test_result.latency = Some(latency_results.clone());
     }
@@ -325,12 +451,11 @@ pub async fn latency_test(State(state): State<Arc<AppState>>, Json(payload): Jso
     Ok(result)
 }
 
-
-
-
-
 // Frame loss rate test defined in RFC 2544 section 25.3
-pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(payload): Json<TrafficGenData>) -> Result<(StatusCode, Json<BTreeMap<u32, BTreeMap<u32, f64>>>), Response> {
+pub async fn frame_loss_rate_test(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<TrafficGenData>,
+) -> Result<(StatusCode, Json<BTreeMap<u32, BTreeMap<u32, f64>>>), Response> {
     abort_current_test(Arc::clone(&state)).await;
     info!("Starting frame loss rate test with multiple frame sizes and rates");
 
@@ -347,7 +472,12 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
         test_payload.streams[0].traffic_rate = max_speed;
         test_payload.streams[0].frame_size = frame_size;
 
-        save_tg(Arc::clone(&state), test_payload.clone(), format!("Frame Loss Rate - {} Bytes", frame_size)).await;
+        save_tg(
+            Arc::clone(&state),
+            test_payload.clone(),
+            format!("Frame Loss Rate - {} Bytes", frame_size),
+        )
+        .await;
 
         let mut frame_results = BTreeMap::new();
         let mut consecutive_zero_loss_tests = 0;
@@ -358,24 +488,40 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
 
             test_payload.streams[0].traffic_rate = test_rate;
 
-            match start_traffic_gen_with_duration(Arc::clone(&state), test_payload.clone(), i, Some(test_duration), &mut abort_rx).await {
+            match start_traffic_gen_with_duration(
+                Arc::clone(&state),
+                test_payload.clone(),
+                i,
+                Some(test_duration),
+                &mut abort_rx,
+            )
+            .await
+            {
                 Ok(_) => {
-                    info!("Successfully completed traffic generation {} for frame size {}", i + 1, frame_size);
+                    info!(
+                        "Successfully completed traffic generation {} for frame size {}",
+                        i + 1,
+                        frame_size
+                    );
 
                     let stats_response = statistics(State(Arc::clone(&state))).await;
                     if let Ok(stats) = parse_response::<Statistics>(stats_response).await {
-                        let total_packets_sent: u64 = stats.frame_size.values()
+                        let total_packets_sent: u64 = stats
+                            .frame_size
+                            .values()
                             .flat_map(|f| f.tx.iter())
                             .map(|v| v.packets as u64)
                             .sum();
 
-                        let total_packets_received: u64 = stats.frame_size.values()
+                        let total_packets_received: u64 = stats
+                            .frame_size
+                            .values()
                             .flat_map(|f| f.rx.iter())
                             .map(|v| v.packets as u64)
                             .sum();
 
-                        let packet_loss = total_packets_sent - total_packets_received;    
-                        
+                        let packet_loss = total_packets_sent - total_packets_received;
+
                         let mut packet_loss_percent = if total_packets_sent > 0 {
                             (packet_loss as f64 / total_packets_sent as f64) * 100.0
                         } else {
@@ -404,10 +550,18 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
                     } else {
                         error!("Failed to retrieve statistics for test {}", i + 1);
                     }
-                },
+                }
                 Err(err) => {
                     error!("Error in traffic generation {}: {}", i + 1, err);
-                    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Error in traffic generation {}: {}", i + 1, err)))).into_response());
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(Error::new(format!(
+                            "Error in traffic generation {}: {}",
+                            i + 1,
+                            err
+                        ))),
+                    )
+                        .into_response());
                 }
             }
         }
@@ -420,45 +574,61 @@ pub async fn frame_loss_rate_test(State(state): State<Arc<AppState>>, Json(paylo
 
         // Save statistics after each frame size test
         if let Err(err) = save_statistics(Arc::clone(&state), 3).await {
-            error!("Failed to save the statistics after testing frame size {}: {}", frame_size, err);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Failed to save the statistics after testing frame size {}: {}", frame_size, err)))).into_response());
+            error!(
+                "Failed to save the statistics after testing frame size {}: {}",
+                frame_size, err
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error::new(format!(
+                    "Failed to save the statistics after testing frame size {}: {}",
+                    frame_size, err
+                ))),
+            )
+                .into_response());
         }
     }
 
     Ok((StatusCode::OK, Json(results)))
 }
 
-
-
-
-
 // Reset test definend in RFC 2544 section 25.6
-pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<TrafficGenData>) -> Result<(StatusCode, Json<f64>), Response> {
+pub async fn reset_test(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<TrafficGenData>,
+) -> Result<(StatusCode, Json<f64>), Response> {
     info!("Starting reset test for the minimum frame size (64 Bytes)");
 
     let test_duration = Duration::from_secs(120);
-    let interval = Duration::from_millis(100); 
+    let interval = Duration::from_millis(100);
 
     let frame_size = 64;
-    let mut result = 0.0; // Default value 
+    let mut result = 0.0; // Default value
 
     let mut results = BTreeMap::new();
 
     set_name_flag(&state, format!("Reset - {} Bytes", frame_size)).await;
 
-
     let frame_rate = {
-            let test_results = state.multi_test_state.rfc_results.lock().await;
-            test_results.throughput.as_ref().and_then(|throughput_map| throughput_map.get(&frame_size).cloned()).unwrap_or(payload.streams[0].traffic_rate * 1e9 / (frame_size as f32 * 8.0))
-        };
-
+        let test_results = state.multi_test_state.rfc_results.lock().await;
+        test_results
+            .throughput
+            .as_ref()
+            .and_then(|throughput_map| throughput_map.get(&frame_size).cloned())
+            .unwrap_or(payload.streams[0].traffic_rate * 1e9 / (frame_size as f32 * 8.0))
+    };
 
     let mut adjusted_payload = payload.clone();
     adjusted_payload.streams[0].traffic_rate = frame_rate * frame_size as f32 * 8.0 / 1e9;
     adjusted_payload.streams[0].frame_size = frame_size;
     adjusted_payload.streams[0].burst = IAT_PRECISION;
 
-    save_tg(Arc::clone(&state), adjusted_payload.clone(), format!("Reset - {} Bytes", frame_size)).await;
+    save_tg(
+        Arc::clone(&state),
+        adjusted_payload.clone(),
+        format!("Reset - {} Bytes", frame_size),
+    )
+    .await;
 
     let state_clone = Arc::clone(&state);
     let abort_rx = create_and_store_abort_sender(state_clone.clone()).await;
@@ -466,7 +636,7 @@ pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<
     // Abort Receiver for both tasks
     let mut tg_abort_rx = abort_rx.clone();
     let mut monitor_abort_rx = abort_rx.clone();
-    
+
     // Traffic gen task
     let tg_task = tokio::spawn(async move {
         start_traffic_gen_with_duration(
@@ -474,8 +644,9 @@ pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<
             adjusted_payload,
             0,
             Some(test_duration.as_secs_f64()),
-            &mut tg_abort_rx
-        ).await
+            &mut tg_abort_rx,
+        )
+        .await
     });
 
     // Monitoring task
@@ -491,11 +662,22 @@ pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<
         Ok(Ok(())) => info!("Traffic generation completed successfully"),
         Ok(Err(err)) => {
             error!("Error starting traffic generator: {}", err);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Error starting traffic generator: {}", err)))).into_response());
-        },
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error::new(format!(
+                    "Error starting traffic generator: {}",
+                    err
+                ))),
+            )
+                .into_response());
+        }
         Err(err) => {
             error!("Traffic generation task panicked: {:?}", err);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new("Traffic generation task panicked".to_string()))).into_response());
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error::new("Traffic generation task panicked".to_string())),
+            )
+                .into_response());
         }
     }
 
@@ -503,13 +685,19 @@ pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<
     match monitor_result {
         Ok(Ok((duration_a, duration_b))) => {
             if duration_a.is_none() {
-                info!("No significant packet loss detected within 120 seconds for frame size {}.", frame_size);
+                info!(
+                    "No significant packet loss detected within 120 seconds for frame size {}.",
+                    frame_size
+                );
             } else {
                 let duration_a = duration_a.unwrap();
                 info!("Duration A for frame size {}: {:?}", frame_size, duration_a);
 
                 if duration_b.is_none() {
-                    info!("No packet loss recovery detected for frame size {}.", frame_size);
+                    info!(
+                        "No packet loss recovery detected for frame size {}.",
+                        frame_size
+                    );
                 } else {
                     let duration_b = duration_b.unwrap();
                     info!("Duration B for frame size {}: {:?}", frame_size, duration_b);
@@ -517,26 +705,55 @@ pub async fn reset_test(State(state): State<Arc<AppState>>, Json(payload): Json<
                     // Recovery interval
                     let recovery_time = duration_b - duration_a;
                     let recovery_time_secs = recovery_time.as_secs_f64();
-                    info!("Recovery time after reset for frame size {}: {:.3} seconds", frame_size, recovery_time_secs);
+                    info!(
+                        "Recovery time after reset for frame size {}: {:.3} seconds",
+                        frame_size, recovery_time_secs
+                    );
 
                     result = recovery_time_secs;
                 }
             }
-        },
+        }
         Ok(Err(err)) => {
-            error!("Error in packet loss monitoring for frame size {}: {:?}", frame_size, err);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new("Error in packet loss monitoring".to_string()))).into_response());
-        },
+            error!(
+                "Error in packet loss monitoring for frame size {}: {:?}",
+                frame_size, err
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error::new("Error in packet loss monitoring".to_string())),
+            )
+                .into_response());
+        }
         Err(err) => {
-            error!("Packet loss monitoring task panicked for frame size {}: {:?}", frame_size, err);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new("Packet loss monitoring task panicked".to_string()))).into_response());
+            error!(
+                "Packet loss monitoring task panicked for frame size {}: {:?}",
+                frame_size, err
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error::new(
+                    "Packet loss monitoring task panicked".to_string(),
+                )),
+            )
+                .into_response());
         }
     }
 
     // Save statistics after the test
     if let Err(err) = save_statistics(Arc::clone(&state), 5).await {
-        error!("Failed to save the statistics of the reset test for frame size {}: {}", frame_size, err);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Failed to save the statistics of the reset test for frame size {}: {}", frame_size, err)))).into_response());
+        error!(
+            "Failed to save the statistics of the reset test for frame size {}: {}",
+            frame_size, err
+        );
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Error::new(format!(
+                "Failed to save the statistics of the reset test for frame size {}: {}",
+                frame_size, err
+            ))),
+        )
+            .into_response());
     }
 
     results.insert(frame_size, result);
@@ -553,16 +770,15 @@ async fn monitor_packet_loss(
     state: &Arc<AppState>,
     monitoring_duration: Duration,
     interval: Duration,
-    abort_rx: &mut tokio::sync::watch::Receiver<()>
+    abort_rx: &mut tokio::sync::watch::Receiver<()>,
 ) -> Result<(Option<Instant>, Option<Instant>), Response> {
-    
     let mut previous_packets_received = wait_for_first_packet(state, interval, abort_rx).await;
 
     if previous_packets_received == 0 {
         info!("Monitoring aborted during wait for first packet.");
         return Ok((None, None));
     }
-    
+
     let start_time = Instant::now();
     let mut time_point_a: Option<Instant> = None;
     let mut time_point_b: Option<Instant>;
@@ -579,17 +795,22 @@ async fn monitor_packet_loss(
             }
         }
 
-        info!("{:?} - {:?}", Instant::now().duration_since(start_time), monitoring_duration);
-        
+        info!(
+            "{:?} - {:?}",
+            Instant::now().duration_since(start_time),
+            monitoring_duration
+        );
+
         // get_total_received_packets is used since the frame_size_monitor table is not updated in real-time
         let total_packets_received = get_total_received_packets(state).await;
 
-            
         if total_packets_received.abs_diff(previous_packets_received) == 0 {
             info!("NO PACKETS RECEIVED!!!!!!!!!!!!");
         }
-        info!("Differenz {}", total_packets_received.abs_diff(previous_packets_received));
-
+        info!(
+            "Differenz {}",
+            total_packets_received.abs_diff(previous_packets_received)
+        );
 
         if total_packets_received == previous_packets_received && time_point_a.is_none() {
             // Time point A if no new packets are received
@@ -611,12 +832,15 @@ async fn monitor_packet_loss(
                     max_duration_a_to_b = Some(duration);
                     longest_time_point_a = time_point_a;
                     longest_time_point_b = time_point_b;
-                    info!("New maximum duration between A and B: {:?}", max_duration_a_to_b);
+                    info!(
+                        "New maximum duration between A and B: {:?}",
+                        max_duration_a_to_b
+                    );
                 }
             }
 
             time_point_a = None;
-        } 
+        }
 
         previous_packets_received = total_packets_received;
     }
@@ -624,13 +848,11 @@ async fn monitor_packet_loss(
     Ok((longest_time_point_a, longest_time_point_b))
 }
 
-
-
 // Waits for the first packet to be received
 async fn wait_for_first_packet(
     state: &Arc<AppState>,
     interval: Duration,
-    abort_rx: &mut tokio::sync::watch::Receiver<()>
+    abort_rx: &mut tokio::sync::watch::Receiver<()>,
 ) -> u64 {
     // Wait until the experiment is running
     loop {
@@ -644,7 +866,7 @@ async fn wait_for_first_packet(
             }
             _ = abort_rx.changed() => {
                 info!("Abort signal received, stopping wait for first packet.");
-                return 0; 
+                return 0;
             }
         }
     }
@@ -662,26 +884,25 @@ async fn wait_for_first_packet(
             }
             _ = abort_rx.changed() => {
                 info!("Abort signal received, stopping wait for first packet.");
-                return 0; 
+                return 0;
             }
         }
     }
 }
 
-
-
-
-
-pub async fn handle_test_result<T: std::fmt::Debug>(result: Result<(StatusCode, Json<T>), Response>, test_name: &str) -> Result<(), ()> {
+pub async fn handle_test_result<T: std::fmt::Debug>(
+    result: Result<(StatusCode, Json<T>), Response>,
+    test_name: &str,
+) -> Result<(), ()> {
     match result {
         Ok((status, Json(result))) if status == StatusCode::OK => {
             info!("{} test completed successfully: {:?}", test_name, result);
             Ok(())
-        },
+        }
         Ok((status, _)) => {
             error!("{} test failed: {}", test_name, status);
             Err(())
-        },
+        }
         Err(err) => {
             error!("{} test failed: {:?}", test_name, err);
             Err(())
@@ -713,23 +934,38 @@ pub async fn set_name_flag(state: &Arc<AppState>, name: String) {
 }
 
 async fn save_tg(state_clone: Arc<AppState>, payload: TrafficGenData, name: String) {
-    let mut multiple_traffic_generators = state_clone.multi_test_state.multiple_traffic_generators.lock().await;
+    let mut multiple_traffic_generators = state_clone
+        .multi_test_state
+        .multiple_traffic_generators
+        .lock()
+        .await;
     let mut named_payload = payload.clone();
     named_payload.name = Some(name);
     multiple_traffic_generators.push(named_payload);
 }
 
 pub async fn reset_collected_statistics(state_clone: Arc<AppState>) {
-    let mut collected_statistics = state_clone.multi_test_state.collected_statistics.lock().await;
+    let mut collected_statistics = state_clone
+        .multi_test_state
+        .collected_statistics
+        .lock()
+        .await;
     collected_statistics.clear();
 
-    let mut collected_time_statistics = state_clone.multi_test_state.collected_time_statistics.lock().await; 
+    let mut collected_time_statistics = state_clone
+        .multi_test_state
+        .collected_time_statistics
+        .lock()
+        .await;
     collected_time_statistics.clear();
 
-    let mut multiple_traffic_generators = state_clone.multi_test_state.multiple_traffic_generators.lock().await;
-    multiple_traffic_generators.clear(); 
+    let mut multiple_traffic_generators = state_clone
+        .multi_test_state
+        .multiple_traffic_generators
+        .lock()
+        .await;
+    multiple_traffic_generators.clear();
 }
-
 
 fn round_to_three_places(value: f64) -> f64 {
     (value * 1000.0).round() / 1000.0
@@ -740,13 +976,12 @@ fn calculate_mean(values: &[u64]) -> f64 {
     sum as f64 / values.len() as f64
 }
 
-
 async fn get_total_received_packets(state: &Arc<AppState>) -> u64 {
     const FRAME_SIZE_MONITOR: &str = "egress.frame_size_monitor";
 
     let request = table::Request::new(FRAME_SIZE_MONITOR);
-    let sync = table::Request::new(FRAME_SIZE_MONITOR).operation(table::TableOperation::SyncCounters);
-
+    let sync =
+        table::Request::new(FRAME_SIZE_MONITOR).operation(table::TableOperation::SyncCounters);
 
     let entries = {
         let switch = &state.switch;
@@ -760,15 +995,25 @@ async fn get_total_received_packets(state: &Arc<AppState>) -> u64 {
     };
 
     let mut total_packets_received: u64 = 0;
-    let rx_mapping = state.port_mapping.iter().map(|(_, mapping)| (mapping.rx_recirculation, mapping)).collect::<HashMap<_, _>>();
+    let rx_mapping = state
+        .port_mapping
+        .iter()
+        .map(|(_, mapping)| (mapping.rx_recirculation, mapping))
+        .collect::<HashMap<_, _>>();
 
     for entry in entries {
         if let Some(egress_port) = entry.match_key.get("eg_intr_md.egress_port") {
             let port_val = egress_port.get_exact_value().to_u32();
 
             if rx_mapping.contains_key(&port_val) {
-                if let MatchValue::RangeValue { lower_bytes: _, higher_bytes: _ } = entry.match_key.get("pkt_len").unwrap() {
-                    let count = entry.action_data.iter()
+                if let MatchValue::RangeValue {
+                    lower_bytes: _,
+                    higher_bytes: _,
+                } = entry.match_key.get("pkt_len").unwrap()
+                {
+                    let count = entry
+                        .action_data
+                        .iter()
                         .find(|action| action.get_name() == "$COUNTER_SPEC_PKTS")
                         .map(|action| action.get_data().to_u128())
                         .unwrap_or(0);
@@ -781,24 +1026,31 @@ async fn get_total_received_packets(state: &Arc<AppState>) -> u64 {
     total_packets_received
 }
 
-
 async fn max_rate_of_media(state: Arc<AppState>) -> Result<f32, Response> {
     let ports = state.pm.get_ports(&state.switch).await.map_err(|err| {
         error!("Failed to get ports: {:?}", err);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Failed to get ports: {:?}", err)))).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Error::new(format!("Failed to get ports: {:?}", err))),
+        )
+            .into_response()
     })?;
 
     // Determine the maximum speed from the sending ports
-    let max_speed = ports.iter().map(|port| match port.get_speed() {
-        Speed::BF_SPEED_1G => 1.0,
-        Speed::BF_SPEED_10G => 10.0,
-        Speed::BF_SPEED_20G => 20.0,
-        Speed::BF_SPEED_25G => 25.0,
-        Speed::BF_SPEED_40G => 40.0,
-        Speed::BF_SPEED_50G => 50.0,
-        Speed::BF_SPEED_100G => 100.0,
-        Speed::BF_SPEED_400G => 400.0,
-    }).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(1.0);
+    let max_speed = ports
+        .iter()
+        .map(|port| match port.get_speed() {
+            Speed::BF_SPEED_1G => 1.0,
+            Speed::BF_SPEED_10G => 10.0,
+            Speed::BF_SPEED_20G => 20.0,
+            Speed::BF_SPEED_25G => 25.0,
+            Speed::BF_SPEED_40G => 40.0,
+            Speed::BF_SPEED_50G => 50.0,
+            Speed::BF_SPEED_100G => 100.0,
+            Speed::BF_SPEED_400G => 400.0,
+        })
+        .max_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap_or(1.0);
 
     Ok(max_speed)
 }
