@@ -235,24 +235,26 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
       if (streamsIsZero && oneModeAnalyze) {
         alert("You need to define at least one stream.");
       } else {
-        let overall_rates = [];
+        let traffic_gen_config_ok = true;
+        let misconfigured_tests = "";
 
-        for (const test of Object.values(traffic_gen_list)) {
+        // Check for each test if the sum of streams exceeds the maximum rate if the mode is not MPPS
+        // (with (MPPS there is no rate configured))
+        for (const [index, test] of Object.entries(traffic_gen_list)) {
           let overall_rate = 0;
           test.streams.forEach((v: any) => {
             overall_rate += v.traffic_rate;
           });
-          overall_rates.push(overall_rate);
+          let traffic_gen_test_ok = test.gen_mode !== GenerationMode.MPPS && overall_rate <= max_rate;
+          if (!traffic_gen_test_ok){
+            let test_name = test.name ? test.name : "Test " + index;
+            misconfigured_tests += " " + test_name;
+          }
+          traffic_gen_config_ok = traffic_gen_config_ok && traffic_gen_test_ok;
         }
 
-        const max_rate = Math.max(...overall_rates);
-
-        const oneModeMPPS = Object.values(traffic_gen_list).some(
-          (test) => test.gen_mode === GenerationMode.MPPS
-        );
-
-        if (oneModeMPPS && max_rate > 100) {
-          alert("Sum of stream rates > " + max_rate + " Gbps!");
+        if (!traffic_gen_config_ok) {
+          alert("Sum of stream rates > " + max_rate + " Gbps for tests: " + misconfigured_tests + "!" );
         } else {
           if (test_mode === TestMode.SINGLE) {
             const singleTest = traffic_gen_list[1];
