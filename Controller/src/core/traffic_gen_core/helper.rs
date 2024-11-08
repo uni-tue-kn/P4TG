@@ -1,4 +1,5 @@
-use etherparse::PacketBuilder;
+use etherparse::{IpHeader, PacketBuilder};
+use log::info;
 use crate::core::traffic_gen_core::const_definitions::{P4TG_DST_PORT, P4TG_SOURCE_PORT, VX_LAN_UDP_PORT};
 use crate::core::traffic_gen_core::types::*;
 
@@ -45,7 +46,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
         let pkt = etherparse::Ethernet2Header {
             source: [0, 0, 0, 0, 0, 0],
             destination: [0, 0, 0, 0, 0, 0],
-            ether_type: 0x800, // IPv4 ether type
+            ether_type: 0x800, 
         };
 
         pkt.write(&mut result).unwrap();
@@ -89,19 +90,30 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
     else { // we don't tunnel over VxLAN
         match encapsulation {
             Encapsulation::None => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .ipv4([192, 168, 0, 0],
-                          [192, 168, 0, 0],
-                          64)
-                    .udp(P4TG_SOURCE_PORT,
-                         P4TG_DST_PORT);
+                let builder = match s.ip_version {
+                    Some(6) => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                                .ipv6([11,12,13,14,15,16,17,18,19,10,21,22,23,24,25,26],
+                                    [31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46],
+                                    64)
+                                .udp(P4TG_SOURCE_PORT,
+                                    P4TG_DST_PORT),
+                    Some(4) | None | _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                                .ipv4([192, 168, 0, 0],
+                                    [192, 168, 0, 0],
+                                    64)
+                                .udp(P4TG_SOURCE_PORT,
+                                    P4TG_DST_PORT)
+                };
 
                 let size = builder.size(payload.len());
                 let encap_overhead = 0;
 
+                info!("Size of generated frame: {:?}", size);
+
                 // calculate how many remaining bytes need to be generated
                 // crc will be added by phy, therefore subtract 4 byte
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
+                // With IPv6, packets are too large and we need to fix an underflow with signed ints
+                let remaining = (frame_size as isize + encap_overhead as isize - size as isize - 4).max(0) as usize;
                 let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
 
                 payload.extend_from_slice(&padding);
@@ -113,14 +125,23 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 result
             }
             Encapsulation::Vlan => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .single_vlan(0)
-                    .ipv4([192, 168, 0, 0],
-                          [192, 168, 0, 0],
-                          64)
-                    .udp(P4TG_SOURCE_PORT,
-                         P4TG_DST_PORT);
-
+                let builder = match s.ip_version {
+                    Some(6) => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                                .single_vlan(0)
+                                .ipv6([11,12,13,14,15,16,17,18,19,10,21,22,23,24,25,26],
+                                    [31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46],
+                                    64)
+                                .udp(P4TG_SOURCE_PORT,
+                                    P4TG_DST_PORT),
+                    Some(4) | None | _ => 
+                        PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                            .single_vlan(0)
+                            .ipv4([192, 168, 0, 0],
+                                [192, 168, 0, 0],
+                                64)
+                            .udp(P4TG_SOURCE_PORT,
+                                P4TG_DST_PORT),
+                };
                 let size = builder.size(payload.len());
                 let encap_overhead = 4;
 
@@ -128,7 +149,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 // crc will be added by phy, therefore subtract 4 byte
                 // but also add 4 byte from overhead
                 // crc overhead cancels each other
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
+                // With IPv6, packets are too large and we need to fix an underflow with signed ints
+                let remaining = (frame_size as isize + encap_overhead as isize - size as isize - 4).max(0) as usize;
                 let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
 
                 payload.extend_from_slice(&padding);
@@ -141,13 +163,25 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 result
             }
             Encapsulation::QinQ => {
-                let builder = PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                    .double_vlan(0, 0)
-                    .ipv4([192, 168, 0, 0],
-                          [192, 168, 0, 0],
-                          64)
-                    .udp(P4TG_SOURCE_PORT,
-                         P4TG_DST_PORT);
+
+                let builder = match s.ip_version {
+                        Some(6) => 
+                            PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                                .double_vlan(0, 0)
+                                .ipv6([11,12,13,14,15,16,17,18,19,10,21,22,23,24,25,26],
+                                    [31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46],
+                                    64)
+                                .udp(P4TG_SOURCE_PORT,
+                                    P4TG_DST_PORT),
+                        Some(4) | None | _ =>
+                             PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                                .double_vlan(0, 0)
+                                .ipv4([192, 168, 0, 0],
+                                    [192, 168, 0, 0],
+                                    64)
+                                .udp(P4TG_SOURCE_PORT,
+                                    P4TG_DST_PORT)
+                };
 
                 let size = builder.size(payload.len());
                 let encap_overhead = 8;
@@ -156,7 +190,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 // crc will be added by phy, therefore subtract 4 byte
                 // but also add 8 bytes from overhead
                 // results in + 4
-                let remaining = (frame_size as usize) + encap_overhead - size - 4;
+                // With IPv6, packets are too large and we need to fix an underflow with signed ints
+                let remaining = (frame_size as isize + encap_overhead as isize - size as isize - 4).max(0) as usize;
                 let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
 
                 payload.extend_from_slice(&padding);
@@ -194,25 +229,47 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                     vlan_header.write(&mut result).unwrap();
                 }
 
-                // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
-                let ip_header = etherparse::Ipv4Header::new((frame_size - 20 - 14 - 4) as u16, 64, 17, [0, 0, 0, 0], [0, 0, 0, 0]);
+                let ip_header: etherparse::IpHeader = match s.ip_version {
+                    Some(6) => 
+                        etherparse::IpHeader::Version6(etherparse::Ipv6Header {
+                            source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                            destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                            hop_limit: 64,
+                            payload_length: ((frame_size - 40 - 14 - 4) as u16).max(8),
+                            next_header: 17,
+                            ..Default::default()
+                        }, etherparse::Ipv6Extensions::default()),
+                    Some(4) | None | _ => 
+                        // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
+                        etherparse::IpHeader::Version4(etherparse::Ipv4Header::new((frame_size - 20 - 14 - 4) as u16, 
+                                                                    64, 17, [0, 0, 0, 0], [0, 0, 0, 0]),
+                                                        etherparse::Ipv4Extensions::default())
+                };
+
                 ip_header.write(&mut result).unwrap();
 
-
+                // Subtract IP, Ethernet, CRC size
+                let udp_size = if s.ip_version == Some(6) {((frame_size - 40 - 14 - 4) as u16).max(8)} else {(frame_size - 20 - 14 - 4) as u16};
                 let mut udp_header = etherparse::UdpHeader {
                     source_port: P4TG_SOURCE_PORT,
                     destination_port: P4TG_DST_PORT,
-                    // Subtract IP, Ethernet, CRC size
-                    length: (frame_size - 20 - 14 - 4) as u16,
+                    length: udp_size,
                     checksum: 0,
                 };
 
                 // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = result.capacity() - result.len() - 8 - payload.len() - 4;
+                let remaining = (result.capacity() as isize - result.len() as isize - 8 - payload.len() as isize - 4).max(0);
                 let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
 
                 payload.extend_from_slice(&padding);
-                udp_header.checksum = udp_header.calc_checksum_ipv4(&ip_header, &payload).unwrap();
+                match ip_header {
+                    IpHeader::Version6(v6, _) => {
+                        udp_header.checksum = udp_header.calc_checksum_ipv6(&v6, &payload).unwrap();
+                    },
+                    IpHeader::Version4(v4, _) => {
+                        udp_header.checksum = udp_header.calc_checksum_ipv4(&v4, &payload).unwrap();
+                    }
+                }
 
                 udp_header.write(&mut result).unwrap();
 

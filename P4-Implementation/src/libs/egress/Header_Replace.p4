@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
  
 #include "./mpls_actions.p4"
@@ -24,17 +25,23 @@ Replaces IP src / dst addresses based on random 32 bit number
 */
 control Header_Replace(
     inout header_t hdr,
+    inout egress_metadata_t eg_md,
     in egress_intrinsic_metadata_t eg_intr_md) {
 
     // IP replace
     Random<bit<32>>() src_rand;
     Random<bit<32>>() dst_rand;
+    Random<bit<32>>() src_rand_v6_1;
+    Random<bit<16>>() src_rand_v6_2;
+    Random<bit<32>>() dst_rand_v6_1;
+    Random<bit<16>>() dst_rand_v6_2;
 
     MPLS_Rewrite() mpls_rewrite_c;
 
     bit<32> src_mask = 0;
     bit<32> dst_mask = 0;
-
+    bit<48> src_mask_v6 = 0;
+    bit<48> dst_mask_v6 = 0;
 
     action rewrite(mac_addr_t src_mac, mac_addr_t dst_mac, bit<32> s_ip, bit<32> d_ip, bit<32> s_mask, bit<32> d_mask, bit<8> tos) {
             src_mask = s_mask;
@@ -45,7 +52,21 @@ control Header_Replace(
             hdr.inner_ipv4.dst_addr = d_ip;
             hdr.inner_ipv4.src_addr = s_ip;
             hdr.inner_ipv4.diffserv = tos;
+            eg_md.ip_version = 4;
+    }
 
+    action rewrite_ipv6(mac_addr_t src_mac, mac_addr_t dst_mac, bit<128> s_ip, bit<128> d_ip, bit<48> s_mask, bit<48> d_mask, bit<8> traffic_class, bit<20> flow_label) {
+            src_mask_v6 = s_mask;
+            dst_mask_v6 = d_mask;
+            hdr.ethernet.dst_addr = dst_mac;
+            hdr.ethernet.src_addr = src_mac;
+
+            hdr.ipv6.dst_addr = d_ip;
+            hdr.ipv6.src_addr = s_ip;
+            hdr.ipv6.traffic_class = traffic_class;
+            hdr.ipv6.flowLabel = flow_label;
+
+            eg_md.ip_version = 6;
     }
 
     action rewrite_vxlan(mac_addr_t outer_src_mac, mac_addr_t outer_dst_mac, mac_addr_t inner_src_mac,
@@ -70,6 +91,8 @@ control Header_Replace(
 
             hdr.udp.src_port = udp_source;
             hdr.vxlan.vxlan_vni = vni;
+
+            eg_md.ip_version = 4;
     }
 
     table header_replace {
@@ -79,6 +102,7 @@ control Header_Replace(
         }
         actions = {
             rewrite;
+            rewrite_ipv6;
             rewrite_vxlan;
         }
         size = 64;
@@ -117,13 +141,24 @@ control Header_Replace(
         // identified by valid path header and UDP port
         if(hdr.path.isValid() && hdr.path.dst_port == 50083) {
             if(header_replace.apply().hit) {
-                // get random 32 bit number and make bitwise AND with network mask
-                bit<32> s_tmp = src_rand.get() & src_mask;
-                bit<32> d_tmp = dst_rand.get() & dst_mask;
+                if (eg_md.ip_version == 4){
+                    // get random 32 bit number and make bitwise AND with network mask
+                    bit<32> s_tmp = src_rand.get() & src_mask;
+                    bit<32> d_tmp = dst_rand.get() & dst_mask;
+                    // apply random sub ip string to ip address
+                    hdr.inner_ipv4.src_addr = hdr.inner_ipv4.src_addr | s_tmp;
+                    hdr.inner_ipv4.dst_addr = hdr.inner_ipv4.dst_addr | d_tmp;
+                } else {
+                    bit<32> s_tmp_v6_first = src_rand_v6_1.get() & src_mask_v6[31:0];
+                    hdr.ipv6.src_addr[31:0] = hdr.ipv6.src_addr[31:0] | s_tmp_v6_first;
+                    bit<16> s_tmp_v6_second = src_rand_v6_2.get() & src_mask_v6[47:32];
+                    hdr.ipv6.src_addr[47:32] = hdr.ipv6.src_addr[47:32] | s_tmp_v6_second;
 
-                // apply random sub ip string to ip address
-                hdr.inner_ipv4.src_addr = hdr.inner_ipv4.src_addr | s_tmp;
-                hdr.inner_ipv4.dst_addr = hdr.inner_ipv4.dst_addr | d_tmp;
+                    bit<32> d_tmp_v6_first = dst_rand_v6_1.get() & dst_mask_v6[31:0];
+                    hdr.ipv6.dst_addr[31:0] = hdr.ipv6.dst_addr[31:0] | d_tmp_v6_first;
+                    bit<16> d_tmp_v6_second = dst_rand_v6_2.get() & dst_mask_v6[47:32];
+                    hdr.ipv6.dst_addr[47:32] = hdr.ipv6.dst_addr[47:32] | d_tmp_v6_second;
+                }
             }
 
             vlan_header_replace.apply(); // rewrite vlan header if configured

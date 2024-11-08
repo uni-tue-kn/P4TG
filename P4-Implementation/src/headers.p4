@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 #ifndef _HEADERS_
@@ -22,10 +23,12 @@
 
 typedef bit<48> mac_addr_t;
 typedef bit<32> ipv4_addr_t;
+typedef bit<128> ipv6_addr_t;
 typedef bit<16> ether_type_t;
 typedef bit<32> reg_index_t;
 typedef bit<32> seq_t;
 const ether_type_t ETHERTYPE_IPV4 = 0x800;
+const ether_type_t ETHERTYPE_IPV6 = 0x86dd;
 const ether_type_t ETHERTYPE_MONITOR = 0xBB02;
 const ether_type_t ETHERTYPE_QinQ = 0x88a8;
 const ether_type_t ETHERTYPE_VLANQ = 0x8100;
@@ -100,6 +103,17 @@ header ipv4_t {
     ipv4_addr_t dst_addr;
 }
 
+header ipv6_t {
+    bit<4>   version;
+    bit<8>   traffic_class;
+    bit<20>  flowLabel;
+    bit<16>  payloadLen;
+    bit<8>   nextHdr;
+    bit<8>   hopLimit;
+    bit<128> src_addr;
+    bit<128> dst_addr;
+}
+
 header path_monitor_t {
     bit<16> src_port;
     bit<16> dst_port;
@@ -168,6 +182,7 @@ struct header_t {
     ethernet_h inner_ethernet;
     mpls_h[15] mpls_stack;
     ipv4_t ipv4;
+    ipv6_t ipv6;
     ipv4_t inner_ipv4;
     pkg_gen_t pkt_gen;
     udp_t udp;
@@ -205,6 +220,7 @@ struct egress_metadata_t {
     bit<32> checksum_add_udp_ip_dst;
     ipv4_addr_t ipv4_src;
     ipv4_addr_t ipv4_dst;
+    bit<4> ip_version;
 }
 
 struct iat_rtt_monitor_t {

@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 
@@ -98,13 +99,8 @@ export interface StreamSettings {
         eth_src: string,
         eth_dst: string,
     },
-    ip: {
-        ip_src: string,
-        ip_dst: string,
-        ip_tos: number,
-        ip_src_mask: string,
-        ip_dst_mask: string,
-    }
+    ip: IPv4Header
+    ipv6: IPv6Header
     active: boolean
     vxlan: {
         eth_src: string,
@@ -115,6 +111,23 @@ export interface StreamSettings {
         udp_source: number,
         vni: number
     }
+}
+
+export interface IPv4Header {
+        ip_src: string,
+        ip_dst: string,
+        ip_tos: number,
+        ip_src_mask: string,
+        ip_dst_mask: string,
+}
+
+export interface IPv6Header {
+        ipv6_src: string,
+        ipv6_dst: string,
+        ipv6_traffic_class: number,
+        ipv6_src_mask: string,
+        ipv6_dst_mask: string,
+        ipv6_flow_label: number
 }
 
 export enum Encapsulation {
@@ -136,6 +149,7 @@ export interface Stream {
     frame_size: number,
     encapsulation: Encapsulation,
     vxlan: boolean,
+    ip_version: number,
     number_of_lse: number,
     traffic_rate: number,
     app_id: number
@@ -160,7 +174,8 @@ export const DefaultStream = (id: number) => {
         number_of_lse: 0,
         traffic_rate: 1,
         burst: 1,
-        vxlan: false
+        vxlan: false,
+        ip_version: 4
     }
 
     return stream
@@ -189,6 +204,14 @@ export const DefaultStreamSettings = (id: number, port: number) => {
             ip_tos: 0,
             ip_src_mask: "0.0.0.0",
             ip_dst_mask: "0.0.0.0"
+        },
+        ipv6: {
+            ipv6_src: "ff80::",
+            ipv6_dst: "ff80::",
+            ipv6_traffic_class: 0,
+            ipv6_src_mask: "::",
+            ipv6_dst_mask: "::",
+            ipv6_flow_label: 0
         },
         active: false,
         vxlan: {

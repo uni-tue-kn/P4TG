@@ -165,7 +165,7 @@ control egress(
                 is_egress.apply();
             }
 
-            header_replace.apply(hdr, eg_intr_md);
+            header_replace.apply(hdr, eg_md, eg_intr_md);
 
             frame_size_monitor.apply();
         }

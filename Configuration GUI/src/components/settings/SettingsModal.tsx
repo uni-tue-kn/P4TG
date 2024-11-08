@@ -15,21 +15,22 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import {Encapsulation, Stream, StreamSettings} from "../../common/Interfaces";
-import React, {useState} from "react";
-import {Accordion, Button, Modal} from "react-bootstrap";
+import { Encapsulation, Stream, StreamSettings} from "../../common/Interfaces";
+import React, { useState } from "react";
+import { Accordion, Button, Modal } from "react-bootstrap";
 
-import { VLAN, Ethernet, IPv4, QinQ, VxLAN, MPLS } from "./protocols";
-import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI} from "../../common/Validators";
+import { VLAN, Ethernet, IPv4, QinQ, VxLAN, MPLS, IPv6 } from "./protocols";
+import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6} from "../../common/Validators";
 
-export const randomMAC = (allow_multicast= true) => {
+export const randomMAC = (allow_multicast = true) => {
     let mac = "XX:XX:XX:XX:XX:XX".replace(/X/g, function () {
         return "0123456789ABCDEF".charAt(Math.floor(Math.random() * 16))
     })
 
-    if(allow_multicast) {
+    if (allow_multicast) {
         return mac
     }
     else { // non-multicast mac addresses have the least significant bit in the most significant octet set to 0
@@ -45,12 +46,12 @@ export const randomIP = () => {
 }
 
 const SettingsModal = ({
-                           show,
-                           hide,
-                           data,
-                           running,
-                           stream
-                       }: {
+    show,
+    hide,
+    data,
+    running,
+    stream
+}: {
     show: boolean,
     hide: () => void,
     data: StreamSettings,
@@ -58,7 +59,7 @@ const SettingsModal = ({
     stream: Stream
 }) => {
 
-    const [tmp_data, set_tmp_data]= useState(data)
+    const [tmp_data, set_tmp_data] = useState(data)
 
     const update_data = (object: any) => {
         set_tmp_data(tmp_data => ({
@@ -102,24 +103,38 @@ const SettingsModal = ({
         } else if (!validateMAC(tmp_data.ethernet.eth_dst)) {
             alert("Ethernet destination not a valid MAC.")
             return
-        } else if (!validateIP(tmp_data.ip.ip_src)) {
+        } else if (stream.ip_version == 4 && !validateIP(data.ip.ip_src)) {
             alert("Source IP not valid.")
             return
-        } else if (!validateIP(tmp_data.ip.ip_dst)) {
+        } else if (stream.ip_version == 4 && !validateIP(data.ip.ip_dst)) {
             alert("Destination IP not valid.")
-            return
-        } else if (!validateToS(tmp_data.ip.ip_tos)) {
+            return       
+        } else if (stream.ip_version == 4 && !validateToS(data.ip.ip_tos)) {
             alert("IP ToS not valid.")
             return
+        } else if (stream.ip_version == 6 && !validateIPv6(data.ipv6.ipv6_src)) {
+            alert("Source IP not valid.")
+            return
+        } else if (stream.ip_version == 6 && !validateIPv6(data.ipv6.ipv6_dst)) {
+            alert("Destination IP not valid.")
+            return
+        } else if (stream.ip_version == 6 && !validateTrafficClass(data.ipv6.ipv6_traffic_class)) {
+            alert("IP traffic class not valid.")
+            return          
+        } else if (stream.ip_version == 6 && !validateFlowLabel(data.ipv6.ipv6_flow_label)) {
+            alert("IP flow label not valid.")
+            return                
         } else if (!validateMPLS(tmp_data.mpls_stack)) {
             alert("MPLS stack is not valid.")
             return
         }
+        // TODO mask validation
 
         data.vxlan = tmp_data.vxlan
         data.ethernet = tmp_data.ethernet
         data.vlan = tmp_data.vlan
         data.ip = tmp_data.ip
+        data.ipv6 = tmp_data.ipv6
         data.mpls_stack = tmp_data.mpls_stack
         data.vlan = tmp_data.vlan
 
@@ -193,13 +208,23 @@ const SettingsModal = ({
                         null
                     }
 
-
-                    <Accordion.Item eventKey="1">
-                        <Accordion.Header>IPv4</Accordion.Header>
-                        <Accordion.Body>
-                            <IPv4 data={tmp_data} set_data={update_data} running={running} />
-                        </Accordion.Body>
-                    </Accordion.Item>
+                    {stream.ip_version == 6 ?
+                        <>
+                            <Accordion.Item eventKey="1">
+                                <Accordion.Header>IPv6</Accordion.Header>
+                                <Accordion.Body>
+                                    <IPv6 data={tmp_data} set_data={update_data} running={running} />
+                                </Accordion.Body>
+                            </Accordion.Item>
+                        </>
+                        :
+                        <Accordion.Item eventKey="1">
+                            <Accordion.Header>IPv4</Accordion.Header>
+                            <Accordion.Body>
+                                <IPv4 data={tmp_data} set_data={update_data} running={running} />
+                            </Accordion.Body>
+                        </Accordion.Item>
+                    }
                 </Accordion>
             </Modal.Body>
             <Modal.Footer>

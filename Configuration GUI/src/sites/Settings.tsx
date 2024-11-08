@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 import React, {useEffect, useRef, useState} from 'react'
@@ -295,6 +296,7 @@ const Settings = () => {
                                     </p>
                                 </InfoBox>
                             </th>
+                            <th>IP Version</th>
                             <th>Encapsulation &nbsp;
                                 <InfoBox>
                                     <p>P4TG supports various encapsulations for the generated IP/UDP packet.</p>

@@ -15,10 +15,12 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use utoipa::ToSchema;
@@ -173,6 +175,30 @@ pub struct IPv4 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct IPv6 {
+    /// Source IPv6 address
+    #[schema(example = "fe80::1766:cf5:f031:eba3")]
+    #[schema(value_type = String)]
+    pub ipv6_src: Ipv6Addr,
+    /// Destination IPv4 address
+    #[schema(example = "fe80::1766:cf5:f031:eba3")]
+    #[schema(value_type = String)]
+    pub ipv6_dst: Ipv6Addr,
+    pub ipv6_traffic_class: u8,
+    /// Mask that is used to randomize the IP src address. The 48 least-significant bits can be randomized.
+    /// ffff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.
+    #[schema(example = "ffff::")]
+    #[schema(value_type = String)]
+    pub ipv6_src_mask: Ipv6Addr,
+    /// Mask that is used to randomize the IP dst address. The 48 least-significant bits can be randomized.
+    /// ffff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.
+    #[schema(example = "ffff::")]
+    #[schema(value_type = String)]
+    pub ipv6_dst_mask: Ipv6Addr,
+    pub ipv6_flow_label: u32
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct StreamSetting {
     /// Egress port to which the stream should be sent.
     pub port: u32,
@@ -184,7 +210,8 @@ pub struct StreamSetting {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mpls_stack: Option<Vec<MPLSHeader>>,
     pub ethernet: Ethernet,
-    pub ip: IPv4,
+    pub ip: Option<IPv4>,
+    pub ipv6: Option<IPv6>,
     /// Indicates if this stream setting is active.
     pub active: bool,
     /// VxLAN tunnel settings
@@ -234,7 +261,10 @@ pub struct Stream {
     pub(crate) n_pipes: Option<u8>,
     /// Flag that indicates if traffic should be encapsulation in VxLAN
     #[schema(example = false)]
-    pub(crate) vxlan: bool
+    pub(crate) vxlan: bool,
+    /// Determines the IP version, either v4 or v6. Option to make it backward compatible
+    #[schema(example = 4)]
+    pub(crate) ip_version: Option<u8>
 }
 
 #[derive(Serialize, ToSchema)]

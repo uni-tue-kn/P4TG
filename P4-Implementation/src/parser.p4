@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 parser TofinoIngressParser(
         packet_in pkt,
@@ -83,6 +84,7 @@ parser SwitchIngressParser(
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
+            ETHERTYPE_IPV6: parse_path_v6;
             ETHERTYPE_MPLS: parse_mpls;
             default: accept;
         }
@@ -97,13 +99,18 @@ parser SwitchIngressParser(
         pkt.extract(hdr.vlan);
         transition select (hdr.vlan.ether_type) {
             ETHERTYPE_IPV4: parse_path;
+            ETHERTYPE_IPV6: parse_path_v6;
             default: accept;
         }
     }
 
     state parse_q_in_q{
         pkt.extract(hdr.q_in_q);
-        transition parse_path;
+        transition select (hdr.q_in_q.inner_ether_type) {
+            ETHERTYPE_IPV4: parse_path;
+            ETHERTYPE_IPV6: parse_path_v6;
+            default: accept;
+        }
     }
 
     state parse_ipv4 {
@@ -119,6 +126,11 @@ parser SwitchIngressParser(
 
     state parse_only_ipv4 {
         pkt.extract(hdr.inner_ipv4);
+        transition accept;
+    }
+
+    state parse_only_ipv6 {
+        pkt.extract(hdr.ipv6);
         transition accept;
     }
 
@@ -161,11 +173,26 @@ parser SwitchIngressParser(
         transition accept;
     }
 
+    state parse_path_v6 {
+        pkt.extract(hdr.ipv6);
+        pkt.extract(hdr.path);
+        transition accept;
+    }
+
     state parse_mpls {
         pkt.extract(hdr.mpls_stack.next);
         transition select (hdr.mpls_stack.last.bos){
             0x0: parse_mpls;
-            0x1: parse_path;
+            0x1: check_ip_version_mpls;
+        }
+    }
+
+    state check_ip_version_mpls {
+        bit<4> first_nibble = pkt.lookahead<bit<4>>();
+        transition select (first_nibble) {
+            0x4: parse_path;
+            0x6: parse_path_v6;
+            default: accept;
         }
     }
 
@@ -200,6 +227,7 @@ control SwitchIngressDeparser(
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.inner_ipv4);
+        pkt.emit(hdr.ipv6);
         pkt.emit(hdr.path);
         pkt.emit(hdr.monitor);
     }
@@ -228,6 +256,7 @@ parser SwitchEgressParser(
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
+            ETHERTYPE_IPV6: parse_path_v6;
             ETHERTYPE_MPLS: parse_mpls;
             default: accept;
         }
@@ -235,19 +264,36 @@ parser SwitchEgressParser(
 
      state parse_vlan {
         pkt.extract(hdr.vlan);
-        transition parse_path;
+        transition select (hdr.vlan.ether_type){
+            ETHERTYPE_IPV4: parse_path;
+            ETHERTYPE_IPV6: parse_path_v6;
+            default: accept;            
+        }
     }
 
     state parse_q_in_q {
         pkt.extract(hdr.q_in_q);
-        transition parse_path;
+        transition select (hdr.q_in_q.inner_ether_type) {
+            ETHERTYPE_IPV4: parse_path;
+            ETHERTYPE_IPV6: parse_path_v6;
+            default: accept;
+        }    
     }
 
     state parse_mpls {
         pkt.extract(hdr.mpls_stack.next);
         transition select (hdr.mpls_stack.last.bos){
             0x0: parse_mpls;
-            0x1: parse_path;
+            0x1: check_ip_version_mpls;
+        }
+    }
+
+    state check_ip_version_mpls {
+        bit<4> first_nibble = pkt.lookahead<bit<4>>();
+        transition select (first_nibble) {
+            0x4: parse_path;
+            0x6: parse_path_v6;
+            default: accept;
         }
     }
 
@@ -266,6 +312,11 @@ parser SwitchEgressParser(
         pkt.extract(hdr.inner_ipv4);
         transition accept;
     }
+
+    state parse_only_ipv6 {
+        pkt.extract(hdr.ipv6);
+        transition accept;
+    }    
 
     state parse_vxlan {
         pkt.extract(hdr.ipv4);
@@ -307,6 +358,24 @@ parser SwitchEgressParser(
 
         transition accept;
     }
+
+    state parse_path_v6 {
+        pkt.extract(hdr.ipv6);
+
+        // subtract old checksum components
+        udp_checksum.subtract({hdr.ipv6.src_addr});
+        udp_checksum.subtract({hdr.ipv6.dst_addr});
+
+        pkt.extract(hdr.path);
+
+        // subtract old checksum components
+        udp_checksum.subtract({hdr.path.checksum});
+        udp_checksum.subtract({hdr.path.tx_tstmp});
+        udp_checksum.subtract({hdr.path.seq});
+        udp_checksum.subtract_all_and_deposit(eg_md.checksum_udp_tmp);
+
+        transition accept;
+    }    
 }
 
 // ---------------------------------------------------------------------------
@@ -368,8 +437,8 @@ control SwitchEgressDeparser(
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.inner_ipv4);
+        pkt.emit(hdr.ipv6);
         pkt.emit(hdr.path);
         pkt.emit(hdr.monitor);
-
     }
 }

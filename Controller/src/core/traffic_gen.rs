@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 use std::collections::{HashMap, HashSet};
@@ -647,40 +648,85 @@ impl TrafficGen {
                     let outer_src_mac = MacAddr::from_str(&vxlan.eth_src).map_err(|_| P4TGError::Error { message: String::from("VxLAN source mac in stream settings not valid.")})?;
                     let outer_dst_mac = MacAddr::from_str(&vxlan.eth_dst).map_err(|_| P4TGError::Error { message: String::from("VxLAN destination mac in stream settings not valid.")})?;
 
-                    Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
-                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                        .action("egress.header_replace.rewrite_vxlan")
-                        .action_data("inner_src_mac", src_mac.as_bytes().to_vec())
-                        .action_data("inner_dst_mac", dst_mac.as_bytes().to_vec())
-                        .action_data("s_mask", setting.ip.ip_src_mask)
-                        .action_data("d_mask", setting.ip.ip_dst_mask)
-                        .action_data("inner_s_ip", setting.ip.ip_src)
-                        .action_data("inner_d_ip", setting.ip.ip_dst)
-                        .action_data("inner_tos", setting.ip.ip_tos)
-                        .action_data("outer_src_mac", outer_src_mac.as_bytes().to_vec())
-                        .action_data("outer_dst_mac", outer_dst_mac.as_bytes().to_vec())
-                        .action_data("outer_s_ip", vxlan.ip_src)
-                        .action_data("outer_d_ip", vxlan.ip_dst)
-                        .action_data("outer_tos", vxlan.ip_tos)
-                        .action_data("udp_source", vxlan.udp_source)
-                        .action_data("vni", vxlan.vni)
+                    match s.ip_version {
+                        Some(6) => {
+                            Err(P4TGError::Error { message: String::from("VxLAN with IPv6 is not supported!")})
+                        },
+                        Some(4) | None => {
+                            match &setting.ip {
+                                Some(ipv4) => 
+                                    Ok(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                                    .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                                    .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                                    .action("egress.header_replace.rewrite_vxlan")
+                                    .action_data("inner_src_mac", src_mac.as_bytes().to_vec())
+                                    .action_data("inner_dst_mac", dst_mac.as_bytes().to_vec())
+                                    .action_data("s_mask", ipv4.ip_src_mask)
+                                    .action_data("d_mask", ipv4.ip_dst_mask)
+                                    .action_data("inner_s_ip", ipv4.ip_src)
+                                    .action_data("inner_d_ip", ipv4.ip_dst)
+                                    .action_data("inner_tos", ipv4.ip_tos)
+                                    .action_data("outer_src_mac", outer_src_mac.as_bytes().to_vec())
+                                    .action_data("outer_dst_mac", outer_dst_mac.as_bytes().to_vec())
+                                    .action_data("outer_s_ip", vxlan.ip_src)
+                                    .action_data("outer_d_ip", vxlan.ip_dst)
+                                    .action_data("outer_tos", vxlan.ip_tos)
+                                    .action_data("udp_source", vxlan.udp_source)
+                                    .action_data("vni", vxlan.vni)),
+                                None => 
+                                    Err(P4TGError::Error { message: String::from("Missing IPv4 settings!")})
+                            }
+                        },
+                        _ => Err(P4TGError::Error { message: String::from("Unsupported IP version!")})
+                    }
                 }
                 else {
-                    Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
-                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                        .action("egress.header_replace.rewrite")
-                        .action_data("src_mac", src_mac.as_bytes().to_vec())
-                        .action_data("dst_mac", dst_mac.as_bytes().to_vec())
-                        .action_data("s_mask", setting.ip.ip_src_mask)
-                        .action_data("d_mask", setting.ip.ip_dst_mask)
-                        .action_data("s_ip", setting.ip.ip_src)
-                        .action_data("d_ip", setting.ip.ip_dst)
-                        .action_data("tos", setting.ip.ip_tos)
+                    match s.ip_version {
+                        Some(6) => {
+                            match &setting.ipv6 {
+                                Some(ipv6) => 
+                                    Ok(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                                    .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                                    .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                                    .action("egress.header_replace.rewrite_ipv6")
+                                    .action_data("src_mac", src_mac.as_bytes().to_vec())
+                                    .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                                    .action_data("s_mask", ipv6.ipv6_src_mask)
+                                    .action_data("d_mask", ipv6.ipv6_dst_mask)
+                                    .action_data("s_ip", ipv6.ipv6_src)
+                                    .action_data("d_ip", ipv6.ipv6_dst)
+                                    .action_data("traffic_class", ipv6.ipv6_traffic_class)
+                                    .action_data("flow_label", ipv6.ipv6_flow_label)),
+                                None =>
+                                    Err(P4TGError::Error { message: String::from("Missing IPv6 settings!")})
+                            }
+                        },
+                        Some(4) | None => {
+                            match &setting.ip {
+                                Some(ipv4) => 
+                                    Ok(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                                    .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                                    .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                                    .action("egress.header_replace.rewrite")
+                                    .action_data("src_mac", src_mac.as_bytes().to_vec())
+                                    .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                                    .action_data("s_mask", ipv4.ip_src_mask)
+                                    .action_data("d_mask", ipv4.ip_dst_mask)
+                                    .action_data("s_ip", ipv4.ip_src)
+                                    .action_data("d_ip", ipv4.ip_dst)
+                                    .action_data("tos", ipv4.ip_tos)),
+                                None =>
+                                    Err(P4TGError::Error { message: String::from("Missing IPv4 settings!")})                        
+                            }
+                        },
+                        _ => Err(P4TGError::Error { message: String::from("Unsupported IP version!")})
+                    }
                 };
-
-                reqs.push(req);
+                // TODO somehow dont throw the error here but give it to the front end
+                match req {
+                    Ok(request) => reqs.push(request),
+                    Err(e) => return Err(e.into()),                    
+                }
 
                 if s.encapsulation == Encapsulation::QinQ {
                     // we checked in validation that vlan exists
@@ -714,29 +760,29 @@ impl TrafficGen {
                     reqs.push(req);
                 }
                 else if s.encapsulation == Encapsulation::Mpls {
-                    // we checked that mpls stack exists
-                    let mpls_stack = setting.mpls_stack.as_ref().unwrap();
-                    let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
+                        // we checked that mpls stack exists
+                        let mpls_stack = setting.mpls_stack.as_ref().unwrap();
+                        let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
 
-                    let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
-                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                        .action(&action_name);
+                        let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
+                            .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                            .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                            .action(&action_name);
 
-                    // build generic action data
-                    for j in 1..cmp::min(s.number_of_lse.unwrap()+1, MAX_NUM_MPLS_LABEL+1) {
-                        let lse = &mpls_stack[(j-1) as usize];
+                        // build generic action data
+                        for j in 1..cmp::min(s.number_of_lse.unwrap()+1, MAX_NUM_MPLS_LABEL+1) {
+                            let lse = &mpls_stack[(j-1) as usize];
 
-                        let label_param = format!("label{}", j);
-                        let ttl_param = format!("ttl{}", j);
-                        let tc_param = format!("tc{}", j);
-                        req = req.action_data(&label_param, lse.label)
-                                .action_data(&ttl_param, lse.ttl)
-                                .action_data(&tc_param, lse.tc);
+                            let label_param = format!("label{}", j);
+                            let ttl_param = format!("ttl{}", j);
+                            let tc_param = format!("tc{}", j);
+                            req = req.action_data(&label_param, lse.label)
+                                    .action_data(&ttl_param, lse.ttl)
+                                    .action_data(&tc_param, lse.tc);
+                        }
+
+                        reqs.push(req.clone());
                     }
-
-                    reqs.push(req.clone());
-                }
             }
         }
 

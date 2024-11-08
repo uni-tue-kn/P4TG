@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 
@@ -47,6 +48,29 @@ const StreamElement = ({
     const [show_mpls_dropdown, set_show] = useState(data.encapsulation == Encapsulation.MPLS)
     const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
+
+    // Used to store VxLAN and IP Version setting. VxLAN must be disabled on changing IP version
+    const [formData, setFormData] = useState({ ...data });
+
+    const handleIPVersionChange = () => {
+        // Toggle IP version and set VxLAN to false
+        const newIPVersion = formData.ip_version === 4 ? 6 : 4;
+        setFormData((prevData) => ({
+            ...prevData,
+            ip_version: newIPVersion,
+            vxlan: false,  // Set VxLAN to false when IP version changes
+        }));
+        data.ip_version = newIPVersion;
+        data.vxlan = false;
+    };
+
+    const handleVxLANToggle = () => {
+        setFormData((prevData) => ({
+            ...prevData,
+            vxlan: !prevData.vxlan  // Toggle VxLAN
+        }))
+        data.vxlan = !data.vxlan;
+    }
 
     const handleEncapsulationChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         data.encapsulation = parseInt(event.target.value)
@@ -150,14 +174,27 @@ const StreamElement = ({
         <StyledCol>
             <Form.Check
                 type={"switch"}
-                disabled={running}
-                defaultChecked={data.vxlan}
-                onChange={(event) => {
-                    data.vxlan = !data.vxlan
-                }
-                }>
+                disabled={running || formData.ip_version === 6}
+                checked={formData.vxlan}
+                onChange={handleVxLANToggle}
+                >
             </Form.Check>
         </StyledCol>
+        <StyledCol>
+            <tr>
+                <td>v4</td>
+                <td>
+                    <Form.Check
+                        type={"switch"}
+                        disabled={running}
+                        checked={formData.ip_version === 6}
+                        onChange={handleIPVersionChange}  // Toggle IP version and reset VxLAN
+                        >
+                    </Form.Check>
+                </td>
+                <td>v6</td>
+            </tr>
+        </StyledCol>        
         <StyledCol>
             <Form.Select disabled={running} required
                          onChange={handleEncapsulationChange}
