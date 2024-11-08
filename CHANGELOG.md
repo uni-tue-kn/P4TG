@@ -1,5 +1,11 @@
 # Changelog 
 
+## v2.2.2 
+- Added IPv6 support
+  - Minimum frame size is 73 bytes as IPv6 has too much overhead
+  - Traffic randomization for least-significant 48 bits of src/destination IPv6 address 
+  - VxLAN in combination with IPv6 is not supported
+
 ## v2.2.1
 - Better support for 4-pipe Tofino
   - Increase meter entries & register entries to 512 to be able to use ports with PID > 255
