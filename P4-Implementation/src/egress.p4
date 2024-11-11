@@ -34,10 +34,10 @@ control egress(
 
     bit<64> dummy = 0;
 
-    Register<bit<32>, PortId_t>(512, 0) tx_seq;
+    Register<seq_t, PortId_t>(512, 0) tx_seq;
 
-    RegisterAction<bit<32>, PortId_t, bit<32>>(tx_seq) get_next_tx_seq = {
-            void apply(inout bit<32> value, out bit<32> read_value) {
+    RegisterAction<seq_t, PortId_t, seq_t>(tx_seq) get_next_tx_seq = {
+            void apply(inout seq_t value, out seq_t read_value) {
                 read_value = value;
                 value = value + 1;
             }

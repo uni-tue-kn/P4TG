@@ -1,11 +1,17 @@
 # Changelog 
 
-## v2.2.2 
+## v2.3.1
 - Added IPv6 support
   - Minimum frame size is 73 bytes as IPv6 has too much overhead
   - Traffic randomization for least-significant 48 bits of src/destination IPv6 address 
   - VxLAN in combination with IPv6 is not supported
 
+## v2.3.0
+- Add support for Intel Tofino2 (data plane / control plane / configuration UI)
+  - supports traffic generation with up to 4 Tb/s (10x 400 Gb/s)
+- Update `/api/online` endpoint that now returns ASIC version (Tofino1 / Tofino2) and version number
+- Update stream settings ui to allow to disable a stream if port is not up
+  
 ## v2.2.1
 - Better support for 4-pipe Tofino
   - Increase meter entries & register entries to 512 to be able to use ports with PID > 255

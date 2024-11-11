@@ -128,7 +128,7 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
     let port_mapping = &payload.port_tx_rx_mapping;
 
     // validate request
-    match validate_request(&active_streams, &active_stream_settings, &payload.mode) {
+    match validate_request(&active_streams, &active_stream_settings, &payload.mode, tg.is_tofino2) {
         Ok(_) => {},
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response()
     }

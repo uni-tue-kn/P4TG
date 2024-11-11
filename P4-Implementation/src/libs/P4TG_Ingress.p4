@@ -34,13 +34,12 @@ control P4TG_Ingress (
     // poisson
     Random<bit<16>>() rand;
 
-    Register<bit<32>, PortId_t>(512, 0) rx_seq;
-    //Register<bit<32>, _>(32, 0) lost_packets;
+    Register<seq_t, PortId_t>(512, 0) rx_seq;
     Add_64_64(512) lost_packets;
     Add_64_64(512) out_of_order;
 
-    RegisterAction<bit<32>, PortId_t, bit<32>>(rx_seq) get_rx = {
-        void apply(inout bit<32> value, out bit<32> read_value) {
+    RegisterAction<seq_t, PortId_t, seq_t>(rx_seq) get_rx = {
+        void apply(inout seq_t value, out seq_t read_value) {
             read_value = value;
 
             if(hdr.path.seq >= value) {
@@ -177,10 +176,10 @@ control P4TG_Ingress (
                 rtt.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md);
 
                 // get next expected rx
-                bit<32> r_seq = get_rx.execute(ig_md.ig_port);
+                seq_t r_seq = get_rx.execute(ig_md.ig_port);
 
-                bit<32> m = max(r_seq, hdr.path.seq);
-                bit<32> diff = (hdr.path.seq - r_seq);
+                seq_t m = max(r_seq, hdr.path.seq);
+                seq_t diff = (hdr.path.seq - r_seq);
 
                 if(m == hdr.path.seq) { // packet loss
                     lost_packets.apply(dummy, (bit<64>) diff, (bit<32>)ig_md.ig_port);

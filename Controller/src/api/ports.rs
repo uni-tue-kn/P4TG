@@ -21,7 +21,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{Json, IntoResponse, Response};
-use rbfrt::util::port_manager::Port;
+use rbfrt::util::port_manager::{Loopback, Port};
 use serde::{Deserialize, Serialize};
 use crate::api::docs;
 use crate::api::server::{Error};
@@ -72,10 +72,14 @@ pub async fn add_port(State(state): State<Arc<AppState>>, payload: Json<PortConf
 
     match pm.frontpanel_port(payload.pid) {
         Ok((port, channel)) => {
-            let req = Port::new(port , channel)
+            let mut req = Port::new(port , channel)
                 .speed(payload.speed.clone())
                 .fec(payload.fec.clone())
                 .auto_negotiation(payload.auto_neg.clone());
+
+            if state.loopback_mode {
+                req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+            }
 
             match pm.update_port(&state.switch, &req).await {
                 Ok(_) => {

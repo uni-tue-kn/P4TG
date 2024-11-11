@@ -137,6 +137,9 @@ control Header_Replace(
     }
 
     apply {
+        bit<32> s_tmp = src_rand.get();
+        bit<32> d_tmp = dst_rand.get();
+
         // we only rewrite IP header for P4TG packets
         // identified by valid path header and UDP port
         if(hdr.path.isValid() && hdr.path.dst_port == 50083) {

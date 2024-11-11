@@ -63,17 +63,20 @@ pub struct TrafficGen {
     /// The port mapping indicates which ports are used for traffic generation and on which port the returning traffic
     /// is expected.
     pub port_mapping: HashMap<u32, u32>,
+    /// Indicates if tofino2 is used
+    pub is_tofino2: bool
 }
 
 impl TrafficGen {
-    pub fn new() -> TrafficGen {
+    pub fn new(is_tofino2: bool) -> TrafficGen {
         TrafficGen {
             min_buffer_offset: 0,
             running: false,
             stream_settings: vec![],
             streams: vec![],
             mode: GenerationMode::Cbr,
-            port_mapping: HashMap::new()
+            port_mapping: HashMap::new(),
+            is_tofino2
         }
     }
 
@@ -94,8 +97,9 @@ impl TrafficGen {
     /// Returns a mapping between an index and the corresponding (port, app_id)
     pub async fn init_monitoring_packet(&mut self, switch: &SwitchConnection, port_mapping: &HashMap<u32, PortMapping>) -> Result<HashMap<u32, MonitoringMapping>, RBFRTError> {
         // activate traffic gen capabilities on internal ports
-        let req: Vec<Request> = TG_PIPE_PORTS.into_iter().map(|x| {
-            Request::new(PORT_CFG)
+        let req: Vec<Request> = if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()}
+            .into_iter().map(|x| {
+            Request::new(if self.is_tofino2 {PORT_CFG_TF2} else {PORT_CFG})
                 .match_key("dev_port", MatchValue::exact(x))
                 .action_data("pktgen_enable", true)
         }).collect();
@@ -103,6 +107,14 @@ impl TrafficGen {
         switch.update_table_entries(req).await?;
 
         info!("Activated traffic gen capabilities.");
+
+        // clear possibly activated pktgen for monitoring (app id 0)
+        let update_request = Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
+            .match_key("app_id", MatchValue::exact(0))
+            .action("trigger_timer_periodic")
+            .action_data("app_enable", false);
+
+        switch.update_table_entry(update_request).await?;
 
         // clear multicast table
         // may fail if the group does not exist, therefore ignore error
@@ -210,7 +222,7 @@ impl TrafficGen {
 
         forward_requests.push(table::Request::new(MONITORING_FORWARD_TABLE)
             .match_key("hdr.monitor.index", MatchValue::exact(0))
-            .match_key("ig_intr_md.ingress_port", MatchValue::exact(TG_PIPE_PORTS[0]))
+            .match_key("ig_intr_md.ingress_port", MatchValue::exact(if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}))
             .action("ingress.p4tg.mc_forward")
             .action_data("mcid", MONITORING_PACKET_MID));
 
@@ -376,7 +388,7 @@ impl TrafficGen {
         // keep monitoring running
         let app_ids: Vec<u8> = (1..8).collect();
 
-        let update_requests: Vec<Request> = app_ids.iter().map(|x| table::Request::new(APP_CFG)
+        let update_requests: Vec<Request> = app_ids.iter().map(|x| table::Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
             .match_key("app_id", MatchValue::exact(*x))
             .action("trigger_timer_periodic")
             .action_data("app_enable", false))
@@ -393,15 +405,23 @@ impl TrafficGen {
     ///
     /// * `packets`: List of packets that should be generated. Index is the application id.
     pub async fn activate_traffic_gen_applications(&self, switch: &SwitchConnection, packets: &HashMap<u8, StreamPacket>) -> Result<(), RBFRTError> {
-        let update_requests: Vec<Request> = packets.iter().map(|(_, packet)| table::Request::new(APP_CFG)
+        let mut update_requests: Vec<Request> = packets.iter()
+            .map(|(_, packet)| table::Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
             .match_key("app_id", MatchValue::exact(packet.app_id))
             .action("trigger_timer_periodic")
             .action_data("app_enable", true)
             .action_data("pkt_len", packet.bytes.len() as u32)
             .action_data("timer_nanosec", packet.timer)
             .action_data("packets_per_batch_cfg", packet.n_packets - 1)
-            .action_data("pipe_local_source_port", TG_PIPE_PORTS[0]) // traffic gen port
+            .action_data("pipe_local_source_port", if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}) // traffic gen port
             .action_data("pkt_buffer_offset", packet.buffer_offset.unwrap())).collect();
+
+        if self.is_tofino2 {
+            update_requests = update_requests.into_iter().map(|req|
+                req.action_data("assigned_chnl_id", TG_PIPE_PORTS_TF2[0])
+            ).collect();
+        }
+
         switch.update_table_entries(update_requests).await?;
 
         Ok(())
@@ -446,10 +466,11 @@ impl TrafficGen {
         // this pushes rules for RX -> RX Recirc and TX Recirc -> TX
         self.configure_default_forwarding_path(switch, &state.port_mapping).await?;
 
-        // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on two pipes
-        // therefore timeout is twice as high
+        // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on multiple pipes
         let total_rate: f32 = streams.iter().map(|x| x.traffic_rate).sum();
-        let timeout_factor: u32 = if total_rate >= TWO_PIPE_GENERATION_THRESHOLD { 2 } else { 1 };
+        let timeout_factor: u32 = if total_rate >= TWO_PIPE_GENERATION_THRESHOLD {
+            if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()}.len() as u32
+        } else { 1 };
 
         // calculate sending behaviour via ILP optimization
         // further adds number of packets per time to the stream
@@ -489,9 +510,9 @@ impl TrafficGen {
             let stream = active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?;
             let encap_overhead = 20 + calculate_overhead(stream);
 
-            let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, 100f32, 25);
+            let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, if self.is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE}, 25);
             active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.n_packets = Some(n_packets);
-            active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.timeout = Some(timeout * 2);
+            active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.timeout = Some(timeout * timeout_factor);
         }
 
         // calculate the required multicast ports for a stream
@@ -583,11 +604,9 @@ impl TrafficGen {
 
         // we generate on both pipes if the overall rate is larger than the threshold or if we do poisson traffic
         let generation_ports = if overall_traffic_rate < TWO_PIPE_GENERATION_THRESHOLD && mode != GenerationMode::Poisson {
-            vec![TG_PIPE_PORTS[0]]
+            vec![if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}]
         }
-        else {
-            TG_PIPE_PORTS.to_vec()
-        };
+        else if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()};
 
         for s in streams {
             for port in &generation_ports {
@@ -599,7 +618,7 @@ impl TrafficGen {
                     else {
                         let addition = 20 + calculate_overhead(s);
 
-                        let const_iat = (s.frame_size + addition) as f32 / 100f32;
+                        let const_iat = (s.frame_size + addition) as f32 / if self.is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE};
                         let target_iat = (s.frame_size + addition) as f32 / s.traffic_rate;
 
                         // that's the drop probability
@@ -812,7 +831,7 @@ impl TrafficGen {
                 buffer_offset += 16 - (buffer_offset % 16);
             }
 
-            let req = table::Request::new(APP_BUFFER_CFG)
+            let req = table::Request::new(if self.is_tofino2 {APP_BUFFER_CFG_TF2} else {APP_BUFFER_CFG})
                 .match_key("pkt_buffer_offset", MatchValue::exact(buffer_offset))
                 .match_key("pkt_buffer_size", MatchValue::exact(pkt_len))
                 .action_data_repeated("buffer", vec![p.bytes.to_vec()]);

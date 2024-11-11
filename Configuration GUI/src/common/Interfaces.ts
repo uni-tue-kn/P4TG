@@ -236,6 +236,34 @@ export interface P4TGConfig {
     }[]
 }
 
+export enum SPEED {
+    BF_SPEED_1G = "BF_SPEED_1G",
+    BF_SPEED_10G = "BF_SPEED_10G",
+    BF_SPEED_25G = "BF_SPEED_25G",
+    BF_SPEED_40G = "BF_SPEED_40G",
+    BF_SPEED_50G = "BF_SPEED_50G",
+    BF_SPEED_100G = "BF_SPEED_100G",
+    BF_SPEED_400G = "BF_SPEED_400G"
+}
+
+export enum FEC {
+    BF_FEC_TYP_NONE = "BF_FEC_TYP_NONE",
+    BF_FEC_TYP_FC = "BF_FEC_TYP_FC",
+    BF_FEC_TYP_REED_SOLOMON = "BF_FEC_TYP_REED_SOLOMON"
+}
+
+export enum ASIC {
+    Tofino1 = "Tofino1",
+    Tofino2 = "Tofino2"
+}
+
+export interface P4TGInfos {
+    status: String,
+    version: String,
+    asic: ASIC,
+    loopback: boolean
+}
+
 export interface TrafficGenData {
     mode: GenerationMode,
     streams: Stream[],

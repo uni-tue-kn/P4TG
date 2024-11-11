@@ -1,7 +1,7 @@
 [package]
 name = "p4tg-controller"
 authors = ["Steffen Lindner <steffen@steffen-lindner.net>"]
-version = "0.3.1"
+version = "2.3.0"
 edition = "2021"
 license = "Apache-2.0"
 

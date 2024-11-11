@@ -25,15 +25,20 @@ import StatView from "../components/StatView";
 import Loader from "../components/Loader";
 
 import {
+    ASIC,
     Encapsulation,
     GenerationMode,
+    P4TGInfos,
     Statistics as StatInterface,
     StatisticsObject,
     Stream,
-    StreamSettings, TimeStatistics, TimeStatisticsObject
+    StreamSettings,
+    TimeStatistics,
+    TimeStatisticsObject
 } from '../common/Interfaces'
 import styled from "styled-components";
 import StreamView from "../components/StreamView";
+
 styled(Row)`
     display: flex;
     align-items: center;
@@ -62,7 +67,7 @@ export const GitHub = () => {
     </Row>
 }
 
-const Home = () => {
+const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     const [loaded, set_loaded] = useState(false)
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
@@ -159,6 +164,13 @@ const Home = () => {
 
     const onSubmit = async (event: any) => {
         event.preventDefault()
+
+        let max_rate = 100;
+
+        if(p4tg_infos.asic == ASIC.Tofino2) {
+            max_rate = 400;
+        }
+
         set_overlay(true)
 
         if (running) {
@@ -173,8 +185,8 @@ const Home = () => {
                     overall_rate += v.traffic_rate
                 })
 
-                if (mode != GenerationMode.MPPS && overall_rate > 100) {
-                    alert("Sum of stream rates > 100 Gbps!")
+                if (mode != GenerationMode.MPPS && overall_rate > max_rate) {
+                    alert("Sum of stream rates > " + max_rate + " Gbps!")
                 } else {
                     await post({
                         route: "/trafficgen",
@@ -290,7 +302,7 @@ const Home = () => {
             </Tab>
             {activePorts().map((v, i) => {
                 let mapping: { [name: number]: number } = {[v.tx]: v.rx}
-                return <Tab eventKey={i} key={i} title={v.tx + "->" + v.rx}>
+                return <Tab eventKey={i} key={i} title={v.tx + " → " + v.rx}>
                     <Tabs
                         defaultActiveKey={"Overview"}
                         className={"mt-3"}
