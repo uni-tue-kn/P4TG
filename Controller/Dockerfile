@@ -1,4 +1,4 @@
-FROM rust:1.74-bookworm
+FROM rust:1.77-bookworm
 RUN mkdir /app
 WORKDIR /app
 COPY ./src /app/src
