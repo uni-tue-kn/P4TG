@@ -480,6 +480,11 @@ impl TrafficGen {
             // preamble + inter frame gap (IFG) = 20 bytes
             let encapsulation_overhead = encapsulation_overhead + 20;
 
+            // For minimal sized IPv6 frames, the size is 73 bytes + 4 FCS
+            if s.ip_version == Some(6) && s.frame_size == 64 {
+                s.frame_size = 73 + 4;
+            }
+
             // traffic rate has MPPS semantics
             // rewrite traffic rate to reflect MPPS in Gbps
             if mode == GenerationMode::Mpps {
