@@ -25,28 +25,35 @@ import {
     GenerationMode,
     MPLSHeader,
     Stream,
-    StreamSettings
+    StreamSettings,
+    P4TGInfos,
+    ASIC
 } from "../../common/Interfaces";
 import React, {useState} from "react";
 import {Button, Form, InputGroup} from "react-bootstrap";
 import InfoBox from "../InfoBox";
 import {StyledCol, StyledRow} from "../../sites/Settings";
 
+
 const StreamElement = ({
                            running,
                            data,
                            remove,
                            mode,
-                           stream_settings
+                           stream_settings,
+                           p4tg_infos
                        }: {
     running: boolean,
     data: Stream,
     remove: (id: number) => void,
     mode: GenerationMode,
-    stream_settings: StreamSettings[]
+    stream_settings: StreamSettings[],
+    p4tg_infos: P4TGInfos
 }) => {
     const [show_mpls_dropdown, set_show] = useState(data.encapsulation == Encapsulation.MPLS)
+    const [show_sid_dropdown, set_show_sids] = useState(data.encapsulation == Encapsulation.SRv6)
     const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
+    const [number_of_srv6_sids, set_number_of_srv6_sids] = useState(data.number_of_srv6_sids)
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
 
     // Used to store VxLAN and IP Version setting. VxLAN must be disabled on changing IP version
@@ -76,9 +83,16 @@ const StreamElement = ({
         data.encapsulation = parseInt(event.target.value)
         if (data.encapsulation === Encapsulation.MPLS) {
             set_show(true);
+            set_show_sids(false);
+        } else if (data.encapsulation === Encapsulation.SRv6){
+            set_show_sids(true);
+            set_show(false);
         } else {
             set_show(false);
+            set_show_sids(false);
             data.number_of_lse = 0;
+            data.number_of_srv6_sids = 0;
+            set_number_of_srv6_sids(0);
             set_number_of_lse(0);
             update_settings();
         }
@@ -89,19 +103,33 @@ const StreamElement = ({
             if (s.stream_id == data.stream_id) {
                 if (s.mpls_stack.length > data.number_of_lse) {
                     // Newly set length is smaller than previous length. Remove the excess elements.
-                    s.mpls_stack = s.mpls_stack.slice(0, data.number_of_lse)
+                    s.mpls_stack = s.mpls_stack.slice(0, data.number_of_lse);
 
                 } else if (s.mpls_stack.length < data.number_of_lse) {
                     // Newly set length is larger than previous length. Fill with default MPLS headers
-                    let new_mpls_stack: MPLSHeader[] = []
-                    let elements_to_add = data.number_of_lse - s.mpls_stack.length
+                    let new_mpls_stack: MPLSHeader[] = [];
+                    let elements_to_add = data.number_of_lse - s.mpls_stack.length;
 
-                    {
-                        Array.from({length: elements_to_add}, (_, index) => {
-                            new_mpls_stack.push(DefaultMPLSHeader())
-                        })
-                    }
-                    s.mpls_stack = s.mpls_stack.concat(new_mpls_stack)
+                    Array.from({length: elements_to_add}, (_, index) => {
+                        new_mpls_stack.push(DefaultMPLSHeader());
+                    })
+                    
+                    s.mpls_stack = s.mpls_stack.concat(new_mpls_stack);
+                }
+
+                if (s.sid_list.length > data.number_of_srv6_sids){
+                    // Newly set length is smaller than previous length. Remove the excess elements.
+                    s.sid_list = s.sid_list.slice(0, data.number_of_srv6_sids)
+                } else if (s.sid_list.length < data.number_of_srv6_sids) {
+                    // Newly set length is larger than previous length. Fill with default SIDs
+                    let new_sid_list: string[] = [];
+                    let elements_to_add = data.number_of_srv6_sids - s.sid_list.length;
+
+                    Array.from({length: elements_to_add}, (_, index) => {
+                        new_sid_list.push("fe80::");
+                    })
+
+                    s.sid_list = s.sid_list.concat(new_sid_list);
                 }
             }
         })
@@ -112,6 +140,12 @@ const StreamElement = ({
         data.number_of_lse = parseInt(event.target.value)
         update_settings()
     }
+
+    const handleNumberOfSids = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        set_number_of_srv6_sids(parseInt(event.target.value))
+        data.number_of_srv6_sids = parseInt(event.target.value)
+        update_settings()
+    }    
 
     return <tr>
         <StyledCol>{data.app_id}</StyledCol>
@@ -207,6 +241,10 @@ const StreamElement = ({
                 <option selected={Encapsulation.MPLS == data.encapsulation} value={Encapsulation.MPLS}>MPLS (+4 byte /
                     LSE)
                 </option>
+                {p4tg_infos.asic == ASIC.Tofino2 ?  <option selected={Encapsulation.SRv6 == data.encapsulation} value={Encapsulation.SRv6}>SRv6 (+48 byte + 16 byte / SID)
+                </option> 
+                :
+                null}
             </Form.Select>
         </StyledCol>
         <StyledRow>
@@ -219,6 +257,19 @@ const StreamElement = ({
                         <option selected={0 == number_of_lse} value="0">#LSE</option>
                         {Array.from({length: 15}, (_, index) => (
                             <option selected={index + 1 == number_of_lse} value={index + 1}>{index + 1}</option>
+                        ))}
+                    </Form.Select>
+                    :
+                    null
+                }
+                {show_sid_dropdown ?
+                    <Form.Select disabled={running}
+                                 onChange={handleNumberOfSids}
+                                 defaultValue={number_of_srv6_sids}
+                    >
+                        <option selected={0 == number_of_srv6_sids} value="0">#SIDs</option>
+                        {Array.from({length: 3}, (_, index) => (
+                            <option selected={index + 1 == number_of_srv6_sids} value={index + 1}>{index + 1}</option>
                         ))}
                     </Form.Select>
                     :

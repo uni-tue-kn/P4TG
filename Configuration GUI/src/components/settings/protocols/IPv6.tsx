@@ -17,9 +17,8 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import React from "react"
-import {Button, Col, Form, Modal, Row} from "react-bootstrap";
-import { randomIP } from "../SettingsModal";
+import {Button, Col, Form, Row} from "react-bootstrap";
+import { randomIPv6 } from "../SettingsModal";
 
 import InfoBox from "../../InfoBox";
 import {StreamSettings} from "../../../common/Interfaces";
@@ -64,7 +63,7 @@ const IPv6 = ({data, set_data, running}: Props) => {
                 </Row>
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({ipv6: {...data.ipv6, ipv6_src: randomIP()}})}><i className="bi bi-shuffle"/></Button>
+                <Button disabled={running} onClick={() => set_data({ipv6: {...data.ipv6, ipv6_src: randomIPv6()}})}><i className="bi bi-shuffle"/></Button>
             </Col>
         </Form.Group>
 
@@ -100,7 +99,7 @@ const IPv6 = ({data, set_data, running}: Props) => {
 
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({ipv6: {...data.ipv6, ipv6_dst: randomIP()}})}>
+                <Button disabled={running} onClick={() => set_data({ipv6: {...data.ipv6, ipv6_dst: randomIPv6()}})}>
                     <i className="bi bi-shuffle"/>
                 </Button>
             </Col>

@@ -101,8 +101,15 @@ pub const VLAN_HEADER_REPLACE_TABLE: &str = "egress.header_replace.vlan_header_r
 /// This table replaces the header content of the MPLS stack
 pub const MPLS_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_rewrite_c.mpls_header_replace";
 
+/// SRv6 replace table
+/// This table replaces the header content of the SRv6 header
+pub const SRV6_HEADER_REPLACE_TABLE: &str = "egress.header_replace.srv6_replace_c.srv6_replace";
+
 /// Maximal number of supported mpls labels
 pub const MAX_NUM_MPLS_LABEL: u8 = 15;
+
+/// Maximal number of supported SIDs
+pub const MAX_NUM_SRV6_SIDS: u8 = 3;
 
 /// VxLAN UDP port
 pub const VX_LAN_UDP_PORT: u16 = 4789;

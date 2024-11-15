@@ -22,8 +22,8 @@ import { Encapsulation, Stream, StreamSettings} from "../../common/Interfaces";
 import React, { useState } from "react";
 import { Accordion, Button, Modal } from "react-bootstrap";
 
-import { VLAN, Ethernet, IPv4, QinQ, VxLAN, MPLS, IPv6 } from "./protocols";
-import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6} from "../../common/Validators";
+import { VLAN, Ethernet, IPv4, QinQ, VxLAN, MPLS, IPv6, SRv6 } from "./protocols";
+import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList} from "../../common/Validators";
 
 export const randomMAC = (allow_multicast = true) => {
     let mac = "XX:XX:XX:XX:XX:XX".replace(/X/g, function () {
@@ -43,6 +43,17 @@ export const randomMAC = (allow_multicast = true) => {
 export const randomIP = () => {
     return (Math.floor(Math.random() * 255) + 1) + "." + (Math.floor(Math.random() * 255)) + "." + (Math.floor(Math.random() * 255)) + "." + (Math.floor(Math.random() * 255));
 
+}
+
+export const randomIPv6 = () => {
+    const getRandomHexSegment = (): string => {
+        // Generate a 4-digit hexadecimal segment
+        return Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
+    };
+
+    // IPv6 address consists of 8 segments separated by colons
+    const segments = Array.from({ length: 8 }, getRandomHexSegment);
+    return segments.join(":");
 }
 
 const SettingsModal = ({
@@ -127,6 +138,15 @@ const SettingsModal = ({
         } else if (!validateMPLS(tmp_data.mpls_stack)) {
             alert("MPLS stack is not valid.")
             return
+        } else if (!validateSIDList(tmp_data.sid_list)){
+            alert("SID list is not valid.")
+            return            
+        } else if (!validateIPv6(data.srv6_base_header.ipv6_src)) {
+            alert("SRv6 Source IP not valid.")
+            return
+        } else if (!validateIPv6(data.srv6_base_header.ipv6_dst)) {
+            alert("SRv6 destination IP not valid.")
+            return
         }
         // TODO mask validation
 
@@ -135,6 +155,8 @@ const SettingsModal = ({
         data.vlan = tmp_data.vlan
         data.ip = tmp_data.ip
         data.ipv6 = tmp_data.ipv6
+        data.srv6_base_header = tmp_data.srv6_base_header
+        data.sid_list = tmp_data.sid_list
         data.mpls_stack = tmp_data.mpls_stack
         data.vlan = tmp_data.vlan
 
@@ -207,6 +229,19 @@ const SettingsModal = ({
                         :
                         null
                     }
+
+                    {stream.encapsulation == Encapsulation.SRv6 ?
+                        <>
+                            <Accordion.Item eventKey="0">
+                                <Accordion.Header>SRv6</Accordion.Header>
+                                <Accordion.Body>
+                                    <SRv6 stream={stream} data={tmp_data} set_data={update_data} running={running} />
+                                </Accordion.Body>
+                            </Accordion.Item>
+                        </>
+                        :
+                        null
+                    }                    
 
                     {stream.ip_version == 6 ?
                         <>

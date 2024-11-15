@@ -41,6 +41,8 @@ const ether_type_t ETHERTYPE_MPLS = 0x8847;
 const ether_type_t ETHERTYPE_ARP = 0x0806;
 
 const bit<8> IP_PROTOCOL_UDP = 17;
+const bit<8> IP_PROTOCOL_IPV4 = 4;
+const bit<8> IP_PROTOCOL_IPV6 = 41;
 const bit<8> IP_PROTOCOL_P4TG = 110;
 const bit<16> UDP_VxLAN_PORT = 4789;
 const bit<16> UDP_P4TG_PORT = 50083;
@@ -119,6 +121,28 @@ header ipv6_t {
     bit<128> dst_addr;
 }
 
+header ipv6_lookahead_next_header_t {
+    bit<4>   version;
+    bit<8>   traffic_class;
+    bit<20>  flowLabel;
+    bit<16>  payloadLen;
+    bit<8>   nextHdr;
+}
+
+header srh_t {
+    bit<8> next_header;
+    bit<8> length;
+    bit<8> ipv6_type;
+    bit<8> segments_left;
+    bit<8> last_entry;
+    bit<8> flags;
+    bit<16> tag;
+}
+
+header sid_t {
+    ipv6_addr_t sid;
+}
+
 header path_monitor_t {
     bit<16> src_port;
     bit<16> dst_port;
@@ -175,6 +199,11 @@ header vxlan_header_t {
 
 struct header_t {
     ethernet_h ethernet;
+    ipv6_t sr_ipv6;
+    srh_t srh;
+    sid_t sid1;
+    sid_t sid2;
+    sid_t sid3;
     ethernet_h inner_ethernet;
     mpls_h[15] mpls_stack;
     ipv4_t ipv4;
@@ -212,8 +241,6 @@ struct egress_metadata_t {
     bit<1> monitor_type;
     PortId_t rx_port;
     bit<16> checksum_udp_tmp;
-    bit<32> checksum_add_udp_ip_src;
-    bit<32> checksum_add_udp_ip_dst;
     ipv4_addr_t ipv4_src;
     ipv4_addr_t ipv4_dst;
     bit<4> ip_version;

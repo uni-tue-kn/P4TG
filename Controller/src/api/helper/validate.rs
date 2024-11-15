@@ -19,12 +19,12 @@
 
 use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
-use crate::core::traffic_gen_core::const_definitions::{MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, TG_MAX_RATE, TG_MAX_RATE_TF2};
+use crate::core::traffic_gen_core::const_definitions::{MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2};
 use crate::core::traffic_gen_core::helper::calculate_overhead;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 
 /// Validates an incoming traffic generation request.
-/// Checks if the MPLS configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
+/// Checks if the MPLS/SRv6 configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
 pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode, is_tofino2: bool) -> Result<(), Error> {
     for stream in streams.iter(){
         // Check max number of MPLS labels
@@ -40,6 +40,22 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
             if stream.number_of_lse.unwrap() == 0 {
                 return Err(Error::new(format!("MPLS encapsulation selected for stream with ID #{} but #LSE is zero.", stream.stream_id)));
             }
+        } else if stream.encapsulation == Encapsulation::SRv6 {
+            if !is_tofino2 {
+                return Err(Error::new(format!("SRv6 is only supported on Tofino2.")));
+            }
+
+            if stream.number_of_srv6_sids.is_none() {
+                return Err(Error::new(format!("number_of_srv6_sids missing for stream #{}", stream.stream_id)))
+            }
+
+            if stream.number_of_srv6_sids.unwrap() > MAX_NUM_SRV6_SIDS {
+                return Err(Error::new(format!("Configured number of SIDs in stream with ID #{} exceeded maximum of {}.", stream.stream_id, MAX_NUM_SRV6_SIDS)));
+            }
+
+            if stream.number_of_srv6_sids.unwrap() == 0 {
+                return Err(Error::new(format!("SRv6 encapsulation selected for stream with ID #{} but #SIDs is zero.", stream.stream_id)));
+            }            
         }
 
         for setting in settings.iter() {
@@ -59,6 +75,17 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
                 if stream.encapsulation == Encapsulation::Mpls && setting.mpls_stack.as_ref().unwrap().len() != stream.number_of_lse.unwrap() as usize {
                     return Err(Error::new(format!("Number of LSEs in stream with ID #{} does not match length of the MPLS stack.", setting.stream_id)));
                 }
+
+                // check SRv6
+                // check that SID list is set
+                if stream.encapsulation == Encapsulation::SRv6 && setting.sid_list.is_none() {
+                    return Err(Error::new(format!("No SID list provided for stream with ID #{} on port {}.", stream.stream_id, setting.port)))
+                }
+
+                // Validate if the configured number_of_srv6_sids per stream matches the SID list length
+                if stream.encapsulation == Encapsulation::SRv6 && setting.sid_list.as_ref().unwrap().len() != stream.number_of_srv6_sids.unwrap() as usize {
+                    return Err(Error::new(format!("Number of SIDs in stream with ID #{} does not match length of the SID list.", setting.stream_id)));
+                }                
             }
 
             // Check VxLAN

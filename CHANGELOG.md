@@ -1,5 +1,10 @@
 # Changelog 
 
+## v2.3.2
+- Added SRv6 support
+  - Maximum of 3 SIDs is supported
+  - Only available for Intel Tofino 2 
+
 ## v2.3.1
 - Added IPv6 support
   - Minimum frame size is 73 bytes as IPv6 has too much overhead

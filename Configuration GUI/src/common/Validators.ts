@@ -62,6 +62,14 @@ export const validateMPLS = (mpls_stack: MPLSHeader[]) => {
     return result;
 }
 
+export const validateSIDList = (sid_list: string[]) => {
+    let result = true;
+    sid_list.forEach((sid: string) => {
+        result = result && validateIPv6(sid);
+    });
+    return result;
+}
+
 export const validateToS = (tos: number) => {
     return !isNaN(tos) && (0 <= tos) && tos <= (2 ** 7 - 1)
 }

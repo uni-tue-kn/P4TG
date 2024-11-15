@@ -4,6 +4,8 @@ use std::str::FromStr;
 use lazy_static::lazy_static;
 use crate::core::traffic_gen_core::types::*;
 
+// TODO Add SRv6 examples
+
 lazy_static! {
     pub static ref EXAMPLE_GET_1: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
@@ -24,6 +26,8 @@ lazy_static! {
                 ipv6: None,
                 active: true,
                 mpls_stack: None,
+                srv6_base_header: None,
+                sid_list: None,
                 vxlan: None,
                 vlan: Some(Vlan {
                     pcp: 1,
@@ -48,7 +52,8 @@ lazy_static! {
                 timeout: Some(88),
                 generation_accuracy: Some(100f32),
                 n_pipes: Some(2),
-                number_of_lse: None
+                number_of_lse: None,
+                number_of_srv6_sids: None
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
@@ -82,6 +87,8 @@ lazy_static! {
                     vni: 1
                 }),
                 mpls_stack: None,
+                srv6_base_header: None,
+                sid_list: None,
                 vlan: None
             }
         ],
@@ -98,7 +105,8 @@ lazy_static! {
                 timeout: Some(876),
                 generation_accuracy: Some(99.908676f32),
                 n_pipes: Some(2),
-                number_of_lse: None
+                number_of_lse: None,
+                number_of_srv6_sids: None
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
@@ -118,7 +126,8 @@ lazy_static! {
         generation_accuracy: Some(99.908676f32),
         n_pipes: Some(2),
         vxlan: true,
-        ip_version: Some(4)
+        ip_version: Some(4),
+        number_of_srv6_sids: None
     }];
 
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
@@ -149,6 +158,8 @@ lazy_static! {
                     vni: 1
                 }),
                 mpls_stack: None,
+                srv6_base_header: None,
+                sid_list: None,
                 vlan: None
             }
         ],
@@ -165,7 +176,8 @@ lazy_static! {
                 n_pipes: None,
                 timeout: None,
                 number_of_lse: None,
-                ip_version: Some(4)
+                ip_version: Some(4),
+                number_of_srv6_sids: None
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
@@ -190,6 +202,8 @@ lazy_static! {
                 ipv6: None,
                 active: true,
                 mpls_stack: None,
+                srv6_base_header: None,
+                sid_list: None,
                 vxlan: None,
                 vlan: Some(Vlan {
                     pcp: 1,
@@ -214,7 +228,8 @@ lazy_static! {
                 n_pipes: None,
                 timeout: None,
                 number_of_lse: None,
-                ip_version: Some(4)
+                ip_version: Some(4),
+                number_of_srv6_sids: None
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
@@ -233,7 +248,8 @@ lazy_static! {
         generation_accuracy: Some(100f32),
         n_pipes: Some(2),
         vxlan: false,
-        ip_version: Some(4)
+        ip_version: Some(4),
+        number_of_srv6_sids: None
     }];
 
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
@@ -259,6 +275,8 @@ lazy_static! {
                 stream_id: 1,
                 vlan: None,
                 vxlan: None,
+                srv6_base_header: None,
+                sid_list: None,
             }
         ],
         streams: vec![
@@ -275,7 +293,8 @@ lazy_static! {
                 n_packets: None,
                 generation_accuracy: None,
                 n_pipes: None,
-                ip_version: Some(4)
+                ip_version: Some(4),
+                number_of_srv6_sids: None
             }
         ],
     };
@@ -293,7 +312,8 @@ lazy_static! {
         generation_accuracy: Some(99.93846f32),
         n_pipes: Some(2),
         vxlan: false,
-        ip_version: Some(6)
+        ip_version: Some(6),
+        number_of_srv6_sids: None
     }];
 
     pub static ref EXAMPLE_POST_4_REQUEST: TrafficGenData = TrafficGenData {
@@ -317,6 +337,8 @@ lazy_static! {
                 active: true,
                 vxlan: None,
                 mpls_stack: None,
+                srv6_base_header: None,
+                sid_list: None,
                 vlan: None
             }
         ],
@@ -333,7 +355,8 @@ lazy_static! {
                 n_pipes: None,
                 timeout: None,
                 number_of_lse: None,
-                ip_version: Some(6)
+                ip_version: Some(6),
+                number_of_srv6_sids: None
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])

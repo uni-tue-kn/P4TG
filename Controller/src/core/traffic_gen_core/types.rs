@@ -35,7 +35,8 @@ pub enum Encapsulation {
     None = 0,
     Vlan = 1,
     QinQ = 2,
-    Mpls = 3
+    Mpls = 3,
+    SRv6 = 4
 }
 
 /// Describes the used generation mode
@@ -186,13 +187,13 @@ pub struct IPv6 {
     pub ipv6_dst: Ipv6Addr,
     pub ipv6_traffic_class: u8,
     /// Mask that is used to randomize the IP src address. The 48 least-significant bits can be randomized.
-    /// ffff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.
-    #[schema(example = "ffff::")]
+    /// ::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.
+    #[schema(example = "::ff")]
     #[schema(value_type = String)]
     pub ipv6_src_mask: Ipv6Addr,
     /// Mask that is used to randomize the IP dst address. The 48 least-significant bits can be randomized.
-    /// ffff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.
-    #[schema(example = "ffff::")]
+    /// ::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.
+    #[schema(example = "::ff")]
     #[schema(value_type = String)]
     pub ipv6_dst_mask: Ipv6Addr,
     pub ipv6_flow_label: u32
@@ -209,8 +210,14 @@ pub struct StreamSetting {
     /// An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mpls_stack: Option<Vec<MPLSHeader>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub srv6_base_header: Option<IPv6>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sid_list: Option<Vec<Ipv6Addr>>,
     pub ethernet: Ethernet,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ip: Option<IPv4>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ipv6: Option<IPv6>,
     /// Indicates if this stream setting is active.
     pub active: bool,
@@ -264,7 +271,12 @@ pub struct Stream {
     pub(crate) vxlan: bool,
     /// Determines the IP version, either v4 or v6. Option to make it backward compatible
     #[schema(example = 4)]
-    pub(crate) ip_version: Option<u8>
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ip_version: Option<u8>,
+    /// Number of SIDs in SRv6 header. At maximum 4 can be used.
+    #[schema(example = 2)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) number_of_srv6_sids: Option<u8>
 }
 
 #[derive(Serialize, ToSchema)]

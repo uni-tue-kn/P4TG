@@ -180,6 +180,7 @@ control egress(
             eg_md.ipv4_src = hdr.ipv4.src_addr;
             eg_md.ipv4_dst = hdr.ipv4.dst_addr;
         }
+        // TODO UDP checksum with IPv6 / SRv6
 
     }
 }

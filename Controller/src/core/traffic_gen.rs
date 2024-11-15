@@ -806,7 +806,30 @@ impl TrafficGen {
                         }
 
                         reqs.push(req.clone());
+                } else if s.encapsulation == Encapsulation::SRv6 {
+
+                    let action_name: String = format!("egress.header_replace.srv6_replace_c.rewrite_{}_sids", cmp::min(s.number_of_srv6_sids.unwrap(), MAX_NUM_SRV6_SIDS));
+                    let srv6_base_header = setting.srv6_base_header.clone().unwrap();
+                    let sid_list = setting.sid_list.as_ref().unwrap();
+
+                    let mut req = Request::new(SRV6_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action(&action_name)
+                        .action_data("s_ip", srv6_base_header.ipv6_src)
+                        .action_data("d_ip", srv6_base_header.ipv6_dst)
+                        .action_data("traffic_class", srv6_base_header.ipv6_traffic_class)
+                        .action_data("flow_label", srv6_base_header.ipv6_flow_label); 
+
+                    for j in 1..cmp::min(s.number_of_srv6_sids.unwrap()+1, MAX_NUM_SRV6_SIDS+1) {
+                        let sid = sid_list[(j-1) as usize];
+
+                        let sid_param = format!("sid{}", j);
+                        req = req.action_data(&sid_param, sid)
                     }
+                    reqs.push(req.clone());
+
+                }
             }
         }
 
@@ -870,7 +893,7 @@ impl TrafficGen {
 
     /// Clears various tables that are refilled during traffic gen setup
     async fn reset_tables(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE,  ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
 
         Ok(())
     }

@@ -96,11 +96,63 @@ parser SwitchIngressParser(
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
+        #if __TARGET_TOFINO__ == 2
+            ETHERTYPE_IPV6: check_for_srv6;
+        #else
+            // SRv6 not supported on Tofino 1
             ETHERTYPE_IPV6: parse_path_v6;
+        #endif            
             ETHERTYPE_MPLS: parse_mpls;
             default: accept;
         }
     }
+
+    state check_for_srv6 {
+        ipv6_lookahead_next_header_t ipv6_lookahead = pkt.lookahead<ipv6_lookahead_next_header_t>();
+        transition select(ipv6_lookahead.nextHdr) {
+            IP_PROTOCOL_IPV6: parse_srh;
+            default: parse_path_v6;
+        }
+    }
+
+    state parse_srh {
+        pkt.extract(hdr.sr_ipv6);
+        pkt.extract(hdr.srh);
+        transition select(hdr.srh.last_entry){
+            0: parse_1_sid;
+            1: parse_2_sids;
+            2: parse_3_sids;
+            default: accept;
+        }
+    }
+
+    state parse_1_sid{
+        pkt.extract(hdr.sid1);
+        transition select (hdr.srh.next_header){
+            IP_PROTOCOL_IPV4: parse_path;
+            IP_PROTOCOL_IPV6: parse_path_v6;
+        }
+    }
+
+    state parse_2_sids{
+        pkt.extract(hdr.sid1);
+        pkt.extract(hdr.sid2);
+        transition select (hdr.srh.next_header){
+            IP_PROTOCOL_IPV4: parse_path;
+            IP_PROTOCOL_IPV6: parse_path_v6;
+        }
+    }    
+
+    state parse_3_sids{
+        pkt.extract(hdr.sid1);
+        pkt.extract(hdr.sid2);
+        pkt.extract(hdr.sid3);
+        transition select (hdr.srh.next_header){
+            IP_PROTOCOL_IPV4: parse_path;
+            IP_PROTOCOL_IPV6: parse_path_v6;
+        }
+    }    
+      
 
     state parse_arp {
         pkt.extract(hdr.arp);
@@ -231,6 +283,11 @@ control SwitchIngressDeparser(
 
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.arp);
+        pkt.emit(hdr.sr_ipv6);
+        pkt.emit(hdr.srh);
+        pkt.emit(hdr.sid1);
+        pkt.emit(hdr.sid2);
+        pkt.emit(hdr.sid3);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
         pkt.emit(hdr.vxlan);
@@ -268,11 +325,63 @@ parser SwitchEgressParser(
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
+        #if __TARGET_TOFINO__ == 2
+            ETHERTYPE_IPV6: check_for_srv6;
+        #else
+            // SRv6 not supported on Tofino 1
             ETHERTYPE_IPV6: parse_path_v6;
+        #endif            
             ETHERTYPE_MPLS: parse_mpls;
             default: accept;
         }
     }
+
+
+    state check_for_srv6 {
+        ipv6_lookahead_next_header_t ipv6_lookahead = pkt.lookahead<ipv6_lookahead_next_header_t>();
+        transition select(ipv6_lookahead.nextHdr) {
+            IP_PROTOCOL_IPV6: parse_srh;
+            default: parse_path_v6;
+        }
+    }
+
+    state parse_srh {
+        pkt.extract(hdr.sr_ipv6);
+        pkt.extract(hdr.srh);
+        transition select(hdr.srh.last_entry){
+            0: parse_1_sid;
+            1: parse_2_sids;
+            2: parse_3_sids;
+            default: accept;
+        }
+    }
+
+    state parse_1_sid{
+        pkt.extract(hdr.sid1);
+        transition select (hdr.srh.next_header){
+            IP_PROTOCOL_IPV4: parse_path;
+            IP_PROTOCOL_IPV6: parse_path_v6;
+        }
+    }
+
+    state parse_2_sids{
+        pkt.extract(hdr.sid1);
+        pkt.extract(hdr.sid2);
+        transition select (hdr.srh.next_header){
+            IP_PROTOCOL_IPV4: parse_path;
+            IP_PROTOCOL_IPV6: parse_path_v6;
+        }
+    }    
+
+    state parse_3_sids{
+        pkt.extract(hdr.sid1);
+        pkt.extract(hdr.sid2);
+        pkt.extract(hdr.sid3);
+        transition select (hdr.srh.next_header){
+            IP_PROTOCOL_IPV4: parse_path;
+            IP_PROTOCOL_IPV6: parse_path_v6;
+        }
+    }    
 
      state parse_vlan {
         pkt.extract(hdr.vlan);
@@ -441,6 +550,11 @@ control SwitchEgressDeparser(
             }, zeros_as_ones = true);
 
         pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.sr_ipv6);
+        pkt.emit(hdr.srh);
+        pkt.emit(hdr.sid1);
+        pkt.emit(hdr.sid2);
+        pkt.emit(hdr.sid3);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
         pkt.emit(hdr.vxlan);

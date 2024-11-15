@@ -84,6 +84,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
         "egress.header_replace.header_replace",
         "egress.header_replace.vlan_header_replace",
         "egress.header_replace.mpls_rewrite_c.mpls_header_replace",
+        "egress.header_replace.srv6_replace_c.srv6_replace",
     "egress.is_egress"];
 
     // read all table entries

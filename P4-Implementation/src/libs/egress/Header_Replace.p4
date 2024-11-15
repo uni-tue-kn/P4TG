@@ -19,6 +19,7 @@
  */
  
 #include "./mpls_actions.p4"
+#include "./srv6_replace.p4"
 
 /*
 Replaces IP src / dst addresses based on random 32 bit number
@@ -37,6 +38,7 @@ control Header_Replace(
     Random<bit<16>>() dst_rand_v6_2;
 
     MPLS_Rewrite() mpls_rewrite_c;
+    SRv6_Replace() srv6_replace_c;
 
     bit<32> src_mask = 0;
     bit<32> dst_mask = 0;
@@ -166,6 +168,9 @@ control Header_Replace(
 
             vlan_header_replace.apply(); // rewrite vlan header if configured
             mpls_rewrite_c.apply(hdr, eg_intr_md);
+        #if __TARGET_TOFINO__ == 2
+            srv6_replace_c.apply(hdr, eg_intr_md);
+        #endif                
         }
     }
 }

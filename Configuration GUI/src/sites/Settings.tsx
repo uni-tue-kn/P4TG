@@ -309,7 +309,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                         {streams.map((v, i) => {
                             v.app_id = i + 1;
                             return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}
-                                                  stream_settings={stream_settings}/>
+                                                  stream_settings={stream_settings} p4tg_infos={p4tg_infos}/>
                         })}
 
                         </tbody>

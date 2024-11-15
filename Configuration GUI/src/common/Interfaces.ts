@@ -101,6 +101,8 @@ export interface StreamSettings {
     },
     ip: IPv4Header
     ipv6: IPv6Header
+    srv6_base_header: IPv6Header
+    sid_list: string[]
     active: boolean
     vxlan: {
         eth_src: string,
@@ -134,7 +136,8 @@ export enum Encapsulation {
     None,
     Q,
     QinQ,
-    MPLS
+    MPLS,
+    SRv6
 }
 
 export enum GenerationMode {
@@ -151,6 +154,7 @@ export interface Stream {
     vxlan: boolean,
     ip_version: number,
     number_of_lse: number,
+    number_of_srv6_sids: number,
     traffic_rate: number,
     app_id: number
     burst: number
@@ -172,6 +176,7 @@ export const DefaultStream = (id: number) => {
         frame_size: 1024,
         encapsulation: Encapsulation.None,
         number_of_lse: 0,
+        number_of_srv6_sids: 0,
         traffic_rate: 1,
         burst: 1,
         vxlan: false,
@@ -194,6 +199,15 @@ export const DefaultStreamSettings = (id: number, port: number) => {
             inner_dei: 0
         },
         mpls_stack: [],
+        srv6_base_header: {
+            ipv6_src: "ff80::",
+            ipv6_dst: "ff80::",
+            ipv6_traffic_class: 0,
+            ipv6_src_mask: "::",
+            ipv6_dst_mask: "::",
+            ipv6_flow_label: 0            
+        },
+        sid_list: [],
         ethernet: {
             eth_src: "32:D5:42:2A:F6:92",
             eth_dst: "81:E7:9D:E3:AD:47"
