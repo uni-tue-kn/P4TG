@@ -9,7 +9,7 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
         Encapsulation::Vlan => 4, // VLAN adds 4 bytes
         Encapsulation::QinQ => 8, // QinQ adds 8 bytes
         Encapsulation::Mpls => stream.number_of_lse.unwrap() as u32 * 4, // each mpls label has 4 bytes
-        Encapsulation::SRv6 => stream.number_of_srv6_sids.unwrap() as u32 * 16, // each SID has 16 bytes
+        Encapsulation::SRv6 => 40 + 8 + stream.number_of_srv6_sids.unwrap() as u32 * 16, // Base IPv6 Header + SRH + each SID has 16 bytes
     };
 
     if stream.vxlan {
@@ -295,7 +295,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                             source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3],
                             destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 5, 6],
                             hop_limit: 64,
-                            payload_length: ((frame_size - 40 - 14 - 4) as u16).max(8),
+                            payload_length: ((result.capacity() as isize - 14 - 40 - 4) as u16).max(8),
                             next_header: 43,
                             ..Default::default()
                 };
@@ -339,23 +339,22 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                             source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             hop_limit: 64,
-                            payload_length: ((frame_size as isize - 40 - 14 - 4 - 40 - 8 - n as isize * 16).max(8)) as u16,
+                            payload_length: ((frame_size as isize - 14 - 40 - 4).max(8)) as u16,
                             next_header: 17,
                             ..Default::default()
                         }, etherparse::Ipv6Extensions::default()),
                     Some(4) | None | _ => 
                         // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
-                        etherparse::IpHeader::Version4(etherparse::Ipv4Header::new(((frame_size as isize - 20 - 14 - 4 - 40 - 8 - n as isize * 16).max(8)) as u16, 
+                        etherparse::IpHeader::Version4(etherparse::Ipv4Header::new(((frame_size as isize - 14 - 20 - 4).max(8)) as u16, 
                                                                     64, 17, [0, 0, 0, 0], [0, 0, 0, 0]),
                                                         etherparse::Ipv4Extensions::default())
                 };
 
                 ip_header.write(&mut result).unwrap();
 
-                // TODO frame sizes broken for 64 and 128 byte frames
-
-                // Subtract SRv6, Ethernet, CRC size, IPv(4/6), SRH, SIDs
-                let udp_size = if s.ip_version == Some(6) {((frame_size as isize - 40 - 14 - 4 - 40 - 8 - n as isize * 16).max(8)) as u16} else {((frame_size as isize - 20 - 14 - 4 - 40 - 8 - n as isize * 16).max(8)) as u16};
+                // Subtract Ethernet, CRC size, IPv(4/6), FCS
+                let udp_size = if s.ip_version == Some(6) {((frame_size as isize - 14 - 40 - 4).max(8)) as u16} else {((frame_size as isize - 14 - 20 - 4).max(8)) as u16};
+                info!("UDP size: {:?}, frame size: {:?}", udp_size, frame_size);
                 let mut udp_header = etherparse::UdpHeader {
                     source_port: P4TG_SOURCE_PORT,
                     destination_port: P4TG_DST_PORT,
@@ -364,7 +363,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 };
 
                 // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = (result.capacity() as isize - result.len() as isize - 8 - payload.len() as isize - 4).max(0);
+                let remaining = (udp_size - 8 - 11).max(0);
+                info!("Result.capacity: {:?}, Result.len: {:?}, payload.len: {:?}", result.capacity(), result.len(), payload.len());
                 let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
 
                 payload.extend_from_slice(&padding);
