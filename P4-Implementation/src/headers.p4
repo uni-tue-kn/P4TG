@@ -43,6 +43,7 @@ const ether_type_t ETHERTYPE_ARP = 0x0806;
 const bit<8> IP_PROTOCOL_UDP = 17;
 const bit<8> IP_PROTOCOL_IPV4 = 4;
 const bit<8> IP_PROTOCOL_IPV6 = 41;
+const bit<8> IP_PROTOCOL_SRH = 43;
 const bit<8> IP_PROTOCOL_P4TG = 110;
 const bit<16> UDP_VxLAN_PORT = 4789;
 const bit<16> UDP_P4TG_PORT = 50083;

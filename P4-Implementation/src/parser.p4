@@ -88,6 +88,8 @@ parser SwitchIngressParser(
         }
     }
 
+    // TODO SRv6 without IPv6 underneath
+
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
@@ -110,8 +112,8 @@ parser SwitchIngressParser(
     state check_for_srv6 {
         ipv6_lookahead_next_header_t ipv6_lookahead = pkt.lookahead<ipv6_lookahead_next_header_t>();
         transition select(ipv6_lookahead.nextHdr) {
-            IP_PROTOCOL_IPV6: parse_srh;
-            default: parse_path_v6;
+            IP_PROTOCOL_SRH: parse_srh;
+            IP_PROTOCOL_UDP: parse_path_v6;
         }
     }
 
@@ -340,8 +342,8 @@ parser SwitchEgressParser(
     state check_for_srv6 {
         ipv6_lookahead_next_header_t ipv6_lookahead = pkt.lookahead<ipv6_lookahead_next_header_t>();
         transition select(ipv6_lookahead.nextHdr) {
-            IP_PROTOCOL_IPV6: parse_srh;
-            default: parse_path_v6;
+            IP_PROTOCOL_SRH: parse_srh;
+            IP_PROTOCOL_UDP: parse_path_v6;
         }
     }
 
@@ -359,6 +361,7 @@ parser SwitchEgressParser(
     state parse_1_sid{
         pkt.extract(hdr.sid1);
         transition select (hdr.srh.next_header){
+            // TODO Protocol UDP here
             IP_PROTOCOL_IPV4: parse_path;
             IP_PROTOCOL_IPV6: parse_path_v6;
         }
