@@ -53,7 +53,8 @@ lazy_static! {
                 generation_accuracy: Some(100f32),
                 n_pipes: Some(2),
                 number_of_lse: None,
-                number_of_srv6_sids: None
+                number_of_srv6_sids: None,
+                srv6_ip_tunneling: None,
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
@@ -106,7 +107,8 @@ lazy_static! {
                 generation_accuracy: Some(99.908676f32),
                 n_pipes: Some(2),
                 number_of_lse: None,
-                number_of_srv6_sids: None
+                number_of_srv6_sids: None,
+                srv6_ip_tunneling: None,
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
@@ -127,7 +129,8 @@ lazy_static! {
         n_pipes: Some(2),
         vxlan: true,
         ip_version: Some(4),
-        number_of_srv6_sids: None
+        number_of_srv6_sids: None,
+        srv6_ip_tunneling: None
     }];
 
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
@@ -177,7 +180,8 @@ lazy_static! {
                 timeout: None,
                 number_of_lse: None,
                 ip_version: Some(4),
-                number_of_srv6_sids: None
+                number_of_srv6_sids: None,
+                srv6_ip_tunneling: None,
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
@@ -229,7 +233,8 @@ lazy_static! {
                 timeout: None,
                 number_of_lse: None,
                 ip_version: Some(4),
-                number_of_srv6_sids: None
+                number_of_srv6_sids: None,
+                srv6_ip_tunneling: None,
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
@@ -249,7 +254,8 @@ lazy_static! {
         n_pipes: Some(2),
         vxlan: false,
         ip_version: Some(4),
-        number_of_srv6_sids: None
+        number_of_srv6_sids: None,
+        srv6_ip_tunneling: None,
     }];
 
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
@@ -294,7 +300,8 @@ lazy_static! {
                 generation_accuracy: None,
                 n_pipes: None,
                 ip_version: Some(4),
-                number_of_srv6_sids: None
+                number_of_srv6_sids: None,
+                srv6_ip_tunneling: None,
             }
         ],
     };
@@ -313,7 +320,8 @@ lazy_static! {
         n_pipes: Some(2),
         vxlan: false,
         ip_version: Some(6),
-        number_of_srv6_sids: None
+        number_of_srv6_sids: None,
+        srv6_ip_tunneling: None,
     }];
 
     pub static ref EXAMPLE_POST_4_REQUEST: TrafficGenData = TrafficGenData {
@@ -356,11 +364,85 @@ lazy_static! {
                 timeout: None,
                 number_of_lse: None,
                 ip_version: Some(6),
-                number_of_srv6_sids: None
+                number_of_srv6_sids: None,
+                srv6_ip_tunneling: None,
             }
         ],
         port_tx_rx_mapping: HashMap::from([(128, 136)])
     };
+
+    pub static ref EXAMPLE_POST_5_RESPONSE: Vec<Stream> = vec![Stream {
+        stream_id: 1,
+        app_id: 1,
+        frame_size: 1024,
+        encapsulation: Encapsulation::SRv6,
+        number_of_lse: None,
+        traffic_rate: 100f32,
+        burst: 100,
+        n_packets: Some(1),
+        timeout: Some(360),
+        generation_accuracy: Some(99.91111f32),
+        n_pipes: Some(4),
+        vxlan: false,
+        ip_version: Some(6),
+        number_of_srv6_sids: Some(2),
+        srv6_ip_tunneling: Some(true),
+    }];
+
+    pub static ref EXAMPLE_POST_5_REQUEST: TrafficGenData = TrafficGenData {
+        mode: GenerationMode::Cbr,
+        stream_settings: vec![StreamSetting {
+                port: 128,
+                stream_id: 1,
+                ethernet: Ethernet {
+                    eth_src: "32:D5:42:2A:F6:92".to_string(),
+                    eth_dst: "81:E7:9D:E3:AD:47".to_string()
+                },
+                ip: None,
+                ipv6: Some(IPv6 {
+                    ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_traffic_class: 5,
+                    ipv6_src_mask: Ipv6Addr::from_str("::").unwrap(),
+                    ipv6_dst_mask: Ipv6Addr::from_str("::ff:ffff:ffff").unwrap(),
+                    ipv6_flow_label: 3
+                }),
+                active: true,
+                vxlan: None,
+                mpls_stack: None,
+                srv6_base_header: Some(IPv6 {
+                    ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_traffic_class: 5,
+                    ipv6_src_mask: Ipv6Addr::from_str("::").unwrap(),
+                    ipv6_dst_mask: Ipv6Addr::from_str("::ff:ffff:ffff").unwrap(),
+                    ipv6_flow_label: 3
+                }),
+                sid_list: Some(vec![Ipv6Addr::from_str("ff80::").unwrap(), Ipv6Addr::from_str("abc::").unwrap()]),
+                vlan: None
+            }
+        ],
+        streams: vec![Stream {
+                stream_id: 1,
+                app_id: 1,
+                frame_size: 1024,
+                encapsulation: Encapsulation::None,
+                traffic_rate: 100f32,
+                burst: 100,
+                vxlan: false,
+                generation_accuracy: None,
+                n_packets: None,
+                n_pipes: None,
+                timeout: None,
+                number_of_lse: None,
+                ip_version: Some(6),
+                number_of_srv6_sids: Some(2),
+                srv6_ip_tunneling: Some(true),
+            }
+        ],
+        port_tx_rx_mapping: HashMap::from([(128, 136)])
+    };
+
 
 }
 
