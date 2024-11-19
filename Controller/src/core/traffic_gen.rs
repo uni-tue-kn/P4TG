@@ -666,91 +666,77 @@ impl TrafficGen {
                 let src_mac = MacAddr::from_str(&setting.ethernet.eth_src).map_err(|_| P4TGError::Error { message: String::from("Source mac in stream settings not valid.")})?;
                 let dst_mac = MacAddr::from_str(&setting.ethernet.eth_dst).map_err(|_| P4TGError::Error { message: String::from("Destination mac in stream settings not valid.")})?;
 
+                // Already verified in validator. Default to IPv4.
+                let ip_version = s.ip_version.unwrap_or(4);
+
                 let req = if s.vxlan { // we need to rewrite two Ethernet & IP headers
                     // validation method in API makes sure that setting.vxlan exists if s.vxlan is set
                     let vxlan = setting.vxlan.as_ref().unwrap();
                     let outer_src_mac = MacAddr::from_str(&vxlan.eth_src).map_err(|_| P4TGError::Error { message: String::from("VxLAN source mac in stream settings not valid.")})?;
                     let outer_dst_mac = MacAddr::from_str(&vxlan.eth_dst).map_err(|_| P4TGError::Error { message: String::from("VxLAN destination mac in stream settings not valid.")})?;
 
-                    match s.ip_version {
-                        Some(6) => {
-                            Err(P4TGError::Error { message: String::from("VxLAN with IPv6 is not supported!")})
-                        },
-                        Some(4) | None => {
-                            match &setting.ip {
-                                Some(ipv4) => 
-                                    Ok(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
-                                    .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                                    .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                                    .action("egress.header_replace.rewrite_vxlan")
-                                    .action_data("inner_src_mac", src_mac.as_bytes().to_vec())
-                                    .action_data("inner_dst_mac", dst_mac.as_bytes().to_vec())
-                                    .action_data("s_mask", ipv4.ip_src_mask)
-                                    .action_data("d_mask", ipv4.ip_dst_mask)
-                                    .action_data("inner_s_ip", ipv4.ip_src)
-                                    .action_data("inner_d_ip", ipv4.ip_dst)
-                                    .action_data("inner_tos", ipv4.ip_tos)
-                                    .action_data("outer_src_mac", outer_src_mac.as_bytes().to_vec())
-                                    .action_data("outer_dst_mac", outer_dst_mac.as_bytes().to_vec())
-                                    .action_data("outer_s_ip", vxlan.ip_src)
-                                    .action_data("outer_d_ip", vxlan.ip_dst)
-                                    .action_data("outer_tos", vxlan.ip_tos)
-                                    .action_data("udp_source", vxlan.udp_source)
-                                    .action_data("vni", vxlan.vni)),
-                                None => 
-                                    Err(P4TGError::Error { message: String::from("Missing IPv4 settings!")})
-                            }
-                        },
-                        _ => Err(P4TGError::Error { message: String::from("Unsupported IP version!")})
-                    }
+                    // validation method in API makes sure that setting.ip exists if s.ip_version is set to 4
+                    let ipv4_settings = setting.ip.clone().unwrap();
+
+                    Some(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action("egress.header_replace.rewrite_vxlan")
+                        .action_data("inner_src_mac", src_mac.as_bytes().to_vec())
+                        .action_data("inner_dst_mac", dst_mac.as_bytes().to_vec())
+                        .action_data("s_mask", ipv4_settings.ip_src_mask)
+                        .action_data("d_mask", ipv4_settings.ip_dst_mask)
+                        .action_data("inner_s_ip", ipv4_settings.ip_src)
+                        .action_data("inner_d_ip", ipv4_settings.ip_dst)
+                        .action_data("inner_tos", ipv4_settings.ip_tos)
+                        .action_data("outer_src_mac", outer_src_mac.as_bytes().to_vec())
+                        .action_data("outer_dst_mac", outer_dst_mac.as_bytes().to_vec())
+                        .action_data("outer_s_ip", vxlan.ip_src)
+                        .action_data("outer_d_ip", vxlan.ip_dst)
+                        .action_data("outer_tos", vxlan.ip_tos)
+                        .action_data("udp_source", vxlan.udp_source)
+                        .action_data("vni", vxlan.vni))
                 }
                 else {
-                    match s.ip_version {
-                        Some(6) => {
-                            match &setting.ipv6 {
-                                Some(ipv6) => 
-                                    Ok(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
-                                    .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                                    .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                                    .action("egress.header_replace.rewrite_ipv6")
-                                    .action_data("src_mac", src_mac.as_bytes().to_vec())
-                                    .action_data("dst_mac", dst_mac.as_bytes().to_vec())
-                                    .action_data("s_mask", ipv6.ipv6_src_mask)
-                                    .action_data("d_mask", ipv6.ipv6_dst_mask)
-                                    .action_data("s_ip", ipv6.ipv6_src)
-                                    .action_data("d_ip", ipv6.ipv6_dst)
-                                    .action_data("traffic_class", ipv6.ipv6_traffic_class)
-                                    .action_data("flow_label", ipv6.ipv6_flow_label)),
-                                None =>
-                                    Err(P4TGError::Error { message: String::from("Missing IPv6 settings!")})
-                            }
-                        },
-                        Some(4) | None => {
-                            match &setting.ip {
-                                Some(ipv4) => 
-                                    Ok(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
-                                    .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                                    .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                                    .action("egress.header_replace.rewrite")
-                                    .action_data("src_mac", src_mac.as_bytes().to_vec())
-                                    .action_data("dst_mac", dst_mac.as_bytes().to_vec())
-                                    .action_data("s_mask", ipv4.ip_src_mask)
-                                    .action_data("d_mask", ipv4.ip_dst_mask)
-                                    .action_data("s_ip", ipv4.ip_src)
-                                    .action_data("d_ip", ipv4.ip_dst)
-                                    .action_data("tos", ipv4.ip_tos)),
-                                None =>
-                                    Err(P4TGError::Error { message: String::from("Missing IPv4 settings!")})                        
-                            }
-                        },
-                        _ => Err(P4TGError::Error { message: String::from("Unsupported IP version!")})
+                    // Only verify if IP Header will actually be used
+                    if (s.encapsulation == Encapsulation::SRv6 && s.srv6_ip_tunneling.unwrap_or(true)) || s.encapsulation != Encapsulation::SRv6 {
+
+                        if ip_version == 6 {
+                            let ipv6_settings = setting.ipv6.clone().unwrap();
+
+                            Some(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                                .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                                .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                                .action("egress.header_replace.rewrite_ipv6")
+                                .action_data("src_mac", src_mac.as_bytes().to_vec())
+                                .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                                .action_data("s_mask", ipv6_settings.ipv6_src_mask)
+                                .action_data("d_mask", ipv6_settings.ipv6_dst_mask)
+                                .action_data("s_ip", ipv6_settings.ipv6_src)
+                                .action_data("d_ip", ipv6_settings.ipv6_dst)
+                                .action_data("traffic_class", ipv6_settings.ipv6_traffic_class)
+                                .action_data("flow_label", ipv6_settings.ipv6_flow_label))
+                        } else {
+                            let ipv4_settings = setting.ip.clone().unwrap();
+
+                            Some(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                                .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                                .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                                .action("egress.header_replace.rewrite")
+                                .action_data("src_mac", src_mac.as_bytes().to_vec())
+                                .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                                .action_data("s_mask", ipv4_settings.ip_src_mask)
+                                .action_data("d_mask", ipv4_settings.ip_dst_mask)
+                                .action_data("s_ip", ipv4_settings.ip_src)
+                                .action_data("d_ip", ipv4_settings.ip_dst)
+                                .action_data("tos", ipv4_settings.ip_tos))
+                        }
+                    } else {
+                        None
                     }
                 };
-                // TODO somehow dont throw the error here but give it to the front end
-                match req {
-                    Ok(request) => reqs.push(request),
-                    Err(e) => return Err(e.into()),                    
-                }
+
+                req.map(|r| reqs.push(r));
 
                 if s.encapsulation == Encapsulation::QinQ {
                     // we checked in validation that vlan exists
@@ -833,7 +819,7 @@ impl TrafficGen {
             }
         }
 
-        info!("Configure table {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE);
+        info!("Configure table {}, {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE);
         switch.write_table_entries(reqs).await?;
 
         Ok(())

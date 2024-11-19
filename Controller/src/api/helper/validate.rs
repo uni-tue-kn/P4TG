@@ -55,7 +55,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
             if stream.number_of_srv6_sids.unwrap() == 0 {
                 return Err(Error::new(format!("SRv6 encapsulation selected for stream with ID #{} but #SIDs is zero.", stream.stream_id)));
-            }            
+            }
         }
 
         for setting in settings.iter() {
@@ -85,13 +85,38 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
                 // Validate if the configured number_of_srv6_sids per stream matches the SID list length
                 if stream.encapsulation == Encapsulation::SRv6 && setting.sid_list.as_ref().unwrap().len() != stream.number_of_srv6_sids.unwrap() as usize {
                     return Err(Error::new(format!("Number of SIDs in stream with ID #{} does not match length of the SID list.", setting.stream_id)));
-                }                
+                }
+
+                // Validate IP settings, but not if no inner IP header is used in SRv6
+                if (stream.encapsulation == Encapsulation::SRv6 && stream.srv6_ip_tunneling.unwrap_or(true)) || stream.encapsulation != Encapsulation::SRv6 {
+                    if stream.ip_version != Some(6) && stream.ip_version != Some(4) && !stream.ip_version.is_none() {
+                        return Err(Error::new(format!("Unsupported IP version for stream with ID #{} on port {}.", stream.stream_id, setting.port)));
+                    }
+
+                    if stream.ip_version == Some(4) && setting.ip.is_none() {
+                        return Err(Error::new(format!("Missing IPv4 settings for stream with ID #{} on port {}.", stream.stream_id, setting.port)));
+
+                    } else if stream.ip_version == Some(6) && setting.ipv6.is_none() {
+                        return Err(Error::new(format!("Missing IPv6 settings for stream with ID #{} on port {}.", stream.stream_id, setting.port)));
+                    } 
+                }
+
+
             }
 
             // Check VxLAN
             if stream.vxlan && setting.vxlan.is_none() {
                 return Err(Error::new(format!("Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.", stream.stream_id)));
             }
+
+            if stream.vxlan && stream.ip_version == Some(6) {
+                return Err(Error::new(format!("VxLAN with IPv6 is not supported! (Stream with ID #{})", stream.stream_id)));
+            }
+
+            // Check VxLAN is disabled for SRv6
+            if stream.vxlan && stream.encapsulation == Encapsulation::SRv6 {
+                return Err(Error::new(format!("Combination of VxLAN and SRv6 is not supported (Stream with ID #{})", stream.stream_id)));
+            }                     
         }
     }
 
