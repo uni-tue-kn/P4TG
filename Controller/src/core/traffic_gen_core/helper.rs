@@ -293,8 +293,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 pkt.write(&mut result).unwrap();
 
                 let ipv6_base_sr_header= etherparse::Ipv6Header {
-                            source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3],
-                            destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 5, 6],
+                            source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                            destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             hop_limit: 64,
                             payload_length: ((result.capacity() as isize - 14 - 40 - 4) as u16).max(8),
                             next_header: 43,
@@ -385,7 +385,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                         udp_header.checksum = udp_header.calc_checksum_ipv4(&v4, &payload).unwrap();
                     },
                     None => {
-
+                        udp_header.checksum = udp_header.calc_checksum_ipv6(&ipv6_base_sr_header, &payload).unwrap();
                     }                    
                 };
 

@@ -131,6 +131,7 @@ parser SwitchIngressParser(
     state parse_1_sid{
         pkt.extract(hdr.sid1);
         transition select (hdr.srh.next_header){
+            IP_PROTOCOL_UDP: parse_path_no_ip;
             IP_PROTOCOL_IPV4: parse_path;
             IP_PROTOCOL_IPV6: parse_path_v6;
         }
@@ -140,6 +141,7 @@ parser SwitchIngressParser(
         pkt.extract(hdr.sid1);
         pkt.extract(hdr.sid2);
         transition select (hdr.srh.next_header){
+            IP_PROTOCOL_UDP: parse_path_no_ip;
             IP_PROTOCOL_IPV4: parse_path;
             IP_PROTOCOL_IPV6: parse_path_v6;
         }
@@ -150,6 +152,7 @@ parser SwitchIngressParser(
         pkt.extract(hdr.sid2);
         pkt.extract(hdr.sid3);
         transition select (hdr.srh.next_header){
+            IP_PROTOCOL_UDP: parse_path_no_ip;
             IP_PROTOCOL_IPV4: parse_path;
             IP_PROTOCOL_IPV6: parse_path_v6;
         }
@@ -244,6 +247,11 @@ parser SwitchIngressParser(
         pkt.extract(hdr.path);
         transition accept;
     }
+
+    state parse_path_no_ip {
+        pkt.extract(hdr.path);
+        transition accept;
+    }        
 
     state parse_mpls {
         pkt.extract(hdr.mpls_stack.next);
@@ -361,7 +369,7 @@ parser SwitchEgressParser(
     state parse_1_sid{
         pkt.extract(hdr.sid1);
         transition select (hdr.srh.next_header){
-            // TODO Protocol UDP here
+            IP_PROTOCOL_UDP: parse_path_no_ip;
             IP_PROTOCOL_IPV4: parse_path;
             IP_PROTOCOL_IPV6: parse_path_v6;
         }
@@ -371,6 +379,7 @@ parser SwitchEgressParser(
         pkt.extract(hdr.sid1);
         pkt.extract(hdr.sid2);
         transition select (hdr.srh.next_header){
+            IP_PROTOCOL_UDP: parse_path_no_ip;
             IP_PROTOCOL_IPV4: parse_path;
             IP_PROTOCOL_IPV6: parse_path_v6;
         }
@@ -381,6 +390,7 @@ parser SwitchEgressParser(
         pkt.extract(hdr.sid2);
         pkt.extract(hdr.sid3);
         transition select (hdr.srh.next_header){
+            IP_PROTOCOL_UDP: parse_path_no_ip;
             IP_PROTOCOL_IPV4: parse_path;
             IP_PROTOCOL_IPV6: parse_path_v6;
         }
@@ -499,7 +509,24 @@ parser SwitchEgressParser(
         udp_checksum.subtract_all_and_deposit(eg_md.checksum_udp_tmp);
 
         transition accept;
-    }    
+    }  
+
+    state parse_path_no_ip {
+        pkt.extract(hdr.path);
+
+        // TODO
+        // subtract old checksum components
+        //udp_checksum.subtract({hdr.srv6_ip.src_addr});
+        //udp_checksum.subtract({hdr.srv6_ip.dst_addr}); 
+
+        // subtract old checksum components
+        udp_checksum.subtract({hdr.path.checksum});
+        udp_checksum.subtract({hdr.path.tx_tstmp});
+        udp_checksum.subtract({hdr.path.seq});
+        udp_checksum.subtract_all_and_deposit(eg_md.checksum_udp_tmp);
+
+        transition accept;
+    }          
 }
 
 // ---------------------------------------------------------------------------
@@ -547,6 +574,8 @@ control SwitchEgressDeparser(
         hdr.path.checksum = udp_checksum.update(data = {
                 eg_md.ipv4_src,
                 eg_md.ipv4_dst,
+                eg_md.ipv6_src,
+                eg_md.ipv6_dst,
                 hdr.path.tx_tstmp,
                 hdr.path.seq,
                 eg_md.checksum_udp_tmp

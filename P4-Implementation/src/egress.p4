@@ -179,8 +179,14 @@ control egress(
         else if(hdr.ipv4.isValid()) { // we dont have VxLAN, just "regular" IP traffic
             eg_md.ipv4_src = hdr.ipv4.src_addr;
             eg_md.ipv4_dst = hdr.ipv4.dst_addr;
+        } else if (hdr.ipv6.isValid()){
+            eg_md.ipv6_src = hdr.ipv6.src_addr;
+            eg_md.ipv6_dst = hdr.ipv6.dst_addr;
+        } else if (hdr.sr_ipv6.isValid()){
+            // TODO SRv6 checksum without tunneling
+            eg_md.ipv6_src = hdr.sr_ipv6.src_addr;
+            eg_md.ipv6_dst = hdr.sr_ipv6.dst_addr;            
         }
-        // TODO UDP checksum with IPv6 / SRv6
 
     }
 }

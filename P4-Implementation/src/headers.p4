@@ -244,6 +244,8 @@ struct egress_metadata_t {
     bit<16> checksum_udp_tmp;
     ipv4_addr_t ipv4_src;
     ipv4_addr_t ipv4_dst;
+    ipv6_addr_t ipv6_src;
+    ipv6_addr_t ipv6_dst;    
     bit<4> ip_version;
 }
 
