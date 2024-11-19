@@ -51,7 +51,7 @@ const StreamElement = ({
     p4tg_infos: P4TGInfos
 }) => {
     const [show_mpls_dropdown, set_show] = useState(data.encapsulation == Encapsulation.MPLS)
-    const [show_sid_dropdown, set_show_sids] = useState(data.encapsulation == Encapsulation.SRv6)
+    const [show_sid_config, set_show_sid_config] = useState(data.encapsulation == Encapsulation.SRv6)
     const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
     const [number_of_srv6_sids, set_number_of_srv6_sids] = useState(data.number_of_srv6_sids)
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
@@ -83,13 +83,19 @@ const StreamElement = ({
         data.encapsulation = parseInt(event.target.value)
         if (data.encapsulation === Encapsulation.MPLS) {
             set_show(true);
-            set_show_sids(false);
+            set_show_sid_config(false);
         } else if (data.encapsulation === Encapsulation.SRv6){
-            set_show_sids(true);
+            set_show_sid_config(true);
             set_show(false);
+            // Disable VxLAN
+            setFormData((prevData) => ({
+                ...prevData,
+                vxlan: false,
+            }));            
+            data.vxlan = false;
         } else {
             set_show(false);
-            set_show_sids(false);
+            set_show_sid_config(false);
             data.number_of_lse = 0;
             data.number_of_srv6_sids = 0;
             set_number_of_srv6_sids(0);
@@ -136,16 +142,24 @@ const StreamElement = ({
     }
 
     const handleNumberOfLSE = (event: React.ChangeEvent<HTMLSelectElement>) => {
-        set_number_of_lse(parseInt(event.target.value))
-        data.number_of_lse = parseInt(event.target.value)
+        set_number_of_lse(parseInt(event.target.value));
+        data.number_of_lse = parseInt(event.target.value);
         update_settings()
     }
 
     const handleNumberOfSids = (event: React.ChangeEvent<HTMLSelectElement>) => {
-        set_number_of_srv6_sids(parseInt(event.target.value))
-        data.number_of_srv6_sids = parseInt(event.target.value)
-        update_settings()
+        set_number_of_srv6_sids(parseInt(event.target.value));
+        data.number_of_srv6_sids = parseInt(event.target.value);
+        update_settings();
     }    
+
+    const handleSRv6TunnelingChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData((prevData) => ({
+            ...prevData,
+            srv6_ip_tunneling: !prevData.srv6_ip_tunneling  // Toggle VxLAN
+        }))
+        data.srv6_ip_tunneling = !data.srv6_ip_tunneling;
+    }       
 
     return <tr>
         <StyledCol>{data.app_id}</StyledCol>
@@ -220,7 +234,7 @@ const StreamElement = ({
                 <td>
                     <Form.Check
                         type={"switch"}
-                        disabled={running}
+                        disabled={running || (data.encapsulation == Encapsulation.SRv6 && !data.srv6_ip_tunneling)}
                         checked={formData.ip_version === 6}
                         onChange={handleIPVersionChange}  // Toggle IP version and reset VxLAN
                         >
@@ -262,16 +276,40 @@ const StreamElement = ({
                     :
                     null
                 }
-                {show_sid_dropdown ?
-                    <Form.Select disabled={running}
-                                 onChange={handleNumberOfSids}
-                                 defaultValue={number_of_srv6_sids}
-                    >
-                        <option selected={0 == number_of_srv6_sids} value="0">#SIDs</option>
-                        {Array.from({length: 3}, (_, index) => (
-                            <option selected={index + 1 == number_of_srv6_sids} value={index + 1}>{index + 1}</option>
-                        ))}
-                    </Form.Select>
+                {show_sid_config ?
+                    <Form.Group>
+                        <Form.Select disabled={running}
+                                    onChange={handleNumberOfSids}
+                                    defaultValue={number_of_srv6_sids}
+                        >
+                            <option selected={0 == number_of_srv6_sids} value="0">#SIDs</option>
+                            {Array.from({length: 3}, (_, index) => (
+                                <option selected={index + 1 == number_of_srv6_sids} value={index + 1}>{index + 1}</option>
+                            ))}
+                        </Form.Select>
+                        <tr>
+                            <td>IP Tunneling</td>
+                            <td>
+                                <Form.Check
+                                type={"switch"}
+                                disabled={running}
+                                checked={data.srv6_ip_tunneling}
+                                onChange={handleSRv6TunnelingChange}
+                                >
+                                </Form.Check>
+                            </td>
+                            <td>
+                                <InfoBox>
+                                    <>
+                                    <h5>IP Tunneling</h5>
+
+                                    <p>Adds an inner IPv4 or IPv6 header to the packet, if enabled. If disabled, the UDP header follows directly after the SRv6 header.</p>
+
+                                    </>
+                                </InfoBox>
+                            </td>                            
+                        </tr>
+                    </Form.Group>
                     :
                     null
                 }

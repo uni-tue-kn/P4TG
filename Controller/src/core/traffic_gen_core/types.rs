@@ -276,7 +276,10 @@ pub struct Stream {
     /// Number of SIDs in SRv6 header. At maximum 4 can be used.
     #[schema(example = 2)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) number_of_srv6_sids: Option<u8>
+    /// A flag to indicate if there is another IP tunnel following the SRv6 headers
+    pub(crate) number_of_srv6_sids: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub srv6_ip_tunneling: Option<bool>,
 }
 
 #[derive(Serialize, ToSchema)]

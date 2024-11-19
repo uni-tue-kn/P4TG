@@ -155,6 +155,7 @@ export interface Stream {
     ip_version: number,
     number_of_lse: number,
     number_of_srv6_sids: number,
+    srv6_ip_tunneling: boolean,
     traffic_rate: number,
     app_id: number
     burst: number
@@ -177,6 +178,7 @@ export const DefaultStream = (id: number) => {
         encapsulation: Encapsulation.None,
         number_of_lse: 0,
         number_of_srv6_sids: 0,
+        srv6_ip_tunneling: true,
         traffic_rate: 1,
         burst: 1,
         vxlan: false,
