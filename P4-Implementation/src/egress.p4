@@ -183,9 +183,14 @@ control egress(
             eg_md.ipv6_src = hdr.ipv6.src_addr;
             eg_md.ipv6_dst = hdr.ipv6.dst_addr;
         } else if (hdr.sr_ipv6.isValid()){
-            // TODO SRv6 checksum without tunneling
+            // SRv6 checksum without IP tunneling
             eg_md.ipv6_src = hdr.sr_ipv6.src_addr;
-            eg_md.ipv6_dst = hdr.sr_ipv6.dst_addr;            
+            eg_md.ipv6_dst = hdr.sr_ipv6.dst_addr;
+            // We have to calculate the UDP checksum based on the SRv6 base header as there is no inner IP header
+            // The incremental checksum updates were handled in the path_no_ip checksum extern during parsing.
+            hdr.path_no_ip.setValid();
+            hdr.path_no_ip = hdr.path;
+            hdr.path.setInvalid();     
         }
 
     }
