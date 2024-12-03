@@ -405,26 +405,38 @@ impl TrafficGen {
     ///
     /// * `packets`: List of packets that should be generated. Index is the application id.
     pub async fn activate_traffic_gen_applications(&self, switch: &SwitchConnection, packets: &HashMap<u8, StreamPacket>) -> Result<(), RBFRTError> {
-        let mut update_requests: Vec<Request> = packets.iter()
-            .map(|(_, packet)| table::Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
-            .match_key("app_id", MatchValue::exact(packet.app_id))
-            .action("trigger_timer_periodic")
-            .action_data("app_enable", true)
-            .action_data("pkt_len", packet.bytes.len() as u32)
-            .action_data("timer_nanosec", packet.timer)
-            .action_data("packets_per_batch_cfg", packet.n_packets - 1)
-            .action_data("pipe_local_source_port", if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}) // traffic gen port
-            .action_data("pkt_buffer_offset", packet.buffer_offset.unwrap())).collect();
 
-        if self.is_tofino2 {
-            update_requests = update_requests.into_iter().map(|req|
-                req.action_data("assigned_chnl_id", TG_PIPE_PORTS_TF2[0])
-            ).collect();
+        let update_requests: Result<Vec<Request>, P4TGError> = packets.iter()
+            .map(|(_, packet)| {
+                if packet.n_packets == 0 {
+                    // The ILP did not find a solution for the configured parameters
+                    Err(P4TGError::Error { message: format!("The ILP did not find a valid solution for packet generation of app ID {:}. Try a different rate.", packet.app_id) })
+                } else {
+                    Ok(table::Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
+                    .match_key("app_id", MatchValue::exact(packet.app_id))
+                    .action("trigger_timer_periodic")
+                    .action_data("app_enable", true)
+                    .action_data("pkt_len", packet.bytes.len() as u32)
+                    .action_data("timer_nanosec", packet.timer)
+                    .action_data("packets_per_batch_cfg", packet.n_packets - 1)
+                    .action_data("pipe_local_source_port", if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}) // traffic gen port
+                    .action_data("pkt_buffer_offset", packet.buffer_offset.unwrap()))
+            }
+        }).collect();
+
+        match update_requests {
+            Ok(mut reqs) => {
+                if self.is_tofino2 {
+                    reqs = reqs.into_iter().map(|req|
+                        req.action_data("assigned_chnl_id", TG_PIPE_PORTS_TF2[0])
+                    ).collect();
+                }
+        
+                switch.update_table_entries(reqs).await?;
+                Ok(())
+            }, 
+            Err(e) => Err(e.into())
         }
-
-        switch.update_table_entries(update_requests).await?;
-
-        Ok(())
     }
 
     /// This method is called by the REST API and completes the whole setup for the traffic generation.

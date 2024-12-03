@@ -111,8 +111,6 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 let size = builder.size(payload.len());
                 let encap_overhead = 0;
 
-                info!("Size of generated frame: {:?}", size);
-
                 // calculate how many remaining bytes need to be generated
                 // crc will be added by phy, therefore subtract 4 byte
                 // With IPv6, packets are too large and we need to fix an underflow with signed ints
