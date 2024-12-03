@@ -61,8 +61,7 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError:
             if (!("response" in error) || ("code" in error && error.code === "ERR_NETWORK")) {
                 onOffline()
             }
-
-            if(error.response.status === 400) {
+            else if(error.response.status === 400) {
                 console.log(error.response)
                 onError(error.response.data.message)
             }
