@@ -505,7 +505,7 @@ impl TrafficGen {
             }
 
             // call solver
-            let (n_packets, timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate, s.burst);
+            let (n_packets, timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / timeout_factor as f32, s.burst);
             let rate = ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
             let rate_accuracy = 100f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
 
@@ -513,7 +513,7 @@ impl TrafficGen {
 
             // add calculated values to the stream
             s.n_packets = Some(n_packets);
-            s.timeout = Some(timeout * timeout_factor);
+            s.timeout = Some(timeout);
             s.generation_accuracy = Some(rate_accuracy);
             s.n_pipes = Some(timeout_factor as u8);
 
@@ -527,9 +527,9 @@ impl TrafficGen {
             let stream = active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?;
             let encap_overhead = 20 + calculate_overhead(stream);
 
-            let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, if self.is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE}, 25);
+            let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, if self.is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE} / timeout_factor as f32, 25);
             active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.n_packets = Some(n_packets);
-            active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.timeout = Some(timeout * timeout_factor);
+            active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.timeout = Some(timeout);
         }
 
         // calculate the required multicast ports for a stream
