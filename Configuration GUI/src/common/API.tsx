@@ -73,7 +73,7 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError:
                 onError(error.response.data)
             }
             else if(error.response.status === 500) {
-                if ("data" in error.response && "message" in error.repsonse.data) {
+                if ("data" in error.response && "message" in error.response.data) {
                     onError("Internal Server Error: " + error.response.data.message)
                 } else {
                     onError("Internal Server Error.")
