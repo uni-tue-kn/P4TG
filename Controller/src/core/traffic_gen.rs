@@ -479,7 +479,17 @@ impl TrafficGen {
         self.configure_default_forwarding_path(switch, &state.port_mapping).await?;
 
         // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on multiple pipes
-        let total_rate: f32 = streams.iter().map(|x| x.traffic_rate).sum();
+        let total_rate: f32 = streams.iter().map(|x| {
+            // TODO only a quick fix, make that more "rusty"
+               if mode == GenerationMode::Mpps {
+                (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
+               } else {
+                x.traffic_rate as f32
+               }
+        }).sum();
+
+        info!("Total Rate {total_rate}");
+
         let timeout_factor: u32 = if total_rate >= TWO_PIPE_GENERATION_THRESHOLD {
             if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()}.len() as u32
         } else { 1 };
