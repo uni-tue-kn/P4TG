@@ -19,7 +19,9 @@
  */
  
 #include "./mpls_actions.p4"
-#include "./srv6_replace.p4"
+#if __TARGET_TOFINO__ == 2
+    #include "./srv6_replace.p4"
+#endif
 
 /*
 Replaces IP src / dst addresses based on random 32 bit number
@@ -38,7 +40,9 @@ control Header_Replace(
     Random<bit<16>>() dst_rand_v6_2;
 
     MPLS_Rewrite() mpls_rewrite_c;
-    SRv6_Replace() srv6_replace_c;
+    #if __TARGET_TOFINO__ == 2
+        SRv6_Replace() srv6_replace_c;
+    #endif
 
     bit<32> src_mask = 0;
     bit<32> dst_mask = 0;
@@ -154,6 +158,7 @@ control Header_Replace(
                     hdr.inner_ipv4.src_addr = hdr.inner_ipv4.src_addr | s_tmp;
                     hdr.inner_ipv4.dst_addr = hdr.inner_ipv4.dst_addr | d_tmp;
                 } else {
+                    // least-significant 48 bits can be randomized for IPv6
                     bit<32> s_tmp_v6_first = src_rand_v6_1.get() & src_mask_v6[31:0];
                     hdr.ipv6.src_addr[31:0] = hdr.ipv6.src_addr[31:0] | s_tmp_v6_first;
                     bit<16> s_tmp_v6_second = src_rand_v6_2.get() & src_mask_v6[47:32];
