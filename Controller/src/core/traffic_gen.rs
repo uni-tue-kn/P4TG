@@ -841,7 +841,12 @@ impl TrafficGen {
             }
         }
 
-        info!("Configure table {}, {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE);
+        if self.is_tofino2 {
+            info!("Configure table {}, {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE);
+        } else {
+            info!("Configure table {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE);
+        }
+        
         switch.write_table_entries(reqs).await?;
 
         Ok(())
@@ -901,7 +906,11 @@ impl TrafficGen {
 
     /// Clears various tables that are refilled during traffic gen setup
     async fn reset_tables(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        if self.is_tofino2 {
+            switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        } else {
+            switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        }
 
         Ok(())
     }

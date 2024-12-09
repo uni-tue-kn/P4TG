@@ -72,7 +72,7 @@ pub struct Value {
 )]
 /// Returns the content of the P4 tables
 pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
-    let table_names = ["ingress.p4tg.monitor_forward",
+    let mut table_names = vec!["ingress.p4tg.monitor_forward",
         "ingress.p4tg.forward",
         "ingress.p4tg.frame_type.frame_type_monitor",
         "ingress.p4tg.frame_type.ethernet_type_monitor",
@@ -84,8 +84,11 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
         "egress.header_replace.header_replace",
         "egress.header_replace.vlan_header_replace",
         "egress.header_replace.mpls_rewrite_c.mpls_header_replace",
-        "egress.header_replace.srv6_replace_c.srv6_replace",
     "egress.is_egress"];
+
+    if state.tofino2 {
+        table_names.push("egress.header_replace.srv6_replace_c.srv6_replace");
+    }
 
     // read all table entries
     let all_entries = {
