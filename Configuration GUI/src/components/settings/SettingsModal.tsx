@@ -20,7 +20,7 @@
 
 import { Encapsulation, Stream, StreamSettings} from "../../common/Interfaces";
 import React, { useState } from "react";
-import { Accordion, Button, Modal } from "react-bootstrap";
+import { Accordion, Button, Modal, Alert} from "react-bootstrap";
 
 import { VLAN, Ethernet, IPv4, QinQ, VxLAN, MPLS, IPv6, SRv6 } from "./protocols";
 import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList} from "../../common/Validators";
@@ -71,6 +71,7 @@ const SettingsModal = ({
 }) => {
 
     const [tmp_data, set_tmp_data] = useState(data)
+    const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
     const update_data = (object: any) => {
         set_tmp_data(tmp_data => ({
@@ -81,74 +82,75 @@ const SettingsModal = ({
 
     const submit = () => {
         if (!validateMAC(tmp_data.vxlan.eth_src)) {
-            alert("VxLAN Ethernet source not a valid MAC.")
+            setAlertMessage("VxLAN Ethernet source not a valid MAC.")
             return
         }
         else if (!validateMAC(tmp_data.vxlan.eth_dst)) {
-            alert("VxLAN Ethernet destination not a valid MAC.")
+            setAlertMessage("VxLAN Ethernet destination not a valid MAC.")
             return
         }
         else if (!validateIP(tmp_data.vxlan.ip_src)) {
-            alert("VxLAN source IP not valid.")
+            setAlertMessage("VxLAN source IP not valid.")
             return
         }
         else if (!validateIP(tmp_data.vxlan.ip_dst)) {
-            alert("VxLAN destination IP not valid.")
+            setAlertMessage("VxLAN destination IP not valid.")
             return
         }
         else if (!validateToS(tmp_data.vxlan.ip_tos)) {
-            alert("VxLAN IP ToS not valid.")
+            setAlertMessage("VxLAN IP ToS not valid.")
             return
         }
         else if (!validateUdpPort(tmp_data.vxlan.udp_source)) {
-            alert("VxLAN UDP source port not valid.")
+            setAlertMessage("VxLAN UDP source port not valid.")
             return
         }
         else if (!validateVNI(tmp_data.vxlan.vni)) {
-            alert("VxLAN VNI not valid.")
+            setAlertMessage("VxLAN VNI not valid.")
             return
         }
         else if (!validateMAC(tmp_data.ethernet.eth_src)) {
-            alert("Ethernet source not a valid MAC.")
+            setAlertMessage("Ethernet source not a valid MAC.")
             return
         } else if (!validateMAC(tmp_data.ethernet.eth_dst)) {
-            alert("Ethernet destination not a valid MAC.")
+            setAlertMessage("Ethernet destination not a valid MAC.")
             return
-        } else if (stream.ip_version == 4 && !validateIP(data.ip.ip_src)) {
-            alert("Source IP not valid.")
+        } else if (stream.ip_version == 4 && !validateIP(tmp_data.ip.ip_src)) {
+            setAlertMessage("Source IP not valid.")
             return
-        } else if (stream.ip_version == 4 && !validateIP(data.ip.ip_dst)) {
-            alert("Destination IP not valid.")
+        } else if (stream.ip_version == 4 && !validateIP(tmp_data.ip.ip_dst)) {
+            setAlertMessage("Destination IP not valid.")
             return       
-        } else if (stream.ip_version == 4 && !validateToS(data.ip.ip_tos)) {
-            alert("IP ToS not valid.")
+        } else if (stream.ip_version == 4 && !validateToS(tmp_data.ip.ip_tos)) {
+            setAlertMessage("IP ToS not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateIPv6(data.ipv6.ipv6_src)) {
-            alert("Source IP not valid.")
+        } else if (stream.ip_version == 6 && !validateIPv6(tmp_data.ipv6.ipv6_src)) {
+            setAlertMessage("Source IP not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateIPv6(data.ipv6.ipv6_dst)) {
-            alert("Destination IP not valid.")
+        } else if (stream.ip_version == 6 && !validateIPv6(tmp_data.ipv6.ipv6_dst)) {
+            setAlertMessage("Destination IP not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateTrafficClass(data.ipv6.ipv6_traffic_class)) {
-            alert("IP traffic class not valid.")
+        } else if (stream.ip_version == 6 && !validateTrafficClass(tmp_data.ipv6.ipv6_traffic_class)) {
+            setAlertMessage("IP traffic class not valid.")
             return          
-        } else if (stream.ip_version == 6 && !validateFlowLabel(data.ipv6.ipv6_flow_label)) {
-            alert("IP flow label not valid.")
+        } else if (stream.ip_version == 6 && !validateFlowLabel(tmp_data.ipv6.ipv6_flow_label)) {
+            setAlertMessage("IP flow label not valid.")
             return                
         } else if (!validateMPLS(tmp_data.mpls_stack)) {
-            alert("MPLS stack is not valid.")
+            setAlertMessage("MPLS stack is not valid.")
             return
         } else if (!validateSIDList(tmp_data.sid_list)){
-            alert("SID list is not valid.")
+            setAlertMessage("SID list is not valid.")
             return            
-        } else if (!validateIPv6(data.srv6_base_header.ipv6_src)) {
-            alert("SRv6 Source IP not valid.")
+        } else if (!validateIPv6(tmp_data.srv6_base_header.ipv6_src)) {
+            setAlertMessage("SRv6 Source IP not valid.")
             return
-        } else if (!validateIPv6(data.srv6_base_header.ipv6_dst)) {
-            alert("SRv6 destination IP not valid.")
-            return
+        } else if (!validateIPv6(tmp_data.srv6_base_header.ipv6_dst)) {
+            setAlertMessage("SRv6 destination IP not valid.")
         }
         // TODO mask validation
+
+        setAlertMessage(null);
 
         data.vxlan = tmp_data.vxlan
         data.ethernet = tmp_data.ethernet
@@ -165,6 +167,7 @@ const SettingsModal = ({
 
     const hideRestore = () => {
         set_tmp_data(data)
+        setAlertMessage(null);
         hide()
     }
 
@@ -174,6 +177,15 @@ const SettingsModal = ({
         </Modal.Header>
         <form onSubmit={submit}>
             <Modal.Body>
+                {alertMessage && (
+                            <Alert
+                                variant="danger"
+                                onClose={() => setAlertMessage(null)}
+                                dismissible
+                            >
+                                {alertMessage}
+                            </Alert>
+                        )}
                 <Accordion defaultActiveKey={['0']} alwaysOpen>
                     {stream.vxlan ?
                         <> <Accordion.Item eventKey="5">
@@ -243,22 +255,25 @@ const SettingsModal = ({
                         null
                     }                    
 
-                    {stream.ip_version == 6 ?
-                        <>
+                    {stream.encapsulation != Encapsulation.SRv6 || (stream.encapsulation == Encapsulation.SRv6 && stream.srv6_ip_tunneling) ?
+                        stream.ip_version == 6 ? 
+                            <>
+                                <Accordion.Item eventKey="1">
+                                    <Accordion.Header>IPv6</Accordion.Header>
+                                    <Accordion.Body>
+                                        <IPv6 data={tmp_data} set_data={update_data} running={running} />
+                                    </Accordion.Body>
+                                </Accordion.Item>
+                            </>
+                            :
                             <Accordion.Item eventKey="1">
-                                <Accordion.Header>IPv6</Accordion.Header>
+                                <Accordion.Header>IPv4</Accordion.Header>
                                 <Accordion.Body>
-                                    <IPv6 data={tmp_data} set_data={update_data} running={running} />
+                                    <IPv4 data={tmp_data} set_data={update_data} running={running} />
                                 </Accordion.Body>
                             </Accordion.Item>
-                        </>
                         :
-                        <Accordion.Item eventKey="1">
-                            <Accordion.Header>IPv4</Accordion.Header>
-                            <Accordion.Body>
-                                <IPv4 data={tmp_data} set_data={update_data} running={running} />
-                            </Accordion.Body>
-                        </Accordion.Item>
+                        null
                     }
                 </Accordion>
             </Modal.Body>
