@@ -255,22 +255,25 @@ const SettingsModal = ({
                         null
                     }                    
 
-                    {stream.ip_version == 6 ?
-                        <>
+                    {stream.encapsulation != Encapsulation.SRv6 || (stream.encapsulation == Encapsulation.SRv6 && stream.srv6_ip_tunneling) ?
+                        stream.ip_version == 6 ? 
+                            <>
+                                <Accordion.Item eventKey="1">
+                                    <Accordion.Header>IPv6</Accordion.Header>
+                                    <Accordion.Body>
+                                        <IPv6 data={tmp_data} set_data={update_data} running={running} />
+                                    </Accordion.Body>
+                                </Accordion.Item>
+                            </>
+                            :
                             <Accordion.Item eventKey="1">
-                                <Accordion.Header>IPv6</Accordion.Header>
+                                <Accordion.Header>IPv4</Accordion.Header>
                                 <Accordion.Body>
-                                    <IPv6 data={tmp_data} set_data={update_data} running={running} />
+                                    <IPv4 data={tmp_data} set_data={update_data} running={running} />
                                 </Accordion.Body>
                             </Accordion.Item>
-                        </>
                         :
-                        <Accordion.Item eventKey="1">
-                            <Accordion.Header>IPv4</Accordion.Header>
-                            <Accordion.Body>
-                                <IPv4 data={tmp_data} set_data={update_data} running={running} />
-                            </Accordion.Body>
-                        </Accordion.Item>
+                        null
                     }
                 </Accordion>
             </Modal.Body>
