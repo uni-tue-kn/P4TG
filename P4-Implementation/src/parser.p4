@@ -367,11 +367,13 @@ parser SwitchEgressParser(
         pkt.extract(hdr.sr_ipv6);
         pkt.extract(hdr.srh);
 
+        #if __TARGET_TOFINO__ == 2
         // Subtract the SRv6 base IPv6 addresses for the SRv6 without IP tunneling case to separate checksum instances
         udp_checksum_no_ip_transit_node.subtract({hdr.sr_ipv6.src_addr});
         // Destination node, subtract SRv6 DA
         udp_checksum_no_ip_destination_node.subtract({hdr.sr_ipv6.src_addr});
         udp_checksum_no_ip_destination_node.subtract({hdr.sr_ipv6.dst_addr}); 
+        #endif
 
         transition select(hdr.srh.last_entry){
             0: parse_1_sid;
@@ -394,7 +396,9 @@ parser SwitchEgressParser(
         pkt.extract(hdr.sid1);
         pkt.extract(hdr.sid2);
         // For transit nodes, subtract the last SID
+        #if __TARGET_TOFINO__ == 2
         udp_checksum_no_ip_transit_node.subtract({hdr.sid1.sid});
+        #endif
         transition select (hdr.srh.next_header){
             IP_PROTOCOL_UDP: check_sr_transit_or_destination_node;
             IP_PROTOCOL_IPV4: parse_path;
@@ -407,7 +411,9 @@ parser SwitchEgressParser(
         pkt.extract(hdr.sid2);
         pkt.extract(hdr.sid3);
         // For transit nodes, subtract the last SID
+        #if __TARGET_TOFINO__ == 2
         udp_checksum_no_ip_transit_node.subtract({hdr.sid1.sid});
+        #endif
         transition select (hdr.srh.next_header){
             IP_PROTOCOL_UDP: check_sr_transit_or_destination_node;
             IP_PROTOCOL_IPV4: parse_path;
@@ -540,24 +546,26 @@ parser SwitchEgressParser(
 
     state parse_path_no_ip_transit_node_checksum {
         pkt.extract(hdr.path);
-
+        #if __TARGET_TOFINO__ == 2
         // subtract old checksum components
         udp_checksum_no_ip_transit_node.subtract({hdr.path.checksum});
         udp_checksum_no_ip_transit_node.subtract({hdr.path.tx_tstmp});
         udp_checksum_no_ip_transit_node.subtract({hdr.path.seq});
         udp_checksum_no_ip_transit_node.subtract_all_and_deposit(eg_md.checksum_udp_tmp);
         transition accept;
+        #endif
     }
 
     state parse_path_no_ip_destination_node_checksum {
         pkt.extract(hdr.path);
 
         // subtract old checksum components
+        #if __TARGET_TOFINO__ == 2
         udp_checksum_no_ip_destination_node.subtract({hdr.path.checksum});
         udp_checksum_no_ip_destination_node.subtract({hdr.path.tx_tstmp});
         udp_checksum_no_ip_destination_node.subtract({hdr.path.seq});
         udp_checksum_no_ip_destination_node.subtract_all_and_deposit(eg_md.checksum_udp_tmp);
-
+        #endif
         transition accept;
     }                
 }
