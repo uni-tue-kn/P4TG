@@ -114,25 +114,25 @@ const SettingsModal = ({
         } else if (!validateMAC(tmp_data.ethernet.eth_dst)) {
             alert("Ethernet destination not a valid MAC.")
             return
-        } else if (stream.ip_version == 4 && !validateIP(data.ip.ip_src)) {
+        } else if (stream.ip_version == 4 && !validateIP(tmp_data.ip.ip_src)) {
             alert("Source IP not valid.")
             return
-        } else if (stream.ip_version == 4 && !validateIP(data.ip.ip_dst)) {
+        } else if (stream.ip_version == 4 && !validateIP(tmp_data.ip.ip_dst)) {
             alert("Destination IP not valid.")
             return       
-        } else if (stream.ip_version == 4 && !validateToS(data.ip.ip_tos)) {
+        } else if (stream.ip_version == 4 && !validateToS(tmp_data.ip.ip_tos)) {
             alert("IP ToS not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateIPv6(data.ipv6.ipv6_src)) {
-            alert("Source IP not valid.")
+        } else if (stream.ip_version == 6 && !validateIPv6(tmp_data.ipv6.ipv6_src)) {
+            alert("Source IP not valid.");
             return
-        } else if (stream.ip_version == 6 && !validateIPv6(data.ipv6.ipv6_dst)) {
+        } else if (stream.ip_version == 6 && !validateIPv6(tmp_data.ipv6.ipv6_dst)) {
             alert("Destination IP not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateTrafficClass(data.ipv6.ipv6_traffic_class)) {
+        } else if (stream.ip_version == 6 && !validateTrafficClass(tmp_data.ipv6.ipv6_traffic_class)) {
             alert("IP traffic class not valid.")
             return          
-        } else if (stream.ip_version == 6 && !validateFlowLabel(data.ipv6.ipv6_flow_label)) {
+        } else if (stream.ip_version == 6 && !validateFlowLabel(tmp_data.ipv6.ipv6_flow_label)) {
             alert("IP flow label not valid.")
             return                
         } else if (!validateMPLS(tmp_data.mpls_stack)) {
@@ -141,12 +141,11 @@ const SettingsModal = ({
         } else if (!validateSIDList(tmp_data.sid_list)){
             alert("SID list is not valid.")
             return            
-        } else if (!validateIPv6(data.srv6_base_header.ipv6_src)) {
+        } else if (!validateIPv6(tmp_data.srv6_base_header.ipv6_src)) {
             alert("SRv6 Source IP not valid.")
             return
-        } else if (!validateIPv6(data.srv6_base_header.ipv6_dst)) {
+        } else if (!validateIPv6(tmp_data.srv6_base_header.ipv6_dst)) {
             alert("SRv6 destination IP not valid.")
-            return
         }
         // TODO mask validation
 
