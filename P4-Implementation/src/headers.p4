@@ -214,7 +214,6 @@ struct header_t {
     udp_t udp;
     monitor_t monitor;
     path_monitor_t path;
-    path_monitor_t path_no_ip;
     vlan_t vlan;
     q_in_q_t q_in_q;
     vxlan_header_t vxlan;

@@ -187,12 +187,13 @@ control egress(
             else if (hdr.sr_ipv6.isValid()){
                 // SRv6 checksum without IP tunneling
                 eg_md.ipv6_src = hdr.sr_ipv6.src_addr;
-                eg_md.ipv6_dst = hdr.sr_ipv6.dst_addr;
-                // We have to calculate the UDP checksum based on the SRv6 base header as there is no inner IP header
-                // The incremental checksum updates were handled in the path_no_ip checksum extern during parsing.
-                hdr.path_no_ip.setValid();
-                hdr.path_no_ip = hdr.path;
-                hdr.path.setInvalid();     
+                if (hdr.srh.last_entry == 0){
+                    // Last entry == 0 means that we are at the destination node. According to RFC 2460 8.1 we have to use the destination address
+                    eg_md.ipv6_dst = hdr.sr_ipv6.dst_addr;
+                } else {
+                    // Transit node, use the last SID on the path (index 0)
+                    eg_md.ipv6_dst = hdr.sid1.sid;
+                } 
             }
         #endif
     }
