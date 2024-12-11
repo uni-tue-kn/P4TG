@@ -116,21 +116,21 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
                         }
                     }
                 }
-            }
 
-            // Check VxLAN
-            if stream.vxlan && setting.vxlan.is_none() {
-                return Err(Error::new(format!("Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.", stream.stream_id)));
-            }
+                // Check VxLAN
+                if stream.vxlan && setting.vxlan.is_none() {
+                    return Err(Error::new(format!("Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.", stream.stream_id)));
+                }
 
-            if stream.vxlan && stream.ip_version == Some(6) {
-                return Err(Error::new(format!("VxLAN with IPv6 is not supported! (Stream with ID #{})", stream.stream_id)));
-            }
+                if stream.vxlan && stream.ip_version == Some(6) {
+                    return Err(Error::new(format!("VxLAN with IPv6 is not supported! (Stream with ID #{})", stream.stream_id)));
+                }
 
-            // Check VxLAN is disabled for SRv6
-            if stream.vxlan && stream.encapsulation == Encapsulation::SRv6 {
-                return Err(Error::new(format!("Combination of VxLAN and SRv6 is not supported (Stream with ID #{})", stream.stream_id)));
-            }                     
+                // Check VxLAN is disabled for SRv6
+                if stream.vxlan && stream.encapsulation == Encapsulation::SRv6 {
+                    return Err(Error::new(format!("Combination of VxLAN and SRv6 is not supported (Stream with ID #{})", stream.stream_id)));
+                }  
+            }
         }
     }
 
