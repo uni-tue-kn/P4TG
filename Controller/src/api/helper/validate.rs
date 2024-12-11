@@ -1,25 +1,26 @@
 /* Copyright 2022-present University of Tuebingen, Chair of Communication Networks
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*   http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 
 /*
- * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
- */
+* Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+* Fabian Ihle (fabian.ihle@uni-tuebingen.de)
+*/
 
 use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
-use crate::core::traffic_gen_core::const_definitions::{MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2};
+use crate::core::traffic_gen_core::const_definitions::{MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2};
 use crate::core::traffic_gen_core::helper::calculate_overhead;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 
@@ -99,9 +100,22 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
                     } else if stream.ip_version == Some(6) && setting.ipv6.is_none() {
                         return Err(Error::new(format!("Missing IPv6 settings for stream with ID #{} on port {}.", stream.stream_id, setting.port)));
                     } 
+                    // Validate IPv6 Address Randomization Mask size
+                    if stream.ip_version == Some(6) && setting.ipv6.is_some() {
+                        let ipv6_src_mask_int: u128 = setting.ipv6.as_ref().unwrap().ipv6_src_mask.into();
+                        let ipv6_dst_mask_int: u128 = setting.ipv6.as_ref().unwrap().ipv6_dst_mask.into();
+
+                        // For tofino2 at most ::ff:ffff:ffff, for tofino1 ::ffff:ffff
+                        let randomization_max = if is_tofino2 {MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2} else {MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1};
+
+                        if ipv6_src_mask_int > randomization_max.into() {
+                            return Err(Error::new(format!("Source address randomization mask exceeds maximum size of {} for stream with ID #{}.", randomization_max, stream.stream_id)));
+                        }
+                            if ipv6_dst_mask_int > randomization_max.into() {
+                            return Err(Error::new(format!("Destination address randomization mask exceeds maximum size of {} for stream with ID #{}.", randomization_max, stream.stream_id)));
+                        }
+                    }
                 }
-
-
             }
 
             // Check VxLAN
