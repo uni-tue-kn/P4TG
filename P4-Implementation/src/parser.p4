@@ -552,8 +552,8 @@ parser SwitchEgressParser(
         udp_checksum_no_ip_transit_node.subtract({hdr.path.tx_tstmp});
         udp_checksum_no_ip_transit_node.subtract({hdr.path.seq});
         udp_checksum_no_ip_transit_node.subtract_all_and_deposit(eg_md.checksum_udp_tmp);
-        transition accept;
         #endif
+        transition accept;
     }
 
     state parse_path_no_ip_destination_node_checksum {

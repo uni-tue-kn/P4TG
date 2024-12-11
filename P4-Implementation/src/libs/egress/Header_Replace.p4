@@ -34,10 +34,10 @@ control Header_Replace(
     // IP replace
     Random<bit<32>>() src_rand;
     Random<bit<32>>() dst_rand;
-    Random<bit<32>>() src_rand_v6_1;
+    #if __TARGET_TOFINO__ == 2
     Random<bit<16>>() src_rand_v6_2;
-    Random<bit<32>>() dst_rand_v6_1;
     Random<bit<16>>() dst_rand_v6_2;
+    #endif
 
     MPLS_Rewrite() mpls_rewrite_c;
     #if __TARGET_TOFINO__ == 2
@@ -143,8 +143,6 @@ control Header_Replace(
     }
 
     apply {
-        bit<32> s_tmp = src_rand.get();
-        bit<32> d_tmp = dst_rand.get();
 
         // we only rewrite IP header for P4TG packets
         // identified by valid path header and UDP port
@@ -152,22 +150,35 @@ control Header_Replace(
             if(header_replace.apply().hit) {
                 if (eg_md.ip_version == 4){
                     // get random 32 bit number and make bitwise AND with network mask
-                    bit<32> s_tmp = src_rand.get() & src_mask;
-                    bit<32> d_tmp = dst_rand.get() & dst_mask;
+                    bit<32> s_tmp = src_rand.get();
+                    bit<32> d_tmp = dst_rand.get();
+
+                    s_tmp = s_tmp & src_mask;
+                    d_tmp = d_tmp & dst_mask;
                     // apply random sub ip string to ip address
                     hdr.inner_ipv4.src_addr = hdr.inner_ipv4.src_addr | s_tmp;
                     hdr.inner_ipv4.dst_addr = hdr.inner_ipv4.dst_addr | d_tmp;
                 } else {
-                    // least-significant 48 bits can be randomized for IPv6
-                    bit<32> s_tmp_v6_first = src_rand_v6_1.get() & src_mask_v6[31:0];
+                    // least-significant 48 (tofino2) or 32 (tofino1) bits can be randomized for IPv6
+                    bit<32> s_tmp_v6_first = src_rand.get();
+                    bit<32> d_tmp_v6_first = dst_rand.get();
+
+                    s_tmp_v6_first = s_tmp_v6_first & src_mask_v6[31:0];
                     hdr.ipv6.src_addr[31:0] = hdr.ipv6.src_addr[31:0] | s_tmp_v6_first;
-                    bit<16> s_tmp_v6_second = src_rand_v6_2.get() & src_mask_v6[47:32];
+
+                    d_tmp_v6_first = d_tmp_v6_first & dst_mask_v6[31:0];
+                    hdr.ipv6.dst_addr[31:0] = hdr.ipv6.dst_addr[31:0] | d_tmp_v6_first;
+
+                #if __TARGET_TOFINO__ == 2
+                    bit<16> d_tmp_v6_second = dst_rand_v6_2.get();
+                    bit<16> s_tmp_v6_second = src_rand_v6_2.get();
+
+                    s_tmp_v6_second = s_tmp_v6_second & src_mask_v6[47:32];
                     hdr.ipv6.src_addr[47:32] = hdr.ipv6.src_addr[47:32] | s_tmp_v6_second;
 
-                    bit<32> d_tmp_v6_first = dst_rand_v6_1.get() & dst_mask_v6[31:0];
-                    hdr.ipv6.dst_addr[31:0] = hdr.ipv6.dst_addr[31:0] | d_tmp_v6_first;
-                    bit<16> d_tmp_v6_second = dst_rand_v6_2.get() & dst_mask_v6[47:32];
+                    d_tmp_v6_second = d_tmp_v6_second & dst_mask_v6[47:32];
                     hdr.ipv6.dst_addr[47:32] = hdr.ipv6.dst_addr[47:32] | d_tmp_v6_second;
+                #endif
                 }
             }
 
