@@ -48,8 +48,12 @@ pub fn calculate_send_behaviour(frame_size: u32, traffic_rate: f32, max_burst: u
     // not part of objective, therefore factor 0
     let timeout = problem.add_integer_column(0., 1..u32::MAX); // timeout in 32bit ns
 
-    // c1: calc - timeout * rate + (num_packets * frame_size * 8) <= 0
-    problem.add_row(0..0, [(calculation, 1.), (timeout, (-1f32 * traffic_rate) as f64), (num_packets, (frame_size * 8) as f64)]); 
+    // 0 <= calc - timeout * rate + (num_packets * frame_size * 8) <= 1
+    // Constraint is bound 0 <= ... <= 1 to overcome possible float problems.
+    // Problems could arise if the float 'calculation' does not match the float of the calculated difference.
+    // Therefore, 0 <= ... <= 1 should be suitable for a floating error after the comma.
+    // This problem wasn't experienced yet and this solution is a safety measurement.
+    problem.add_row(0..1, [(calculation, 1.), (timeout, (-1f32 * traffic_rate) as f64), (num_packets, (frame_size * 8) as f64)]); 
     let mut solver = problem.optimise(Sense::Minimise);
     solver.set_option("time_limit", SOLVER_TIME_LIMIT_IN_SECONDS);
 
