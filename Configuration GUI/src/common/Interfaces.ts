@@ -286,3 +286,11 @@ export interface TrafficGenData {
     stream_settings: StreamSettings[],
     port_tx_rx_mapping: { [name: number]: number}[]
 }
+
+export interface PortInfo {
+    pid: number,
+    port: number,
+    channel: number,
+    loopback: string,
+    status: boolean    
+}

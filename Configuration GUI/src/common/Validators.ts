@@ -18,7 +18,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import {DefaultStream, DefaultStreamSettings, MPLSHeader, Stream, StreamSettings} from "./Interfaces";
+import {DefaultStream, DefaultStreamSettings, MPLSHeader, PortInfo, Stream, StreamSettings} from "./Interfaces";
 
 export const validateMAC = (mac: string) => {
     let regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
@@ -102,6 +102,16 @@ export const validateStreams = (s: Stream[]) => {
     });
 
     return s.every(s => Object.keys(defaultStream).every(key => Object.keys(s).includes(key)))
+}
+
+export const validatePorts = (port_tx_rx_mapping: { [name: number]: number}[], available_ports: PortInfo[]) => {
+    // Verify if all configured ports are acutally available on this device.
+
+    const available_dev_ports: number[] = available_ports.slice(0, 10).map(p => p.pid);
+    //@ts-ignore
+    const configured_ports: number[] = Object.entries(port_tx_rx_mapping).flatMap(([key, value]) => [Number(key), value]);
+
+    return configured_ports.some(r=> available_dev_ports.includes(r))
 }
 
 export const validateStreamSettings = (setting: StreamSettings[]) => {

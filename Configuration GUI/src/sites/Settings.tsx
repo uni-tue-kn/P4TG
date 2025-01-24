@@ -26,6 +26,7 @@ import {
     DefaultStream,
     DefaultStreamSettings,
     GenerationMode, P4TGInfos,
+    PortInfo,
     Stream,
     StreamSettings, TrafficGenData,
 } from "../common/Interfaces";
@@ -35,7 +36,7 @@ import InfoBox from "../components/InfoBox";
 import {GitHub} from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
-import {validateStreams, validateStreamSettings} from "../common/Validators";
+import {validatePorts, validateStreams, validateStreamSettings} from "../common/Validators";
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -50,13 +51,7 @@ export const StyledCol = styled.td`
 
 
 const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
-    const [ports, set_ports] = useState<{
-        pid: number,
-        port: number,
-        channel: number,
-        loopback: string,
-        status: boolean
-    }[]>([])
+    const [ports, set_ports] = useState<PortInfo[]>([])
     const [running, set_running] = useState(false)
     // @ts-ignore
     const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
@@ -199,10 +194,13 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         fileReader.onload = (e: any) => {
             let data: TrafficGenData = JSON.parse(e.target.result)
 
+        
             if(!validateStreams(data.streams) || !validateStreamSettings(data.stream_settings)) {
                 alert("Settings not valid.")
                 // @ts-ignore
                 ref.current.value = ""
+            } else if (!validatePorts(data.port_tx_rx_mapping, ports)){
+                alert("Settings not valid. Configured dev_port IDs are not available on this device.")
             }
             else {
                 localStorage.setItem("streams", JSON.stringify(data.streams))
@@ -219,7 +217,6 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         }
     }
 
-    // @ts-ignore
     // @ts-ignore
     return <Loader loaded={loaded}>
         <Row>
