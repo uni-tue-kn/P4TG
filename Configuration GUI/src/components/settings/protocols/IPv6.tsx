@@ -50,7 +50,7 @@ const IPv6 = ({data, set_data, running}: Props) => {
                         <InfoBox>
                             <>
                                 <p>IP addresses can be randomized to simulate multiple flows.</p>
-                                <p>The second value (default ::) represents a randomization mask that can be used to randomize parts of the src/dst address. The maximum vaue for the mask is ::ff:ffff:ffff</p>
+                                <p>The second value (default ::) represents a randomization mask that can be used to randomize parts of the src/dst address. The maximum value for the mask is ::ffff:ffff on Tofino 1 and ::ff:ffff:ffff on Tofino 2</p>
 
                                 <p>In the dataplane, a 48 bit value (least-significant 48 bits of a randomized IPv6 address) is generated and bitwise ANDed with the randomization mask. The resulting IP address is bitwise ORed with the src/dst address.</p>
 
@@ -85,7 +85,7 @@ const IPv6 = ({data, set_data, running}: Props) => {
                         <InfoBox>
                             <>
                             <p>IP addresses can be randomized to simulate multiple flows.</p>
-                                <p>The second value (default ::) represents a randomization mask that can be used to randomize parts of the src/dst address. The maximum vaue for the mask is ::ff:ffff:ffff</p>
+                                <p>The second value (default ::) represents a randomization mask that can be used to randomize parts of the src/dst address. The maximum value for the mask is ::ffff:ffff on Tofino 1 and ::ff:ffff:ffff on Tofino 2</p>
 
                                 <p>In the dataplane, a 48 bit value (least-significant 48 bits of a randomized IPv6 address) is generated and bitwise ANDed with the randomization mask. The resulting IP address is bitwise ORed with the src/dst address.</p>
 

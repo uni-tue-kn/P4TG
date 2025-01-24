@@ -18,12 +18,12 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { Encapsulation, Stream, StreamSettings} from "../../common/Interfaces";
+import { Encapsulation, P4TGInfos, Stream, StreamSettings} from "../../common/Interfaces";
 import React, { useState } from "react";
 import { Accordion, Button, Modal, Alert} from "react-bootstrap";
 
 import { VLAN, Ethernet, IPv4, QinQ, VxLAN, MPLS, IPv6, SRv6 } from "./protocols";
-import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList} from "../../common/Validators";
+import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask} from "../../common/Validators";
 
 export const randomMAC = (allow_multicast = true) => {
     let mac = "XX:XX:XX:XX:XX:XX".replace(/X/g, function () {
@@ -61,13 +61,15 @@ const SettingsModal = ({
     hide,
     data,
     running,
-    stream
+    stream,
+    p4tg_infos
 }: {
     show: boolean,
     hide: () => void,
     data: StreamSettings,
     running: boolean,
-    stream: Stream
+    stream: Stream,
+    p4tg_infos: P4TGInfos
 }) => {
 
     const [tmp_data, set_tmp_data] = useState(data)
@@ -135,7 +137,13 @@ const SettingsModal = ({
             return          
         } else if (stream.ip_version == 6 && !validateFlowLabel(tmp_data.ipv6.ipv6_flow_label)) {
             setAlertMessage("IP flow label not valid.")
-            return                
+            return  
+        } else if (stream.ip_version == 6 && !validateIPv6RandomMask(tmp_data.ipv6.ipv6_src_mask, p4tg_infos.asic)) {
+            setAlertMessage("IPv6 source mask not valid.")
+            return    
+        } else if (stream.ip_version == 6 && !validateIPv6RandomMask(tmp_data.ipv6.ipv6_dst_mask, p4tg_infos.asic)) {
+            setAlertMessage("IPv6 destination mask not valid.")
+            return                                      
         } else if (!validateMPLS(tmp_data.mpls_stack)) {
             setAlertMessage("MPLS stack is not valid.")
             return
@@ -148,7 +156,6 @@ const SettingsModal = ({
         } else if (!validateIPv6(tmp_data.srv6_base_header.ipv6_dst)) {
             setAlertMessage("SRv6 destination IP not valid.")
         }
-        // TODO mask validation
 
         setAlertMessage(null);
 

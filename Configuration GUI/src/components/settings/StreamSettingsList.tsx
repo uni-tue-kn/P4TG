@@ -17,14 +17,15 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import {Stream, StreamSettings} from "../../common/Interfaces";
+import {P4TGInfos, Stream, StreamSettings} from "../../common/Interfaces";
 import StreamSettingsElement from "./StreamSettingsElement";
 import React from "react";
 
-const StreamSettingsList = ({stream_settings, streams, running, port}: {
+const StreamSettingsList = ({stream_settings, streams, running, p4tg_infos, port}: {
     stream_settings: StreamSettings[],
     streams: Stream[],
     running: boolean,
+    p4tg_infos: P4TGInfos,
     port: { pid: number, port: number, channel: number, loopback: string, status: boolean }
 }) => {
     return <>
@@ -42,7 +43,7 @@ const StreamSettingsList = ({stream_settings, streams, running, port}: {
             }
             if (s.port == port.pid && stream != null) {
                 return <StreamSettingsElement key={i} running={running} port_status={port.status} stream_data={stream}
-                                              stream={s}/>
+                                              stream={s} p4tg_infos={p4tg_infos}/>
             }
 
         })}

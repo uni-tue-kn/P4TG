@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import {Stream, StreamSettings} from "../../common/Interfaces";
+import {P4TGInfos, Stream, StreamSettings} from "../../common/Interfaces";
 import React, {useState} from "react";
 import SettingsModal from "./SettingsModal";
 import {Form} from "react-bootstrap";
@@ -27,15 +27,16 @@ const StreamSettingsElement = ({
                                    running,
                                    port_status,
                                    stream,
-                                   stream_data
-                               }: { running: boolean, port_status: boolean, stream: StreamSettings, stream_data: Stream }) => {
+                                   stream_data,
+                                   p4tg_infos,
+                               }: { running: boolean, port_status: boolean, stream: StreamSettings, stream_data: Stream, p4tg_infos: P4TGInfos }) => {
     const [show, set_show] = useState(false)
 
     // Needed to update the view immediately
     const [isActive, setIsActive] = useState(stream.active);
 
     return <>
-        <SettingsModal running={running || !port_status} data={stream} stream={stream_data} show={show} hide={() => set_show(false)}/>
+        <SettingsModal running={running || !port_status} data={stream} stream={stream_data} show={show} hide={() => set_show(false)} p4tg_infos={p4tg_infos}/>
         <StyledCol>
             <Form.Check
                 className={"d-inline"}

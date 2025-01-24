@@ -18,7 +18,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import {DefaultStream, DefaultStreamSettings, MPLSHeader, PortInfo, Stream, StreamSettings} from "./Interfaces";
+import {ASIC, DefaultStream, DefaultStreamSettings, MPLSHeader, PortInfo, Stream, StreamSettings} from "./Interfaces";
 
 export const validateMAC = (mac: string) => {
     let regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
@@ -38,12 +38,31 @@ export const validateIPv6 = (ip: string) => {
     return regex.test(ip)
 }
 
-export const validateIPv6RandomMask = (ip: string) => {
-    // TODO
-    //let regex = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)){3}$/gm;
+export const validateIPv6RandomMask = (ip: string, asic_version: ASIC) => {
+    // Verifies that the randomization mask is below ::ffff:ffff on Tofino 1 and ::ff:ffff:ffff on Tofino 2
+    if (validateIPv6(ip)) {
+        // Expand address
+        const sections = ip.split("::");
+        const left = sections[0]?.split(":") ?? [];
+        const right = sections[1]?.split(":") ?? [];
+        const totalLength = 8; // IPv6 has 8 sections in its full form
+        const missing = totalLength - (left.length + right.length);
+    
+        const expandedLeft = left.map(s => s.padStart(4, "0"));
+        const expandedRight = right.map(s => s.padStart(4, "0"));
+        const expandedMiddle = Array(missing).fill("0000");
+    
+        const expandedIP =  [...expandedLeft, ...expandedMiddle, ...expandedRight];
 
-    //return regex.test(ip)
-    return true
+        if (asic_version == ASIC.Tofino1) {
+            // All higher bits must be zero
+            return expandedIP.slice(0,6).every(ip => parseInt(ip, 16) === 0);            
+        } else {
+            return expandedIP.slice(0,5).every(ip => parseInt(ip, 16) === 0) && parseInt(expandedIP[5], 16) <= 0xff
+        }
+    }
+
+    return false
 }
 
 export const validateTrafficClass= (traffic_class: number) => {

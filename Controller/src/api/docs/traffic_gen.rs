@@ -4,8 +4,6 @@ use std::str::FromStr;
 use lazy_static::lazy_static;
 use crate::core::traffic_gen_core::types::*;
 
-// TODO Add SRv6 examples
-
 lazy_static! {
     pub static ref EXAMPLE_GET_1: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,

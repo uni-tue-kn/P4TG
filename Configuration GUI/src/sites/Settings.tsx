@@ -372,7 +372,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
                                     </StyledCol>
                                     <StreamSettingsList stream_settings={stream_settings} streams={streams}
-                                                        running={running} port={v}/>
+                                                        running={running} port={v} p4tg_infos={p4tg_infos}/>
 
                                 </tr>
                             }
