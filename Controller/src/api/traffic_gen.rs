@@ -125,15 +125,15 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
 
     // contains the mapping of Send->Receive ports
     // required for analyze mode
-    let port_mapping = &payload.port_tx_rx_mapping;
+    let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
     // validate request
-    match validate_request(&active_streams, &active_stream_settings, &payload.mode, tg.is_tofino2) {
+    match validate_request(&active_streams, &active_stream_settings, &payload.mode, tx_rx_port_mapping, state.port_mapping.clone(), tg.is_tofino2) {
         Ok(_) => {},
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response()
     }
 
-    match tg.start_traffic_generation(&state, active_streams, payload.mode, active_stream_settings, port_mapping).await {
+    match tg.start_traffic_generation(&state, active_streams, payload.mode, active_stream_settings, tx_rx_port_mapping).await {
         Ok(streams) => {
             // store the settings for synchronization between multiple
             // GUI clients

@@ -28,7 +28,7 @@ use rbfrt::{SwitchConnection, table};
 use rbfrt::error::RBFRTError;
 use rbfrt::table::{MatchValue, Request};
 use crate::core::traffic_gen_core::types::{Stream, StreamSetting};
-use crate::core::{create_simple_multicast_group};
+use crate::core::create_simple_multicast_group;
 use crate::core::multicast::delete_simple_multicast_group;
 use crate::{AppState, PortMapping};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
@@ -480,7 +480,6 @@ impl TrafficGen {
 
         // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on multiple pipes
         let total_rate: f32 = streams.iter().map(|x| {
-            // TODO only a quick fix, make that more "rusty"
                if mode == GenerationMode::Mpps {
                 (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
                } else {
