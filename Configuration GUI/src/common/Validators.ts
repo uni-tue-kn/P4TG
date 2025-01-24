@@ -87,25 +87,59 @@ export const validateStreams = (s: Stream[]) => {
     if (!s) {
         return false
     }
+
+    // Ensure backward compatibility with older P4TG versions by inserting the 
+    // default values for missing keys into the stream settings
+    const missingKeys: string[] = [];
+    s.forEach(stream => {
+        Object.keys(defaultStream).forEach(key => {
+            if (!Object.prototype.hasOwnProperty.call(stream, key)) {
+                missingKeys.push(key); // Track the missing key
+                // @ts-ignore: Add the key with the default value
+                stream[key] = defaultStream[key];
+            }
+        });
+    });
+
     return s.every(s => Object.keys(defaultStream).every(key => Object.keys(s).includes(key)))
 }
 
-export const validateStreamSettings = (s: StreamSettings[]) => {
+export const validateStreamSettings = (setting: StreamSettings[]) => {
     const defaultStreamSetting = DefaultStreamSettings(1, 5)
 
-    if (!s) {
+    if (!setting) {
         return false
     }
 
-    return s.every(s => Object.keys(defaultStreamSetting).every(key => {
-        return Object.keys(s).includes(key) && s.mpls_stack != undefined && Object.keys(defaultStreamSetting.vlan).every(key => {
-            return Object.keys(s.vlan).includes(key)
-        }) && Object.keys(defaultStreamSetting.ethernet).every(key => { // ethernet
-            return Object.keys(s.ethernet).includes(key)
-        }) && Object.keys(defaultStreamSetting.ip).every(key => { // ip
-            return Object.keys(s.ip).includes(key)
-        }) && Object.keys(defaultStreamSetting.vxlan).every(key => {
-            return Object.keys(s.vxlan).includes(key) // VxLAN
-        })
-    }))
+    setting.forEach((streamSetting, _) => {
+        // Verify and add missing fields in the main stream settings object
+        Object.keys(defaultStreamSetting).forEach(key => {
+            // @ts-ignore
+            if (!Object.prototype.hasOwnProperty.call(streamSetting, key) || streamSetting[key] === null) {
+                // @ts-ignore: Add missing key with default value
+                streamSetting[key] = defaultStreamSetting[key];
+            }
+        });
+
+        // Validate and add missing keys in specific nested properties (e.g., vlan, ethernet, ip, vxlan)
+        Object.keys(defaultStreamSetting).every(key => {
+            // @ts-ignore
+            if (!streamSetting[key]) {
+                // If the nested key is completely missing, add it
+                // @ts-ignore: Add the entire nested key with defaults
+                streamSetting[key] = defaultStreamSetting[key];
+            } else {
+                // If the nested key exists, validate and add individual missing keys
+                // @ts-ignore
+                Object.keys(defaultStreamSetting[key]).forEach(settingKey => {
+                    // @ts-ignore
+                    if (!Object.prototype.hasOwnkey.call(streamSetting[key], settingKey)) {
+                        // @ts-ignore: Add the missing key with its default value
+                        streamSetting[key][settingKey] = defaultStreamSetting[key][settingKey];
+                    }
+                });
+            }
+        });
+    });
+    return true;
 }
