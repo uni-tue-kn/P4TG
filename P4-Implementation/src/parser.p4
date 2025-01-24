@@ -355,6 +355,7 @@ parser SwitchEgressParser(
     }
 
 
+    #if __TARGET_TOFINO__ == 2
     state check_for_srv6 {
         ipv6_lookahead_next_header_t ipv6_lookahead = pkt.lookahead<ipv6_lookahead_next_header_t>();
         transition select(ipv6_lookahead.nextHdr) {
@@ -420,6 +421,7 @@ parser SwitchEgressParser(
             IP_PROTOCOL_IPV6: parse_path_v6;
         }
     }    
+    #endif
 
      state parse_vlan {
         pkt.extract(hdr.vlan);
@@ -490,7 +492,10 @@ parser SwitchEgressParser(
                ETHERTYPE_VLANQ: parse_vlan;
                ETHERTYPE_QinQ: parse_q_in_q;
                ETHERTYPE_IPV4: parse_path;
+                #if __TARGET_TOFINO__ == 2
+                // VxLAN with MPLS only supported on tofino2
                ETHERTYPE_MPLS: parse_mpls;
+               #endif
                default: accept;
            }
     }
@@ -536,6 +541,7 @@ parser SwitchEgressParser(
         transition accept;
     }  
 
+    #if __TARGET_TOFINO__ == 2
     state check_sr_transit_or_destination_node {
         // In those states we decide which calculated checksum we write into metadata for later update
         transition select(hdr.srh.last_entry){
@@ -567,7 +573,8 @@ parser SwitchEgressParser(
         udp_checksum_no_ip_destination_node.subtract_all_and_deposit(eg_md.checksum_udp_tmp);
         #endif
         transition accept;
-    }                
+    }            
+    #endif    
 }
 
 // ---------------------------------------------------------------------------
