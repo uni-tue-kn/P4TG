@@ -2,7 +2,7 @@
  <img src="./logo.png" />
  <h2>P4TG: Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.3.0-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.3.2-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) 
 
 </div>
 
@@ -52,6 +52,9 @@ Tested on:
   - SDE 9.9.0 (up to v2.0.0)
   - SDE 9.13.0 
   - SDE 9.13.1
+  - SDE 9.13.2
+  - SDE 9.13.3
+  - SDE 9.13.4
 
 ### Control plane
 
