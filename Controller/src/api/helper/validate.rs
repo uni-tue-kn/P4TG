@@ -129,6 +129,11 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
                     return Err(Error::new(format!("VxLAN with IPv6 is not supported! (Stream with ID #{})", stream.stream_id)));
                 }
 
+                // VxLAN with MPLS on Tofino 1 not supported
+                if stream.vxlan && stream.encapsulation == Encapsulation::Mpls && !is_tofino2 {
+                    return Err(Error::new(format!("Combination of VxLAN and MPLS is not supported on Tofino1 (Stream with ID #{})", stream.stream_id)));
+                }  
+
                 // Check VxLAN is disabled for SRv6
                 if stream.vxlan && stream.encapsulation == Encapsulation::SRv6 {
                     return Err(Error::new(format!("Combination of VxLAN and SRv6 is not supported (Stream with ID #{})", stream.stream_id)));

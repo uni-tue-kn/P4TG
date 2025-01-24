@@ -84,6 +84,15 @@ const StreamElement = ({
         if (data.encapsulation === Encapsulation.MPLS) {
             set_show(true);
             set_show_sid_config(false);
+            if (p4tg_infos.asic == ASIC.Tofino1) {
+                // Disable VxLAN. Not supported in combination with VxLAN on Tofino 1
+                setFormData((prevData) => ({
+                    ...prevData,
+                    vxlan: false,
+                    encapsulation: Encapsulation.MPLS
+                }));            
+                data.vxlan = false;                
+            }
         } else if (data.encapsulation === Encapsulation.SRv6){
             set_show_sid_config(true);
             set_show(false);
@@ -91,6 +100,7 @@ const StreamElement = ({
             setFormData((prevData) => ({
                 ...prevData,
                 vxlan: false,
+                encapsulation: Encapsulation.SRv6
             }));            
             data.vxlan = false;
         } else {
@@ -101,6 +111,10 @@ const StreamElement = ({
             set_number_of_srv6_sids(0);
             set_number_of_lse(0);
             update_settings();
+            setFormData((prevData) => ({
+                ...prevData,
+                encapsulation: data.encapsulation
+            }));             
         }
     }
 
@@ -222,7 +236,7 @@ const StreamElement = ({
         <StyledCol>
             <Form.Check
                 type={"switch"}
-                disabled={running || formData.ip_version === 6}
+                disabled={running || formData.ip_version === 6 || formData.encapsulation === Encapsulation.MPLS}
                 checked={formData.vxlan}
                 onChange={handleVxLANToggle}
                 >
