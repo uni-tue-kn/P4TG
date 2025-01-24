@@ -1,0 +1,24 @@
+name: Data plane build
+
+on:
+  push:
+    branches: [ "main", "dev", "srv6"]
+  pull_request:
+    branches: [ "main", "dev"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: fihle/open-p4studio:9.13.4
+      env:
+        SDE: /open-p4studio
+        SDE_INSTALL: /open-p4studio/install
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Tofino1 CI
+        run: cd P4-Implementation && make compile TARGET=tofino
+
+      - name: Tofino2 CI
+        run: cd P4-Implementation && make compile TARGET=tofino2
