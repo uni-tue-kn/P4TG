@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Tofino1 CI
-        run: sudo -E /open-p4studio/install/bin/bf-p4c -D__TARGET_TOFINO__=1 --target tofino -g --arch tna -o /opt/p4tg traffic_gen.p4
+        run: cd P4-Implementation && sudo -E /open-p4studio/install/bin/bf-p4c -D__TARGET_TOFINO__=1 --target tofino -g --arch tna -o /opt/p4tg traffic_gen.p4
 
       - name: Tofino2 CI
-        run: sudo -E /open-p4studio/install/bin/bf-p4c -D__TARGET_TOFINO__=2 --target tofino2 -g --arch t2na -o /opt/p4tg traffic_gen.p4
+        run: cd P4-Implementation && sudo -E /open-p4studio/install/bin/bf-p4c -D__TARGET_TOFINO__=2 --target tofino2 -g --arch t2na -o /opt/p4tg traffic_gen.p4
