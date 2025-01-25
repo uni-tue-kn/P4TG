@@ -47,7 +47,7 @@ styled(Col)`
     padding-left: 0;
 `;
 const StyledLink = styled.a`
-    color: var(--color-secondary);
+    color: var(--color-text);
     text-decoration: none;
     opacity: 0.5;
 
