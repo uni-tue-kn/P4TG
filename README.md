@@ -28,6 +28,7 @@ In analysis mode, P4TG measures rates on the input ports, measures IATs, and for
 - P4TG (v2.1.0) further supports MPLS 
 - P4TG (v2.2.0) supports VxLAN
 - P4TG (v2.3.0) supports the Intel Tofino 2 with up to 4 Tb/s
+- P4TG (v2.3.2) supports IPv6, SRv6 (Tofino 2 only), many bug fixes, and a dark mode
 
 P4TG consist of:
 

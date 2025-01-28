@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
+import {useEffect, useState} from 'react'
 import Config from "./config"
 import {BrowserRouter as Router, Route, Routes} from "react-router-dom"
 import {Col, Container, Row} from "react-bootstrap"
@@ -26,7 +26,7 @@ import styled from "styled-components"
 import ErrorView from "./components/ErrorView"
 import Navbar from "./components/Navbar"
 
-import Home, {GitHub} from "./sites/Home"
+import Home from "./sites/Home"
 import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
 import Offline from "./sites/Offline"
@@ -54,49 +54,48 @@ const App = () => {
         set_time(now.getHours() + ":" + now.getMinutes())
     }
 
-    const loadInfos = async () => {
-        let stats = await get({route: "/online"})
-
-        if (stats != undefined && stats.status === 200) {
-            set_p4tg_infos(stats.data)
-        }
-
-        set_loaded(true)
-    }
-
-
-
-    // Validates the stored streams and stream settings in the local storage
-    // Clears local storage if some streams/settings are not valid
-    // This may be needed if the UI got an update (new stream properties), but the local storage
-    // holds "old" streams/settings without the new property
-    const validateLocalStorage = () => {
-        try {
-            let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
-            let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
-
-            if(!validateStreams(stored_streams)) {
-                alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
-                localStorage.clear()
-                window.location.reload()
-                return
-            }
-
-            if(!validateStreamSettings(stored_settings)) {
-                alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
-                localStorage.clear()
-                window.location.reload()
-                return
-            }
-        }
-        catch {
-            alert("Error in reading local storage. Resetting local storage.")
-            localStorage.clear()
-            window.location.reload()
-        }
-    }
 
     useEffect(() => {
+        // Validates the stored streams and stream settings in the local storage
+        // Clears local storage if some streams/settings are not valid
+        // This may be needed if the UI got an update (new stream properties), but the local storage
+        // holds "old" streams/settings without the new property
+        const validateLocalStorage = () => {
+            try {
+                let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
+                let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
+
+                if(!validateStreams(stored_streams)) {
+                    alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
+                    localStorage.clear()
+                    window.location.reload()
+                    return
+                }
+
+                if(!validateStreamSettings(stored_settings)) {
+                    alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
+                    localStorage.clear()
+                    window.location.reload()
+                    return
+                }
+            }
+            catch {
+                alert("Error in reading local storage. Resetting local storage.")
+                localStorage.clear()
+                window.location.reload()
+            }
+        }
+
+        const loadInfos = async () => {
+            let stats = await get({route: "/online"})
+    
+            if (stats !== undefined && stats.status === 200) {
+                set_p4tg_infos(stats.data)
+            }
+    
+            set_loaded(true)
+        }
+
         validateLocalStorage()
         loadInfos()
 

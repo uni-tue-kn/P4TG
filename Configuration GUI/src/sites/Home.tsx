@@ -85,6 +85,12 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     const [time_statistics, set_time_statistics] = useState<TimeStatistics>(TimeStatisticsObject)
 
     useEffect(() => {
+        const refresh = async () => {
+            await loadGen()
+            await loadStatistics()
+            set_loaded(true)
+        }
+
         refresh()
 
         const interval_stats = setInterval(async () => await Promise.all([loadStatistics()]), 500);
@@ -116,9 +122,9 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
         let ret: number[] = []
 
         stream_settings.forEach(v => {
-            if (v.port == pid && v.active) {
+            if (v.port === pid && v.active) {
                 streams.forEach(s => {
-                    if (s.stream_id == v.stream_id) {
+                    if (s.stream_id === v.stream_id) {
                         ret.push(s.app_id)
                         return
                     }
@@ -133,14 +139,14 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
         let ret = 0
 
         streams.forEach(v => {
-            if (v.app_id == stream_id) {
+            if (v.app_id === stream_id) {
                 ret = v.frame_size
-                if (v.encapsulation == Encapsulation.Q) {
+                if (v.encapsulation === Encapsulation.Q) {
                     ret += 4
-                } else if (v.encapsulation == Encapsulation.QinQ) {
+                } else if (v.encapsulation === Encapsulation.QinQ) {
                     ret += 8
                 }
-                else if (v.encapsulation == Encapsulation.MPLS) {
+                else if (v.encapsulation === Encapsulation.MPLS) {
                     ret += v.number_of_lse * 4 // 4 bytes per LSE
                 }
 
@@ -155,19 +161,12 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
         return ret
     }
 
-
-    const refresh = async () => {
-        await loadGen()
-        await loadStatistics()
-        set_loaded(true)
-    }
-
     const onSubmit = async (event: any) => {
         event.preventDefault()
 
         let max_rate = 100;
 
-        if(p4tg_infos.asic == ASIC.Tofino2) {
+        if(p4tg_infos.asic === ASIC.Tofino2) {
             max_rate = 400;
         }
 
@@ -177,7 +176,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
             await del({route: "/trafficgen"})
             set_running(false)
         } else {
-            if (streams.length === 0 && mode != GenerationMode.ANALYZE) {
+            if (streams.length === 0 && mode !== GenerationMode.ANALYZE) {
                 alert("You need to define at least one stream.")
             } else {
                 let overall_rate = 0
@@ -185,7 +184,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
                     overall_rate += v.traffic_rate
                 })
 
-                if (mode != GenerationMode.MPPS && overall_rate > max_rate) {
+                if (mode !== GenerationMode.MPPS && overall_rate > max_rate) {
                     alert("Sum of stream rates > " + max_rate + " Gbps!")
                 } else {
                     await post({
@@ -208,7 +207,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     const loadStatistics = async () => {
         let stats = await get({route: "/statistics"})
 
-        if (stats != undefined && stats.status === 200) {
+        if (stats !== undefined && stats.status === 200) {
             set_statistics(stats.data)
         }
     }
@@ -216,7 +215,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     const loadTimeStatistics = async () => {
         let stats = await get({route: "/time_statistics?limit=100"})
 
-        if (stats != undefined && stats.status === 200) {
+        if (stats !== undefined && stats.status === 200) {
             set_time_statistics(stats.data)
         }
     }
@@ -225,7 +224,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     const loadGen = async () => {
         let stats = await get({route: "/trafficgen"})
 
-        if (stats != undefined && Object.keys(stats.data).length > 1) {
+        if (stats !== undefined && Object.keys(stats.data).length > 1) {
             set_mode(stats.data.mode)
             set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
             set_stream_settings(stats.data.stream_settings)
