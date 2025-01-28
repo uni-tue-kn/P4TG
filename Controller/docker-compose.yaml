@@ -1,8 +1,12 @@
-version: "3"
+name: p4tg
+
 services:
   p4tg:
-    container_name: p4tg-controller
-    build: .
+    container_name: controller
+    image: p4tg-controller
+    build:
+      context: ..
+      dockerfile: Controller/Dockerfile
     network_mode: host
     environment:
       - SAMPLE=0

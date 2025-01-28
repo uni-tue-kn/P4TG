@@ -1,0 +1,13 @@
+name: p4tg
+
+services:
+  p4tg:
+    container_name: controller
+    image: etiennezink/p4tg-controller
+    network_mode: host
+    environment:
+      - SAMPLE=0
+      - P4TG_PORT=8000
+      - P4_NAME=traffic_gen
+    volumes:
+      - ./config.json:/app/config.json
