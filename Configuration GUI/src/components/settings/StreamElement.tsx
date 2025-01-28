@@ -92,6 +92,11 @@ const StreamElement = ({
                     encapsulation: Encapsulation.MPLS
                 }));            
                 data.vxlan = false;                
+            } else {
+                setFormData((prevData) => ({
+                    ...prevData,
+                    encapsulation: Encapsulation.MPLS
+                }));                 
             }
         } else if (data.encapsulation === Encapsulation.SRv6){
             set_show_sid_config(true);
@@ -236,7 +241,7 @@ const StreamElement = ({
         <StyledCol>
             <Form.Check
                 type={"switch"}
-                disabled={running || formData.ip_version === 6 || formData.encapsulation === Encapsulation.MPLS}
+                disabled={running || formData.ip_version === 6 || (p4tg_infos.asic === ASIC.Tofino1 && formData.encapsulation === Encapsulation.MPLS) || formData.encapsulation === Encapsulation.SRv6}
                 checked={formData.vxlan}
                 onChange={handleVxLANToggle}
                 >
