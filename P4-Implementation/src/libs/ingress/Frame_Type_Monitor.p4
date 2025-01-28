@@ -47,7 +47,9 @@ control Frame_Type_Monitor(
 
     table frame_type_monitor {
         key = {
-            hdr.inner_ipv4.dst_addr: lpm;
+            // Keys are ternary to match either on IPv4 or IPv6 address
+            hdr.inner_ipv4.dst_addr: ternary;
+            hdr.ipv6.dst_addr: ternary;
             ig_intr_md.ingress_port: exact;
             ig_md.vxlan: exact;
         }
@@ -59,7 +61,7 @@ control Frame_Type_Monitor(
         }
         default_action = unicast;
         counters = frame_type_counter;
-        size = 64;
+        size = 128;
     }
 
     action mpls() {
@@ -110,7 +112,7 @@ control Frame_Type_Monitor(
     }
 
     apply {
-        if(hdr.inner_ipv4.isValid()) {
+        if(hdr.inner_ipv4.isValid() || hdr.ipv6.isValid()) {
             frame_type_monitor.apply();
         }
 
