@@ -3,7 +3,7 @@ name: p4tg
 services:
   p4tg:
     container_name: controller
-    image: p4tg-controller
+    image: unituekn/p4tg-controller:latest
     build:
       context: ..
       dockerfile: Controller/Dockerfile
