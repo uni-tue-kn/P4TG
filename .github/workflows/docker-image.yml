@@ -15,6 +15,8 @@ jobs:
 
     - name: Build frontend
       run: cd Configuration\ GUI && npm install && npm run build
+      env:
+        CI: false
 
     - name: Controller Build
       run: cd Controller && docker compose build
