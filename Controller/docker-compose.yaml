@@ -2,7 +2,7 @@ name: p4tg
 
 services:
   p4tg:
-    container_name: controller
+    container_name: p4tg-controller
     image: unituekn/p4tg-controller:latest
     build:
       context: ..
@@ -10,6 +10,7 @@ services:
     network_mode: host
     environment:
       - SAMPLE=0
+      - LOOPBACK=false
       - P4TG_PORT=8000
       - P4_NAME=traffic_gen
     volumes:

@@ -10,7 +10,7 @@
 - [Installation & Start Instructions](#installation--start-instructions)
   - [Data plane](#data-plane)
   - [Control plane](#control-plane)
-  - [Configuration GUI](#configuration-gui)
+- [Development](#development)
 - [Changelog](./CHANGELOG.md)
 - [Documentation](#documentation)
 - [Preview](#preview-of-p4tg)
@@ -45,6 +45,7 @@ This compiles the program and copies the resulting configs to the target directo
 
 Afterwards, start p4tg via `make start`.
 
+**For Intel Tofino1**, run `make compile TARGET=tofino` and `make start TARGET=tofino`.
 **For Intel Tofino2**, run `make compile TARGET=tofino2` and `make start TARGET=tofino2`.
 
 This requires a fully setup SDE with set `$SDE` and `$SDE_INSTALL` environment variables.
@@ -59,15 +60,18 @@ Tested on:
 
 ### Control plane
 
-The controller is written in rust and can be started via `docker-compose up`. The initial build may take a few minutes.
+The controller is written in Rust and can be started via `cd Controller && docker compose up`. This will pull a prebuilt docker image.
 
-The controller then starts a REST-API server at port `P4TG_PORT` and endpoint `/api` (see `docker-compose.yml`) that is used to communicate with the configuration GUI.
+The controller then starts a REST-API server at port `P4TG_PORT` and endpoint `/api` (see `docker-compose.yaml`) that is used to communicate with the configuration GUI.
 It also serves the configuration gui at port `P4TG_PORT` and endpoint `/`.
+The configuration GUI can then be accessed at http://*ip-of-tofino-controller*:`P4TG_PORT`
 
 #### Configuration 
 
-Set `SAMPLE=1` in `docker-compose.yml` to activate IAT sampling mode instead of data plane measurement.
-Data plane measurement mode (`SAMPLE=0`) is more accurate and the default
+Set `SAMPLE=1` in `docker-compose.yaml` to activate IAT sampling mode instead of data plane measurement.
+Data plane measurement mode (`SAMPLE=0`) is more accurate and the default.
+
+Set `LOOPBACK=true` in `docker-compose.yaml` to configure all ports in loopback mode. This is only useful for testing.
 
 #### Config file 
 
@@ -76,32 +80,21 @@ If no config file is provided, the first 10 ports are used.
 
 Further, the MAC address can be specified that should be used to answer ARP requests when the `ARP reply` option is enabled in the UI.
 
-### Configuration GUI
-
-The configuration GUI is based on react & nodejs.
-It is automatically served by the controller at http://*ip-of-tofino-controller*:`P4TG_PORT`.
-
-If you want to adapt the configuration GUI, re-build the configuration GUI via `npm run build` within the `Configuration GUI` folder and copy the `build` folder to `Controller/gui_build`. 
-Afterward, re-build the controller via `docker-compose build` within the `Controller` folder.
-
-#### Docker
-
-The configuration GUI can also be run independently of the controller.
-Adapt the `API_URL` in the `config.ts` if the controller and configuration GUI run on different machines.
-
-To run the configuration GUI via docker-compose run `docker-compose up`.
-After the build has finished, the configuration GUI is reachable at `http://127.0.0.1`.
-To change the listening port adjust the port in `docker-compose.yml`.
-
-#### Legacy NPM installation
-
-Run `npm install --legacy-peer-deps` to install the nodejs dependencies.
-Adapt the `API_URL` in the `config.ts` if the controller and configuration GUI run on different machines.
-Afterward run `npm run build` to create a production build and serve the `build/` directory with a webserver of your choice.
-
 #### Connection to REST-API server
 
 Connect to the REST-API server through the frontend of the configuration GUI: http://*ip-of-tofino-controller*:`P4TG_PORT`/api
+
+### Development
+
+The configuration GUI is automatically served by the controller at http://*ip-of-tofino-controller*:`P4TG_PORT` and is included in the prebuilt docker image.
+
+If you want to adapt the configuration GUI, or the control plane, start the controller with `RUST_LOG=info cargo run` from inside the `Controller` folder.
+The controller communicates via the gRPC port (default: 50052) with the data plane.
+Re-build the configuration GUI via `npm install && npm start` within the `Configuration GUI` folder.
+Adapt the `API_URL` in the `config.ts` to run the controller and configuration GUI independently.
+
+Afterward, re-build the controller via `docker compose build` within the `Controller` folder.
+This will automatically build and copy the configuration GUI into the controller fodler and create an image containing the modifications.
 
 # Update Guide
 
@@ -116,3 +109,4 @@ The documentation of the REST-API can be found at the `/api/docs` endpoint of th
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-2.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-3.png"/>
+<img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-4.png"/>
