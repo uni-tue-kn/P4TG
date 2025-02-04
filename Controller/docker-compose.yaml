@@ -1,5 +1,3 @@
-name: p4tg
-
 services:
   p4tg:
     container_name: p4tg-controller
