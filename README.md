@@ -45,10 +45,10 @@ This compiles the program and copies the resulting configs to the target directo
 
 Afterwards, start p4tg via `make start`.
 
-**For Intel Tofino1**, run `make compile TARGET=tofino` and `make start TARGET=tofino`.
-**For Intel Tofino2**, run `make compile TARGET=tofino2` and `make start TARGET=tofino2`.
+- **For Intel Tofino1**, run `make compile TARGET=tofino` and `make start TARGET=tofino`.
+- **For Intel Tofino2**, run `make compile TARGET=tofino2` and `make start TARGET=tofino2`.
 
-This requires a fully setup SDE with set `$SDE` and `$SDE_INSTALL` environment variables.
+This requires a fully setup [SDE](https://github.com/p4lang/open-p4studio) with set `$SDE` and `$SDE_INSTALL` environment variables.
 
 Tested on:
   - SDE 9.9.0 (up to v2.0.0)
@@ -88,13 +88,13 @@ Connect to the REST-API server through the frontend of the configuration GUI: ht
 
 The configuration GUI is automatically served by the controller at http://*ip-of-tofino-controller*:`P4TG_PORT` and is included in the prebuilt docker image.
 
-If you want to adapt the configuration GUI, or the control plane, start the controller with `RUST_LOG=info cargo run` from inside the `Controller` folder.
-The controller communicates via the gRPC port (default: 50052) with the data plane.
-Re-build the configuration GUI via `npm install && npm start` within the `Configuration GUI` folder.
-Adapt the `API_URL` in the `config.ts` to run the controller and configuration GUI independently.
+If you want to adapt the configuration GUI, or the control plane:
+- Start the controller with `RUST_LOG=info cargo run` from inside the `Controller` folder. The controller communicates via the gRPC port (default: 50052) with the data plane.
+- Re-build the configuration GUI via `npm install && npm start` within the `Configuration GUI` folder.
+- Adapt the `API_URL` in the `config.ts` to run the controller and configuration GUI independently.
 
 Afterward, re-build the controller via `docker compose build` within the `Controller` folder.
-This will automatically build and copy the configuration GUI into the controller fodler and create an image containing the modifications.
+This will automatically build and copy the configuration GUI into the controller folder and create an image containing the modifications.
 
 # Update Guide
 
