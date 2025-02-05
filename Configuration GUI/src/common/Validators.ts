@@ -130,7 +130,7 @@ export const validatePorts = (port_tx_rx_mapping: { [name: number]: number}[], a
     //@ts-ignore
     const configured_ports: number[] = Object.entries(port_tx_rx_mapping).flatMap(([key, value]) => [Number(key), value]);
 
-    return configured_ports.some(r=> available_dev_ports.includes(r))
+    return configured_ports.length == 0 || configured_ports.some(r=> available_dev_ports.includes(r))
 }
 
 export const validateStreamSettings = (setting: StreamSettings[]) => {
