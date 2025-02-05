@@ -185,6 +185,24 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         ref.current.click()
     }
 
+    const fillPortsOnImport = (data: TrafficGenData) => {
+        // If the imported settings.json is not complete, i.e., not all ports are defined, they are not correctly rendered in the frontend.
+        // Therefore, we fill the stream settings for each undefined port with a copy of the imported stream and deactivate it.
+        const available_dev_ports: number[] = ports.slice(0, 10).map(p => p.pid);
+
+        data.streams.forEach(s => {
+            const ports_from_settings: number[] = data.stream_settings.filter(setting => setting.port && setting.stream_id == s.stream_id).map(setting => setting.port);
+            available_dev_ports.forEach(p => {
+                if (!ports_from_settings.includes(p)){
+                    const default_stream_settings = DefaultStreamSettings(s.stream_id, p);
+                    data.stream_settings.push(default_stream_settings)
+                }
+            })
+        })
+        // Sort by stream ID to correctly render in frontend
+        data.stream_settings.sort((a, b) => a.stream_id - b.stream_id);
+    }
+
     const loadSettings = (e: any) => {
         e.preventDefault()
 
@@ -203,6 +221,8 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                 alert("Settings not valid. Configured dev_port IDs are not available on this device.")
             }
             else {
+                fillPortsOnImport(data)
+
                 localStorage.setItem("streams", JSON.stringify(data.streams))
                 localStorage.setItem("gen-mode", String(data.mode))
 
