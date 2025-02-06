@@ -23,8 +23,10 @@ import {Button, Col, Form, Row, Table} from "react-bootstrap";
 import {get} from "../common/API";
 import Loader from "../components/Loader";
 import {
+    DefaultMPLSHeader,
     DefaultStream,
     DefaultStreamSettings,
+    Encapsulation,
     GenerationMode, P4TGInfos,
     PortInfo,
     Stream,
@@ -185,22 +187,31 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         ref.current.click()
     }
 
-    const fillPortsOnImport = (data: TrafficGenData) => {
-        // If the imported settings.json is not complete, i.e., not all ports are defined, they are not correctly rendered in the frontend.
-        // Therefore, we fill the stream settings for each undefined port with a copy of the imported stream and deactivate it.
+    const fillPortsOnMissingSetting = (streams: Stream[], stream_settings: StreamSettings[]) => {
+        // If the StreamSettings are not complete, i.e., not all ports are defined, they are not correctly rendered in the frontend.
+        // Therefore, we fill the stream settings for each undefined port with a default stream.
         const available_dev_ports: number[] = ports.slice(0, 10).map(p => p.pid);
 
-        data.streams.forEach(s => {
-            const ports_from_settings: number[] = data.stream_settings.filter(setting => setting.port && setting.stream_id == s.stream_id).map(setting => setting.port);
+        streams.forEach(s => {
+            const ports_from_settings: number[] = stream_settings.filter(setting => setting.port && setting.stream_id == s.stream_id).map(setting => setting.port);
             available_dev_ports.forEach(p => {
                 if (!ports_from_settings.includes(p)){
                     const default_stream_settings = DefaultStreamSettings(s.stream_id, p);
-                    data.stream_settings.push(default_stream_settings)
+                    if (s.encapsulation === Encapsulation.MPLS) {
+                        for (let i = 0; i < s.number_of_lse; i++) {
+                            default_stream_settings.mpls_stack.push(DefaultMPLSHeader())
+                        }
+                    } else if (s.encapsulation === Encapsulation.SRv6) {
+                        for (let i = 0; i < s.number_of_srv6_sids; i++) {
+                            default_stream_settings.sid_list.push("::")
+                        }
+                    }
+                    stream_settings.push(default_stream_settings)
                 }
             })
         })
         // Sort by stream ID to correctly render in frontend
-        data.stream_settings.sort((a, b) => a.stream_id - b.stream_id);
+        stream_settings.sort((a, b) => a.stream_id - b.stream_id);
     }
 
     const loadSettings = (e: any) => {
@@ -221,8 +232,6 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                 alert("Settings not valid. Configured dev_port IDs are not available on this device.")
             }
             else {
-                fillPortsOnImport(data)
-
                 localStorage.setItem("streams", JSON.stringify(data.streams))
                 localStorage.setItem("gen-mode", String(data.mode))
 
@@ -236,6 +245,8 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
             }
         }
     }
+
+    fillPortsOnMissingSetting(streams, stream_settings);
 
     // @ts-ignore
     return <Loader loaded={loaded}>
