@@ -213,6 +213,7 @@ pub struct StreamSetting {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub srv6_base_header: Option<IPv6>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Vec<String>, format = "ipv6", example="ff80::1")]
     pub sid_list: Option<Vec<Ipv6Addr>>,
     pub ethernet: Ethernet,
     #[serde(skip_serializing_if = "Option::is_none")]
