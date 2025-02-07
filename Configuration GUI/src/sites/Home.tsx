@@ -181,7 +181,9 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
             } else {
                 let overall_rate = 0
                 streams.forEach((v) => {
-                    overall_rate += v.traffic_rate
+                    if (stream_settings.some((setting) => v.stream_id == setting.stream_id && setting.active)) {
+                        overall_rate += v.traffic_rate
+                    }
                 })
 
                 if (mode !== GenerationMode.MPPS && overall_rate > max_rate) {
