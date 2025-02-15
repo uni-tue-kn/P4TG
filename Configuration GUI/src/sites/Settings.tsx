@@ -347,7 +347,20 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                             <th>Stream-ID</th>
                             <th>Frame Size</th>
                             <th>Rate</th>
-                            <th>Mode</th>
+                            <th>Mode &nbsp;
+                                <InfoBox>
+                                    <>
+                                        <h5>Rate Precision</h5>
+
+                                        <p>In this mode, several packets may be generated at once (burst) to fit the configured traffic rate more precisely. </p>
+
+                                        <h5>IAT Precision</h5>
+
+                                        <p>In this mode, a single packet is generated at once and all packets have the same inter-arrival times. This mode should be used if the traffic should be very "smooth", i.e., without bursts.
+                                            However, the configured traffic rate may not be met precisely.</p>
+                                    </>
+                                </InfoBox>
+                            </th>
                             <th>VxLAN &nbsp;
                                 <InfoBox>
                                     <p>VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC

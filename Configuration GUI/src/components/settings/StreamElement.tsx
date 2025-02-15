@@ -30,7 +30,7 @@ import {
     ASIC
 } from "../../common/Interfaces";
 import React, {useState} from "react";
-import {Button, Form, InputGroup} from "react-bootstrap";
+import {Button, Col, Form, InputGroup, Row} from "react-bootstrap";
 import InfoBox from "../InfoBox";
 import {StyledCol, StyledRow} from "../../sites/Settings";
 
@@ -229,37 +229,16 @@ const StreamElement = ({
         </StyledCol>
         <StyledCol>
             <tr>
-                <td>
+                <td className={show_batches_config ? "col-auto": "col-1"}>
                     <Form.Select disabled={running} required
                                  onChange={handleModeChange}>
                         <option selected={100 === data.burst} value="100">Rate Precision</option>
                         <option selected={1 === data.burst} value="1">IAT Precision</option>
                     </Form.Select>
                 </td>
-                <td className={"col-1"}>
-                    <InfoBox>
-                        <>
-                            <h5>Rate Precision</h5>
-
-                            <p>In this mode, several packets may be generated at once (burst) to fit the configured traffic rate more precisely. </p>
-
-                            <h5>IAT Precision</h5>
-
-                            <p>In this mode, a single packet is generated at once and all packets have the same inter-arrival times. This mode should be used if the traffic should be very "smooth", i.e., without bursts.
-                                However, the configured traffic rate may not be met precisely.</p>
-                        </>
-                    </InfoBox>
-                </td>
                 {show_batches_config ?
-                    <td>
+                    <td className={"col-1"}>
                         Batches
-                        <InfoBox>
-                            <>
-                                <h5>Batches</h5>
-
-                                <p>Increases the burstiness to fit the configured traffic rate even more precisely. Only has an effect in rate mode.</p>
-                            </>
-                        </InfoBox>
                         <Form.Check disabled={running}
                         type={"switch"}
                         checked={formData.batches}
@@ -268,6 +247,17 @@ const StreamElement = ({
                     </td>       
                 : 
                 null}
+                {show_batches_config ?
+                    <td className={"col-auto"}>
+                        <InfoBox>
+                            <>
+                                <h5>Batches</h5>
+                                <p>Increases the burstiness to fit the configured traffic rate even more precisely. Only has an effect in rate mode.</p>
+                            </>
+                        </InfoBox>
+                    </td>       
+                : 
+                null}                
             </tr>
         </StyledCol>
         <StyledCol>
@@ -280,9 +270,9 @@ const StreamElement = ({
             </Form.Check>
         </StyledCol>
         <StyledCol>
-            <tr>
-                <td>v4</td>
-                <td>
+            <Row>
+                <Col className={"text-end"}><span>v4</span></Col>
+                <Col>
                     <Form.Check
                         type={"switch"}
                         disabled={running || (data.encapsulation == Encapsulation.SRv6 && !data.srv6_ip_tunneling)}
@@ -290,9 +280,9 @@ const StreamElement = ({
                         onChange={handleIPVersionChange}  // Toggle IP version and reset VxLAN
                         >
                     </Form.Check>
-                </td>
-                <td>v6</td>
-            </tr>
+                </Col>
+                <Col className={"text-start"}><span>v6</span></Col>
+            </Row>
         </StyledCol>        
         <StyledCol>
             <Form.Select disabled={running} required
