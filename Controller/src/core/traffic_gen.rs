@@ -64,11 +64,13 @@ pub struct TrafficGen {
     /// is expected.
     pub port_mapping: HashMap<u32, u32>,
     /// Indicates if tofino2 is used
-    pub is_tofino2: bool
+    pub is_tofino2: bool,
+    /// Indicates the number of available pipes in hardware
+    pub num_pipes: u32
 }
 
 impl TrafficGen {
-    pub fn new(is_tofino2: bool) -> TrafficGen {
+    pub fn new(is_tofino2: bool, num_pipes: u32) -> TrafficGen {
         TrafficGen {
             min_buffer_offset: 0,
             running: false,
@@ -76,7 +78,8 @@ impl TrafficGen {
             streams: vec![],
             mode: GenerationMode::Cbr,
             port_mapping: HashMap::new(),
-            is_tofino2
+            is_tofino2,
+            num_pipes
         }
     }
 
@@ -489,9 +492,6 @@ impl TrafficGen {
 
         info!("Total Rate {total_rate}");
 
-        let timeout_factor: u32 = if total_rate >= TWO_PIPE_GENERATION_THRESHOLD {
-            if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()}.len() as u32
-        } else { 1 };
 
         // calculate sending behaviour via ILP optimization
         // further adds number of packets per time to the stream
@@ -514,17 +514,17 @@ impl TrafficGen {
             }
 
             // call solver
-            let (n_packets, timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / timeout_factor as f32, s.burst);
-            let rate = ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
-            let rate_accuracy = 100f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
+            let (n_packets, timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / self.num_pipes as f32, s.burst);
+            let rate = self.num_pipes as f64 * ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
+            let rate_accuracy = 100f32 as f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
 
-            info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, rate, rate_accuracy);
+            info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, self.num_pipes, rate, rate_accuracy);
 
             // add calculated values to the stream
             s.n_packets = Some(n_packets);
             s.timeout = Some(timeout);
             s.generation_accuracy = Some(rate_accuracy);
-            s.n_pipes = Some(timeout_factor as u8);
+            s.n_pipes = Some(self.num_pipes as u8);
 
             s
         }).collect();
@@ -536,7 +536,7 @@ impl TrafficGen {
             let stream = active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?;
             let encap_overhead = 20 + calculate_overhead(stream);
 
-            let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, if self.is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE} / timeout_factor as f32, 25);
+            let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, if self.is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE} / self.num_pipes as f32, 25);
             active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.n_packets = Some(n_packets);
             active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.timeout = Some(timeout);
         }
@@ -626,13 +626,7 @@ impl TrafficGen {
 
         let mut forward_entries = vec![];
 
-        let overall_traffic_rate: f32 = streams.iter().map(|x| x.traffic_rate).sum();
-
-        // we generate on both pipes if the overall rate is larger than the threshold or if we do poisson traffic
-        let generation_ports = if overall_traffic_rate < TWO_PIPE_GENERATION_THRESHOLD && mode != GenerationMode::Poisson {
-            vec![if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}]
-        }
-        else if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()};
+        let generation_ports = if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()};
 
         for s in streams {
             for port in &generation_ports {
