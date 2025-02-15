@@ -21,7 +21,8 @@ use std::env;
 use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
-use rbfrt::{SwitchConnection};
+use rbfrt::table::ActionData;
+use rbfrt::{table, SwitchConnection};
 use log::{info, warn};
 use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
@@ -36,7 +37,7 @@ mod error;
 
 use core::FrameSizeMonitor;
 use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen};
-use crate::core::traffic_gen_core::const_definitions::{PORT_CFG_TF2};
+use crate::core::traffic_gen_core::const_definitions::{PORT_CFG_TF2, DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 
 #[derive(Debug, Copy, Clone)]
@@ -157,12 +158,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // we simply check if a table in tf2 scope exists
     let is_tofino2 = switch.has_table(PORT_CFG_TF2);
 
-    if is_tofino2 {
+    let req = if is_tofino2 {
         info!("ASIC: Tofino2");
-    }
-    else {
+        table::Request::new(DEVICE_CONFIGURATION_TF2)
+    } else {
         info!("ASIC: Tofino1");
-    }
+        table::Request::new(DEVICE_CONFIGURATION)
+    };
+
+    let res = switch.get_table_entry(req).await.unwrap_or_default();
+    let num_pipes = res[0].get_action_data("num_pipes").unwrap_or(&ActionData::new("num_pipes", 2)).as_u32();
+    info!("#Pipes: {:?}", num_pipes);
+
 
     if loopback_mode {
         info!("Loopback mode activated.");
@@ -223,7 +230,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     rate_monitor.init_iat_meter(&switch, sample_mode).await?;
     rate_monitor.on_reset(&switch).await?;
 
-    let mut traffic_generator = TrafficGen::new(is_tofino2);
+    let mut traffic_generator = TrafficGen::new(is_tofino2, num_pipes);
     traffic_generator.stop(&switch).await?;
 
     let index_mapping = traffic_generator.init_monitoring_packet(&switch, &port_mapping).await?;

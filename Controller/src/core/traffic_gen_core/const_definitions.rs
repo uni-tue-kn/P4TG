@@ -31,6 +31,10 @@
  pub const PORT_CFG: &str = "tf1.pktgen.port_cfg";
  pub const PORT_CFG_TF2: &str = "tf2.pktgen.port_cfg";
  
+/// Table with hardware information
+pub const DEVICE_CONFIGURATION: &str = "tf1.dev.device_configuration";
+pub const DEVICE_CONFIGURATION_TF2: &str = "tf2.dev.device_configuration";
+
  /// Source port used for P4TG based UDP packets
  pub const P4TG_SOURCE_PORT: u16 = 50081;
  
@@ -89,7 +93,7 @@
  pub const TG_MAX_RATE_TF2: f32 = 400f32;
  
  /// Threshold in Gbps to use both generation pipes
- pub const TWO_PIPE_GENERATION_THRESHOLD: f32 = 75.0;
+ pub const PIPE_GENERATION_THRESHOLD: f32 = 75.0;
  
  /// Ethernet & IP header replace table
  /// This table contains the IP & Ethernet header configuration for each stream
@@ -125,3 +129,4 @@
  /// IPv6 address randomization maximum on Tofino 2
  pub const MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2: Ipv6Addr  = Ipv6Addr::new(0, 0, 0, 0, 0, 0xff, 0xffff, 0xffff);
  
+ //pub const BATCH_FACTOR: u32 = 32;
