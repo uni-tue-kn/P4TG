@@ -39,14 +39,17 @@ pub fn calculate_send_behaviour(frame_size: u32, traffic_rate: f32, max_burst: u
     let real_iat = frame_size as f32 * 8f32 / traffic_rate;
     let d = (real_iat - real_iat.floor()) / real_iat;
 
-    let max_packets = if max_burst == 1 { 1 } else { (( d / accuracy) as u32) + 1};
+    let min_packets = if max_burst == 1 { 1 } else { 2 };
+    let max_packets = if max_burst == 1 { 1 } else {((( d / accuracy) as u32) + 1).max(30)};
 
     // calc + num packets for objective
     let calculation = problem.add_column(1., 0..100);
-    let num_packets = problem.add_integer_column(1., 2..30);
+    let num_packets = problem.add_integer_column(1., min_packets..max_packets);
 
-    // not part of objective, therefore factor 0
-    let timeout = problem.add_integer_column(1., 30..u32::MAX); // timeout in 32bit ns
+    // Should be at least 30 ns for rate mode
+    let timeout = if max_burst == 1 { problem.add_integer_column(0., 1..u32::MAX)} 
+                                        else {
+                                           problem.add_integer_column(1., 30..u32::MAX) }; // timeout in 32bit ns
 
     // 0 <= calc - timeout * rate + (num_packets * frame_size * 8) <= 1
     // Constraint is bound 0 <= ... <= 1 to overcome possible float problems.
@@ -96,7 +99,7 @@ mod tests {
 
         let final_size = frame_size + encapsulation_size + 20; // 20 byte L1 overhead
         let traffic_rate = traffic_rate as f32;
-        let number_pipes = ((traffic_rate / 75.0).ceil() as u32 ).min(4).max(1);
+        let number_pipes = pipes_per_tofino;
         // let number_pipes = 1.0;
 
         let (n_packets, timeout) =
