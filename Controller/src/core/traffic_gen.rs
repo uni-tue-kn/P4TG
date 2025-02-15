@@ -150,7 +150,8 @@ impl TrafficGen {
             bytes: monitoring_packet,
             timer: MONITORING_PACKET_INTERVAL,
             buffer_offset: Some(0),
-            n_packets: 1
+            n_packets: 1,
+            batches: false
         }]).await?;
 
         // Min buffer offset is equal to the size of the monitoring packet
@@ -415,6 +416,7 @@ impl TrafficGen {
                     // The ILP did not find a solution for the configured parameters
                     Err(P4TGError::Error { message: format!("The ILP did not find a valid solution for packet generation of app ID {:}. Try a different rate.", packet.app_id) })
                 } else {
+                    let batch_factor: u32 = if packet.batches {BATCH_FACTOR} else {1};
                     Ok(table::Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
                     .match_key("app_id", MatchValue::exact(packet.app_id))
                     .action("trigger_timer_periodic")
@@ -422,6 +424,7 @@ impl TrafficGen {
                     .action_data("pkt_len", packet.bytes.len() as u32)
                     .action_data("timer_nanosec", packet.timer)
                     .action_data("packets_per_batch_cfg", packet.n_packets - 1)
+                    .action_data("batch_count_cfg", batch_factor - 1)
                     .action_data("pipe_local_source_port", if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}) // traffic gen port
                     .action_data("pkt_buffer_offset", packet.buffer_offset.unwrap()))
             }
@@ -514,11 +517,14 @@ impl TrafficGen {
             }
 
             // call solver
-            let (n_packets, timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / self.num_pipes as f32, s.burst);
+            let (n_packets, mut timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / self.num_pipes as f32, s.burst);
             let rate = self.num_pipes as f64 * ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
             let rate_accuracy = 100f32 as f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
 
             info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, self.num_pipes, rate, rate_accuracy);
+
+            // More bursty traffic desired. Activate batch mode
+            timeout = if s.batches.is_some_and(|b| b && s.burst != 1) {timeout * BATCH_FACTOR} else {timeout};
 
             // add calculated values to the stream
             s.n_packets = Some(n_packets);
@@ -560,7 +566,7 @@ impl TrafficGen {
 
         let packet_bytes: Vec<StreamPacket> = active_streams.iter().map(|s| {
             let packet = create_packet(s);
-            StreamPacket { app_id: s.app_id, bytes: packet, buffer_offset: None, timer: s.timeout.unwrap(), n_packets: s.n_packets.unwrap() }
+            StreamPacket { app_id: s.app_id, bytes: packet, buffer_offset: None, timer: s.timeout.unwrap(), n_packets: s.n_packets.unwrap(), batches: s.batches.is_some_and(|b| b && s.burst != 1) }
         }).collect();
 
         // configure egress table rules

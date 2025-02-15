@@ -157,8 +157,9 @@ export interface Stream {
     number_of_srv6_sids: number,
     srv6_ip_tunneling: boolean,
     traffic_rate: number,
-    app_id: number
-    burst: number
+    app_id: number,
+    burst: number,
+    batches: boolean
 }
 
 export const DefaultMPLSHeader = () => {
@@ -181,6 +182,7 @@ export const DefaultStream = (id: number) => {
         srv6_ip_tunneling: true,
         traffic_rate: 1,
         burst: 1,
+        batches: true,
         vxlan: false,
         ip_version: 4
     }

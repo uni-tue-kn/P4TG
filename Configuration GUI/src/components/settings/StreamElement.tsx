@@ -52,6 +52,7 @@ const StreamElement = ({
 }) => {
     const [show_mpls_dropdown, set_show] = useState(data.encapsulation == Encapsulation.MPLS)
     const [show_sid_config, set_show_sid_config] = useState(data.encapsulation == Encapsulation.SRv6)
+    const [show_batches_config, set_show_batches_config] = useState(data.burst != 1)
     const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
     const [number_of_srv6_sids, set_number_of_srv6_sids] = useState(data.number_of_srv6_sids)
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
@@ -78,6 +79,14 @@ const StreamElement = ({
         }))
         data.vxlan = !data.vxlan;
     }
+
+    const handleBatchesToggle = () => {
+        setFormData((prevData) => ({
+            ...prevData,
+            batches: !prevData.batches
+        }))
+        data.batches = !data.batches;
+    }    
 
     const handleEncapsulationChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         data.encapsulation = parseInt(event.target.value)
@@ -121,6 +130,11 @@ const StreamElement = ({
                 encapsulation: data.encapsulation
             }));             
         }
+    }
+
+    const handleModeChange = (event: any) => {
+        data.burst = parseInt(event.target.value)
+        set_show_batches_config(data.burst != 1)
     }
 
     const update_settings = () => {
@@ -217,7 +231,7 @@ const StreamElement = ({
             <tr>
                 <td>
                     <Form.Select disabled={running} required
-                                 onChange={(event: any) => data.burst = parseInt(event.target.value)}>
+                                 onChange={handleModeChange}>
                         <option selected={100 === data.burst} value="100">Rate Precision</option>
                         <option selected={1 === data.burst} value="1">IAT Precision</option>
                     </Form.Select>
@@ -236,6 +250,24 @@ const StreamElement = ({
                         </>
                     </InfoBox>
                 </td>
+                {show_batches_config ?
+                    <td>
+                        Batches
+                        <InfoBox>
+                            <>
+                                <h5>Batches</h5>
+
+                                <p>Increases the burstiness to fit the configured traffic rate even more precisely. Only has an effect in rate mode.</p>
+                            </>
+                        </InfoBox>
+                        <Form.Check disabled={running}
+                        type={"switch"}
+                        checked={formData.batches}
+                        onChange={handleBatchesToggle}>
+                        </Form.Check>                    
+                    </td>       
+                : 
+                null}
             </tr>
         </StyledCol>
         <StyledCol>

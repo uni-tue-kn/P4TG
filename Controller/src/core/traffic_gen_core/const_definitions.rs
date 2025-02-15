@@ -129,4 +129,4 @@ pub const DEVICE_CONFIGURATION_TF2: &str = "tf2.dev.device_configuration";
  /// IPv6 address randomization maximum on Tofino 2
  pub const MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2: Ipv6Addr  = Ipv6Addr::new(0, 0, 0, 0, 0, 0xff, 0xffff, 0xffff);
  
- //pub const BATCH_FACTOR: u32 = 32;
+ pub const BATCH_FACTOR: u32 = 5;

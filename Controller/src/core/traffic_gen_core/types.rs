@@ -65,7 +65,9 @@ pub struct StreamPacket {
     /// Number of packets that are sent for this stream
     pub n_packets: u16,
     /// Timeout for the packet generation
-    pub timer: u32
+    pub timer: u32,
+    /// Increases the burstiness resulting in a more accurate rate. Has no effect if in IAT mode.
+    pub batches: bool
 }
 
 /// Represents a Monitoring mapping
@@ -251,6 +253,10 @@ pub struct Stream {
     /// Maximal allowed burst (= packets). Burst = 1 is used for IAT precision mode, Burst = 100 for Rate precision.
     #[schema(example = 100)]
     pub(crate) burst: u16,
+    /// Sends more bursty traffic resulting in a more accurate rate
+    #[schema(example = true)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) batches: Option<bool>,    
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
     #[schema(example = 11)]
     #[serde(skip_serializing_if = "Option::is_none")]
