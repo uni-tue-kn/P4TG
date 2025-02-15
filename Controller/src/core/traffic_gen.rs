@@ -66,7 +66,9 @@ pub struct TrafficGen {
     /// Indicates if tofino2 is used
     pub is_tofino2: bool,
     /// Indicates the number of available pipes in hardware
-    pub num_pipes: u32
+    pub num_pipes: u32,
+    /// Duration of this test in seconds. 0 for unlimited
+    pub duration: Option<u32>
 }
 
 impl TrafficGen {
@@ -79,7 +81,8 @@ impl TrafficGen {
             mode: GenerationMode::Cbr,
             port_mapping: HashMap::new(),
             is_tofino2,
-            num_pipes
+            num_pipes,
+            duration: None
         }
     }
 

@@ -131,7 +131,9 @@ pub struct TrafficGenData {
     pub(crate) streams: Vec<Stream>,
     /// Mapping between TX (send) ports, and RX (receive) ports.
     /// Traffic send on port TX are expected to be received on port RX.
-    pub(crate) port_tx_rx_mapping: HashMap<u32, u32>
+    pub(crate) port_tx_rx_mapping: HashMap<u32, u32>,
+    /// The duration of this test in seconds.
+    pub(crate) duration: Option<u32>
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]

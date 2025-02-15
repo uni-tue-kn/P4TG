@@ -64,6 +64,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
+    const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
     const [loaded, set_loaded] = useState(false)
     const ref = useRef()
 
@@ -90,12 +91,14 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
             if (old_streams != JSON.stringify(stats.data.streams)) {
                 set_mode(stats.data.mode)
+                set_duration(stats.data.duration)
                 set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
                 set_stream_settings(stats.data.stream_settings)
                 set_streams(stats.data.streams)
 
                 localStorage.setItem("streams", JSON.stringify(stats.data.streams))
                 localStorage.setItem("gen-mode", stats.data.mode)
+                localStorage.setItem("duration", stats.data.duration)
                 localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
                 localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
             }
@@ -119,6 +122,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const save = () => {
         localStorage.setItem("streams", JSON.stringify(streams))
         localStorage.setItem("gen-mode", String(mode))
+        localStorage.setItem("duration", String(duration))
 
         localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
 
@@ -133,6 +137,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         set_streams([])
         set_stream_settings([])
         set_mode(GenerationMode.NONE)
+        set_duration(0)
         set_port_tx_rx_mapping({})
 
         alert("Reset complete.")
@@ -168,7 +173,8 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
             "mode": mode,
             "stream_settings": stream_settings,
             "streams": streams,
-            "port_tx_rx_mapping": port_tx_rx_mapping
+            "port_tx_rx_mapping": port_tx_rx_mapping,
+            "duration": duration
         }
 
         const json = `data:text/json;charset=utf-8,${encodeURIComponent(
@@ -234,6 +240,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
             else {
                 localStorage.setItem("streams", JSON.stringify(data.streams))
                 localStorage.setItem("gen-mode", String(data.mode))
+                localStorage.setItem("duration", data.duration ? String(data.duration) : "0")
 
                 localStorage.setItem("streamSettings", JSON.stringify(data.stream_settings))
 
@@ -250,7 +257,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
     // @ts-ignore
     return <Loader loaded={loaded}>
-        <Row>
+        <Row className={"align-items-center"}>
             <Col className={"col-2"}>
                 <Form.Select disabled={running} required
                              onChange={(event: any) => {
@@ -260,6 +267,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                                      addStream();
                                  }
                                  set_mode(parseInt(event.target.value));
+                                 set_duration(0);
                              }}>
                     <option value={GenerationMode.NONE}>Generation Mode</option>
                     <option selected={mode === GenerationMode.CBR} value={GenerationMode.CBR}>CBR</option>
@@ -268,7 +276,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                     <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
                 </Form.Select>
             </Col>
-            <Col>
+            <Col className={"col-auto"}>
                 <InfoBox>
                     <>
                         <p>P4TG supports multiple modes.</p>
@@ -293,6 +301,29 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
                     </>
                 </InfoBox>
+            </Col>
+        
+            <Col className={"col-auto"}>
+                <div>
+                    <span>Test duration     </span>
+                    <InfoBox>
+                            <>
+                            <h5>Test duration</h5>
+
+                            <p>If a test duration (in seconds) is specified, traffic generation will automatically stop after the duration is exceeded. A value of 0 indicates generation of infinite duration.</p>
+                            </>
+                    </InfoBox> 
+                </div>
+            </Col>
+         
+            <Col className={"col-auto"}>
+                <Form.Control className={"col-3 text-start"}
+                                onChange={(event: any) => set_duration(parseInt(event.target.value))}
+                                min={0}
+                                step={1}
+                                placeholder={duration > 0 ? String(duration) + " s" : "∞ s"}
+                                disabled={running} type={"number"}/>
+
             </Col>
             <Col className={"text-end"}>
                 <Button onClick={importSettings} disabled={running} variant={"primary"}>

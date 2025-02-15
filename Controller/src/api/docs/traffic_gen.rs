@@ -56,7 +56,8 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)])
+        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        duration: Some(10),
     };
 
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
@@ -111,7 +112,8 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)])
+        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        duration: None
     };
 
 
@@ -186,7 +188,8 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)])
+        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        duration: None
 };
 
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
@@ -240,7 +243,8 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)])
+        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        duration: None
     };
 
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
@@ -309,6 +313,7 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
+        duration: None,
     };
 
     pub static ref EXAMPLE_POST_4_RESPONSE: Vec<Stream> = vec![Stream {
@@ -375,7 +380,8 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)])
+        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        duration: None,
     };
 
     pub static ref EXAMPLE_POST_5_RESPONSE: Vec<Stream> = vec![Stream {
@@ -449,7 +455,8 @@ lazy_static! {
                 srv6_ip_tunneling: Some(true),
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)])
+        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        duration: None,
     };
 
 

@@ -286,7 +286,8 @@ export interface TrafficGenData {
     mode: GenerationMode,
     streams: Stream[],
     stream_settings: StreamSettings[],
-    port_tx_rx_mapping: { [name: number]: number}[]
+    port_tx_rx_mapping: { [name: number]: number}[],
+    duration: number
 }
 
 export interface PortInfo {

@@ -1,15 +1,46 @@
 # Changelog 
 
 ## v2.3.2
-- Added SRv6 support
-  - Maximum of 3 SIDs is supported
-  - Only available for Intel Tofino 2 
+### New Features
+- Add IPv6 support
+  - Randomization with least-significant 48-bits in source / destination address
+- Add CI for data plane build.
+- Add dark mode.
+- Add SRv6 support.
+  - Tofino 2 only.
+  - Up to 3 SIDs.
+  - Add IP tunneling toggle for SRv6.
+- Introduce loopback mode per controller flag.
+- Add configuration option to increase burstiness of traffic in rate mode for achieving a more accurate rate.
+- Add configuration option to set the duration of a test in seconds.
 
-## v2.3.1
-- Added IPv6 support
-  - Minimum frame size is 73 bytes as IPv6 has too much overhead
-  - Traffic randomization for least-significant 48 bits of src/destination IPv6 address 
-  - VxLAN in combination with IPv6 is not supported
+### Bug Fixes
+- Fix StreamSettings rendering in frontend if Controller API was used directly.
+- Fix "Sum of stream rates" error in frontend for inactive streams
+- Fix bug on settings import if no port mapping is configured.
+- Fix bug on settings import if not all ports are defined in JSON file.
+- Fix validation of port settings on import in frontend.
+- Fix backwards compatibility on config import from older P4TG versions.
+- Fix compilation on SDE 9.13.4 for Tofino 1.
+- Fix MPLS Encapsulation bug in frontend.
+- Fix frame type monitor for IPv6 traffic.
+- Fix CI issues.
+- Fix field validation for stream settings.
+- Fix IP settings being shown if no IP tunneling is used with SRv6.
+- Fix UDP checksum calculation for SRv6 with multiple SIDs.
+- Fix SRv6 compilation on Tofino 1.
+- Fix traffic generation for 64-byte frames with IPv6 on Tofino 2.
+- Fix traffic generation in Mpps mode
+- Fix errors in GUI build.
+- Fix stream settings related issues when TX port goes down.
+- Fix ASIC detection.
+- Fix compile flags and README updates.
+- Fix IPv6 UDP checksum calculation
+- Fix docker build of controller (#22)
+- Disallow MPLS with VxLAN on Tofino 1 to enable SDE 9.13.4.
+- Add missing API documentation.
+- Add config validation for available TX/RX ports.
+- Automatically disable active stream setting if port goes down.
 
 ## v2.3.0
 - Add support for Intel Tofino2 (data plane / control plane / configuration UI)

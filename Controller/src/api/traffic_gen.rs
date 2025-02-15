@@ -26,6 +26,7 @@ use axum::response::{IntoResponse, Json, Response};
 use log::info;
 use serde::Serialize;
 use crate::api::helper::validate::validate_request;
+use crate::api::helper::duration_monitor::monitor_test_duration;
 
 use crate::api::server::Error;
 use crate::AppState;
@@ -60,7 +61,8 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             mode: tg.mode,
             stream_settings: tg.stream_settings.clone(),
             streams: tg.streams.clone(),
-            port_tx_rx_mapping: tg.port_mapping.clone()
+            port_tx_rx_mapping: tg.port_mapping.clone(),
+            duration: tg.duration
         };
 
         (StatusCode::OK, Json(tg_data)).into_response()
@@ -141,11 +143,44 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
             tg.stream_settings = payload.stream_settings.clone();
             tg.streams = payload.streams.clone();
             tg.mode = payload.mode;
+            tg.duration = payload.duration;
 
             // experiment starts now
             // these values are used to show how long the experiment is running at the GUI
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
+
+            match payload.duration {
+                Some(t) => {
+                    if t > 0 {
+
+                        let state_clone = state.clone();
+                        let (tx, mut rx) = tokio::sync::watch::channel(false);
+                
+                        tokio::spawn(async move {
+                            info!("Started test duration monitor for {} s", t);
+                            loop {
+                                // Wait for response from thread 
+                                tokio::select! {
+                                    _ = rx.changed() => {
+                                        break;
+                                    }
+                                    _ = async {
+                                        // test monitor returns true if either duration is over, or traffic generation was stopped manually
+                                        let should_stop = monitor_test_duration(state_clone.clone(), t as f64).await;
+                                        if should_stop {
+                                            let _ = tx.send(true); // Notify the task to exit
+                                        }
+                                    } => {}
+                                }
+                                tokio::task::yield_now().await;
+                            }
+                        });
+                    }
+                },
+                // No duration, just generate
+                None => (),
+            }
 
             info!("Traffic generation started.");
             (StatusCode::OK, Json(streams)).into_response()

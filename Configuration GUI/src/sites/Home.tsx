@@ -78,6 +78,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     // @ts-ignore
     const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
+    const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
@@ -196,6 +197,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
                             "stream_settings": stream_settings,
                             "port_tx_rx_mapping": port_tx_rx_mapping,
                             "mode": mode,
+                            "duration": duration
                         }
                     })
 
@@ -228,12 +230,14 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
 
         if (stats !== undefined && Object.keys(stats.data).length > 1) {
             set_mode(stats.data.mode)
+            set_duration(stats.data.duration)
             set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
             set_stream_settings(stats.data.stream_settings)
             set_streams(stats.data.streams)
 
             localStorage.setItem("streams", JSON.stringify(stats.data.streams))
             localStorage.setItem("gen-mode", String(stats.data.mode))
+            localStorage.setItem("duration", String(stats.data.duration))
             localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
 

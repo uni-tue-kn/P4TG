@@ -20,3 +20,4 @@
 pub mod simple_stats;
 pub mod validate;
 pub mod serve_static_files;
+pub mod duration_monitor;
