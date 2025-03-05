@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
  
-#include "./libs/egress/Header_Replace.p4"
+#include "./libs/egress/header_replace.p4"
 control egress(
     inout header_t hdr,
     inout egress_metadata_t eg_md, in egress_intrinsic_metadata_t eg_intr_md, in egress_intrinsic_metadata_from_parser_t eg_intr_from_prsr,
