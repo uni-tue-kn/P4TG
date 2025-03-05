@@ -105,7 +105,7 @@ pub const DEVICE_CONFIGURATION_TF2: &str = "tf2.dev.device_configuration";
  
  /// MPLS replace table
  /// This table replaces the header content of the MPLS stack
- pub const MPLS_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_rewrite_c.mpls_header_replace";
+ pub const MPLS_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_replace_c.mpls_header_replace";
  
  /// SRv6 replace table
  /// This table replaces the header content of the SRv6 header

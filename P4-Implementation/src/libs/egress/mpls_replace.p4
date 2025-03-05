@@ -17,7 +17,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-control MPLS_Rewrite(
+control MPLS_Replace(
     inout header_t hdr,
     in egress_intrinsic_metadata_t eg_intr_md) {
 

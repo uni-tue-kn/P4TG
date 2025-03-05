@@ -796,7 +796,7 @@ impl TrafficGen {
                 else if s.encapsulation == Encapsulation::Mpls {
                         // we checked that mpls stack exists
                         let mpls_stack = setting.mpls_stack.as_ref().unwrap();
-                        let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
+                        let action_name: String = format!("egress.header_replace.mpls_replace_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
 
                         let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
                             .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
