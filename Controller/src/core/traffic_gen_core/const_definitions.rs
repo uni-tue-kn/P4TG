@@ -105,12 +105,16 @@ pub const DEVICE_CONFIGURATION_TF2: &str = "tf2.dev.device_configuration";
  
  /// MPLS replace table
  /// This table replaces the header content of the MPLS stack
- pub const MPLS_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_rewrite_c.mpls_header_replace";
+ pub const MPLS_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_replace_c.mpls_header_replace";
  
  /// SRv6 replace table
  /// This table replaces the header content of the SRv6 header
  pub const SRV6_HEADER_REPLACE_TABLE: &str = "egress.header_replace.srv6_replace_c.srv6_replace";
  
+ /// BIER replace table
+ /// This table replaces the header content of the BIER header
+ pub const BIER_HEADER_REPLACE_TABLE: &str = "egress.header_replace.bier_replace_c.bier_header_replace";
+
  /// Maximal number of supported mpls labels
  pub const MAX_NUM_MPLS_LABEL: u8 = 15;
  

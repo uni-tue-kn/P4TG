@@ -24,6 +24,7 @@ lazy_static! {
                 ipv6: None,
                 active: true,
                 mpls_stack: None,
+                bier: None,
                 srv6_base_header: None,
                 sid_list: None,
                 vxlan: None,
@@ -88,6 +89,7 @@ lazy_static! {
                     vni: 1
                 }),
                 mpls_stack: None,
+                bier: None,
                 srv6_base_header: None,
                 sid_list: None,
                 vlan: None
@@ -164,6 +166,7 @@ lazy_static! {
                     vni: 1
                 }),
                 mpls_stack: None,
+                bier: None,
                 srv6_base_header: None,
                 sid_list: None,
                 vlan: None
@@ -211,6 +214,7 @@ lazy_static! {
                 ipv6: None,
                 active: true,
                 mpls_stack: None,
+                bier: None,
                 srv6_base_header: None,
                 sid_list: None,
                 vxlan: None,
@@ -285,6 +289,7 @@ lazy_static! {
                 }),
                 ipv6: None,
                 mpls_stack: None,
+                bier: None,
                 port: 68,
                 stream_id: 1,
                 vlan: None,
@@ -356,6 +361,7 @@ lazy_static! {
                 active: true,
                 vxlan: None,
                 mpls_stack: None,
+                bier: None,
                 srv6_base_header: None,
                 sid_list: None,
                 vlan: None
@@ -424,6 +430,7 @@ lazy_static! {
                 active: true,
                 vxlan: None,
                 mpls_stack: None,
+                bier: None,
                 srv6_base_header: Some(IPv6 {
                     ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
                     ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),

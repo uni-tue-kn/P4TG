@@ -4,6 +4,15 @@ use log::error;
 use crate::core::traffic_gen_core::const_definitions::{P4TG_DST_PORT, P4TG_SOURCE_PORT, VX_LAN_UDP_PORT};
 use crate::core::traffic_gen_core::types::*;
 
+impl BIER {
+    fn write<T: std::io::Write>(&self, buf: &mut T) -> std::io::Result<()> {
+        buf.write_all(&self.bs.to_be_bytes())?;
+        buf.write_all(&self.si.to_be_bytes())?;
+        buf.write_all(&self.proto.to_be_bytes())?;
+        Ok(())
+    }
+}
+
 pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
     let mut encapsulation_overhead = match stream.encapsulation {
         Encapsulation::None => 0,
@@ -11,6 +20,7 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
         Encapsulation::QinQ => 8, // QinQ adds 8 bytes
         Encapsulation::Mpls => stream.number_of_lse.unwrap() as u32 * 4, // each mpls label has 4 bytes
         Encapsulation::SRv6 => 40 + 8 + stream.number_of_srv6_sids.unwrap() as u32 * 16, // Base IPv6 Header + SRH + each SID has 16 bytes
+        Encapsulation::Bier => 11 // With 64 bit BS
     };
 
     if stream.vxlan {
@@ -386,6 +396,79 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                         udp_header.checksum = udp_header.calc_checksum_ipv6(&ipv6_base_sr_header, &payload).unwrap();
                     }                    
                 };
+
+                udp_header.write(&mut result).unwrap();
+
+                result.extend_from_slice(&payload);
+
+                result
+            }
+            Encapsulation::Bier => {
+                let pkt = etherparse::Ethernet2Header {
+                    source: [0, 0, 0, 0, 0, 0],
+                    destination: [0, 0, 0, 0, 0, 0],
+                    ether_type: 0xbb00, // BIER ether type
+                };
+
+                // Frame size + BIER header with 64 bit BS
+                let mut result = Vec::<u8>::with_capacity((s.frame_size + 11) as usize);                             
+
+                pkt.write(&mut result).unwrap();
+
+                // Create the BIER header
+                let next_protocol = if s.ip_version == Some(6) {0x86dd} else {0x800};
+                let bier_header = BIER {
+                    bs: 0,
+                    si: 0,
+                    proto: next_protocol,
+                };
+
+                // Write the BIER header into the result buffer
+                bier_header.write(&mut result).unwrap();
+
+
+                // Add IP header
+                let ip_header: etherparse::IpHeader = match s.ip_version {
+                    Some(6) => 
+                        etherparse::IpHeader::Version6(etherparse::Ipv6Header {
+                            source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                            destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                            hop_limit: 64,
+                            payload_length: ((frame_size - 40 - 14 - 4) as u16).max(8),
+                            next_header: 17,
+                            ..Default::default()
+                        }, etherparse::Ipv6Extensions::default()),
+                    Some(4) | None | _ => 
+                        // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
+                        etherparse::IpHeader::Version4(etherparse::Ipv4Header::new((frame_size - 20 - 14 - 4) as u16, 
+                                                                    64, 17, [0, 0, 0, 0], [0, 0, 0, 0]),
+                                                        etherparse::Ipv4Extensions::default())
+                };
+
+                ip_header.write(&mut result).unwrap();
+
+                // Subtract IP, Ethernet, CRC size
+                let udp_size = if s.ip_version == Some(6) {((frame_size - 40 - 14 - 4) as u16).max(8)} else {(frame_size - 20 - 14 - 4) as u16};
+                let mut udp_header = etherparse::UdpHeader {
+                    source_port: P4TG_SOURCE_PORT,
+                    destination_port: P4TG_DST_PORT,
+                    length: udp_size,
+                    checksum: 0,
+                };
+
+                // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
+                let remaining = (result.capacity() as isize - result.len() as isize - 8 - payload.len() as isize - 4).max(0);
+                let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
+
+                payload.extend_from_slice(&padding);
+                match ip_header {
+                    IpHeader::Version6(v6, _) => {
+                        udp_header.checksum = udp_header.calc_checksum_ipv6(&v6, &payload).unwrap();
+                    },
+                    IpHeader::Version4(v4, _) => {
+                        udp_header.checksum = udp_header.calc_checksum_ipv4(&v4, &payload).unwrap();
+                    }
+                }
 
                 udp_header.write(&mut result).unwrap();
 

@@ -1,22 +1,22 @@
 /* Copyright 2022-present University of Tuebingen, Chair of Communication Networks
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*   http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 
 /*
- * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
- * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
- */
+* Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+* Fabian Ihle (fabian.ihle@uni-tuebingen.de)
+*/
 
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
@@ -36,7 +36,8 @@ pub enum Encapsulation {
     Vlan = 1,
     QinQ = 2,
     Mpls = 3,
-    SRv6 = 4
+    SRv6 = 4,
+    Bier = 5,
 }
 
 /// Describes the used generation mode
@@ -118,6 +119,17 @@ pub struct MPLSHeader {
     pub tc: u32,
     /// Time-to-live of this MPLS LSE
     pub ttl: u32
+}
+
+/// Defines a BIER header
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct BIER {
+    /// BitString
+    pub bs: u64,
+    /// Subset Identifier
+    pub si: u8,
+    /// Next-protocol field
+    pub proto: u16
 }
 
 /// Represents the body of the GET / POST endpoints of /trafficgen
@@ -220,6 +232,8 @@ pub struct StreamSetting {
     #[schema(value_type = Vec<String>, format = "ipv6", example="ff80::1")]
     pub sid_list: Option<Vec<Ipv6Addr>>,
     pub ethernet: Ethernet,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bier: Option<BIER>,    
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ip: Option<IPv4>,
     #[serde(skip_serializing_if = "Option::is_none")]

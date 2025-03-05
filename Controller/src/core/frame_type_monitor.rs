@@ -54,7 +54,7 @@ impl FrameTypeMonitor {
         // IP address as ternary to either match on IPv4 or IPv6
         let ip_ternary_entries = vec![([224, 0, 0, 0], 8, 0, "multicast".to_owned()), ([0, 0, 0, 0],0 , 0, "unicast".to_owned()), ([0, 0, 0, 0], 0, 1, "vxlan".to_owned())];
         let ipv6_ternary_entries = vec![([65280, 0, 0, 0, 0, 0, 0, 0], 8, 0, "multicast".to_owned())]; // Only multicast needed here, other cases are handled implicitly through ternary
-        let ethernet_types = vec![(0x800, "ipv4".to_owned()), (0x86DD, "ipv6".to_owned()), (0x8100, "vlan".to_owned()), (0x88a8, "q_in_q".to_owned()), (0x0806, "arp".to_owned()), (0x8847, "mpls".to_owned())];
+        let ethernet_types = vec![(0x800, "ipv4".to_owned()), (0x86DD, "ipv6".to_owned()), (0x8100, "vlan".to_owned()), (0x88a8, "q_in_q".to_owned()), (0x0806, "arp".to_owned()), (0x8847, "mpls".to_owned()), (0xbb00, "bier".to_owned())];
         FrameTypeMonitor {port_mapping, ip_ternary_entries, ipv6_ternary_entries, ethernet_types, statistics: FrameTypeStatistics::default() }
     }
 

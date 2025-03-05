@@ -796,7 +796,7 @@ impl TrafficGen {
                 else if s.encapsulation == Encapsulation::Mpls {
                         // we checked that mpls stack exists
                         let mpls_stack = setting.mpls_stack.as_ref().unwrap();
-                        let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
+                        let action_name: String = format!("egress.header_replace.mpls_replace_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
 
                         let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
                             .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
@@ -839,6 +839,18 @@ impl TrafficGen {
                     }
                     reqs.push(req.clone());
 
+                } else if s.encapsulation == Encapsulation::Bier {
+                    let action_name: String = format!("egress.header_replace.bier_replace_c.rewrite_bier");
+                    let bier_header = setting.bier.clone().unwrap();
+
+                    let req = Request::new(BIER_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action(&action_name)
+                        .action_data("bs", bier_header.bs)
+                        .action_data("si", bier_header.si);
+
+                    reqs.push(req);
                 }
             }
         }
@@ -909,9 +921,9 @@ impl TrafficGen {
     /// Clears various tables that are refilled during traffic gen setup
     async fn reset_tables(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
         if self.is_tofino2 {
-            switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+            switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE, BIER_HEADER_REPLACE_TABLE]).await?;
         } else {
-            switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+            switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE, BIER_HEADER_REPLACE_TABLE]).await?;
         }
 
         Ok(())
