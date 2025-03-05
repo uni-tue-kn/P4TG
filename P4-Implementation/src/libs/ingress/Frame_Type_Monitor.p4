@@ -88,6 +88,10 @@ control Frame_Type_Monitor(
         ethernet_type_counter.count();
     }
 
+    action bier() {
+        ethernet_type_counter.count();
+    }    
+
     action unknown() {
         ethernet_type_counter.count();
     }
@@ -104,6 +108,7 @@ control Frame_Type_Monitor(
             ipv4;
             arp;
             ipv6;
+            bier;
             unknown;
         }
         default_action = unknown;

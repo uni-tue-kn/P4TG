@@ -96,6 +96,7 @@ parser SwitchIngressParser(
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
+            ETHERTYPE_BIER: parse_bier;
         #if __TARGET_TOFINO__ == 2
             ETHERTYPE_IPV6: check_for_srv6;
         #else
@@ -107,55 +108,65 @@ parser SwitchIngressParser(
         }
     }
 
-    state check_for_srv6 {
-        ipv6_lookahead_next_header_t ipv6_lookahead = pkt.lookahead<ipv6_lookahead_next_header_t>();
-        transition select(ipv6_lookahead.nextHdr) {
-            IP_PROTOCOL_SRH: parse_srh;
-            IP_PROTOCOL_UDP: parse_path_v6;
+    #if __TARGET_TOFINO__ == 2
+        state check_for_srv6 {
+            ipv6_lookahead_next_header_t ipv6_lookahead = pkt.lookahead<ipv6_lookahead_next_header_t>();
+            transition select(ipv6_lookahead.nextHdr) {
+                IP_PROTOCOL_SRH: parse_srh;
+                IP_PROTOCOL_UDP: parse_path_v6;
+            }
         }
-    }
 
-    state parse_srh {
-        pkt.extract(hdr.sr_ipv6);
-        pkt.extract(hdr.srh);
-        transition select(hdr.srh.last_entry){
-            0: parse_1_sid;
-            1: parse_2_sids;
-            2: parse_3_sids;
+        state parse_srh {
+            pkt.extract(hdr.sr_ipv6);
+            pkt.extract(hdr.srh);
+            transition select(hdr.srh.last_entry){
+                0: parse_1_sid;
+                1: parse_2_sids;
+                2: parse_3_sids;
+                default: accept;
+            }
+        }
+
+        state parse_1_sid{
+            pkt.extract(hdr.sid1);
+            transition select (hdr.srh.next_header){
+                IP_PROTOCOL_UDP: parse_path_no_ip;
+                IP_PROTOCOL_IPV4: parse_path;
+                IP_PROTOCOL_IPV6: parse_path_v6;
+            }
+        }
+
+        state parse_2_sids{
+            pkt.extract(hdr.sid1);
+            pkt.extract(hdr.sid2);
+            transition select (hdr.srh.next_header){
+                IP_PROTOCOL_UDP: parse_path_no_ip;
+                IP_PROTOCOL_IPV4: parse_path;
+                IP_PROTOCOL_IPV6: parse_path_v6;
+            }
+        }    
+
+        state parse_3_sids{
+            pkt.extract(hdr.sid1);
+            pkt.extract(hdr.sid2);
+            pkt.extract(hdr.sid3);
+            transition select (hdr.srh.next_header){
+                IP_PROTOCOL_UDP: parse_path_no_ip;
+                IP_PROTOCOL_IPV4: parse_path;
+                IP_PROTOCOL_IPV6: parse_path_v6;
+            }
+        }
+    #endif
+      
+    state parse_bier {
+        pkt.extract(hdr.bier);
+        transition select (hdr.bier.proto){
+            ETHERTYPE_IPV4: parse_path;
+            ETHERTYPE_IPV6: parse_path_v6;
             default: accept;
         }
     }
-
-    state parse_1_sid{
-        pkt.extract(hdr.sid1);
-        transition select (hdr.srh.next_header){
-            IP_PROTOCOL_UDP: parse_path_no_ip;
-            IP_PROTOCOL_IPV4: parse_path;
-            IP_PROTOCOL_IPV6: parse_path_v6;
-        }
-    }
-
-    state parse_2_sids{
-        pkt.extract(hdr.sid1);
-        pkt.extract(hdr.sid2);
-        transition select (hdr.srh.next_header){
-            IP_PROTOCOL_UDP: parse_path_no_ip;
-            IP_PROTOCOL_IPV4: parse_path;
-            IP_PROTOCOL_IPV6: parse_path_v6;
-        }
-    }    
-
-    state parse_3_sids{
-        pkt.extract(hdr.sid1);
-        pkt.extract(hdr.sid2);
-        pkt.extract(hdr.sid3);
-        transition select (hdr.srh.next_header){
-            IP_PROTOCOL_UDP: parse_path_no_ip;
-            IP_PROTOCOL_IPV4: parse_path;
-            IP_PROTOCOL_IPV6: parse_path_v6;
-        }
-    }    
-      
 
     state parse_arp {
         pkt.extract(hdr.arp);
@@ -264,6 +275,7 @@ parser SwitchIngressParser(
         transition select (first_nibble) {
             0x4: parse_path;
             0x6: parse_path_v6;
+            15: parse_bier; // We assume that the 4 MSB bits (first nibble) are all set to one in this case
             default: accept;
         }
     }
@@ -301,6 +313,7 @@ control SwitchIngressDeparser(
         pkt.emit(hdr.vxlan);
         pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
+        pkt.emit(hdr.bier);
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.inner_ipv4);
@@ -343,6 +356,7 @@ parser SwitchEgressParser(
             ETHERTYPE_VLANQ: parse_vlan;
             ETHERTYPE_QinQ: parse_q_in_q;
             ETHERTYPE_IPV4: parse_ipv4;
+            ETHERTYPE_BIER: parse_bier;
         #if __TARGET_TOFINO__ == 2
             ETHERTYPE_IPV6: check_for_srv6;
         #else
@@ -423,7 +437,16 @@ parser SwitchEgressParser(
     }    
     #endif
 
-     state parse_vlan {
+    state parse_bier {
+        pkt.extract(hdr.bier);
+        transition select (hdr.bier.proto){
+            ETHERTYPE_IPV4: parse_path;
+            ETHERTYPE_IPV6: parse_path_v6;
+            default: accept;
+        }
+    }
+
+    state parse_vlan {
         pkt.extract(hdr.vlan);
         transition select (hdr.vlan.ether_type){
             ETHERTYPE_IPV4: parse_path;
@@ -454,6 +477,7 @@ parser SwitchEgressParser(
         transition select (first_nibble) {
             0x4: parse_path;
             0x6: parse_path_v6;
+            15: parse_bier; // We assume that the 4 MSB bits (first nibble) are all set to one in this case
             default: accept;
         }
     }
@@ -640,6 +664,7 @@ control SwitchEgressDeparser(
         pkt.emit(hdr.vxlan);
         pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
+        pkt.emit(hdr.bier);
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.inner_ipv4);

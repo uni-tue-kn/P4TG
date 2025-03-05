@@ -18,7 +18,8 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
  
-#include "./mpls_actions.p4"
+#include "./mpls_replace.p4"
+#include "./bier_replace.p4"
 #if __TARGET_TOFINO__ == 2
     #include "./srv6_replace.p4"
 #endif
@@ -39,7 +40,8 @@ control Header_Replace(
     Random<bit<16>>() dst_rand_v6_2;
     #endif
 
-    MPLS_Rewrite() mpls_rewrite_c;
+    MPLS_Replace() mpls_replace_c;
+    BIER_Replace() bier_replace_c;
     #if __TARGET_TOFINO__ == 2
         SRv6_Replace() srv6_replace_c;
     #endif
@@ -183,7 +185,8 @@ control Header_Replace(
             }
 
             vlan_header_replace.apply(); // rewrite vlan header if configured
-            mpls_rewrite_c.apply(hdr, eg_intr_md);
+            bier_replace_c.apply(hdr, eg_intr_md);
+            mpls_replace_c.apply(hdr, eg_intr_md);
         #if __TARGET_TOFINO__ == 2
             srv6_replace_c.apply(hdr, eg_intr_md);
         #endif                

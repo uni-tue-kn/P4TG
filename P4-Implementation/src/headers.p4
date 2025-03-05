@@ -26,6 +26,8 @@ typedef bit<32> ipv4_addr_t;
 typedef bit<128> ipv6_addr_t;
 typedef bit<16> ether_type_t;
 typedef bit<32> reg_index_t;
+// TODO Adjust with compiler flag
+typedef bit<64> bierBitmask;
 
 #if __TARGET_TOFINO__ == 2
 typedef bit<32> seq_t; // due to higher data rates we need larger seq number space
@@ -39,6 +41,7 @@ const ether_type_t ETHERTYPE_QinQ = 0x88a8;
 const ether_type_t ETHERTYPE_VLANQ = 0x8100;
 const ether_type_t ETHERTYPE_MPLS = 0x8847;
 const ether_type_t ETHERTYPE_ARP = 0x0806;
+const ether_type_t ETHERTYPE_BIER = 0xbb00;
 
 const bit<8> IP_PROTOCOL_UDP = 17;
 const bit<8> IP_PROTOCOL_IPV4 = 4;
@@ -49,8 +52,6 @@ const bit<16> UDP_VxLAN_PORT = 4789;
 const bit<16> UDP_P4TG_PORT = 50083;
 
 const bit<8> TG_MODE_ANALYZE = 4;
-
-
 
 header ethernet_h {
     mac_addr_t dst_addr;
@@ -70,6 +71,12 @@ header arp_t {
     ipv4_addr_t dst_ip_addr;
 }
 
+
+header bier_h {
+    bierBitmask bs;
+    bit<8> si;
+    bit<16> proto;
+}
 
 header mpls_h {
     bit<20> label;
@@ -207,6 +214,7 @@ struct header_t {
     sid_t sid3;
     ethernet_h inner_ethernet;
     mpls_h[15] mpls_stack;
+    bier_h bier;
     ipv4_t ipv4;
     ipv6_t ipv6;
     ipv4_t inner_ipv4;
