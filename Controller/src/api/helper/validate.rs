@@ -75,6 +75,11 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
                     return Err(Error::new(format!("No MPLS stack provided for stream with ID #{} on port {}.", stream.stream_id, setting.port)))
                 }
 
+                // Check BIER
+                if stream.encapsulation == Encapsulation::Bier && setting.bier.is_none() {
+                    return Err(Error::new(format!("No BIER header provided for stream with ID #{} on port {}.", stream.stream_id, setting.port)))
+                }                
+
                 // Validate if the configured number_of_lse per stream matches the MPLS stack size
                 if stream.encapsulation == Encapsulation::Mpls && setting.mpls_stack.as_ref().unwrap().len() != stream.number_of_lse.unwrap() as usize {
                     return Err(Error::new(format!("Number of LSEs in stream with ID #{} does not match length of the MPLS stack.", setting.stream_id)));
