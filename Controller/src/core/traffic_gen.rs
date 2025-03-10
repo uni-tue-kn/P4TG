@@ -851,6 +851,41 @@ impl TrafficGen {
                         .action_data("si", bier_header.si);
 
                     reqs.push(req);
+                } else if s.encapsulation == Encapsulation::BierWithMPLS {
+                    let action_name: String = format!("egress.header_replace.bier_replace_c.rewrite_bier");
+                    let bier_header = setting.bier.clone().unwrap();
+
+                    let req = Request::new(BIER_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action(&action_name)
+                        .action_data("bs", bier_header.bs)
+                        .action_data("si", bier_header.si);
+
+                    reqs.push(req);
+
+                    // we checked that mpls stack exists
+                    let mpls_stack = setting.mpls_stack.as_ref().unwrap();
+                    let action_name: String = format!("egress.header_replace.mpls_replace_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
+
+                    let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
+                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action(&action_name);
+
+                    // build generic action data
+                    for j in 1..cmp::min(s.number_of_lse.unwrap()+1, MAX_NUM_MPLS_LABEL+1) {
+                        let lse = &mpls_stack[(j-1) as usize];
+
+                        let label_param = format!("label{}", j);
+                        let ttl_param = format!("ttl{}", j);
+                        let tc_param = format!("tc{}", j);
+                        req = req.action_data(&label_param, lse.label)
+                                .action_data(&ttl_param, lse.ttl)
+                                .action_data(&tc_param, lse.tc);
+                    }
+
+                    reqs.push(req.clone());                    
                 }
             }
         }

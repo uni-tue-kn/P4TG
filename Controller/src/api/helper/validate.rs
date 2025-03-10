@@ -32,7 +32,7 @@ use crate::PortMapping;
 pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode, tx_rx_port_mapping: &HashMap<u32, u32>, available_ports: HashMap<u32, PortMapping>, is_tofino2: bool) -> Result<(), Error> {
     for stream in streams.iter(){
         // Check max number of MPLS labels
-        if stream.encapsulation == Encapsulation::Mpls {
+        if stream.encapsulation == Encapsulation::Mpls || stream.encapsulation == Encapsulation::BierWithMPLS{
             if stream.number_of_lse.is_none() {
                 return Err(Error::new(format!("number_of_lse missing for stream #{}", stream.stream_id)))
             }
@@ -71,7 +71,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
                 // check MPLS
                 // check that mpls stack is set
-                if stream.encapsulation == Encapsulation::Mpls && setting.mpls_stack.is_none() {
+                if (stream.encapsulation == Encapsulation::Mpls || stream.encapsulation == Encapsulation::BierWithMPLS) && setting.mpls_stack.is_none() {
                     return Err(Error::new(format!("No MPLS stack provided for stream with ID #{} on port {}.", stream.stream_id, setting.port)))
                 }
 
@@ -81,7 +81,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
                 }                
 
                 // Validate if the configured number_of_lse per stream matches the MPLS stack size
-                if stream.encapsulation == Encapsulation::Mpls && setting.mpls_stack.as_ref().unwrap().len() != stream.number_of_lse.unwrap() as usize {
+                if (stream.encapsulation == Encapsulation::Mpls || stream.encapsulation == Encapsulation::BierWithMPLS) && setting.mpls_stack.as_ref().unwrap().len() != stream.number_of_lse.unwrap() as usize {
                     return Err(Error::new(format!("Number of LSEs in stream with ID #{} does not match length of the MPLS stack.", setting.stream_id)));
                 }
 
