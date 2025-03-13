@@ -1,5 +1,4 @@
 use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
-use log::info;
 use log::error;
 use crate::core::traffic_gen_core::const_definitions::{P4TG_DST_PORT, P4TG_SOURCE_PORT, VX_LAN_UDP_PORT};
 use crate::core::traffic_gen_core::types::*;
@@ -100,7 +99,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                                     64)
                                 .udp(P4TG_SOURCE_PORT,
                                     P4TG_DST_PORT),
-                    Some(4) | None | _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                    // This covers Some(4) | None | _
+                    _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
                                 .ipv4([192, 168, 0, 0],
                                     [192, 168, 0, 0],
                                     64)
@@ -134,7 +134,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                                     64)
                                 .udp(P4TG_SOURCE_PORT,
                                     P4TG_DST_PORT),
-                    Some(4) | None | _ => 
+                    // This covers Some(4) | None | _
+                    _ => 
                         PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
                             .single_vlan(0)
                             .ipv4([192, 168, 0, 0],
@@ -174,7 +175,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                                     64)
                                 .udp(P4TG_SOURCE_PORT,
                                     P4TG_DST_PORT),
-                        Some(4) | None | _ =>
+                        // This covers Some(4) | None | _
+                        _ =>
                              PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
                                 .double_vlan(0, 0)
                                 .ipv4([192, 168, 0, 0],
@@ -240,7 +242,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                             next_header: 17,
                             ..Default::default()
                         }, etherparse::Ipv6Extensions::default()),
-                    Some(4) | None | _ => 
+                    // This covers Some(4) | None | _
+                    _ => 
                         // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
                         etherparse::IpHeader::Version4(etherparse::Ipv4Header::new((frame_size - 20 - 14 - 4) as u16, 
                                                                     64, 17, [0, 0, 0, 0], [0, 0, 0, 0]),
@@ -307,10 +310,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                     (_, _) =>  (17, 0)// UDP
                 };
 
-                let n = match number_of_sid {
-                    Some(n) => n,
-                    None => 0 // This can never happen as the number is validated before
-                };          
+                let n = number_of_sid.unwrap_or(0);     
 
                 // ipv6_type: 4, // Segment routing
                 // segments_left: n - 1,
@@ -331,7 +331,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
 
                 match srh {
                     Ok(s) => s.write(&mut result).unwrap(),
-                    Err(_) => {error!("Invalid payload length for SRH."); ()}
+                    Err(_) => {error!("Invalid payload length for SRH."); }
                 }
 
                 let inner_ip_header: Option<IpHeader> = match s.srv6_ip_tunneling {
@@ -348,7 +348,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                                     next_header: 17,
                                     ..Default::default()
                                 }, etherparse::Ipv6Extensions::default()),
-                            Some(4) | None | _ => 
+                            // This covers Some(4) | None | _
+                            _ => 
                                 // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
                                 etherparse::IpHeader::Version4(etherparse::Ipv4Header::new(((frame_size as isize - 14 - inner_ip_header_size - 4).max(8)) as u16, 
                                                                             64, 17, [0, 0, 0, 0], [0, 0, 0, 0]),
@@ -370,7 +371,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 };
 
                 // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = (udp_size - 8 - 11).max(0);
+                let remaining = udp_size - 8 - 11;
                 let padding: Vec<u8> = (0..remaining).map(|_| { rand::random::<u8>() }).collect();
 
                 payload.extend_from_slice(&padding);

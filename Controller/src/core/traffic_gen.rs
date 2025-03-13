@@ -492,7 +492,7 @@ impl TrafficGen {
                if mode == GenerationMode::Mpps {
                 (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
                } else {
-                x.traffic_rate as f32
+                x.traffic_rate 
                }
         }).sum();
 
@@ -522,7 +522,7 @@ impl TrafficGen {
             // call solver
             let (n_packets, mut timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / self.num_pipes as f32, s.burst);
             let rate = self.num_pipes as f64 * ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
-            let rate_accuracy = 100f32 as f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
+            let rate_accuracy = 100f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
 
             info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, self.num_pipes, rate, rate_accuracy);
 
@@ -760,7 +760,7 @@ impl TrafficGen {
                     }
                 };
 
-                req.map(|r| reqs.push(r));
+                if let Some(r) = req { reqs.push(r) }
 
                 if s.encapsulation == Encapsulation::QinQ {
                     // we checked in validation that vlan exists

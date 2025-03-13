@@ -46,7 +46,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
             }
         } else if stream.encapsulation == Encapsulation::SRv6 {
             if !is_tofino2 {
-                return Err(Error::new(format!("SRv6 is only supported on Tofino2.")));
+                return Err(Error::new("SRv6 is only supported on Tofino2.".to_string()));
             }
 
             if stream.number_of_srv6_sids.is_none() {
@@ -93,7 +93,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
                 // Validate IP settings, but not if no inner IP header is used in SRv6
                 if (stream.encapsulation == Encapsulation::SRv6 && stream.srv6_ip_tunneling.unwrap_or(true)) || stream.encapsulation != Encapsulation::SRv6 {
-                    if stream.ip_version != Some(6) && stream.ip_version != Some(4) && !stream.ip_version.is_none() {
+                    if stream.ip_version != Some(6) && stream.ip_version != Some(4) && stream.ip_version.is_some() {
                         return Err(Error::new(format!("Unsupported IP version for stream with ID #{} on port {}.", stream.stream_id, setting.port)));
                     }
 
@@ -169,10 +169,10 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
     // Verify that port is actually available on this device. This might happen if a configuration from another device is imported.
     for (tx_port, rx_port) in tx_rx_port_mapping.iter(){
-        if !available_ports.contains_key(&tx_port){
+        if !available_ports.contains_key(tx_port){
             return Err(Error::new(format!("Configuration error: TX port {} is not available on this device.", tx_port)));
         }
-        if !available_ports.contains_key(&rx_port){
+        if !available_ports.contains_key(rx_port){
             return Err(Error::new(format!("Configuration error: RX port {} is not available on this device.", rx_port)));
         }        
     }

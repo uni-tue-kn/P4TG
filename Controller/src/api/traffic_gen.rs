@@ -150,36 +150,32 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
 
-            match payload.duration {
-                Some(t) => {
-                    if t > 0 {
+            if let Some(t) = payload.duration {
+                if t > 0 {
 
-                        let state_clone = state.clone();
-                        let (tx, mut rx) = tokio::sync::watch::channel(false);
-                
-                        tokio::spawn(async move {
-                            info!("Started test duration monitor for {} s", t);
-                            loop {
-                                // Wait for response from thread 
-                                tokio::select! {
-                                    _ = rx.changed() => {
-                                        break;
-                                    }
-                                    _ = async {
-                                        // test monitor returns true if either duration is over, or traffic generation was stopped manually
-                                        let should_stop = monitor_test_duration(state_clone.clone(), t as f64).await;
-                                        if should_stop {
-                                            let _ = tx.send(true); // Notify the task to exit
-                                        }
-                                    } => {}
+                    let state_clone = state.clone();
+                    let (tx, mut rx) = tokio::sync::watch::channel(false);
+            
+                    tokio::spawn(async move {
+                        info!("Started test duration monitor for {} s", t);
+                        loop {
+                            // Wait for response from thread 
+                            tokio::select! {
+                                _ = rx.changed() => {
+                                    break;
                                 }
-                                tokio::task::yield_now().await;
+                                _ = async {
+                                    // test monitor returns true if either duration is over, or traffic generation was stopped manually
+                                    let should_stop = monitor_test_duration(state_clone.clone(), t as f64).await;
+                                    if should_stop {
+                                        let _ = tx.send(true); // Notify the task to exit
+                                    }
+                                } => {}
                             }
-                        });
-                    }
-                },
-                // No duration, just generate
-                None => (),
+                            tokio::task::yield_now().await;
+                        }
+                    });
+                }
             }
 
             info!("Traffic generation started.");

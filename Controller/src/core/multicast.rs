@@ -34,7 +34,7 @@ const MULTICAST_NODE_TABLE: &str = "$pre.node";
 ///
 /// * `switch`: Switch connection.
 /// * `mid`: Multicast group identifier.
-/// This is used as identifier in the data plane.
+///     This is used as identifier in the data plane.
 /// * `ports`: List of dev ports for the multicast group
 pub async fn create_simple_multicast_group(switch: &SwitchConnection,
                                      mid: u16,
@@ -65,7 +65,7 @@ pub async fn create_simple_multicast_group(switch: &SwitchConnection,
 ///
 /// * `switch`: Switch connection.
 /// * `mid`: Multicast group identifier.
-/// This is used as identifier in the data plane.
+///     This is used as identifier in the data plane.
 pub async fn delete_simple_multicast_group(switch: &SwitchConnection,
                                            mid: u16) -> Result<(), RBFRTError> {
     let req = table::Request::new(MULTICAST_TABLE)

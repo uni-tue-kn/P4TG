@@ -93,7 +93,7 @@ pub const DEVICE_CONFIGURATION_TF2: &str = "tf2.dev.device_configuration";
  pub const TG_MAX_RATE_TF2: f32 = 400f32;
  
  /// Threshold in Gbps to use both generation pipes
- pub const PIPE_GENERATION_THRESHOLD: f32 = 75.0;
+ //pub const PIPE_GENERATION_THRESHOLD: f32 = 75.0;
  
  /// Ethernet & IP header replace table
  /// This table contains the IP & Ethernet header configuration for each stream
