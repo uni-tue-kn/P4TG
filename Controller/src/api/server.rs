@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::env;
 
 use log::{info, warn};

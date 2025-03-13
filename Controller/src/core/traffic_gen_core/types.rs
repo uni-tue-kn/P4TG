@@ -26,9 +26,9 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use utoipa::ToSchema;
 
 /// Describes the supported encapsulations of P4TG.
-/// Currently, only MPLS, VLAN and QinQ are supported.
+/// Currently, MPLS, VLAN, QinQ, and SRv6 are supported.
 ///
-/// [Encapsulation::None] corresponds to plain Ethernet | IPv4 packet.
+/// [Encapsulation::None] corresponds to plain Ethernet | IP packet.
 #[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug, Clone, Copy, ToSchema)]
 #[repr(u8)]
 pub enum Encapsulation {
