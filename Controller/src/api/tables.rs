@@ -97,7 +97,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
 
         for t in table_names {
             let req = table::Request::new(t);
-            let entries = switch.get_table_entry(req).await;
+            let entries = switch.get_table_entries(req).await;
 
             match entries {
                 Ok(e) => {
@@ -125,7 +125,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
                 continue;
             }
 
-            let key_val: Vec<(String, String)> = e.match_key.clone().into_iter().map(|(k, v)| {
+            let key_val: Vec<(String, String)> = e.match_keys.clone().into_iter().map(|(k, v)| {
                 let key_val = match v {
                     MatchValue::ExactValue { bytes } => {
                         format!("{}", bytes.to_u128())
@@ -145,7 +145,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
             }).collect();
 
             let mut data_val: Vec<(String, String)> = e.action_data.clone().into_iter().map(|a| {
-                (a.get_name().to_owned(), format!("{}", a.get_data().to_u128()))
+                (a.get_key().to_owned(), format!("{}", a.get_data().to_u128()))
             }).collect();
 
             data_val.push(("action".to_owned(), e.action.clone()));

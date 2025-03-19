@@ -26,8 +26,8 @@ use rbfrt::{table, SwitchConnection};
 use log::{info, warn};
 use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
-use rbfrt::util::port_manager::{AutoNegotiation, FEC, Loopback, Port, Speed};
-use rbfrt::util::port_manager::FEC::BF_FEC_TYP_REED_SOLOMON;
+use rbfrt::util::{AutoNegotiation, FEC, Loopback, Port, Speed};
+use rbfrt::util::FEC::BF_FEC_TYP_REED_SOLOMON;
 use rbfrt::util::PortManager;
 use tokio::sync::Mutex;
 
@@ -146,7 +146,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Start controller...");
 
-    let mut switch = SwitchConnection::new("localhost", 50052)
+    let mut switch = SwitchConnection::builder("localhost", 50052)
         .device_id(0)
         .client_id(1)
         .p4_name(&p4_name)
@@ -166,7 +166,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         table::Request::new(DEVICE_CONFIGURATION)
     };
 
-    let res = switch.get_table_entry(req).await.unwrap_or_default();
+    let res = switch.get_table_entries(req).await.unwrap_or_default();
     let num_pipes = res[0].get_action_data("num_pipes").unwrap_or(&ActionData::new("num_pipes", 2)).as_u32();
     info!("#Pipes: {:?}", num_pipes);
 
