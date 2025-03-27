@@ -197,7 +197,7 @@ impl FrameTypeMonitor {
                     }
 
                     // read counters
-                    match switch.get_table_entry(request).await {
+                    match switch.get_table_entries(request).await {
                         Ok(e) => e,
                         Err(err) => {
                             warn! {"Encountered error while retrieving {} table. Error: {}", t, format!("{:#?}", err)};
@@ -208,11 +208,11 @@ impl FrameTypeMonitor {
                 };
 
                 for entry in entries {
-                    if !entry.match_key.contains_key("ig_intr_md.ingress_port") { // filter out default entry
+                    if !entry.match_keys.contains_key("ig_intr_md.ingress_port") { // filter out default entry
                         continue;
                     }
 
-                    let port = entry.match_key.get("ig_intr_md.ingress_port").unwrap().get_exact_value().to_u32();
+                    let port = entry.match_keys.get("ig_intr_md.ingress_port").unwrap().get_exact_value().to_u32();
 
                     let frame_type: Vec<&str> = entry.get_action_name().split('.').collect();
                     let mut frame_type = frame_type.last().unwrap().to_owned();
@@ -223,7 +223,7 @@ impl FrameTypeMonitor {
 
                     let count = 'get_count: {
                         for action in &entry.action_data {
-                            if action.get_name() == "$COUNTER_SPEC_PKTS" {
+                            if action.get_key() == "$COUNTER_SPEC_PKTS" {
                                 break 'get_count action.get_data().to_u128();
                             }
                         }
