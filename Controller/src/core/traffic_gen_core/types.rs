@@ -21,6 +21,7 @@
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
+use rbfrt::table::ToBytes;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use utoipa::ToSchema;
@@ -70,6 +71,23 @@ pub struct StreamPacket {
     pub timer: u32,
     /// Increases the burstiness resulting in a more accurate rate. Has no effect if in IAT mode.
     pub batches: bool
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct U256 {
+    pub val: [u64; 4],
+}
+
+impl ToBytes for U256 {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::<u8>::new();
+        let mut reversed_val = self.val.clone();
+        //reversed_val.reverse();
+        for b in reversed_val {
+            bytes.extend_from_slice(&b.to_be_bytes());
+        }
+        bytes
+    }
 }
 
 /// Represents a Monitoring mapping
@@ -126,7 +144,7 @@ pub struct MPLSHeader {
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct BIER {
     /// BitString
-    pub bs: u64,
+    pub bs: U256,
     /// Subset Identifier
     pub si: u8,
     /// Next-protocol field

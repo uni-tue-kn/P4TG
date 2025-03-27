@@ -1,11 +1,12 @@
 use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
 use log::error;
+use rbfrt::table::ToBytes;
 use crate::core::traffic_gen_core::const_definitions::{P4TG_DST_PORT, P4TG_SOURCE_PORT, VX_LAN_UDP_PORT};
 use crate::core::traffic_gen_core::types::*;
 
 impl BIER {
     fn write<T: std::io::Write>(&self, buf: &mut T) -> std::io::Result<()> {
-        buf.write_all(&self.bs.to_be_bytes())?;
+        buf.write_all(&self.bs.to_bytes())?;
         buf.write_all(&self.si.to_be_bytes())?;
         buf.write_all(&self.proto.to_be_bytes())?;
         Ok(())
@@ -418,7 +419,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 // Create the BIER header
                 let next_protocol = if s.ip_version == Some(6) {0x86dd} else {0x800};
                 let bier_header = BIER {
-                    bs: 0,
+                    bs: U256 {val: [0,0,0,0]},
                     si: 0,
                     proto: next_protocol,
                 };
@@ -507,7 +508,8 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 let next_protocol = if s.ip_version == Some(6) {0x86dd} else {0x800};
                 let bier_header = BIER {
                     // TODO change here if BS size changes
-                    bs: 0b1111 << 60,   // 4 MSB bits must be set to 1 in our implementation (first nibble after MPLS)
+                    bs: U256 {val: [0b1111 << 60, 0,0,0]},
+                    //bs: 0b1111 << 60,   // 4 MSB bits must be set to 1 in our implementation (first nibble after MPLS)
                     si: 0,
                     proto: next_protocol,
                 };
