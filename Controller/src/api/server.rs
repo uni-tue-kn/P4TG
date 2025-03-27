@@ -125,6 +125,11 @@ impl IntoResponse for Error {
     }
 }
 
+pub fn generate_api_json() {
+    // Dumps the ApiDoc into a json file for GitHub CI/CD Docs
+    std::fs::write("openapi.json", ApiDoc::openapi().to_pretty_json().unwrap())
+        .expect("Failed to write OpenAPI JSON");
+}
 
 pub async fn start_api_server(state: Arc<AppState>) {
 

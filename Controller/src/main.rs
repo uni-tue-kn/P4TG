@@ -144,6 +144,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let p4_name = env::var("P4_NAME").unwrap_or("traffic_gen".to_owned());
     let loopback_mode = env::var("LOOPBACK").unwrap_or("0".to_owned()).parse().unwrap_or(false);
 
+    // Automatically set to true by GitHub CI/CD. Used to deploy gh-pages
+    let ci_docs = env::var("CI").unwrap_or("0".to_owned()).parse().unwrap_or(false);
+    if ci_docs {
+        info!("Building OpenAPI json file.");
+        api::server::generate_api_json();
+    }
+
     info!("Start controller...");
 
     let mut switch = SwitchConnection::new("localhost", 50052)
