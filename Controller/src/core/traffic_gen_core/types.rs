@@ -38,6 +38,7 @@ pub enum Encapsulation {
     Mpls = 3,
     SRv6 = 4,
     Bier = 5,
+    BierWithMPLS = 6,
 }
 
 /// Describes the used generation mode
