@@ -27,7 +27,7 @@ typedef bit<128> ipv6_addr_t;
 typedef bit<16> ether_type_t;
 typedef bit<32> reg_index_t;
 // TODO Adjust with compiler flag
-typedef bit<64> bierBitmask;
+typedef bit<256> bierBitmask;
 
 #if __TARGET_TOFINO__ == 2
 typedef bit<32> seq_t; // due to higher data rates we need larger seq number space
