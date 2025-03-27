@@ -102,7 +102,7 @@ If you update to a newer version, it might be necessary to delete your local sto
 
 # Documentation
 
-The documentation of the REST-API can be found at the `/api/docs` endpoint of the REST-API of the controller.
+The documentation of the REST-API can be found [here](https://uni-tue-kn.github.io/P4TG/) or at the `/api/docs` endpoint of the REST-API of the controller.
 
 ## Preview of P4TG
 
