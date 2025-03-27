@@ -1,0 +1,1494 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "P4TG REST-API",
+    "description": "Documentation of the REST-API of P4TG. Developed by Steffen Lindner (steffen@steffen-lindner.net) and Fabian Ihle (fabian.ihle@uni-tuebingen.de).",
+    "contact": {
+      "name": "Steffen Lindner",
+      "email": "steffen@steffen-lindner.net"
+    },
+    "license": {
+      "name": "Apache-2.0"
+    },
+    "version": "2.3.2"
+  },
+  "paths": {
+    "/api/ports": {
+      "get": {
+        "tags": [
+          "ports"
+        ],
+        "summary": "Returns the currently configured ports",
+        "operationId": "ports",
+        "responses": {
+          "200": {
+            "description": "Returns the currently configured ports.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "[{\"auto_neg\":\"PM_AN_DEFAULT\",\"channel\":0,\"enable\":true,\"fec\":\"BF_FEC_TYP_NONE\",\"loopback\":\"BF_LPBK_NONE\",\"pid\":128,\"port\":1,\"speed\":\"BF_SPEED_100G\",\"status\":true},{\"auto_neg\":\"PM_AN_DEFAULT\",\"channel\":0,\"enable\":true,\"fec\":\"BF_FEC_TYP_NONE\",\"loopback\":\"BF_LPBK_NONE\",\"pid\":136,\"port\":2,\"speed\":\"BF_SPEED_100G\",\"status\":true}]"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reset": {
+      "get": {
+        "tags": [
+          "reset"
+        ],
+        "summary": "Resets the statistics",
+        "operationId": "reset",
+        "responses": {
+          "200": {
+            "description": "Resets the statistics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reset"
+                },
+                "example": {
+                  "message": "Reset complete"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/restart": {
+      "get": {
+        "tags": [
+          "restart"
+        ],
+        "summary": "Restarts the current traffic generation",
+        "operationId": "restart",
+        "responses": {
+          "200": {
+            "description": "Restarts the currently running traffic generation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Stream"
+                  }
+                },
+                "example": [
+                  {
+                    "app_id": 1,
+                    "batches": true,
+                    "burst": 100,
+                    "encapsulation": 0,
+                    "frame_size": 1024,
+                    "generation_accuracy": 99.90867614746094,
+                    "ip_version": 4,
+                    "n_packets": 5,
+                    "n_pipes": 2,
+                    "stream_id": 1,
+                    "timeout": 876,
+                    "traffic_rate": 100.0,
+                    "vxlan": true
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "No traffic generation is running that could be restarted."
+          }
+        }
+      }
+    },
+    "/api/statistics": {
+      "get": {
+        "tags": [
+          "statistics"
+        ],
+        "summary": "Returns the current statistics such as traffic rates, frame types, etc.",
+        "operationId": "statistics",
+        "responses": {
+          "200": {
+            "description": "Returns the statistics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Statistics"
+                },
+                "example": "{\"app_rx_l2\":{\"128\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"136\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"144\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"152\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"160\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"168\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"176\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"184\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"52\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"60\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0}},\"app_tx_l2\":{\"128\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"136\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"144\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"152\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"160\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"168\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"176\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"184\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"52\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"60\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0}},\"elapsed_time\":0,\"frame_size\":{\"128\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":1763654244},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"136\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":1763654244},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"144\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"152\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"160\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"168\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"176\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"184\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"52\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"60\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]}},\"frame_type_data\":{\"128\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":1763654244,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":1763654244}},\"136\":{\"rx\":{\"arp\":0,\"ipv4\":1763654244,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":1763654244},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"144\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"152\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"160\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"168\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"176\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"184\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"52\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"60\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}}},\"iats\":{\"128\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":1.0767169,\"mean\":10.758202,\"n\":166744604,\"std\":null}},\"136\":{\"rx\":{\"mae\":1.0738868,\"mean\":10.758202,\"n\":166744605,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"144\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"152\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"160\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"168\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"176\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"184\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"52\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"60\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}}},\"out_of_order\":{\"128\":0,\"136\":0,\"144\":0,\"152\":0,\"160\":0,\"168\":0,\"176\":0,\"184\":0,\"52\":0,\"60\":0},\"packet_loss\":{\"128\":0,\"136\":0,\"144\":0,\"152\":0,\"160\":0,\"168\":0,\"176\":0,\"184\":0,\"52\":0,\"60\":0},\"rtts\":{\"136\":{\"current\":1040,\"jitter\":5.407541284205046,\"max\":1060,\"mean\":1040.6738382099827,\"min\":1020,\"n\":1162}},\"rx_rate_l1\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"rx_rate_l2\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"sample_mode\":false,\"tx_rate_l1\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"tx_rate_l2\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0}}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables": {
+      "get": {
+        "tags": [
+          "tables"
+        ],
+        "summary": "Returns the content of the P4 tables",
+        "operationId": "tables",
+        "responses": {
+          "200": {
+            "description": "Returns the content of various P4 tables.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TableDescriptor"
+                    }
+                  }
+                },
+                "example": "{\"ingress.arp.arp_reply\":[{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"44\",\"src_addr\":\"275592631041392\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"36\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"48\",\"src_addr\":\"229469354273866\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"56\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"28\",\"src_addr\":\"895091910978\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"20\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"148\",\"src_addr\":\"212048241169679\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"156\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"0\",\"src_addr\":\"209364974058556\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"8\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"12\",\"src_addr\":\"70544364758069\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"4\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"172\",\"src_addr\":\"7064363173532\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"164\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"16\",\"src_addr\":\"235739843499203\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"24\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"32\",\"src_addr\":\"249301880200372\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"40\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"188\",\"src_addr\":\"145173983800236\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"180\"}}}],\"ingress.p4tg.frame_type.ethernet_type_monitor\":[{\"data\":{\"$COUNTER_SPEC_BYTES\":\"0\",\"$COUNTER_SPEC_PKTS\":\"0\",\"action\":\"ingress.p4tg.frame_type.ipv4\"},\"key\":{\"hdr.ethernet.ether_type\":{\"value\":\"2048/16\"},\"ig_intr_md.ingress_port\":{\"value\":\"44\"}}},{\"data\":{\"$COUNTER_SPEC_BYTES\":\"0\",\"$COUNTER_SPEC_PKTS\":\"0\",\"action\":\"ingress.p4tg.frame_type.ipv4\"},\"key\":{\"hdr.ethernet.ether_type\":{\"value\":\"2048/16\"},\"ig_intr_md.ingress_port\":{\"value\":\"36\"}}}]}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/time_statistics": {
+      "get": {
+        "tags": [
+          "statistics"
+        ],
+        "summary": "Returns the current statistics over time with one data point per second.",
+        "operationId": "time_statistics",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Only retrieve the last *limit* entries",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the statistics over time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeStatistics"
+                },
+                "example": "{\"out_of_order\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"packet_loss\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":17896232,\"1\":41711833,\"2\":65527482,\"3\":89343132,\"4\":113158704,\"5\":136974370},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"rtt\":{\"144\":{\"0\":2507,\"1\":2501,\"2\":2519,\"3\":2506,\"4\":2510,\"5\":2510}},\"rx_rate_l1\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":25185835458.60229,\"1\":99999989456.00134,\"2\":100000006703.98941,\"3\":99999993656.00053,\"4\":99999999204.00131,\"5\":100000000855.99998},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"tx_rate_l1\":{\"136\":{\"0\":100137345491.58797,\"1\":397599999034.4001,\"2\":397599997160.0049,\"3\":397600000624.8,\"4\":397599999943.2001,\"5\":397600001022.3999},\"144\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":100137345491.58797,\"1\":397599999034.4001,\"2\":397599995967.2069,\"3\":397600001419.9999,\"4\":397600001533.59735,\"5\":397599999432.00006},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":100137345391.45062,\"1\":397599999034.4001,\"2\":397599996364.8062,\"3\":397599999829.6,\"4\":397600001135.99805,\"5\":397600002215.1999},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}}}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trafficgen": {
+      "get": {
+        "tags": [
+          "traffic_gen"
+        ],
+        "summary": "Method called on GET /trafficgen",
+        "description": "Returns the currently configured traffic generation",
+        "operationId": "traffic_gen",
+        "responses": {
+          "200": {
+            "description": "Returns the currently configured traffic generation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrafficGenData"
+                },
+                "examples": {
+                  "Example 1": {
+                    "summary": "First example",
+                    "value": {
+                      "duration": 10,
+                      "mode": 1,
+                      "port_tx_rx_mapping": {
+                        "128": 136
+                      },
+                      "stream_settings": [
+                        {
+                          "active": true,
+                          "ethernet": {
+                            "eth_dst": "81:E7:9D:E3:AD:47",
+                            "eth_src": "32:D5:42:2A:F6:92"
+                          },
+                          "ip": {
+                            "ip_dst": "192.168.178.11",
+                            "ip_dst_mask": "0.0.0.0",
+                            "ip_src": "192.168.178.10",
+                            "ip_src_mask": "0.0.0.0",
+                            "ip_tos": 0
+                          },
+                          "port": 128,
+                          "stream_id": 1,
+                          "vlan": {
+                            "dei": 0,
+                            "inner_dei": 0,
+                            "inner_pcp": 0,
+                            "inner_vlan_id": 0,
+                            "pcp": 1,
+                            "vlan_id": 5
+                          }
+                        }
+                      ],
+                      "streams": [
+                        {
+                          "app_id": 1,
+                          "batches": true,
+                          "burst": 100,
+                          "encapsulation": 1,
+                          "frame_size": 64,
+                          "generation_accuracy": 100.0,
+                          "ip_version": 4,
+                          "n_packets": 5,
+                          "n_pipes": 2,
+                          "stream_id": 1,
+                          "timeout": 88,
+                          "traffic_rate": 80.0,
+                          "vxlan": false
+                        }
+                      ]
+                    }
+                  },
+                  "Example 2": {
+                    "summary": "Second example",
+                    "value": {
+                      "duration": null,
+                      "mode": 1,
+                      "port_tx_rx_mapping": {
+                        "128": 136
+                      },
+                      "stream_settings": [
+                        {
+                          "active": true,
+                          "ethernet": {
+                            "eth_dst": "81:E7:9D:E3:AD:47",
+                            "eth_src": "32:D5:42:2A:F6:92"
+                          },
+                          "ip": {
+                            "ip_dst": "192.168.178.11",
+                            "ip_dst_mask": "0.0.0.0",
+                            "ip_src": "192.168.178.10",
+                            "ip_src_mask": "0.0.0.0",
+                            "ip_tos": 0
+                          },
+                          "port": 128,
+                          "stream_id": 1,
+                          "vxlan": {
+                            "eth_dst": "81:E7:9D:E3:AD:47",
+                            "eth_src": "32:D5:42:2A:F6:92",
+                            "ip_dst": "192.168.178.11",
+                            "ip_src": "192.168.178.10",
+                            "ip_tos": 0,
+                            "udp_source": 49152,
+                            "vni": 1
+                          }
+                        }
+                      ],
+                      "streams": [
+                        {
+                          "app_id": 1,
+                          "batches": true,
+                          "burst": 100,
+                          "encapsulation": 0,
+                          "frame_size": 1024,
+                          "generation_accuracy": 99.90867614746094,
+                          "ip_version": 4,
+                          "n_packets": 5,
+                          "n_pipes": 2,
+                          "stream_id": 1,
+                          "timeout": 876,
+                          "traffic_rate": 100.0,
+                          "vxlan": true
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Returned when no traffic generation is configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "traffic_gen"
+        ],
+        "summary": "Method called on POST /trafficgen",
+        "description": "Starts the traffic generation with the specified settings in the POST body",
+        "operationId": "configure_traffic_gen",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrafficGenData"
+              },
+              "examples": {
+                "Example 1": {
+                  "summary": "VxLAN 1024 (+50) byte @ 100 Gbps",
+                  "value": {
+                    "duration": null,
+                    "mode": 1,
+                    "port_tx_rx_mapping": {
+                      "128": 136
+                    },
+                    "stream_settings": [
+                      {
+                        "active": true,
+                        "ethernet": {
+                          "eth_dst": "81:E7:9D:E3:AD:47",
+                          "eth_src": "32:D5:42:2A:F6:92"
+                        },
+                        "ip": {
+                          "ip_dst": "192.168.178.11",
+                          "ip_dst_mask": "0.0.0.0",
+                          "ip_src": "192.168.178.10",
+                          "ip_src_mask": "0.0.0.0",
+                          "ip_tos": 0
+                        },
+                        "port": 128,
+                        "stream_id": 1,
+                        "vxlan": {
+                          "eth_dst": "81:E7:9D:E3:AD:47",
+                          "eth_src": "32:D5:42:2A:F6:92",
+                          "ip_dst": "192.168.178.11",
+                          "ip_src": "192.168.178.10",
+                          "ip_tos": 0,
+                          "udp_source": 49152,
+                          "vni": 1
+                        }
+                      }
+                    ],
+                    "streams": [
+                      {
+                        "app_id": 1,
+                        "batches": true,
+                        "burst": 100,
+                        "encapsulation": 0,
+                        "frame_size": 1024,
+                        "ip_version": 4,
+                        "stream_id": 1,
+                        "traffic_rate": 100.0,
+                        "vxlan": true
+                      }
+                    ]
+                  }
+                },
+                "Example 2": {
+                  "summary": "VLAN 64 (+4) byte @ 80 Gbps",
+                  "value": {
+                    "duration": null,
+                    "mode": 1,
+                    "port_tx_rx_mapping": {
+                      "128": 136
+                    },
+                    "stream_settings": [
+                      {
+                        "active": true,
+                        "ethernet": {
+                          "eth_dst": "81:E7:9D:E3:AD:47",
+                          "eth_src": "32:D5:42:2A:F6:92"
+                        },
+                        "ip": {
+                          "ip_dst": "192.168.178.11",
+                          "ip_dst_mask": "0.0.0.0",
+                          "ip_src": "192.168.178.10",
+                          "ip_src_mask": "0.0.0.0",
+                          "ip_tos": 0
+                        },
+                        "port": 128,
+                        "stream_id": 1,
+                        "vlan": {
+                          "dei": 0,
+                          "inner_dei": 0,
+                          "inner_pcp": 0,
+                          "inner_vlan_id": 0,
+                          "pcp": 1,
+                          "vlan_id": 5
+                        }
+                      }
+                    ],
+                    "streams": [
+                      {
+                        "app_id": 1,
+                        "batches": true,
+                        "burst": 100,
+                        "encapsulation": 1,
+                        "frame_size": 64,
+                        "ip_version": 4,
+                        "stream_id": 1,
+                        "traffic_rate": 80.0,
+                        "vxlan": false
+                      }
+                    ]
+                  }
+                },
+                "Example 3": {
+                  "summary": "Poisson @ 30 Gbps",
+                  "value": {
+                    "duration": null,
+                    "mode": 3,
+                    "port_tx_rx_mapping": {
+                      "68": 68
+                    },
+                    "stream_settings": [
+                      {
+                        "active": true,
+                        "ethernet": {
+                          "eth_dst": "81:E7:9D:E3:AD:47",
+                          "eth_src": "32:D5:42:2A:F6:92"
+                        },
+                        "ip": {
+                          "ip_dst": "192.168.178.11",
+                          "ip_dst_mask": "0.0.0.0",
+                          "ip_src": "192.168.178.10",
+                          "ip_src_mask": "0.0.0.0",
+                          "ip_tos": 0
+                        },
+                        "port": 68,
+                        "stream_id": 1
+                      }
+                    ],
+                    "streams": [
+                      {
+                        "app_id": 1,
+                        "batches": true,
+                        "burst": 100,
+                        "encapsulation": 0,
+                        "frame_size": 64,
+                        "ip_version": 4,
+                        "stream_id": 1,
+                        "traffic_rate": 30.0,
+                        "vxlan": false
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Returns the configured traffic generation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Stream"
+                  }
+                },
+                "examples": {
+                  "Example 1": {
+                    "summary": "VxLAN 1024 (+50) byte @ 100 Gbps",
+                    "value": [
+                      {
+                        "app_id": 1,
+                        "batches": true,
+                        "burst": 100,
+                        "encapsulation": 0,
+                        "frame_size": 1024,
+                        "generation_accuracy": 99.90867614746094,
+                        "ip_version": 4,
+                        "n_packets": 5,
+                        "n_pipes": 2,
+                        "stream_id": 1,
+                        "timeout": 876,
+                        "traffic_rate": 100.0,
+                        "vxlan": true
+                      }
+                    ]
+                  },
+                  "Example 2": {
+                    "summary": "VLAN 64 (+4) byte @ 80 Gbps",
+                    "value": [
+                      {
+                        "app_id": 1,
+                        "batches": true,
+                        "burst": 100,
+                        "encapsulation": 0,
+                        "frame_size": 1024,
+                        "generation_accuracy": 99.90867614746094,
+                        "ip_version": 4,
+                        "n_packets": 5,
+                        "n_pipes": 2,
+                        "stream_id": 1,
+                        "timeout": 876,
+                        "traffic_rate": 100.0,
+                        "vxlan": true
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "traffic_gen"
+        ],
+        "summary": "Stops the current traffic generation",
+        "operationId": "stop_traffic_gen",
+        "responses": {
+          "200": {
+            "description": "Stops the currently running traffic generation."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EmptyResponse": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Not running."
+          }
+        }
+      },
+      "Encapsulation": {
+        "type": "string",
+        "description": "Describes the supported encapsulations of P4TG.\nCurrently, MPLS, VLAN, QinQ, and SRv6 are supported.\n\n[Encapsulation::None] corresponds to plain Ethernet | IP packet.",
+        "enum": [
+          "None",
+          "Vlan",
+          "QinQ",
+          "Mpls",
+          "SRv6"
+        ]
+      },
+      "Ethernet": {
+        "type": "object",
+        "required": [
+          "eth_src",
+          "eth_dst"
+        ],
+        "properties": {
+          "eth_dst": {
+            "type": "string",
+            "description": "Destination Ethernet mac",
+            "example": "d6:67:75:a1:94:c3"
+          },
+          "eth_src": {
+            "type": "string",
+            "description": "Source Ethernet mac",
+            "example": "00:d0:67:a2:a9:42"
+          }
+        }
+      },
+      "GenerationMode": {
+        "type": "string",
+        "description": "Describes the used generation mode",
+        "enum": [
+          "Cbr",
+          "Mpps",
+          "Poisson",
+          "Analyze"
+        ]
+      },
+      "IATStatistics": {
+        "type": "object",
+        "required": [
+          "tx",
+          "rx"
+        ],
+        "properties": {
+          "rx": {
+            "$ref": "#/components/schemas/IATValues"
+          },
+          "tx": {
+            "$ref": "#/components/schemas/IATValues"
+          }
+        }
+      },
+      "IATValues": {
+        "type": "object",
+        "required": [
+          "mean",
+          "mae",
+          "n"
+        ],
+        "properties": {
+          "mae": {
+            "type": "number",
+            "format": "float",
+            "description": "Mean absolute error. Only calculated if sample mode is false.\nThis value is directly calculated in the data plane."
+          },
+          "mean": {
+            "type": "number",
+            "format": "float",
+            "description": "Mean value. Either based on samples or computed in the data plane.\nSee sample mode."
+          },
+          "n": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of IAT samples. Only valid if sample mode is true.",
+            "minimum": 0
+          },
+          "std": {
+            "type": "number",
+            "format": "float",
+            "description": "Standard deviation. Only calculated if sample mode is true.",
+            "nullable": true
+          }
+        }
+      },
+      "IPv4": {
+        "type": "object",
+        "required": [
+          "ip_src",
+          "ip_dst",
+          "ip_tos",
+          "ip_src_mask",
+          "ip_dst_mask"
+        ],
+        "properties": {
+          "ip_dst": {
+            "type": "string",
+            "description": "Destination IPv4 address",
+            "example": "192.168.178.10"
+          },
+          "ip_dst_mask": {
+            "type": "string",
+            "description": "Mask that is used to randomize the IP dst address.\n255.255.255.255 means that all bytes in the IP address are randomized.",
+            "example": "255.0.0.0"
+          },
+          "ip_src": {
+            "type": "string",
+            "description": "Source IPv4 address",
+            "example": "192.168.178.10"
+          },
+          "ip_src_mask": {
+            "type": "string",
+            "description": "Mask that is used to randomize the IP src address.\n255.255.255.255 means that all bytes in the IP address are randomized.",
+            "example": "255.0.0.0"
+          },
+          "ip_tos": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "IPv6": {
+        "type": "object",
+        "required": [
+          "ipv6_src",
+          "ipv6_dst",
+          "ipv6_traffic_class",
+          "ipv6_src_mask",
+          "ipv6_dst_mask",
+          "ipv6_flow_label"
+        ],
+        "properties": {
+          "ipv6_dst": {
+            "type": "string",
+            "description": "Destination IPv4 address",
+            "example": "fe80::1766:cf5:f031:eba3"
+          },
+          "ipv6_dst_mask": {
+            "type": "string",
+            "description": "Mask that is used to randomize the IP dst address. The 48 least-significant bits can be randomized.\n::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.",
+            "example": "::ff"
+          },
+          "ipv6_flow_label": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "ipv6_src": {
+            "type": "string",
+            "description": "Source IPv6 address",
+            "example": "fe80::1766:cf5:f031:eba3"
+          },
+          "ipv6_src_mask": {
+            "type": "string",
+            "description": "Mask that is used to randomize the IP src address. The 48 least-significant bits can be randomized.\n::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.",
+            "example": "::ff"
+          },
+          "ipv6_traffic_class": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "MPLSHeader": {
+        "type": "object",
+        "description": "Defines an MPLS LSE",
+        "required": [
+          "label",
+          "tc",
+          "ttl"
+        ],
+        "properties": {
+          "label": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Label of this MPLS LSE",
+            "minimum": 0
+          },
+          "tc": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Traffic class field of this MPLS LSE",
+            "minimum": 0
+          },
+          "ttl": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Time-to-live of this MPLS LSE",
+            "minimum": 0
+          }
+        }
+      },
+      "RTTStatistics": {
+        "type": "object",
+        "required": [
+          "mean",
+          "min",
+          "max",
+          "current",
+          "jitter",
+          "n"
+        ],
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "jitter": {
+            "type": "number",
+            "format": "double"
+          },
+          "max": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "mean": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "n": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RangeCount": {
+        "type": "object",
+        "required": [
+          "tx",
+          "rx"
+        ],
+        "properties": {
+          "rx": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RangeCountValue"
+            }
+          },
+          "tx": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RangeCountValue"
+            }
+          }
+        }
+      },
+      "RangeCountValue": {
+        "type": "object",
+        "description": "Stores the number of packets that have been received with frame size\nin a given range",
+        "required": [
+          "low",
+          "high",
+          "packets"
+        ],
+        "properties": {
+          "high": {
+            "type": "integer",
+            "format": "int32",
+            "description": "upper bound on the frame size",
+            "minimum": 0
+          },
+          "low": {
+            "type": "integer",
+            "format": "int32",
+            "description": "lower bound on the frame size",
+            "minimum": 0
+          },
+          "packets": {
+            "type": "integer",
+            "description": "number of packets with lower bound <= packet size <= upper bound",
+            "minimum": 0
+          }
+        }
+      },
+      "Reset": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "Statistics": {
+        "type": "object",
+        "required": [
+          "sample_mode",
+          "frame_size",
+          "tx_rate_l1",
+          "tx_rate_l2",
+          "rx_rate_l1",
+          "rx_rate_l2",
+          "app_tx_l2",
+          "app_rx_l2",
+          "frame_type_data",
+          "iats",
+          "rtts",
+          "packet_loss",
+          "out_of_order",
+          "elapsed_time"
+        ],
+        "properties": {
+          "app_rx_l2": {
+            "type": "object",
+            "description": "L2 receive rate per stream and port.\nThe number corresponds to the app_id in the Stream description.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "app_tx_l2": {
+            "type": "object",
+            "description": "L2 send rate per stream and port.\nThe number corresponds to the app_id in the Stream description.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "elapsed_time": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Elapsed time since the traffic generation has started in seconds.",
+            "minimum": 0
+          },
+          "frame_size": {
+            "type": "object",
+            "description": "Frame size statistics that are divided in (lower, upper) sections.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RangeCount"
+            }
+          },
+          "frame_type_data": {
+            "type": "object",
+            "description": "Statistics what kind of packets have been received per port",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TypeCount"
+            }
+          },
+          "iats": {
+            "type": "object",
+            "description": "Statistics of the inter arrival times per port.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IATStatistics"
+            }
+          },
+          "out_of_order": {
+            "type": "object",
+            "description": "Number of out of order packets per port.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          "packet_loss": {
+            "type": "object",
+            "description": "Number of lost packets per port.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          "rtts": {
+            "type": "object",
+            "description": "Statistics of the round trip times per port.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RTTStatistics"
+            }
+          },
+          "rx_rate_l1": {
+            "type": "object",
+            "description": "L1 receive rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "rx_rate_l2": {
+            "type": "object",
+            "description": "L2 receive rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "sample_mode": {
+            "type": "boolean",
+            "description": "Indicates whether the sample mode is used or not.\nIn sampling mode, IATs are sampled and not calculated in the data plane.\nIt is recommended to don't use the sample mode to get more precise values"
+          },
+          "tx_rate_l1": {
+            "type": "object",
+            "description": "L1 send rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "tx_rate_l2": {
+            "type": "object",
+            "description": "L2 send rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        }
+      },
+      "Stream": {
+        "type": "object",
+        "required": [
+          "stream_id",
+          "app_id",
+          "frame_size",
+          "encapsulation",
+          "traffic_rate",
+          "burst",
+          "vxlan"
+        ],
+        "properties": {
+          "app_id": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Application id number. This number is used to configure the traffic generator.\nApp ids 1-7 are possible for streams.",
+            "minimum": 0
+          },
+          "batches": {
+            "type": "boolean",
+            "description": "Sends more bursty traffic resulting in a more accurate rate",
+            "example": true,
+            "nullable": true
+          },
+          "burst": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximal allowed burst (= packets). Burst = 1 is used for IAT precision mode, Burst = 100 for Rate precision.",
+            "example": 100,
+            "minimum": 0
+          },
+          "encapsulation": {
+            "$ref": "#/components/schemas/Encapsulation"
+          },
+          "frame_size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "L2 frame size of the stream.",
+            "example": 64,
+            "minimum": 0
+          },
+          "generation_accuracy": {
+            "type": "number",
+            "format": "float",
+            "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
+            "example": 99.95,
+            "nullable": true
+          },
+          "ip_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Determines the IP version, either v4 or v6. Option to make it backward compatible",
+            "example": 4,
+            "nullable": true,
+            "minimum": 0
+          },
+          "n_packets": {
+            "type": "integer",
+            "format": "int32",
+            "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
+            "example": 11,
+            "nullable": true,
+            "minimum": 0
+          },
+          "n_pipes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
+            "example": 2,
+            "nullable": true,
+            "minimum": 0
+          },
+          "number_of_lse": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of MPLS LSEs in this stream. The value has to equal the length of the MPLS stack in a stream setting.",
+            "example": 2,
+            "nullable": true,
+            "minimum": 0
+          },
+          "number_of_srv6_sids": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of SIDs in SRv6 header. At maximum 4 can be used.\nA flag to indicate if there is another IP tunnel following the SRv6 headers",
+            "example": 2,
+            "nullable": true,
+            "minimum": 0
+          },
+          "srv6_ip_tunneling": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "stream_id": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Identifies the stream. The same value is used in stream settings to\nconfigure that stream for an individual port",
+            "minimum": 0
+          },
+          "timeout": {
+            "type": "integer",
+            "format": "int32",
+            "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
+            "example": 81,
+            "nullable": true,
+            "minimum": 0
+          },
+          "traffic_rate": {
+            "type": "number",
+            "format": "float",
+            "description": "Traffic rate in Gbps that should be generated.",
+            "example": 100
+          },
+          "vxlan": {
+            "type": "boolean",
+            "description": "Flag that indicates if traffic should be encapsulation in VxLAN",
+            "example": false
+          }
+        }
+      },
+      "StreamSetting": {
+        "type": "object",
+        "required": [
+          "port",
+          "stream_id",
+          "ethernet",
+          "active"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Indicates if this stream setting is active."
+          },
+          "ethernet": {
+            "$ref": "#/components/schemas/Ethernet"
+          },
+          "ip": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IPv4"
+              }
+            ],
+            "nullable": true
+          },
+          "ipv6": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IPv6"
+              }
+            ],
+            "nullable": true
+          },
+          "mpls_stack": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MPLSHeader"
+            },
+            "description": "An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.",
+            "nullable": true
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Egress port to which the stream should be sent.",
+            "minimum": 0
+          },
+          "sid_list": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "ipv6"
+            },
+            "example": "ff80::1"
+          },
+          "srv6_base_header": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IPv6"
+              }
+            ],
+            "nullable": true
+          },
+          "stream_id": {
+            "type": "integer",
+            "format": "int32",
+            "description": "ID of the stream. This stream_id maps to the stream_id in the Stream description.",
+            "minimum": 0
+          },
+          "vlan": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Vlan"
+              }
+            ],
+            "nullable": true
+          },
+          "vxlan": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VxLAN"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "TableDescriptor": {
+        "type": "object",
+        "required": [
+          "key",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "key": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        }
+      },
+      "TimeStatistics": {
+        "type": "object",
+        "required": [
+          "tx_rate_l1",
+          "tx_rate_l2",
+          "rx_rate_l1",
+          "rx_rate_l2",
+          "rtts",
+          "packet_loss",
+          "out_of_order"
+        ],
+        "properties": {
+          "out_of_order": {
+            "type": "object",
+            "description": "Number of out of order packets per port.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "packet_loss": {
+            "type": "object",
+            "description": "Number of lost packets per port.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "rtts": {
+            "type": "object",
+            "description": "Statistics of the round trip times per port.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "rx_rate_l1": {
+            "type": "object",
+            "description": "L1 receive rates per port.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "rx_rate_l2": {
+            "type": "object",
+            "description": "L2 receive rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "tx_rate_l1": {
+            "type": "object",
+            "description": "L1 send rates per port.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "tx_rate_l2": {
+            "type": "object",
+            "description": "L2 send rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        }
+      },
+      "TrafficGenData": {
+        "type": "object",
+        "description": "Represents the body of the GET / POST endpoints of /trafficgen",
+        "required": [
+          "mode",
+          "stream_settings",
+          "streams",
+          "port_tx_rx_mapping"
+        ],
+        "properties": {
+          "duration": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The duration of this test in seconds.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "mode": {
+            "$ref": "#/components/schemas/GenerationMode"
+          },
+          "port_tx_rx_mapping": {
+            "type": "object",
+            "description": "Mapping between TX (send) ports, and RX (receive) ports.\nTraffic send on port TX are expected to be received on port RX.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "stream_settings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamSetting"
+            },
+            "description": "List of stream settings that should be applied.\nThis also configures which streams are replicated to which ports."
+          },
+          "streams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Stream"
+            }
+          }
+        }
+      },
+      "TypeCount": {
+        "type": "object",
+        "description": "Stores the number of packet types that have been sent / received.",
+        "required": [
+          "tx",
+          "rx"
+        ],
+        "properties": {
+          "rx": {
+            "type": "object",
+            "description": "RX path",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "tx": {
+            "type": "object",
+            "description": "TX path",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "Vlan": {
+        "type": "object",
+        "required": [
+          "vlan_id",
+          "pcp",
+          "dei",
+          "inner_vlan_id",
+          "inner_pcp",
+          "inner_dei"
+        ],
+        "properties": {
+          "dei": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "inner_dei": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "inner_pcp": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "inner_vlan_id": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pcp": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "vlan_id": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "VxLAN": {
+        "type": "object",
+        "description": "Defines an VxLAN Tunnel",
+        "required": [
+          "eth_src",
+          "eth_dst",
+          "ip_src",
+          "ip_dst",
+          "ip_tos",
+          "udp_source",
+          "vni"
+        ],
+        "properties": {
+          "eth_dst": {
+            "type": "string",
+            "description": "Outer Ethernet dst",
+            "example": "d6:67:75:a1:94:c3"
+          },
+          "eth_src": {
+            "type": "string",
+            "description": "Outer Ethernet src",
+            "example": "00:d0:67:a2:a9:42"
+          },
+          "ip_dst": {
+            "type": "string",
+            "description": "Outer IP dst",
+            "example": "192.168.178.5"
+          },
+          "ip_src": {
+            "type": "string",
+            "description": "Outer IP src",
+            "example": "192.168.178.10"
+          },
+          "ip_tos": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Outer IP tos",
+            "minimum": 0
+          },
+          "udp_source": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Outer UDP source",
+            "minimum": 0
+          },
+          "vni": {
+            "type": "integer",
+            "format": "int32",
+            "description": "VxLAN VNI",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "api_key": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "todo_apikey"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "P4TG REST-API",
+      "description": "Documentation of the REST-API of P4TG."
+    }
+  ]
+}
