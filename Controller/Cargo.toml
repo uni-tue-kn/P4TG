@@ -7,7 +7,7 @@ license = "Apache-2.0"
 
 
 [dependencies]
-rbfrt = { git = "https://github.com/uni-tue-kn/rbfrt", branch = "doc" }
+rbfrt = { git = "https://github.com/uni-tue-kn/rbfrt" }
 tokio = { version = "1.20.1", features = ["rt-multi-thread"]}
 axum = { version = "0.7.4" , features =  ["macros", "json"]}
 tower-http = { version = "0.5.2", features = ["cors"] }
