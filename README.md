@@ -63,6 +63,7 @@ P4TG consists of:
 | Localization      | ⚠️ Experimental (Unstable)           |
 | NDP               | ⏳ Planned (Not yet implemented)     |
 | NETCONF           | ⏳ Planned (Not yet implemented)     |
+| RTT percentile reporting | ⏳ Planned (Not yet implemented)     |
 
 
 ## Installation & Start Instructions
@@ -143,7 +144,7 @@ The documentation of the REST-API can be found [here](https://uni-tue-kn.github.
 # Cite
 If you use P4TG in any of your publications, please cite the following papers:
 1. S. Lindner, Marco Häberle, and M. Menth: [P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks](https://ieeexplore.ieee.org/abstract/document/10048513), in IEEE Access, vol. 11, p. 17525 – 17535, Feb. 2023, IEEE
-2. F. Ihle, E. Zink, S. Lindner, and M. Menth: Enhancements to P4TG: Protocols, Performance, and Automation, in KuVS Fachgespräch "Network Softwarization", online, Feb. 2025
+2. F. Ihle, E. Zink, S. Lindner, and M. Menth: Enhancements to P4TG: Protocols, Performance, and Automation, in KuVS Fachgespräch "Network Softwarization", online, Apr. 2025
 
 ```tex
 @article{LiHae23,
