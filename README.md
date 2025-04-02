@@ -30,11 +30,40 @@ In analysis mode, P4TG measures rates on the input ports, measures IATs, and for
 - P4TG (v2.3.0) supports the Intel Tofino 2 with up to 4 Tb/s
 - P4TG (v2.3.2) supports IPv6, SRv6 (Tofino 2 only), many bug fixes, and a dark mode
 
-P4TG consist of:
+See [Changelog](./CHANGELOG.md) for a full changelog.
+
+P4TG consists of:
 
 - a P4 program for the Intel Tofino(TM)
 - Rust control plane
 - React configuration GUI
+
+### Features
+
+| **Feature**       | **Status**                           |
+|-------------------|--------------------------------------|
+| Statistics        | ✅ Available (Implemented)           |
+| Tofino 1 support  | ✅ Available (Implemented)           |
+| Tofino 2 support  | ✅ Available (Implemented)           |
+| Web frontend      | ✅ Available (Implemented)           |
+| Rust backend      | ✅ Available (Implemented)           |
+| Ethernet          | ✅ Available (Implemented)           |
+| IPv4              | ✅ Available (Implemented)           |
+| IPv6              | ✅ Available (Implemented)           |
+| QinQ              | ✅ Available (Implemented)           |
+| MPLS              | ✅ Available (Implemented)           |
+| VLAN              | ✅ Available (Implemented)           |
+| VxLAN             | ✅ Available (Implemented)           |
+| SRv6              | ✅ Available (Implemented)           |
+| ARP replies       | ✅ Available (Implemented)           |
+| Dark mode         | ✅ Available (Implemented)           |
+| Test profiles     | ⚠️ Experimental (Unstable)           |
+| File reporting    | ⚠️ Experimental (Unstable)           |
+| Auto. testing     | ⚠️ Experimental (Unstable)           |
+| Localization      | ⚠️ Experimental (Unstable)           |
+| NDP               | ⏳ Planned (Not yet implemented)     |
+| NETCONF           | ⏳ Planned (Not yet implemented)     |
+
 
 ## Installation & Start Instructions
 
@@ -63,7 +92,7 @@ Tested on:
 The controller is written in Rust and can be started via `cd Controller && docker compose up`. This will pull a prebuilt docker image.
 
 The controller then starts a REST-API server at port `P4TG_PORT` and endpoint `/api` (see `docker-compose.yaml`) that is used to communicate with the configuration GUI.
-It also serves the configuration gui at port `P4TG_PORT` and endpoint `/`.
+It also serves the configuration GUI at port `P4TG_PORT` and endpoint `/`.
 The configuration GUI can then be accessed at http://*ip-of-tofino-controller*:`P4TG_PORT`
 
 #### Configuration 
@@ -102,7 +131,7 @@ If you update to a newer version, it might be necessary to delete your local sto
 
 # Documentation
 
-The documentation of the REST-API can be found [here](https://uni-tue-kn.github.io/P4TG/) or at the `/api/docs` endpoint of the REST-API of the controller.
+The documentation of the REST-API can be found [here](https://uni-tue-kn.github.io/P4TG/) or at the `/api/docs` endpoint in the REST-API of the controller.
 
 ## Preview of P4TG
 
