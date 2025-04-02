@@ -139,3 +139,28 @@ The documentation of the REST-API can be found [here](https://uni-tue-kn.github.
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-2.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-3.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-4.png"/>
+
+# Cite
+If you use P4TG in any of your publications, please cite the following papers:
+1. S. Lindner, Marco Häberle, and M. Menth: [P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks](https://ieeexplore.ieee.org/abstract/document/10048513), in IEEE Access, vol. 11, p. 17525 – 17535, Feb. 2023, IEEE
+2. F. Ihle, E. Zink, S. Lindner, and M. Menth: Enhancements to P4TG: Protocols, Performance, and Automation, in KuVS Fachgespräch "Network Softwarization", online, Feb. 2025
+
+```tex
+@article{LiHae23,
+  title   = {{P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks}},
+  author  = {Steffen Lindner and Marco Häberle and Michael Menth},
+  journal = {{IEEE Access}},
+  year    = 2023,
+  month   = feb,
+  volume  = 11,
+  pages   = {17525--17535}
+}
+
+@article{IhZi25,
+  title  = {{Enhancements to P4TG: Protocols, Performance, and Automation}},
+  author = {Fabian Ihle and Etienne Zink and Steffen Lindner and Michael Menth},
+  journal = {{KuVS Fachgespräch "Network Softwarization"}}
+  year   = 2025,
+  month  = apr
+}
+```
