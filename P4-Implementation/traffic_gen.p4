@@ -18,7 +18,11 @@
  */
 
 #include <core.p4>
+#if __TARGET_TOFINO__ == 2
+#include <t2na.p4>
+#else
 #include <tna.p4>
+#endif
 
 #include "src/headers.p4"
 #include "src/libs/Add_64_64.p4"

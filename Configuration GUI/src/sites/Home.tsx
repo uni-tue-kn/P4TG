@@ -25,15 +25,20 @@ import StatView from "../components/StatView";
 import Loader from "../components/Loader";
 
 import {
+    ASIC,
     Encapsulation,
     GenerationMode,
+    P4TGInfos,
     Statistics as StatInterface,
     StatisticsObject,
     Stream,
-    StreamSettings, TimeStatistics, TimeStatisticsObject
+    StreamSettings,
+    TimeStatistics,
+    TimeStatisticsObject
 } from '../common/Interfaces'
 import styled from "styled-components";
 import StreamView from "../components/StreamView";
+
 styled(Row)`
     display: flex;
     align-items: center;
@@ -42,7 +47,7 @@ styled(Col)`
     padding-left: 0;
 `;
 const StyledLink = styled.a`
-    color: var(--color-secondary);
+    color: var(--color-text);
     text-decoration: none;
     opacity: 0.5;
 
@@ -62,7 +67,7 @@ export const GitHub = () => {
     </Row>
 }
 
-const Home = () => {
+const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     const [loaded, set_loaded] = useState(false)
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
@@ -73,6 +78,7 @@ const Home = () => {
     // @ts-ignore
     const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
+    const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
@@ -80,6 +86,12 @@ const Home = () => {
     const [time_statistics, set_time_statistics] = useState<TimeStatistics>(TimeStatisticsObject)
 
     useEffect(() => {
+        const refresh = async () => {
+            await loadGen()
+            await loadStatistics()
+            set_loaded(true)
+        }
+
         refresh()
 
         const interval_stats = setInterval(async () => await Promise.all([loadStatistics()]), 500);
@@ -111,9 +123,9 @@ const Home = () => {
         let ret: number[] = []
 
         stream_settings.forEach(v => {
-            if (v.port == pid && v.active) {
+            if (v.port === pid && v.active) {
                 streams.forEach(s => {
-                    if (s.stream_id == v.stream_id) {
+                    if (s.stream_id === v.stream_id) {
                         ret.push(s.app_id)
                         return
                     }
@@ -128,14 +140,14 @@ const Home = () => {
         let ret = 0
 
         streams.forEach(v => {
-            if (v.app_id == stream_id) {
+            if (v.app_id === stream_id) {
                 ret = v.frame_size
-                if (v.encapsulation == Encapsulation.Q) {
+                if (v.encapsulation === Encapsulation.Q) {
                     ret += 4
-                } else if (v.encapsulation == Encapsulation.QinQ) {
+                } else if (v.encapsulation === Encapsulation.QinQ) {
                     ret += 8
                 }
-                else if (v.encapsulation == Encapsulation.MPLS) {
+                else if (v.encapsulation === Encapsulation.MPLS) {
                     ret += v.number_of_lse * 4 // 4 bytes per LSE
                 }
 
@@ -150,31 +162,33 @@ const Home = () => {
         return ret
     }
 
-
-    const refresh = async () => {
-        await loadGen()
-        await loadStatistics()
-        set_loaded(true)
-    }
-
     const onSubmit = async (event: any) => {
         event.preventDefault()
+
+        let max_rate = 100;
+
+        if(p4tg_infos.asic === ASIC.Tofino2) {
+            max_rate = 400;
+        }
+
         set_overlay(true)
 
         if (running) {
             await del({route: "/trafficgen"})
             set_running(false)
         } else {
-            if (streams.length === 0 && mode != GenerationMode.ANALYZE) {
+            if (streams.length === 0 && mode !== GenerationMode.ANALYZE) {
                 alert("You need to define at least one stream.")
             } else {
                 let overall_rate = 0
                 streams.forEach((v) => {
-                    overall_rate += v.traffic_rate
+                    if (stream_settings.some((setting) => v.stream_id == setting.stream_id && setting.active)) {
+                        overall_rate += v.traffic_rate
+                    }
                 })
 
-                if (mode != GenerationMode.MPPS && overall_rate > 100) {
-                    alert("Sum of stream rates > 100 Gbps!")
+                if (mode !== GenerationMode.MPPS && overall_rate > max_rate) {
+                    alert("Sum of stream rates > " + max_rate + " Gbps!")
                 } else {
                     await post({
                         route: "/trafficgen",
@@ -183,6 +197,7 @@ const Home = () => {
                             "stream_settings": stream_settings,
                             "port_tx_rx_mapping": port_tx_rx_mapping,
                             "mode": mode,
+                            "duration": duration
                         }
                     })
 
@@ -196,7 +211,7 @@ const Home = () => {
     const loadStatistics = async () => {
         let stats = await get({route: "/statistics"})
 
-        if (stats != undefined && stats.status === 200) {
+        if (stats !== undefined && stats.status === 200) {
             set_statistics(stats.data)
         }
     }
@@ -204,7 +219,7 @@ const Home = () => {
     const loadTimeStatistics = async () => {
         let stats = await get({route: "/time_statistics?limit=100"})
 
-        if (stats != undefined && stats.status === 200) {
+        if (stats !== undefined && stats.status === 200) {
             set_time_statistics(stats.data)
         }
     }
@@ -213,14 +228,16 @@ const Home = () => {
     const loadGen = async () => {
         let stats = await get({route: "/trafficgen"})
 
-        if (stats != undefined && Object.keys(stats.data).length > 1) {
+        if (stats !== undefined && Object.keys(stats.data).length > 1) {
             set_mode(stats.data.mode)
+            set_duration(stats.data.duration)
             set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
             set_stream_settings(stats.data.stream_settings)
             set_streams(stats.data.streams)
 
             localStorage.setItem("streams", JSON.stringify(stats.data.streams))
             localStorage.setItem("gen-mode", String(stats.data.mode))
+            localStorage.setItem("duration", String(stats.data.duration))
             localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
 
@@ -290,7 +307,7 @@ const Home = () => {
             </Tab>
             {activePorts().map((v, i) => {
                 let mapping: { [name: number]: number } = {[v.tx]: v.rx}
-                return <Tab eventKey={i} key={i} title={v.tx + "->" + v.rx}>
+                return <Tab eventKey={i} key={i} title={v.tx + " → " + v.rx}>
                     <Tabs
                         defaultActiveKey={"Overview"}
                         className={"mt-3"}

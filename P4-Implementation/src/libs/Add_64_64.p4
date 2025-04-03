@@ -5,6 +5,21 @@ control Add_64_64(
     in  reg_index_t idx)
     (bit<32> reg_size)
 {
+// simply use 64 bit register if we are on tofino2
+// does not yet work
+#if __TARGET_TOFINO__ == 3
+    Register<bit<64>, reg_index_t>(reg_size) reg;
+    RegisterAction<bit<64>, reg_index_t, bit<64>>(reg) add = {
+            void apply(inout bit<64> value, out bit<64> result) {
+                value = value + a;
+                result = value;
+            }
+     };
+
+     apply {
+        res = add.execute(idx);
+     }
+#else
     bit<32> a_lo_inv = ~a[31:0];
     bit<32> a_hi_with_carry;
 
@@ -61,4 +76,5 @@ control Add_64_64(
         /* Stage N+2 (for now) */
         add_reg_hi();
     }
+#endif
 }

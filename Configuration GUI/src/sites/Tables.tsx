@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
+import React, {useCallback, useEffect, useState} from 'react'
 import {get} from "../common/API";
 import Loader from "../components/Loader";
 import {Button, Tab, Table, Tabs} from "react-bootstrap";
@@ -111,16 +111,16 @@ const Tables = () => {
         }
     }
 
-    const refresh = async () => {
+    const refresh = useCallback(async () => {
         set_loaded(false)
         await loadTables()
         set_loaded(true)
-    }
+    }, [])
 
     useEffect(() => {
         refresh()
 
-    }, [])
+    }, [refresh])
 
     return <Loader loaded={loaded}>
         <Tabs

@@ -17,15 +17,16 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
+import {useEffect, useState} from 'react'
 import styled from "styled-components";
 import {Link, useLocation} from "react-router-dom";
+import ThemeBtn from "./ThemeToggle";
 import {get} from "../common/API";
 import {CNavItem, CSidebar, CSidebarBrand, CSidebarNav} from "@coreui/react";
 import {Row} from 'react-bootstrap'
 
 import P4TGLogo from "../assets/p4tg_logo_white.png"
-import config from "../config";
+import {P4TGInfos} from "../common/Interfaces";
 styled(Link) <{ active?: boolean }>`
     text-decoration: none;
     margin-right: 15px;
@@ -49,26 +50,18 @@ interface Props {
     overlay?: boolean
 }
 
-const StatusIndicator = styled.span<{ online?: boolean }>`
-    color: ${props => (props.online ? 'green' : 'red')};
-`
-
-const Status = ({online}: { online?: boolean }) => {
-    return <StatusIndicator online={online}>{online ? 'online' : 'offline'}</StatusIndicator>
-}
-
 export const NavLink = ({to, icon, text, overlay}: Props) => {
     const location = useLocation()
 
     return <CNavItem>
-        <Link to={to} className={`nav-link ${location.pathname == to ? 'active' : ''}`}>
+        <Link to={to} className={`nav-link ${location.pathname === to ? 'active' : ''}`}>
             <i className={icon}/> {text}
         </Link>
     </CNavItem>
 }
 
 
-const Navbar = () => {
+const Navbar = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const [online, set_online] = useState(false)
 
     const setup = () => {
@@ -81,7 +74,7 @@ const Navbar = () => {
         const loadStatus = async () => {
             let stats = await get({route: "/online"})
 
-            if (stats != undefined && stats.status !== 200) {
+            if (stats !== undefined && stats.status !== 200) {
                 return
             }
 
@@ -102,9 +95,10 @@ const Navbar = () => {
             <NavLink to={"/settings"} text={""} icon={"bi bi-gear-wide-connected"}/>
             <Row className="flex-grow-1">
             </Row>
+            <ThemeBtn/>
             <Row>
                 <CNavItem className="flex-grow-1 mb-2">
-                    <span>v2.2.1</span>
+                    <span>v{p4tg_infos.version}</span>
                 </CNavItem>
             </Row>
         </CSidebarNav>

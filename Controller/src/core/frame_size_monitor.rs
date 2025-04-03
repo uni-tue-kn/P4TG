@@ -116,7 +116,7 @@ impl FrameSizeMonitor {
                 }
 
                 // read counters
-                switch.get_table_entry(request).await.unwrap_or_else(|err| {
+                switch.get_table_entries(request).await.unwrap_or_else(|err| {
                     warn! {"Encountered error while retrieving {} table. Error: {}", FRAME_SIZE_MONITOR, format!("{:#?}", err)}
                     ;
                     vec![]
@@ -134,13 +134,13 @@ impl FrameSizeMonitor {
             }
 
             for entry in entries {
-                if !entry.match_key.contains_key("eg_intr_md.egress_port") {
+                if !entry.match_keys.contains_key("eg_intr_md.egress_port") {
                     continue;
                 }
 
-                let port = entry.match_key.get("eg_intr_md.egress_port").unwrap().get_exact_value().to_u32();
+                let port = entry.match_keys.get("eg_intr_md.egress_port").unwrap().get_exact_value().to_u32();
 
-                let (lower, upper) = match entry.match_key.get("pkt_len").unwrap() {
+                let (lower, upper) = match entry.match_keys.get("pkt_len").unwrap() {
                     MatchValue::RangeValue { lower_bytes, higher_bytes } => {
                         (lower_bytes.to_u32(), higher_bytes.to_u32())
                     },
@@ -149,7 +149,7 @@ impl FrameSizeMonitor {
 
                 let count = 'get_count: {
                     for action in &entry.action_data {
-                        if action.get_name() == "$COUNTER_SPEC_PKTS" {
+                        if action.get_key() == "$COUNTER_SPEC_PKTS" {
                             break 'get_count action.get_data().to_u128();
                         }
                     }

@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::env;
 
 use log::{info, warn};
@@ -51,6 +51,7 @@ use crate::core::traffic_gen_core::types::*;
         traffic_gen::stop_traffic_gen,
         tables::tables,
         statistics::statistics,
+        statistics::time_statistics,
         restart::restart,
         reset::reset,
         ports::ports
@@ -65,18 +66,25 @@ use crate::core::traffic_gen_core::types::*;
         Reset,
         Ethernet,
         IPv4,
+        IPv6,
         Vlan,
         VxLAN,
         MPLSHeader,
         tables::TableDescriptor,
         statistics::Statistics,
+        statistics::TimeStatistics,
         crate::core::statistics::RangeCount,
         crate::core::statistics::RangeCountValue,
         crate::core::statistics::TypeCount,
         crate::core::statistics::IATStatistics,
         crate::core::statistics::RTTStatistics,
         crate::core::statistics::IATValues
-        )
+        ),       
+    ),
+    info(
+        title = "P4TG REST-API",
+        description = "Documentation of the REST-API of P4TG. Developed by Steffen Lindner (steffen@steffen-lindner.net) and Fabian Ihle (fabian.ihle@uni-tuebingen.de).",
+        contact(name = "Steffen Lindner", email = "steffen@steffen-lindner.net"),
     ),
     modifiers(&SecurityAddon),
     tags(
@@ -117,6 +125,11 @@ impl IntoResponse for Error {
     }
 }
 
+pub fn generate_api_json() {
+    // Dumps the ApiDoc into a json file for GitHub CI/CD Docs
+    std::fs::write("openapi.json", ApiDoc::openapi().to_pretty_json().unwrap())
+        .expect("Failed to write OpenAPI JSON");
+}
 
 pub async fn start_api_server(state: Arc<AppState>) {
 

@@ -23,7 +23,7 @@ import {get, post} from '../common/API'
 import {Button, Col, Form, Row, Table} from "react-bootstrap";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
-import {P4TGConfig} from "../common/Interfaces";
+import {ASIC, FEC, P4TGConfig, P4TGInfos, SPEED} from "../common/Interfaces";
 import {auto_neg_mapping, fec_mapping, loopback_mapping, speed_mapping} from "../common/Definitions";
 import {GitHub} from "./Home";
 
@@ -47,7 +47,7 @@ export const PortStatus = ({active}: { active: boolean }) => {
     </PortStat>
 }
 
-const Ports = () => {
+const Ports = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const [loaded, set_loaded] = useState(false)
     const [ports, set_ports] = useState([])
     const [config, set_config] = useState<P4TGConfig>({tg_ports: []})
@@ -150,12 +150,42 @@ const Ports = () => {
             </thead>
             <tbody>
             {ports.map((v: any, i: number) => {
-                if (loopback_mapping[v["loopback"]] == "Off") {
+                if (loopback_mapping[v["loopback"]] != "On" || p4tg_infos.loopback) {
                     return <tr key={i}>
                         <StyledCol className={"col-1"}>{v["pid"]}</StyledCol>
                         <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>
                         <StyledCol className={"col-2"}>{getMac(v['port'])}</StyledCol>
-                        <StyledCol className={"col-2"}>{speed_mapping[(v['speed']) as string]}</StyledCol>
+                        <StyledCol className={"col-2"}>
+                            <Form.Select onChange={async (event: any) => {
+                                let fec = v.fec
+
+                                // 400G requires RS
+                                if(event.target.value == SPEED.BF_SPEED_400G) {
+                                    fec = FEC.BF_FEC_TYP_REED_SOLOMON
+                                }
+
+                                // 10G & 40G does not allow RS
+                                if((event.target.value == SPEED.BF_SPEED_10G || event.target.value == SPEED.BF_SPEED_40G) && v.fec == FEC.BF_FEC_TYP_REED_SOLOMON) {
+                                    fec = FEC.BF_FEC_TYP_NONE
+                                }
+
+                                // 100G does not allow FC
+                                if(event.target.value == SPEED.BF_SPEED_100G && v.fec == FEC.BF_FEC_TYP_FC) {
+                                    fec = FEC.BF_FEC_TYP_NONE
+                                }
+
+                                await updatePort(v.pid, event.target.value, fec, v.auto_neg)
+                            }}>
+                                {Object.keys(speed_mapping).map(f => {
+                                    if(f == SPEED.BF_SPEED_400G && p4tg_infos.asic != ASIC.Tofino2) {
+                                        return
+                                    }
+
+                                    return <option selected={f == v.speed}
+                                                   value={f}>{speed_mapping[f]}</option>
+                                })}
+                            </Form.Select>
+                        </StyledCol>
                         <StyledCol className={"col-2"}>
                             <Form.Select onChange={async (event: any) => {
                                 await updatePort(v["pid"], v["speed"], v["fec"], event.target.value)
@@ -169,7 +199,15 @@ const Ports = () => {
                             await updatePort(v["pid"], v["speed"], event.target.value, v["auto_neg"])
                         }}>
                             {Object.keys(fec_mapping).map(f => {
-                                if (f != "BF_FEC_TYP_FC" || v["speed"] != "BF_SPEED_100G") {
+                                if(f != FEC.BF_FEC_TYP_REED_SOLOMON && v.speed == SPEED.BF_SPEED_400G) {
+                                    return
+                                }
+
+                                if(f == FEC.BF_FEC_TYP_REED_SOLOMON && (v.speed == SPEED.BF_SPEED_10G ||v.speed == SPEED.BF_SPEED_40G)) {
+                                    return
+                                }
+
+                                if (f != FEC.BF_FEC_TYP_FC || v.speed!= SPEED.BF_SPEED_100G) {
                                     return <option selected={f == v["fec"]} value={f}>{fec_mapping[f]}</option>
                                 }
                             })}

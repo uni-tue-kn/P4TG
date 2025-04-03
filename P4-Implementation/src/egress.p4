@@ -17,7 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
  
-#include "./libs/egress/Header_Replace.p4"
+#include "./libs/egress/header_replace.p4"
 control egress(
     inout header_t hdr,
     inout egress_metadata_t eg_md, in egress_intrinsic_metadata_t eg_intr_md, in egress_intrinsic_metadata_from_parser_t eg_intr_from_prsr,
@@ -34,10 +34,10 @@ control egress(
 
     bit<64> dummy = 0;
 
-    Register<bit<32>, PortId_t>(512, 0) tx_seq;
+    Register<seq_t, PortId_t>(512, 0) tx_seq;
 
-    RegisterAction<bit<32>, PortId_t, bit<32>>(tx_seq) get_next_tx_seq = {
-            void apply(inout bit<32> value, out bit<32> read_value) {
+    RegisterAction<seq_t, PortId_t, seq_t>(tx_seq) get_next_tx_seq = {
+            void apply(inout seq_t value, out seq_t read_value) {
                 read_value = value;
                 value = value + 1;
             }
@@ -165,7 +165,7 @@ control egress(
                 is_egress.apply();
             }
 
-            header_replace.apply(hdr, eg_intr_md);
+            header_replace.apply(hdr, eg_md, eg_intr_md);
 
             frame_size_monitor.apply();
         }
@@ -179,7 +179,22 @@ control egress(
         else if(hdr.ipv4.isValid()) { // we dont have VxLAN, just "regular" IP traffic
             eg_md.ipv4_src = hdr.ipv4.src_addr;
             eg_md.ipv4_dst = hdr.ipv4.dst_addr;
+        } else if (hdr.ipv6.isValid()){
+            eg_md.ipv6_src = hdr.ipv6.src_addr;
+            eg_md.ipv6_dst = hdr.ipv6.dst_addr;
         }
-
+        #if __TARGET_TOFINO__ == 2
+            else if (hdr.sr_ipv6.isValid()){
+                // SRv6 checksum without IP tunneling
+                eg_md.ipv6_src = hdr.sr_ipv6.src_addr;
+                if (hdr.srh.last_entry == 0){
+                    // Last entry == 0 means that we are at the destination node. According to RFC 2460 8.1 we have to use the destination address
+                    eg_md.ipv6_dst = hdr.sr_ipv6.dst_addr;
+                } else {
+                    // Transit node, use the last SID on the path (index 0)
+                    eg_md.ipv6_dst = hdr.sid1.sid;
+                } 
+            }
+        #endif
     }
 }

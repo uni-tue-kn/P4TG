@@ -72,7 +72,7 @@ pub struct Value {
 )]
 /// Returns the content of the P4 tables
 pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
-    let table_names = ["ingress.p4tg.monitor_forward",
+    let mut table_names = vec!["ingress.p4tg.monitor_forward",
         "ingress.p4tg.forward",
         "ingress.p4tg.frame_type.frame_type_monitor",
         "ingress.p4tg.frame_type.ethernet_type_monitor",
@@ -83,8 +83,12 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
         "egress.is_tx_recirc",
         "egress.header_replace.header_replace",
         "egress.header_replace.vlan_header_replace",
-        "egress.header_replace.mpls_rewrite_c.mpls_header_replace",
+        "egress.header_replace.mpls_replace_c.mpls_header_replace",
     "egress.is_egress"];
+
+    if state.tofino2 {
+        table_names.push("egress.header_replace.srv6_replace_c.srv6_replace");
+    }
 
     // read all table entries
     let all_entries = {
@@ -93,7 +97,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
 
         for t in table_names {
             let req = table::Request::new(t);
-            let entries = switch.get_table_entry(req).await;
+            let entries = switch.get_table_entries(req).await;
 
             match entries {
                 Ok(e) => {
@@ -121,7 +125,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
                 continue;
             }
 
-            let key_val: Vec<(String, String)> = e.match_key.clone().into_iter().map(|(k, v)| {
+            let key_val: Vec<(String, String)> = e.match_keys.clone().into_iter().map(|(k, v)| {
                 let key_val = match v {
                     MatchValue::ExactValue { bytes } => {
                         format!("{}", bytes.to_u128())
@@ -141,7 +145,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
             }).collect();
 
             let mut data_val: Vec<(String, String)> = e.action_data.clone().into_iter().map(|a| {
-                (a.get_name().to_owned(), format!("{}", a.get_data().to_u128()))
+                (a.get_key().to_owned(), format!("{}", a.get_data().to_u128()))
             }).collect();
 
             data_val.push(("action".to_owned(), e.action.clone()));

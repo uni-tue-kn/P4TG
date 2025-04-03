@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 
@@ -98,13 +99,10 @@ export interface StreamSettings {
         eth_src: string,
         eth_dst: string,
     },
-    ip: {
-        ip_src: string,
-        ip_dst: string,
-        ip_tos: number,
-        ip_src_mask: string,
-        ip_dst_mask: string,
-    }
+    ip: IPv4Header
+    ipv6: IPv6Header
+    srv6_base_header: IPv6Header
+    sid_list: string[]
     active: boolean
     vxlan: {
         eth_src: string,
@@ -117,11 +115,29 @@ export interface StreamSettings {
     }
 }
 
+export interface IPv4Header {
+        ip_src: string,
+        ip_dst: string,
+        ip_tos: number,
+        ip_src_mask: string,
+        ip_dst_mask: string,
+}
+
+export interface IPv6Header {
+        ipv6_src: string,
+        ipv6_dst: string,
+        ipv6_traffic_class: number,
+        ipv6_src_mask: string,
+        ipv6_dst_mask: string,
+        ipv6_flow_label: number
+}
+
 export enum Encapsulation {
     None,
     Q,
     QinQ,
-    MPLS
+    MPLS,
+    SRv6
 }
 
 export enum GenerationMode {
@@ -136,10 +152,14 @@ export interface Stream {
     frame_size: number,
     encapsulation: Encapsulation,
     vxlan: boolean,
+    ip_version: number,
     number_of_lse: number,
+    number_of_srv6_sids: number,
+    srv6_ip_tunneling: boolean,
     traffic_rate: number,
-    app_id: number
-    burst: number
+    app_id: number,
+    burst: number,
+    batches: boolean
 }
 
 export const DefaultMPLSHeader = () => {
@@ -158,9 +178,13 @@ export const DefaultStream = (id: number) => {
         frame_size: 1024,
         encapsulation: Encapsulation.None,
         number_of_lse: 0,
+        number_of_srv6_sids: 0,
+        srv6_ip_tunneling: true,
         traffic_rate: 1,
         burst: 1,
-        vxlan: false
+        batches: true,
+        vxlan: false,
+        ip_version: 4
     }
 
     return stream
@@ -179,6 +203,15 @@ export const DefaultStreamSettings = (id: number, port: number) => {
             inner_dei: 0
         },
         mpls_stack: [],
+        srv6_base_header: {
+            ipv6_src: "ff80::",
+            ipv6_dst: "ff80::",
+            ipv6_traffic_class: 0,
+            ipv6_src_mask: "::",
+            ipv6_dst_mask: "::",
+            ipv6_flow_label: 0            
+        },
+        sid_list: [],
         ethernet: {
             eth_src: "32:D5:42:2A:F6:92",
             eth_dst: "81:E7:9D:E3:AD:47"
@@ -189,6 +222,14 @@ export const DefaultStreamSettings = (id: number, port: number) => {
             ip_tos: 0,
             ip_src_mask: "0.0.0.0",
             ip_dst_mask: "0.0.0.0"
+        },
+        ipv6: {
+            ipv6_src: "ff80::",
+            ipv6_dst: "ff80::",
+            ipv6_traffic_class: 0,
+            ipv6_src_mask: "::",
+            ipv6_dst_mask: "::",
+            ipv6_flow_label: 0
         },
         active: false,
         vxlan: {
@@ -213,9 +254,46 @@ export interface P4TGConfig {
     }[]
 }
 
+export enum SPEED {
+    BF_SPEED_1G = "BF_SPEED_1G",
+    BF_SPEED_10G = "BF_SPEED_10G",
+    BF_SPEED_25G = "BF_SPEED_25G",
+    BF_SPEED_40G = "BF_SPEED_40G",
+    BF_SPEED_50G = "BF_SPEED_50G",
+    BF_SPEED_100G = "BF_SPEED_100G",
+    BF_SPEED_400G = "BF_SPEED_400G"
+}
+
+export enum FEC {
+    BF_FEC_TYP_NONE = "BF_FEC_TYP_NONE",
+    BF_FEC_TYP_FC = "BF_FEC_TYP_FC",
+    BF_FEC_TYP_REED_SOLOMON = "BF_FEC_TYP_REED_SOLOMON"
+}
+
+export enum ASIC {
+    Tofino1 = "Tofino1",
+    Tofino2 = "Tofino2"
+}
+
+export interface P4TGInfos {
+    status: String,
+    version: String,
+    asic: ASIC,
+    loopback: boolean
+}
+
 export interface TrafficGenData {
     mode: GenerationMode,
     streams: Stream[],
     stream_settings: StreamSettings[],
-    port_tx_rx_mapping: { [name: number]: number}[]
+    port_tx_rx_mapping: { [name: number]: number}[],
+    duration: number
+}
+
+export interface PortInfo {
+    pid: number,
+    port: number,
+    channel: number,
+    loopback: string,
+    status: boolean    
 }

@@ -20,7 +20,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
-use std::usize;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Json, IntoResponse, Response};
@@ -65,6 +64,24 @@ pub struct Statistics {
     pub(crate) out_of_order: HashMap<u32, u64>,
     /// Elapsed time since the traffic generation has started in seconds.
     pub(crate) elapsed_time: u32
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TimeStatistics {
+    /// L1 send rates per port.
+    pub(crate) tx_rate_l1: HashMap<u32, HashMap<u32, f64>>,
+    /// L2 send rates per port.
+    pub(crate) tx_rate_l2: HashMap<u32, f64>,
+    /// L1 receive rates per port.
+    pub(crate) rx_rate_l1: HashMap<u32, HashMap<u32, f64>>,
+    /// L2 receive rates per port.
+    pub(crate) rx_rate_l2: HashMap<u32, f64>,
+    /// Statistics of the round trip times per port.
+    pub(crate) rtts: HashMap<u32, HashMap<u32, f64>>,
+    /// Number of lost packets per port.
+    pub(crate) packet_loss: HashMap<u32, HashMap<u32, f64>>,
+    /// Number of out of order packets per port.
+    pub(crate) out_of_order: HashMap<u32, HashMap<u32, f64>>,
 }
 
 #[utoipa::path(
@@ -187,6 +204,20 @@ pub struct Params {
     limit: Option<usize>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/time_statistics",
+    params(
+        ("limit" = Option<usize>, Query, description = "Only retrieve the last *limit* entries")
+    ),    
+    responses(
+        (status = 200,
+        description = "Returns the statistics over time.",
+        body = TimeStatistics,
+        example = json!(*docs::statistics::EXAMPLE_GET_2)
+        ))
+)]
+/// Returns the current statistics over time with one data point per second.
 pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): Query<Params>) -> Response {
     let rate_monitor = &state.rate_monitor;
     let stats = rate_monitor.lock().await.time_statistics.clone();

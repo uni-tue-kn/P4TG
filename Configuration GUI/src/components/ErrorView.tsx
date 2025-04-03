@@ -37,8 +37,10 @@ interface ErrorProps {
 
 const ErrorView = ({error, time, message, close}: ErrorProps) => {
 
+    const theme = localStorage.getItem("theme") || "light";
+
     return <StyledToastContainer position={"top-end"}>
-        <Toast show={error} onClose={close} delay={3000} autohide>
+        <Toast show={error} onClose={close} delay={3000} autohide bg={theme}>
             <Toast.Header>
                 <strong className="me-auto">Error</strong>
                 <small>{time}</small>

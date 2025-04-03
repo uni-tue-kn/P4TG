@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 use std::collections::{HashMap, HashSet};
@@ -27,7 +28,7 @@ use rbfrt::{SwitchConnection, table};
 use rbfrt::error::RBFRTError;
 use rbfrt::table::{MatchValue, Request};
 use crate::core::traffic_gen_core::types::{Stream, StreamSetting};
-use crate::core::{create_simple_multicast_group};
+use crate::core::create_simple_multicast_group;
 use crate::core::multicast::delete_simple_multicast_group;
 use crate::{AppState, PortMapping};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
@@ -62,17 +63,26 @@ pub struct TrafficGen {
     /// The port mapping indicates which ports are used for traffic generation and on which port the returning traffic
     /// is expected.
     pub port_mapping: HashMap<u32, u32>,
+    /// Indicates if tofino2 is used
+    pub is_tofino2: bool,
+    /// Indicates the number of available pipes in hardware
+    pub num_pipes: u32,
+    /// Duration of this test in seconds. 0 for unlimited
+    pub duration: Option<u32>
 }
 
 impl TrafficGen {
-    pub fn new() -> TrafficGen {
+    pub fn new(is_tofino2: bool, num_pipes: u32) -> TrafficGen {
         TrafficGen {
             min_buffer_offset: 0,
             running: false,
             stream_settings: vec![],
             streams: vec![],
             mode: GenerationMode::Cbr,
-            port_mapping: HashMap::new()
+            port_mapping: HashMap::new(),
+            is_tofino2,
+            num_pipes,
+            duration: None
         }
     }
 
@@ -93,8 +103,9 @@ impl TrafficGen {
     /// Returns a mapping between an index and the corresponding (port, app_id)
     pub async fn init_monitoring_packet(&mut self, switch: &SwitchConnection, port_mapping: &HashMap<u32, PortMapping>) -> Result<HashMap<u32, MonitoringMapping>, RBFRTError> {
         // activate traffic gen capabilities on internal ports
-        let req: Vec<Request> = TG_PIPE_PORTS.into_iter().map(|x| {
-            Request::new(PORT_CFG)
+        let req: Vec<Request> = if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()}
+            .into_iter().map(|x| {
+            Request::new(if self.is_tofino2 {PORT_CFG_TF2} else {PORT_CFG})
                 .match_key("dev_port", MatchValue::exact(x))
                 .action_data("pktgen_enable", true)
         }).collect();
@@ -102,6 +113,14 @@ impl TrafficGen {
         switch.update_table_entries(req).await?;
 
         info!("Activated traffic gen capabilities.");
+
+        // clear possibly activated pktgen for monitoring (app id 0)
+        let update_request = Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
+            .match_key("app_id", MatchValue::exact(0))
+            .action("trigger_timer_periodic")
+            .action_data("app_enable", false);
+
+        switch.update_table_entry(update_request).await?;
 
         // clear multicast table
         // may fail if the group does not exist, therefore ignore error
@@ -134,7 +153,8 @@ impl TrafficGen {
             bytes: monitoring_packet,
             timer: MONITORING_PACKET_INTERVAL,
             buffer_offset: Some(0),
-            n_packets: 1
+            n_packets: 1,
+            batches: false
         }]).await?;
 
         // Min buffer offset is equal to the size of the monitoring packet
@@ -209,7 +229,7 @@ impl TrafficGen {
 
         forward_requests.push(table::Request::new(MONITORING_FORWARD_TABLE)
             .match_key("hdr.monitor.index", MatchValue::exact(0))
-            .match_key("ig_intr_md.ingress_port", MatchValue::exact(TG_PIPE_PORTS[0]))
+            .match_key("ig_intr_md.ingress_port", MatchValue::exact(if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}))
             .action("ingress.p4tg.mc_forward")
             .action_data("mcid", MONITORING_PACKET_MID));
 
@@ -375,7 +395,7 @@ impl TrafficGen {
         // keep monitoring running
         let app_ids: Vec<u8> = (1..8).collect();
 
-        let update_requests: Vec<Request> = app_ids.iter().map(|x| table::Request::new(APP_CFG)
+        let update_requests: Vec<Request> = app_ids.iter().map(|x| table::Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
             .match_key("app_id", MatchValue::exact(*x))
             .action("trigger_timer_periodic")
             .action_data("app_enable", false))
@@ -392,18 +412,40 @@ impl TrafficGen {
     ///
     /// * `packets`: List of packets that should be generated. Index is the application id.
     pub async fn activate_traffic_gen_applications(&self, switch: &SwitchConnection, packets: &HashMap<u8, StreamPacket>) -> Result<(), RBFRTError> {
-        let update_requests: Vec<Request> = packets.iter().map(|(_, packet)| table::Request::new(APP_CFG)
-            .match_key("app_id", MatchValue::exact(packet.app_id))
-            .action("trigger_timer_periodic")
-            .action_data("app_enable", true)
-            .action_data("pkt_len", packet.bytes.len() as u32)
-            .action_data("timer_nanosec", packet.timer)
-            .action_data("packets_per_batch_cfg", packet.n_packets - 1)
-            .action_data("pipe_local_source_port", TG_PIPE_PORTS[0]) // traffic gen port
-            .action_data("pkt_buffer_offset", packet.buffer_offset.unwrap())).collect();
-        switch.update_table_entries(update_requests).await?;
 
-        Ok(())
+        let update_requests: Result<Vec<Request>, P4TGError> = packets.iter()
+            .map(|(_, packet)| {
+                if packet.n_packets == 0 {
+                    // The ILP did not find a solution for the configured parameters
+                    Err(P4TGError::Error { message: format!("The ILP did not find a valid solution for packet generation of app ID {:}. Try a different rate.", packet.app_id) })
+                } else {
+                    let batch_factor: u32 = if packet.batches {BATCH_FACTOR} else {1};
+                    Ok(table::Request::new(if self.is_tofino2 {APP_CFG_TF2} else {APP_CFG})
+                    .match_key("app_id", MatchValue::exact(packet.app_id))
+                    .action("trigger_timer_periodic")
+                    .action_data("app_enable", true)
+                    .action_data("pkt_len", packet.bytes.len() as u32)
+                    .action_data("timer_nanosec", packet.timer)
+                    .action_data("packets_per_batch_cfg", packet.n_packets - 1)
+                    .action_data("batch_count_cfg", batch_factor - 1)
+                    .action_data("pipe_local_source_port", if self.is_tofino2 {TG_PIPE_PORTS_TF2[0]} else {TG_PIPE_PORTS[0]}) // traffic gen port
+                    .action_data("pkt_buffer_offset", packet.buffer_offset.unwrap()))
+            }
+        }).collect();
+
+        match update_requests {
+            Ok(mut reqs) => {
+                if self.is_tofino2 {
+                    reqs = reqs.into_iter().map(|req|
+                        req.action_data("assigned_chnl_id", TG_PIPE_PORTS_TF2[0])
+                    ).collect();
+                }
+        
+                switch.update_table_entries(reqs).await?;
+                Ok(())
+            }, 
+            Err(e) => Err(e.into())
+        }
     }
 
     /// This method is called by the REST API and completes the whole setup for the traffic generation.
@@ -445,10 +487,17 @@ impl TrafficGen {
         // this pushes rules for RX -> RX Recirc and TX Recirc -> TX
         self.configure_default_forwarding_path(switch, &state.port_mapping).await?;
 
-        // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on two pipes
-        // therefore timeout is twice as high
-        let total_rate: f32 = streams.iter().map(|x| x.traffic_rate).sum();
-        let timeout_factor: u32 = if total_rate >= TWO_PIPE_GENERATION_THRESHOLD { 2 } else { 1 };
+        // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on multiple pipes
+        let total_rate: f32 = streams.iter().map(|x| {
+               if mode == GenerationMode::Mpps {
+                (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
+               } else {
+                x.traffic_rate 
+               }
+        }).sum();
+
+        info!("Total Rate {total_rate}");
+
 
         // calculate sending behaviour via ILP optimization
         // further adds number of packets per time to the stream
@@ -458,6 +507,11 @@ impl TrafficGen {
             // preamble + inter frame gap (IFG) = 20 bytes
             let encapsulation_overhead = encapsulation_overhead + 20;
 
+            // For minimal sized IPv6 frames, the size is 73 bytes + 4 FCS
+            if s.ip_version == Some(6) && s.frame_size == 64 {
+                s.frame_size = 73 + 4;
+            }
+
             // traffic rate has MPPS semantics
             // rewrite traffic rate to reflect MPPS in Gbps
             if mode == GenerationMode::Mpps {
@@ -466,17 +520,20 @@ impl TrafficGen {
             }
 
             // call solver
-            let (n_packets, timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate, s.burst);
-            let rate = ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
+            let (n_packets, mut timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / self.num_pipes as f32, s.burst);
+            let rate = self.num_pipes as f64 * ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
             let rate_accuracy = 100f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
 
-            info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, rate, rate_accuracy);
+            info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, self.num_pipes, rate, rate_accuracy);
+
+            // More bursty traffic desired. Activate batch mode
+            timeout = if s.batches.is_some_and(|b| b && s.burst != 1) {timeout * BATCH_FACTOR} else {timeout};
 
             // add calculated values to the stream
             s.n_packets = Some(n_packets);
-            s.timeout = Some(timeout * timeout_factor);
+            s.timeout = Some(timeout);
             s.generation_accuracy = Some(rate_accuracy);
-            s.n_pipes = Some(timeout_factor as u8);
+            s.n_pipes = Some(self.num_pipes as u8);
 
             s
         }).collect();
@@ -488,9 +545,9 @@ impl TrafficGen {
             let stream = active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?;
             let encap_overhead = 20 + calculate_overhead(stream);
 
-            let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, 100f32, 25);
+            let (n_packets, timeout) = calculate_send_behaviour(stream.frame_size + encap_overhead, if self.is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE} / self.num_pipes as f32, 25);
             active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.n_packets = Some(n_packets);
-            active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.timeout = Some(timeout * 2);
+            active_streams.get_mut(0).ok_or(P4TGError::Error {message: "Configuration error.".to_owned()})?.timeout = Some(timeout);
         }
 
         // calculate the required multicast ports for a stream
@@ -512,7 +569,7 @@ impl TrafficGen {
 
         let packet_bytes: Vec<StreamPacket> = active_streams.iter().map(|s| {
             let packet = create_packet(s);
-            StreamPacket { app_id: s.app_id, bytes: packet, buffer_offset: None, timer: s.timeout.unwrap(), n_packets: s.n_packets.unwrap() }
+            StreamPacket { app_id: s.app_id, bytes: packet, buffer_offset: None, timer: s.timeout.unwrap(), n_packets: s.n_packets.unwrap(), batches: s.batches.is_some_and(|b| b && s.burst != 1) }
         }).collect();
 
         // configure egress table rules
@@ -578,15 +635,7 @@ impl TrafficGen {
 
         let mut forward_entries = vec![];
 
-        let overall_traffic_rate: f32 = streams.iter().map(|x| x.traffic_rate).sum();
-
-        // we generate on both pipes if the overall rate is larger than the threshold or if we do poisson traffic
-        let generation_ports = if overall_traffic_rate < TWO_PIPE_GENERATION_THRESHOLD && mode != GenerationMode::Poisson {
-            vec![TG_PIPE_PORTS[0]]
-        }
-        else {
-            TG_PIPE_PORTS.to_vec()
-        };
+        let generation_ports = if self.is_tofino2 {TG_PIPE_PORTS_TF2.to_vec()} else {TG_PIPE_PORTS.to_vec()};
 
         for s in streams {
             for port in &generation_ports {
@@ -598,7 +647,7 @@ impl TrafficGen {
                     else {
                         let addition = 20 + calculate_overhead(s);
 
-                        let const_iat = (s.frame_size + addition) as f32 / 100f32;
+                        let const_iat = (s.frame_size + addition) as f32 / if self.is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE};
                         let target_iat = (s.frame_size + addition) as f32 / s.traffic_rate;
 
                         // that's the drop probability
@@ -641,46 +690,77 @@ impl TrafficGen {
                 let src_mac = MacAddr::from_str(&setting.ethernet.eth_src).map_err(|_| P4TGError::Error { message: String::from("Source mac in stream settings not valid.")})?;
                 let dst_mac = MacAddr::from_str(&setting.ethernet.eth_dst).map_err(|_| P4TGError::Error { message: String::from("Destination mac in stream settings not valid.")})?;
 
+                // Already verified in validator. Default to IPv4.
+                let ip_version = s.ip_version.unwrap_or(4);
+
                 let req = if s.vxlan { // we need to rewrite two Ethernet & IP headers
                     // validation method in API makes sure that setting.vxlan exists if s.vxlan is set
                     let vxlan = setting.vxlan.as_ref().unwrap();
                     let outer_src_mac = MacAddr::from_str(&vxlan.eth_src).map_err(|_| P4TGError::Error { message: String::from("VxLAN source mac in stream settings not valid.")})?;
                     let outer_dst_mac = MacAddr::from_str(&vxlan.eth_dst).map_err(|_| P4TGError::Error { message: String::from("VxLAN destination mac in stream settings not valid.")})?;
 
-                    Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                    // validation method in API makes sure that setting.ip exists if s.ip_version is set to 4
+                    let ipv4_settings = setting.ip.clone().unwrap();
+
+                    Some(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
                         .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
                         .action("egress.header_replace.rewrite_vxlan")
                         .action_data("inner_src_mac", src_mac.as_bytes().to_vec())
                         .action_data("inner_dst_mac", dst_mac.as_bytes().to_vec())
-                        .action_data("s_mask", setting.ip.ip_src_mask)
-                        .action_data("d_mask", setting.ip.ip_dst_mask)
-                        .action_data("inner_s_ip", setting.ip.ip_src)
-                        .action_data("inner_d_ip", setting.ip.ip_dst)
-                        .action_data("inner_tos", setting.ip.ip_tos)
+                        .action_data("s_mask", ipv4_settings.ip_src_mask)
+                        .action_data("d_mask", ipv4_settings.ip_dst_mask)
+                        .action_data("inner_s_ip", ipv4_settings.ip_src)
+                        .action_data("inner_d_ip", ipv4_settings.ip_dst)
+                        .action_data("inner_tos", ipv4_settings.ip_tos)
                         .action_data("outer_src_mac", outer_src_mac.as_bytes().to_vec())
                         .action_data("outer_dst_mac", outer_dst_mac.as_bytes().to_vec())
                         .action_data("outer_s_ip", vxlan.ip_src)
                         .action_data("outer_d_ip", vxlan.ip_dst)
                         .action_data("outer_tos", vxlan.ip_tos)
                         .action_data("udp_source", vxlan.udp_source)
-                        .action_data("vni", vxlan.vni)
+                        .action_data("vni", vxlan.vni))
                 }
                 else {
-                    Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
-                        .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
-                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                        .action("egress.header_replace.rewrite")
-                        .action_data("src_mac", src_mac.as_bytes().to_vec())
-                        .action_data("dst_mac", dst_mac.as_bytes().to_vec())
-                        .action_data("s_mask", setting.ip.ip_src_mask)
-                        .action_data("d_mask", setting.ip.ip_dst_mask)
-                        .action_data("s_ip", setting.ip.ip_src)
-                        .action_data("d_ip", setting.ip.ip_dst)
-                        .action_data("tos", setting.ip.ip_tos)
+                    // Only verify if IP Header will actually be used
+                    if (s.encapsulation == Encapsulation::SRv6 && s.srv6_ip_tunneling.unwrap_or(true)) || s.encapsulation != Encapsulation::SRv6 {
+
+                        if ip_version == 6 {
+                            let ipv6_settings = setting.ipv6.clone().unwrap();
+
+                            Some(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                                .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                                .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                                .action("egress.header_replace.rewrite_ipv6")
+                                .action_data("src_mac", src_mac.as_bytes().to_vec())
+                                .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                                .action_data("s_mask", ipv6_settings.ipv6_src_mask)
+                                .action_data("d_mask", ipv6_settings.ipv6_dst_mask)
+                                .action_data("s_ip", ipv6_settings.ipv6_src)
+                                .action_data("d_ip", ipv6_settings.ipv6_dst)
+                                .action_data("traffic_class", ipv6_settings.ipv6_traffic_class)
+                                .action_data("flow_label", ipv6_settings.ipv6_flow_label))
+                        } else {
+                            let ipv4_settings = setting.ip.clone().unwrap();
+
+                            Some(Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                                .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                                .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                                .action("egress.header_replace.rewrite")
+                                .action_data("src_mac", src_mac.as_bytes().to_vec())
+                                .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                                .action_data("s_mask", ipv4_settings.ip_src_mask)
+                                .action_data("d_mask", ipv4_settings.ip_dst_mask)
+                                .action_data("s_ip", ipv4_settings.ip_src)
+                                .action_data("d_ip", ipv4_settings.ip_dst)
+                                .action_data("tos", ipv4_settings.ip_tos))
+                        }
+                    } else {
+                        None
+                    }
                 };
 
-                reqs.push(req);
+                if let Some(r) = req { reqs.push(r) }
 
                 if s.encapsulation == Encapsulation::QinQ {
                     // we checked in validation that vlan exists
@@ -714,33 +794,61 @@ impl TrafficGen {
                     reqs.push(req);
                 }
                 else if s.encapsulation == Encapsulation::Mpls {
-                    // we checked that mpls stack exists
-                    let mpls_stack = setting.mpls_stack.as_ref().unwrap();
-                    let action_name: String = format!("egress.header_replace.mpls_rewrite_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
+                        // we checked that mpls stack exists
+                        let mpls_stack = setting.mpls_stack.as_ref().unwrap();
+                        let action_name: String = format!("egress.header_replace.mpls_replace_c.rewrite_mpls_{}", cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL));
 
-                    let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
+                        let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
+                            .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
+                            .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                            .action(&action_name);
+
+                        // build generic action data
+                        for j in 1..cmp::min(s.number_of_lse.unwrap()+1, MAX_NUM_MPLS_LABEL+1) {
+                            let lse = &mpls_stack[(j-1) as usize];
+
+                            let label_param = format!("label{}", j);
+                            let ttl_param = format!("ttl{}", j);
+                            let tc_param = format!("tc{}", j);
+                            req = req.action_data(&label_param, lse.label)
+                                    .action_data(&ttl_param, lse.ttl)
+                                    .action_data(&tc_param, lse.tc);
+                        }
+
+                        reqs.push(req.clone());
+                } else if s.encapsulation == Encapsulation::SRv6 {
+
+                    let action_name: String = format!("egress.header_replace.srv6_replace_c.rewrite_{}_sids", cmp::min(s.number_of_srv6_sids.unwrap(), MAX_NUM_SRV6_SIDS));
+                    let srv6_base_header = setting.srv6_base_header.clone().unwrap();
+                    let sid_list = setting.sid_list.as_ref().unwrap();
+
+                    let mut req = Request::new(SRV6_HEADER_REPLACE_TABLE)
                         .match_key("eg_intr_md.egress_port", MatchValue::exact(port.tx_recirculation))
                         .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
-                        .action(&action_name);
+                        .action(&action_name)
+                        .action_data("s_ip", srv6_base_header.ipv6_src)
+                        .action_data("d_ip", srv6_base_header.ipv6_dst)
+                        .action_data("traffic_class", srv6_base_header.ipv6_traffic_class)
+                        .action_data("flow_label", srv6_base_header.ipv6_flow_label); 
 
-                    // build generic action data
-                    for j in 1..cmp::min(s.number_of_lse.unwrap()+1, MAX_NUM_MPLS_LABEL+1) {
-                        let lse = &mpls_stack[(j-1) as usize];
+                    for j in 1..cmp::min(s.number_of_srv6_sids.unwrap()+1, MAX_NUM_SRV6_SIDS+1) {
+                        let sid = sid_list[(j-1) as usize];
 
-                        let label_param = format!("label{}", j);
-                        let ttl_param = format!("ttl{}", j);
-                        let tc_param = format!("tc{}", j);
-                        req = req.action_data(&label_param, lse.label)
-                                .action_data(&ttl_param, lse.ttl)
-                                .action_data(&tc_param, lse.tc);
+                        let sid_param = format!("sid{}", j);
+                        req = req.action_data(&sid_param, sid)
                     }
-
                     reqs.push(req.clone());
+
                 }
             }
         }
 
-        info!("Configure table {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE);
+        if self.is_tofino2 {
+            info!("Configure table {}, {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE);
+        } else {
+            info!("Configure table {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE);
+        }
+        
         switch.write_table_entries(reqs).await?;
 
         Ok(())
@@ -766,7 +874,7 @@ impl TrafficGen {
                 buffer_offset += 16 - (buffer_offset % 16);
             }
 
-            let req = table::Request::new(APP_BUFFER_CFG)
+            let req = table::Request::new(if self.is_tofino2 {APP_BUFFER_CFG_TF2} else {APP_BUFFER_CFG})
                 .match_key("pkt_buffer_offset", MatchValue::exact(buffer_offset))
                 .match_key("pkt_buffer_size", MatchValue::exact(pkt_len))
                 .action_data_repeated("buffer", vec![p.bytes.to_vec()]);
@@ -800,7 +908,11 @@ impl TrafficGen {
 
     /// Clears various tables that are refilled during traffic gen setup
     async fn reset_tables(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE,  ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        if self.is_tofino2 {
+            switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        } else {
+            switch.clear_tables(vec![TRAFFIC_GEN_MODE, IS_EGRESS_TABLE, IS_TX_EGRESS_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, DEFAULT_FORWARD_TABLE]).await?;
+        }
 
         Ok(())
     }

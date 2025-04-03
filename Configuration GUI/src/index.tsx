@@ -27,7 +27,7 @@ import '@coreui/coreui/dist/css/coreui.min.css'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import "bootstrap-icons/font/bootstrap-icons.css";
 
-import './assets/index.css'
+import './assets/index.scss'
 
 
 const root = ReactDOM.createRoot(

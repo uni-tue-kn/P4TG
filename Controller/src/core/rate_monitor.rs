@@ -456,11 +456,7 @@ impl RateMonitor {
 
                 // out of order packets are also counted as packet loss in the data plane
                 // therefore subtract them from the packet loss counter
-                let packet_loss = if packet_loss >= out_of_order {
-                    packet_loss - out_of_order
-                } else {
-                    0
-                };
+                let packet_loss = packet_loss.saturating_sub(out_of_order);
 
                 let is_tx = tx_reverse_mapping.contains_key(&port);
 

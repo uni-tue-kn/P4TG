@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 #ifndef _HEADERS_
@@ -22,10 +23,17 @@
 
 typedef bit<48> mac_addr_t;
 typedef bit<32> ipv4_addr_t;
+typedef bit<128> ipv6_addr_t;
 typedef bit<16> ether_type_t;
 typedef bit<32> reg_index_t;
+
+#if __TARGET_TOFINO__ == 2
+typedef bit<32> seq_t; // due to higher data rates we need larger seq number space
+#else
 typedef bit<32> seq_t;
+#endif
 const ether_type_t ETHERTYPE_IPV4 = 0x800;
+const ether_type_t ETHERTYPE_IPV6 = 0x86dd;
 const ether_type_t ETHERTYPE_MONITOR = 0xBB02;
 const ether_type_t ETHERTYPE_QinQ = 0x88a8;
 const ether_type_t ETHERTYPE_VLANQ = 0x8100;
@@ -33,6 +41,9 @@ const ether_type_t ETHERTYPE_MPLS = 0x8847;
 const ether_type_t ETHERTYPE_ARP = 0x0806;
 
 const bit<8> IP_PROTOCOL_UDP = 17;
+const bit<8> IP_PROTOCOL_IPV4 = 4;
+const bit<8> IP_PROTOCOL_IPV6 = 41;
+const bit<8> IP_PROTOCOL_SRH = 43;
 const bit<8> IP_PROTOCOL_P4TG = 110;
 const bit<16> UDP_VxLAN_PORT = 4789;
 const bit<16> UDP_P4TG_PORT = 50083;
@@ -100,6 +111,39 @@ header ipv4_t {
     ipv4_addr_t dst_addr;
 }
 
+header ipv6_t {
+    bit<4>   version;
+    bit<8>   traffic_class;
+    bit<20>  flowLabel;
+    bit<16>  payloadLen;
+    bit<8>   nextHdr;
+    bit<8>   hopLimit;
+    bit<128> src_addr;
+    bit<128> dst_addr;
+}
+
+header ipv6_lookahead_next_header_t {
+    bit<4>   version;
+    bit<8>   traffic_class;
+    bit<20>  flowLabel;
+    bit<16>  payloadLen;
+    bit<8>   nextHdr;
+}
+
+header srh_t {
+    bit<8> next_header;
+    bit<8> length;
+    bit<8> ipv6_type;
+    bit<8> segments_left;
+    bit<8> last_entry;
+    bit<8> flags;
+    bit<16> tag;
+}
+
+header sid_t {
+    ipv6_addr_t sid;
+}
+
 header path_monitor_t {
     bit<16> src_port;
     bit<16> dst_port;
@@ -108,15 +152,6 @@ header path_monitor_t {
     seq_t seq;
     bit<48> tx_tstmp;
     bit<8> app_id;
-}
-
-header pkg_gen_t {
-    bit<3> pad;
-    bit<2> pipe;
-    bit<3> app_id;
-    bit<8> pad1;
-    bit<16> batch_id;
-    bit<16> pkt_id;
 }
 
 header monitor_t {
@@ -165,11 +200,17 @@ header vxlan_header_t {
 
 struct header_t {
     ethernet_h ethernet;
+    ipv6_t sr_ipv6;
+    srh_t srh;
+    sid_t sid1;
+    sid_t sid2;
+    sid_t sid3;
     ethernet_h inner_ethernet;
     mpls_h[15] mpls_stack;
     ipv4_t ipv4;
+    ipv6_t ipv6;
     ipv4_t inner_ipv4;
-    pkg_gen_t pkt_gen;
+    pktgen_timer_header_t pkt_gen;
     udp_t udp;
     monitor_t monitor;
     path_monitor_t path;
@@ -201,10 +242,11 @@ struct egress_metadata_t {
     bit<1> monitor_type;
     PortId_t rx_port;
     bit<16> checksum_udp_tmp;
-    bit<32> checksum_add_udp_ip_src;
-    bit<32> checksum_add_udp_ip_dst;
     ipv4_addr_t ipv4_src;
     ipv4_addr_t ipv4_dst;
+    ipv6_addr_t ipv6_src;
+    ipv6_addr_t ipv6_dst;    
+    bit<4> ip_version;
 }
 
 struct iat_rtt_monitor_t {

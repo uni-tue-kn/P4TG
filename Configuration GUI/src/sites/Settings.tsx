@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 import React, {useEffect, useRef, useState} from 'react'
@@ -22,9 +23,12 @@ import {Button, Col, Form, Row, Table} from "react-bootstrap";
 import {get} from "../common/API";
 import Loader from "../components/Loader";
 import {
+    DefaultMPLSHeader,
     DefaultStream,
     DefaultStreamSettings,
-    GenerationMode,
+    Encapsulation,
+    GenerationMode, P4TGInfos,
+    PortInfo,
     Stream,
     StreamSettings, TrafficGenData,
 } from "../common/Interfaces";
@@ -34,7 +38,7 @@ import InfoBox from "../components/InfoBox";
 import {GitHub} from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
-import {validateStreams, validateStreamSettings} from "../common/Validators";
+import {validatePorts, validateStreams, validateStreamSettings} from "../common/Validators";
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -48,14 +52,8 @@ export const StyledCol = styled.td`
 `
 
 
-const Settings = () => {
-    const [ports, set_ports] = useState<{
-        pid: number,
-        port: number,
-        channel: number,
-        loopback: string,
-        status: boolean
-    }[]>([])
+const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
+    const [ports, set_ports] = useState<PortInfo[]>([])
     const [running, set_running] = useState(false)
     // @ts-ignore
     const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
@@ -66,6 +64,7 @@ const Settings = () => {
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
+    const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
     const [loaded, set_loaded] = useState(false)
     const ref = useRef()
 
@@ -92,12 +91,14 @@ const Settings = () => {
 
             if (old_streams != JSON.stringify(stats.data.streams)) {
                 set_mode(stats.data.mode)
+                set_duration(stats.data.duration)
                 set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
                 set_stream_settings(stats.data.stream_settings)
                 set_streams(stats.data.streams)
 
                 localStorage.setItem("streams", JSON.stringify(stats.data.streams))
                 localStorage.setItem("gen-mode", stats.data.mode)
+                localStorage.setItem("duration", stats.data.duration)
                 localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
                 localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
             }
@@ -121,6 +122,7 @@ const Settings = () => {
     const save = () => {
         localStorage.setItem("streams", JSON.stringify(streams))
         localStorage.setItem("gen-mode", String(mode))
+        localStorage.setItem("duration", String(duration))
 
         localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
 
@@ -135,6 +137,7 @@ const Settings = () => {
         set_streams([])
         set_stream_settings([])
         set_mode(GenerationMode.NONE)
+        set_duration(0)
         set_port_tx_rx_mapping({})
 
         alert("Reset complete.")
@@ -153,7 +156,7 @@ const Settings = () => {
             set_streams(old => [...old, DefaultStream(id + 1)])
 
             ports.map((v, i) => {
-                if (v.loopback == "BF_LPBK_NONE") {
+                if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                     set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.pid)])
                 }
             })
@@ -170,7 +173,8 @@ const Settings = () => {
             "mode": mode,
             "stream_settings": stream_settings,
             "streams": streams,
-            "port_tx_rx_mapping": port_tx_rx_mapping
+            "port_tx_rx_mapping": port_tx_rx_mapping,
+            "duration": duration
         }
 
         const json = `data:text/json;charset=utf-8,${encodeURIComponent(
@@ -189,6 +193,33 @@ const Settings = () => {
         ref.current.click()
     }
 
+    const fillPortsOnMissingSetting = (streams: Stream[], stream_settings: StreamSettings[]) => {
+        // If the StreamSettings are not complete, i.e., not all ports are defined, they are not correctly rendered in the frontend.
+        // Therefore, we fill the stream settings for each undefined port with a default stream.
+        const available_dev_ports: number[] = ports.slice(0, 10).map(p => p.pid);
+
+        streams.forEach(s => {
+            const ports_from_settings: number[] = stream_settings.filter(setting => setting.port && setting.stream_id == s.stream_id).map(setting => setting.port);
+            available_dev_ports.forEach(p => {
+                if (!ports_from_settings.includes(p)){
+                    const default_stream_settings = DefaultStreamSettings(s.stream_id, p);
+                    if (s.encapsulation === Encapsulation.MPLS) {
+                        for (let i = 0; i < s.number_of_lse; i++) {
+                            default_stream_settings.mpls_stack.push(DefaultMPLSHeader())
+                        }
+                    } else if (s.encapsulation === Encapsulation.SRv6) {
+                        for (let i = 0; i < s.number_of_srv6_sids; i++) {
+                            default_stream_settings.sid_list.push("::")
+                        }
+                    }
+                    stream_settings.push(default_stream_settings)
+                }
+            })
+        })
+        // Sort by stream ID to correctly render in frontend
+        stream_settings.sort((a, b) => a.stream_id - b.stream_id);
+    }
+
     const loadSettings = (e: any) => {
         e.preventDefault()
 
@@ -198,14 +229,18 @@ const Settings = () => {
         fileReader.onload = (e: any) => {
             let data: TrafficGenData = JSON.parse(e.target.result)
 
+        
             if(!validateStreams(data.streams) || !validateStreamSettings(data.stream_settings)) {
                 alert("Settings not valid.")
                 // @ts-ignore
                 ref.current.value = ""
+            } else if (!validatePorts(data.port_tx_rx_mapping, ports)){
+                alert("Settings not valid. Configured dev_port IDs are not available on this device.")
             }
             else {
                 localStorage.setItem("streams", JSON.stringify(data.streams))
                 localStorage.setItem("gen-mode", String(data.mode))
+                localStorage.setItem("duration", data.duration ? String(data.duration) : "0")
 
                 localStorage.setItem("streamSettings", JSON.stringify(data.stream_settings))
 
@@ -218,10 +253,11 @@ const Settings = () => {
         }
     }
 
-    // @ts-ignore
+    fillPortsOnMissingSetting(streams, stream_settings);
+
     // @ts-ignore
     return <Loader loaded={loaded}>
-        <Row>
+        <Row className={"align-items-center"}>
             <Col className={"col-2"}>
                 <Form.Select disabled={running} required
                              onChange={(event: any) => {
@@ -231,6 +267,7 @@ const Settings = () => {
                                      addStream();
                                  }
                                  set_mode(parseInt(event.target.value));
+                                 set_duration(0);
                              }}>
                     <option value={GenerationMode.NONE}>Generation Mode</option>
                     <option selected={mode === GenerationMode.CBR} value={GenerationMode.CBR}>CBR</option>
@@ -239,7 +276,7 @@ const Settings = () => {
                     <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
                 </Form.Select>
             </Col>
-            <Col>
+            <Col className={"col-auto"}>
                 <InfoBox>
                     <>
                         <p>P4TG supports multiple modes.</p>
@@ -265,6 +302,29 @@ const Settings = () => {
                     </>
                 </InfoBox>
             </Col>
+        
+            <Col className={"col-auto"}>
+                <div>
+                    <span>Test duration     </span>
+                    <InfoBox>
+                            <>
+                            <h5>Test duration</h5>
+
+                            <p>If a test duration (in seconds) is specified, traffic generation will automatically stop after the duration is exceeded. A value of 0 indicates generation of infinite duration.</p>
+                            </>
+                    </InfoBox> 
+                </div>
+            </Col>
+         
+            <Col className={"col-auto"}>
+                <Form.Control className={"col-3 text-start"}
+                                onChange={(event: any) => set_duration(parseInt(event.target.value))}
+                                min={0}
+                                step={1}
+                                placeholder={duration > 0 ? String(duration) + " s" : "∞ s"}
+                                disabled={running} type={"number"}/>
+
+            </Col>
             <Col className={"text-end"}>
                 <Button onClick={importSettings} disabled={running} variant={"primary"}>
                     <i className="bi bi-cloud-arrow-down-fill"/> Import
@@ -287,7 +347,20 @@ const Settings = () => {
                             <th>Stream-ID</th>
                             <th>Frame Size</th>
                             <th>Rate</th>
-                            <th>Mode</th>
+                            <th>Mode &nbsp;
+                                <InfoBox>
+                                    <>
+                                        <h5>Rate Precision</h5>
+
+                                        <p>In this mode, several packets may be generated at once (burst) to fit the configured traffic rate more precisely. </p>
+
+                                        <h5>IAT Precision</h5>
+
+                                        <p>In this mode, a single packet is generated at once and all packets have the same inter-arrival times. This mode should be used if the traffic should be very "smooth", i.e., without bursts.
+                                            However, the configured traffic rate may not be met precisely.</p>
+                                    </>
+                                </InfoBox>
+                            </th>
                             <th>VxLAN &nbsp;
                                 <InfoBox>
                                     <p>VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC
@@ -295,6 +368,7 @@ const Settings = () => {
                                     </p>
                                 </InfoBox>
                             </th>
+                            <th>IP Version</th>
                             <th>Encapsulation &nbsp;
                                 <InfoBox>
                                     <p>P4TG supports various encapsulations for the generated IP/UDP packet.</p>
@@ -307,7 +381,7 @@ const Settings = () => {
                         {streams.map((v, i) => {
                             v.app_id = i + 1;
                             return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}
-                                                  stream_settings={stream_settings}/>
+                                                  stream_settings={stream_settings} p4tg_infos={p4tg_infos}/>
                         })}
 
                         </tbody>
@@ -344,7 +418,7 @@ const Settings = () => {
                         </thead>
                         <tbody>
                         {ports.map((v, i) => {
-                            if (v.loopback == "BF_LPBK_NONE") {
+                            if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                                 return <tr key={i}>
                                     <StyledCol>{v.port} ({v.pid})</StyledCol>
                                     <StyledCol>
@@ -363,7 +437,7 @@ const Settings = () => {
                                                      }}>
                                             <option value={-1}>Select RX Port</option>
                                             {ports.map((v, i) => {
-                                                if (v.loopback == "BF_LPBK_NONE") {
+                                                if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                                                     return <option key={i}
                                                                    value={v.pid}>{v.port} ({v.pid})</option>
                                                 }
@@ -373,7 +447,7 @@ const Settings = () => {
 
                                     </StyledCol>
                                     <StreamSettingsList stream_settings={stream_settings} streams={streams}
-                                                        running={running} port={v}/>
+                                                        running={running} port={v} p4tg_infos={p4tg_infos}/>
 
                                 </tr>
                             }

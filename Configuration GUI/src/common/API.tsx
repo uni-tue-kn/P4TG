@@ -61,8 +61,7 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError:
             if (!("response" in error) || ("code" in error && error.code === "ERR_NETWORK")) {
                 onOffline()
             }
-
-            if(error.response.status === 400) {
+            else if(error.response.status === 400) {
                 console.log(error.response)
                 onError(error.response.data.message)
             }
@@ -73,7 +72,7 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError:
                 onError(error.response.data)
             }
             else if(error.response.status === 500) {
-                if ("data" in error.response && "message" in error.repsonse.data) {
+                if ("data" in error.response && "message" in error.response.data) {
                     onError("Internal Server Error: " + error.response.data.message)
                 } else {
                     onError("Internal Server Error.")

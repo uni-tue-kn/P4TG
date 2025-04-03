@@ -15,25 +15,28 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use utoipa::ToSchema;
 
 /// Describes the supported encapsulations of P4TG.
-/// Currently, only MPLS, VLAN and QinQ are supported.
+/// Currently, MPLS, VLAN, QinQ, and SRv6 are supported.
 ///
-/// [Encapsulation::None] corresponds to plain Ethernet | IPv4 packet.
+/// [Encapsulation::None] corresponds to plain Ethernet | IP packet.
 #[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug, Clone, Copy, ToSchema)]
 #[repr(u8)]
 pub enum Encapsulation {
     None = 0,
     Vlan = 1,
     QinQ = 2,
-    Mpls = 3
+    Mpls = 3,
+    SRv6 = 4
 }
 
 /// Describes the used generation mode
@@ -62,7 +65,9 @@ pub struct StreamPacket {
     /// Number of packets that are sent for this stream
     pub n_packets: u16,
     /// Timeout for the packet generation
-    pub timer: u32
+    pub timer: u32,
+    /// Increases the burstiness resulting in a more accurate rate. Has no effect if in IAT mode.
+    pub batches: bool
 }
 
 /// Represents a Monitoring mapping
@@ -126,7 +131,9 @@ pub struct TrafficGenData {
     pub(crate) streams: Vec<Stream>,
     /// Mapping between TX (send) ports, and RX (receive) ports.
     /// Traffic send on port TX are expected to be received on port RX.
-    pub(crate) port_tx_rx_mapping: HashMap<u32, u32>
+    pub(crate) port_tx_rx_mapping: HashMap<u32, u32>,
+    /// The duration of this test in seconds.
+    pub(crate) duration: Option<u32>
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -173,6 +180,30 @@ pub struct IPv4 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct IPv6 {
+    /// Source IPv6 address
+    #[schema(example = "fe80::1766:cf5:f031:eba3")]
+    #[schema(value_type = String)]
+    pub ipv6_src: Ipv6Addr,
+    /// Destination IPv4 address
+    #[schema(example = "fe80::1766:cf5:f031:eba3")]
+    #[schema(value_type = String)]
+    pub ipv6_dst: Ipv6Addr,
+    pub ipv6_traffic_class: u8,
+    /// Mask that is used to randomize the IP src address. The 48 least-significant bits can be randomized.
+    /// ::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.
+    #[schema(example = "::ff")]
+    #[schema(value_type = String)]
+    pub ipv6_src_mask: Ipv6Addr,
+    /// Mask that is used to randomize the IP dst address. The 48 least-significant bits can be randomized.
+    /// ::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.
+    #[schema(example = "::ff")]
+    #[schema(value_type = String)]
+    pub ipv6_dst_mask: Ipv6Addr,
+    pub ipv6_flow_label: u32
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct StreamSetting {
     /// Egress port to which the stream should be sent.
     pub port: u32,
@@ -183,8 +214,16 @@ pub struct StreamSetting {
     /// An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mpls_stack: Option<Vec<MPLSHeader>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub srv6_base_header: Option<IPv6>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Vec<String>, format = "ipv6", example="ff80::1")]
+    pub sid_list: Option<Vec<Ipv6Addr>>,
     pub ethernet: Ethernet,
-    pub ip: IPv4,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip: Option<IPv4>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ipv6: Option<IPv6>,
     /// Indicates if this stream setting is active.
     pub active: bool,
     /// VxLAN tunnel settings
@@ -216,6 +255,10 @@ pub struct Stream {
     /// Maximal allowed burst (= packets). Burst = 1 is used for IAT precision mode, Burst = 100 for Rate precision.
     #[schema(example = 100)]
     pub(crate) burst: u16,
+    /// Sends more bursty traffic resulting in a more accurate rate
+    #[schema(example = true)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) batches: Option<bool>,    
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
     #[schema(example = 11)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -234,7 +277,18 @@ pub struct Stream {
     pub(crate) n_pipes: Option<u8>,
     /// Flag that indicates if traffic should be encapsulation in VxLAN
     #[schema(example = false)]
-    pub(crate) vxlan: bool
+    pub(crate) vxlan: bool,
+    /// Determines the IP version, either v4 or v6. Option to make it backward compatible
+    #[schema(example = 4)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ip_version: Option<u8>,
+    /// Number of SIDs in SRv6 header. At maximum 4 can be used.
+    #[schema(example = 2)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// A flag to indicate if there is another IP tunnel following the SRv6 headers
+    pub(crate) number_of_srv6_sids: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub srv6_ip_tunneling: Option<bool>,
 }
 
 #[derive(Serialize, ToSchema)]
