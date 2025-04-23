@@ -2,7 +2,7 @@ name: Controller build
 
 on:
   push:
-    branches: [ "main", "dev", "srv6"]
+    branches: [ "main", "dev", "nightly"]
   pull_request:
     branches: [ "main", "dev"]
 
@@ -29,5 +29,5 @@ jobs:
 
     - name: Push Controller Image
       run: |
-        docker push unituekn/p4tg-controller:latest
+        docker push unituekn/p4tg-controller:nightly
       working-directory: Controller

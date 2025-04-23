@@ -63,37 +63,29 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
 
     match tg.start_traffic_generation(&state, active_streams, mode, active_stream_settings, &mapping).await {
         Ok(streams) => {
-            info!("Traffic generation restarted.");
-            state.experiment.lock().await.start = SystemTime::now();
-            state.experiment.lock().await.running = true;
+            {
+                let mut exp = state.experiment.lock().await;
+                exp.start = SystemTime::now();
+                exp.running = true;
+            }
 
             if let Some(t) = duration {
                 if t > 0 {
+                    // Cancel any existing monitor task
+                    if let Some(existing_task) = state.monitor_task.lock().await.take() {
+                        existing_task.abort();
+                    }
 
                     let state_clone = state.clone();
-                    let (tx, mut rx) = tokio::sync::watch::channel(false);
-            
-                    tokio::spawn(async move {
-                        info!("Started test duration monitor for {} s", t);
-                        loop {
-                            // Wait for response from thread 
-                            tokio::select! {
-                                _ = rx.changed() => {
-                                    break;
-                                }
-                                _ = async {
-                                    // test monitor returns true if either duration is over, or traffic generation was stopped manually
-                                    let should_stop = monitor_test_duration(state_clone.clone(), t as f64).await;
-                                    if should_stop {
-                                        let _ = tx.send(true); // Notify the task to exit
-                                    }
-                                } => {}
-                            }
-                            tokio::task::yield_now().await;
-                        }
+                    let handle = tokio::spawn(async move {
+                        let _ = monitor_test_duration(state_clone, t as f64).await;
                     });
+
+                    *state.monitor_task.lock().await = Some(handle);
                 }
-            };
+            }
+
+            info!("Traffic generation restarted.");
 
             (StatusCode::OK, Json(streams)).into_response()
         }
