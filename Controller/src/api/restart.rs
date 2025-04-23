@@ -69,13 +69,13 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
                 exp.running = true;
             }
 
+            // Cancel any existing monitor task
+            if let Some(existing_task) = state.monitor_task.lock().await.take() {
+                existing_task.abort();
+            }
+
             if let Some(t) = duration {
                 if t > 0 {
-                    // Cancel any existing monitor task
-                    if let Some(existing_task) = state.monitor_task.lock().await.take() {
-                        existing_task.abort();
-                    }
-
                     let state_clone = state.clone();
                     let handle = tokio::spawn(async move {
                         let _ = monitor_test_duration(state_clone, t as f64).await;

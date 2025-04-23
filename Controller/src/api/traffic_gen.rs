@@ -161,13 +161,13 @@ pub async fn configure_traffic_gen(
                 exp.running = true;
             }
 
+            // Cancel any existing monitor task
+            if let Some(existing_task) = state.monitor_task.lock().await.take() {
+                existing_task.abort();
+            }
+
             if let Some(t) = payload.duration {
                 if t > 0 {
-                    // Cancel any existing monitor task
-                    if let Some(existing_task) = state.monitor_task.lock().await.take() {
-                        existing_task.abort();
-                    }
-
                     let state_clone = state.clone();
                     let handle = tokio::spawn(async move {
                         let _ = monitor_test_duration(state_clone, t as f64).await;
@@ -200,6 +200,12 @@ pub async fn stop_traffic_gen(State(state): State<Arc<AppState>>) -> Response {
         Ok(_) => {
             info!("Traffic generation stopped.");
             state.experiment.lock().await.running = false;
+
+            // Cancel any existing monitor task
+            if let Some(existing_task) = state.monitor_task.lock().await.take() {
+                existing_task.abort();
+            }
+
             StatusCode::OK.into_response()
         }
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()

@@ -33,19 +33,21 @@ pub async fn monitor_test_duration(state: Arc<AppState>, duration_secs: f64) -> 
     }
 
     // Perform the shutdown
-    {
-        let tg = &state.traffic_generator;
-        let switch = &state.switch;
+    let tg = &state.traffic_generator;
+    let switch = &state.switch;
 
-        match tg.lock().await.stop(switch).await {
-            Ok(_) => {
-                info!("Traffic generation stopped after duration.");
-                state.experiment.lock().await.running = false;
+    match tg.lock().await.stop(switch).await {
+        Ok(_) => {
+            info!("Traffic generation stopped after duration.");
+            state.experiment.lock().await.running = false;
+            // Cancel any existing monitor task
+            if let Some(existing_task) = state.monitor_task.lock().await.take() {
+                existing_task.abort();
             }
-            Err(e) => {
-                log::error!("Error while stopping traffic generation: {:?}", e);
-                return false;
-            }
+        }
+        Err(e) => {
+            log::error!("Error while stopping traffic generation: {:?}", e);
+            return false;
         }
     }
 
