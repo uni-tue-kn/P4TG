@@ -183,6 +183,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         info!("Loopback mode activated.");
     }
 
+    console_subscriber::init();
+
     // Front panel ports that can be used for traffic generation.
     // At default, the first 10 ports are used for traffic generation.
     let all_ports: Vec<u32> = (1..33).collect(); // we dont have a 64-port Tofino for testing purposes
@@ -298,7 +300,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // start digest monitoring
     tokio::spawn(async move {
         let local_state = monitoring_state;
-
         RateMonitor::monitor_digests(local_state, &index_mapping, sample_mode).await;
     });
 

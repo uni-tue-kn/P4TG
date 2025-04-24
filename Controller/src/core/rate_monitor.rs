@@ -28,6 +28,7 @@ use rbfrt::{register, SwitchConnection, table};
 use rbfrt::error::RBFRTError;
 use rbfrt::register::Register;
 use rbfrt::table::{MatchValue, ToBytes};
+use tokio::time::sleep;
 
 use crate::{AppState, PortMapping};
 use crate::core::traffic_gen_core::types::GenerationMode;
@@ -421,162 +422,171 @@ impl RateMonitor {
         }
 
         // listen on the channel that receives digests
-        while let Ok(digest) = &mut state.switch.digest_queue.recv() {
-            let (elapsed_time, running) = {
-                let exp = state.experiment.lock().await;
+        loop {
+            match state.switch.digest_queue.try_recv() {
+                Ok(digest) => {
+                    let (elapsed_time, running) = {
+                        let exp = state.experiment.lock().await;
 
-                if exp.running {
-                    (exp.start.elapsed().unwrap_or(Duration::from_secs(0)).as_secs() as u32, true)
-                }
-                else {
-                    (0, false)
-                }
-            };
+                        if exp.running {
+                            (exp.start.elapsed().unwrap_or(Duration::from_secs(0)).as_secs() as u32, true)
+                        }
+                        else {
+                            (0, false)
+                        }
+                    };
 
-            if digest.name == RATE_DIGEST_NAME {
+                    if digest.name == RATE_DIGEST_NAME {
 
-                let data = &digest.data;
+                        let data = &digest.data;
 
-                // we know how the digest is build
-                // unwrap without error handling
-                let port = data.get("port").unwrap().to_u32();
+                        // we know how the digest is build
+                        // unwrap without error handling
+                        let port = data.get("port").unwrap().to_u32();
 
-                if !tx_reverse_mapping.contains_key(&port) && !rx_reverse_mapping.contains_key(&port) { // we are not interested in non recirc digests
-                    continue;
-                }
-
-                let time = data.get("tstmp").unwrap().to_u64();
-
-                let l1_byte = data.get("byte_counter_l1").unwrap().to_u64();
-                let l2_byte = data.get("byte_counter_l2").unwrap().to_u64();
-                let app_byte = data.get("app_counter").unwrap().to_u64();
-                let app_index = data.get("index").unwrap().to_u32();
-                let packet_loss = data.get("packet_loss").unwrap().to_u64();
-                let out_of_order = data.get("out_of_order").unwrap().to_u64();
-
-                // out of order packets are also counted as packet loss in the data plane
-                // therefore subtract them from the packet loss counter
-                let packet_loss = packet_loss.saturating_sub(out_of_order);
-
-                let is_tx = tx_reverse_mapping.contains_key(&port);
-
-                let last_update = if is_tx { &mut last_tx } else { &mut last_rx };
-                let last_update_app = if is_tx { &mut last_app_tx } else { &mut last_app_rx };
-
-                // get the front panel dev port number
-                let port = if is_tx { tx_reverse_mapping.get(&port).unwrap() } else { rx_reverse_mapping.get(&port).unwrap() };
-
-                let last = last_update.get(port).unwrap();
-
-                let index_port_app_mapping = index_mapping.get(&app_index);
-
-                if last.timestamp != 0 {
-                    let new_rate = RateMonitor::calculate_rate((l1_byte, l2_byte, time), last);
-
-                    if is_tx {
-                        state.rate_monitor.lock().await.statistics.tx_rate_l1.insert(*port, new_rate.rate_l1);
-                        state.rate_monitor.lock().await.statistics.tx_rate_l2.insert(*port, new_rate.rate_l2);
-
-                        // time statistic
-                        if running {
-                            state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
-
-                            // remove potential old data
-                            state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                        if !tx_reverse_mapping.contains_key(&port) && !rx_reverse_mapping.contains_key(&port) { // we are not interested in non recirc digests
+                            continue;
                         }
 
-                    } else {
-                        state.rate_monitor.lock().await.statistics.rx_rate_l1.insert(*port, new_rate.rate_l1);
-                        state.rate_monitor.lock().await.statistics.rx_rate_l2.insert(*port, new_rate.rate_l2);
+                        let time = data.get("tstmp").unwrap().to_u64();
 
-                        // time statistics
-                        if running {
-                            state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
-                            state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_default().insert(elapsed_time, packet_loss);
-                            state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_default().insert(elapsed_time, out_of_order);
+                        let l1_byte = data.get("byte_counter_l1").unwrap().to_u64();
+                        let l2_byte = data.get("byte_counter_l2").unwrap().to_u64();
+                        let app_byte = data.get("app_counter").unwrap().to_u64();
+                        let app_index = data.get("index").unwrap().to_u32();
+                        let packet_loss = data.get("packet_loss").unwrap().to_u64();
+                        let out_of_order = data.get("out_of_order").unwrap().to_u64();
 
-                            // remove potential old data
-                            state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
-                            state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
-                            state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
-                        }
+                        // out of order packets are also counted as packet loss in the data plane
+                        // therefore subtract them from the packet loss counter
+                        let packet_loss = packet_loss.saturating_sub(out_of_order);
 
-                        // only write packet loss if its from a rx recirc port
-                        state.rate_monitor.lock().await.statistics.packet_loss.insert(*port, packet_loss);
-                        state.rate_monitor.lock().await.statistics.out_of_order.insert(*port, out_of_order);
-                    }
+                        let is_tx = tx_reverse_mapping.contains_key(&port);
 
-                    last_update.insert(*port, new_rate);
-                } else {
-                    last_update.insert(*port, DataRate::new(l1_byte, l2_byte, time, 0.0, 0.0));
-                }
+                        let last_update = if is_tx { &mut last_tx } else { &mut last_rx };
+                        let last_update_app = if is_tx { &mut last_app_tx } else { &mut last_app_rx };
 
+                        // get the front panel dev port number
+                        let port = if is_tx { tx_reverse_mapping.get(&port).unwrap() } else { rx_reverse_mapping.get(&port).unwrap() };
 
-                // Update app rates
-                if index_port_app_mapping.is_some() {
-                    // we need to subtract 1 on the RX path of the app index
-                    let app_index = if is_tx { app_index } else { app_index - 1 };
-                    let last_app = last_update_app.get(&app_index).unwrap();
+                        let last = last_update.get(port).unwrap();
 
-                    if last_app.timestamp != 0 && last_app.byte_count_l2 <= app_byte { // catch overflow of 48 bit stream byte register
-                        let new_app_rate = RateMonitor::calculate_rate((0, app_byte, time), last_app);
-                        let mapping = index_mapping.get(&app_index).unwrap();
+                        let index_port_app_mapping = index_mapping.get(&app_index);
 
-                        if is_tx {
-                            state.rate_monitor.lock().await.statistics.app_tx_l2.get_mut(port).unwrap().insert(mapping.app_id as u32, new_app_rate.rate_l2);
+                        if last.timestamp != 0 {
+                            let new_rate = RateMonitor::calculate_rate((l1_byte, l2_byte, time), last);
+
+                            if is_tx {
+                                state.rate_monitor.lock().await.statistics.tx_rate_l1.insert(*port, new_rate.rate_l1);
+                                state.rate_monitor.lock().await.statistics.tx_rate_l2.insert(*port, new_rate.rate_l2);
+
+                                // time statistic
+                                if running {
+                                    state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
+
+                                    // remove potential old data
+                                    state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                                }
+
+                            } else {
+                                state.rate_monitor.lock().await.statistics.rx_rate_l1.insert(*port, new_rate.rate_l1);
+                                state.rate_monitor.lock().await.statistics.rx_rate_l2.insert(*port, new_rate.rate_l2);
+
+                                // time statistics
+                                if running {
+                                    state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
+                                    state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_default().insert(elapsed_time, packet_loss);
+                                    state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_default().insert(elapsed_time, out_of_order);
+
+                                    // remove potential old data
+                                    state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                                    state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                                    state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                                }
+
+                                // only write packet loss if its from a rx recirc port
+                                state.rate_monitor.lock().await.statistics.packet_loss.insert(*port, packet_loss);
+                                state.rate_monitor.lock().await.statistics.out_of_order.insert(*port, out_of_order);
+                            }
+
+                            last_update.insert(*port, new_rate);
                         } else {
-                            state.rate_monitor.lock().await.statistics.app_rx_l2.get_mut(port).unwrap().insert(mapping.app_id as u32, new_app_rate.rate_l2);
+                            last_update.insert(*port, DataRate::new(l1_byte, l2_byte, time, 0.0, 0.0));
                         }
 
-                        last_update_app.insert(app_index, new_app_rate);
-                    } else {
-                        last_update_app.insert(app_index, DataRate::new(0, app_byte, time, 0.0, 0.0));
-                    }
-                }
-            } else if digest.name == RTT_IAT_DIGEST_NAME {
-                let data = &digest.data;
 
-                // we know how the digest is build
-                // unwrap without error handling
-                let port = data.get("port").unwrap().to_u32();
+                        // Update app rates
+                        if index_port_app_mapping.is_some() {
+                            // we need to subtract 1 on the RX path of the app index
+                            let app_index = if is_tx { app_index } else { app_index - 1 };
+                            let last_app = last_update_app.get(&app_index).unwrap();
 
-                let rtt = data.get("rtt").unwrap().to_u64();
+                            if last_app.timestamp != 0 && last_app.byte_count_l2 <= app_byte { // catch overflow of 48 bit stream byte register
+                                let new_app_rate = RateMonitor::calculate_rate((0, app_byte, time), last_app);
+                                let mapping = index_mapping.get(&app_index).unwrap();
+
+                                if is_tx {
+                                    state.rate_monitor.lock().await.statistics.app_tx_l2.get_mut(port).unwrap().insert(mapping.app_id as u32, new_app_rate.rate_l2);
+                                } else {
+                                    state.rate_monitor.lock().await.statistics.app_rx_l2.get_mut(port).unwrap().insert(mapping.app_id as u32, new_app_rate.rate_l2);
+                                }
+
+                                last_update_app.insert(app_index, new_app_rate);
+                            } else {
+                                last_update_app.insert(app_index, DataRate::new(0, app_byte, time, 0.0, 0.0));
+                            }
+                        }
+                    } else if digest.name == RTT_IAT_DIGEST_NAME {
+                        let data = &digest.data;
+
+                        // we know how the digest is build
+                        // unwrap without error handling
+                        let port = data.get("port").unwrap().to_u32();
+
+                        let rtt = data.get("rtt").unwrap().to_u64();
 
 
-                // catch timestamp overflow
-                if rtt > 0 && rtt < (u32::MAX / 2) as u64 && rx_reverse_mapping.contains_key(&port) {
-                    let port = rx_reverse_mapping.get(&port).unwrap();
+                        // catch timestamp overflow
+                        if rtt > 0 && rtt < (u32::MAX / 2) as u64 && rx_reverse_mapping.contains_key(&port) {
+                            let port = rx_reverse_mapping.get(&port).unwrap();
 
-                    state.rate_monitor.lock().await.rtt_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(rtt);
-                    state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, rtt);
+                            state.rate_monitor.lock().await.rtt_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(rtt);
+                            state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, rtt);
 
-                    // remove potential old data
-                    state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
-                }
+                            // remove potential old data
+                            state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                        }
 
 
-                if sample_mode {
-                    let experiment = state.experiment.lock().await;
+                        if sample_mode {
+                            let experiment = state.experiment.lock().await;
 
-                    if experiment.running && experiment.start.elapsed().is_ok_and(|x| x > Duration::from_secs(3)) {
-                        let iat = data.get("iat").unwrap().to_u64();
+                            if experiment.running && experiment.start.elapsed().is_ok_and(|x| x > Duration::from_secs(3)) {
+                                let iat = data.get("iat").unwrap().to_u64();
 
-                        if iat > 0 && iat < (u32::MAX / 2) as u64 { // catch overflow
-                            if rx_reverse_mapping.contains_key(&port) {
-                                let port = rx_reverse_mapping.get(&port).unwrap();
-                                state.rate_monitor.lock().await.rx_iat_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(iat);
-                            } else if tx_reverse_mapping.contains_key(&port) {
-                                let port = tx_reverse_mapping.get(&port).unwrap();
-                                state.rate_monitor.lock().await.tx_iat_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(iat);
+                                if iat > 0 && iat < (u32::MAX / 2) as u64 { // catch overflow
+                                    if rx_reverse_mapping.contains_key(&port) {
+                                        let port = rx_reverse_mapping.get(&port).unwrap();
+                                        state.rate_monitor.lock().await.rx_iat_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(iat);
+                                    } else if tx_reverse_mapping.contains_key(&port) {
+                                        let port = tx_reverse_mapping.get(&port).unwrap();
+                                        state.rate_monitor.lock().await.tx_iat_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(iat);
+                                    }
+                                }
+                            }
+                            else {
+                                state.rate_monitor.lock().await.tx_iat_storage.clear();
+                                state.rate_monitor.lock().await.rx_iat_storage.clear();
                             }
                         }
                     }
-                    else {
-                        state.rate_monitor.lock().await.tx_iat_storage.clear();
-                        state.rate_monitor.lock().await.rx_iat_storage.clear();
-                    }
+                },
+                Err(_) => {
+                    // Sleep if there’s nothing to process. If we do not do this, the CPU load is very high.
+                    sleep(Duration::from_millis(400)).await; // Sleep for 400ms before trying again
                 }
             }
+            tokio::task::yield_now().await;
         }
     }
 }
