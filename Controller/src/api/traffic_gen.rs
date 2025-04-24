@@ -18,12 +18,12 @@
  */
 
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use axum::debug_handler;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
-use log::info;
+use log::{error, info};
 use serde::Serialize;
 use crate::api::helper::validate::validate_request;
 use crate::api::helper::duration_monitor::monitor_test_duration;
@@ -170,7 +170,10 @@ pub async fn configure_traffic_gen(
                 if t > 0 {
                     let state_clone = state.clone();
                     let handle = tokio::spawn(async move {
-                        let _ = monitor_test_duration(state_clone, t as f64).await;
+                        let res = tokio::time::timeout(Duration::from_secs(3600), monitor_test_duration(state_clone, t as f64)).await;
+                        if res.is_err() {
+                            error!("monitor_test_duration hung over 1h, canceling.");
+                        }
                     });
 
                     *state.monitor_task.lock().await = Some(handle);

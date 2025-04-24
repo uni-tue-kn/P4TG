@@ -11,5 +11,7 @@ services:
       - LOOPBACK=false
       - P4TG_PORT=8000
       - P4_NAME=traffic_gen
+      - RUSTFLAGS="--cfg tokio_unstable"
+      - RUST_LOG=p4tg=debug,axum=info
     volumes:
       - ./config.json:/app/config.json

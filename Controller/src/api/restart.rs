@@ -18,12 +18,12 @@
  */
 
 use axum::debug_handler;
-use log::info;
+use log::{error, info};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::extract::State;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use crate::AppState;
 use crate::core::traffic_gen_core::types::*;
 use crate::api::docs::traffic_gen::EXAMPLE_POST_1_RESPONSE;
@@ -78,7 +78,10 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
                 if t > 0 {
                     let state_clone = state.clone();
                     let handle = tokio::spawn(async move {
-                        let _ = monitor_test_duration(state_clone, t as f64).await;
+                        let res = tokio::time::timeout(Duration::from_secs(3600), monitor_test_duration(state_clone, t as f64)).await;
+                        if res.is_err() {
+                            error!("monitor_test_duration hung over 1h, canceling.");
+                        }
                     });
 
                     *state.monitor_task.lock().await = Some(handle);

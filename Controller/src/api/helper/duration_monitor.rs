@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use crate::api::traffic_gen::stop_traffic_gen;
 use crate::AppState;
 use log::info;
 use std::sync::Arc;
@@ -40,10 +39,6 @@ pub async fn monitor_test_duration(state: Arc<AppState>, duration_secs: f64) -> 
         Ok(_) => {
             info!("Traffic generation stopped after duration.");
             state.experiment.lock().await.running = false;
-            // Cancel any existing monitor task
-            if let Some(existing_task) = state.monitor_task.lock().await.take() {
-                existing_task.abort();
-            }
         }
         Err(e) => {
             log::error!("Error while stopping traffic generation: {:?}", e);

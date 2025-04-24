@@ -2,7 +2,7 @@
  <img src="./logo.png" />
  <h2>P4TG: Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.3.2-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.3.3-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
 
 </div>
 
@@ -144,7 +144,7 @@ The documentation of the REST-API can be found [here](https://uni-tue-kn.github.
 # Cite
 If you use P4TG in any of your publications, please cite the following papers:
 1. S. Lindner, Marco Häberle, and M. Menth: [P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks](https://ieeexplore.ieee.org/abstract/document/10048513), in IEEE Access, vol. 11, p. 17525 – 17535, Feb. 2023, IEEE
-2. F. Ihle, E. Zink, S. Lindner, and M. Menth: Enhancements to P4TG: Protocols, Performance, and Automation, in KuVS Fachgespräch "Network Softwarization", online, Apr. 2025
+2. F. Ihle, E. Zink, S. Lindner, and M. Menth: Enhancements to P4TG: Protocols, Performance, and Automation, in KuVS Workshop on Network Softwarization, online, Apr. 2025
 
 ```tex
 @article{LiHae23,
@@ -160,7 +160,7 @@ If you use P4TG in any of your publications, please cite the following papers:
 @article{IhZi25,
   title  = {{Enhancements to P4TG: Protocols, Performance, and Automation}},
   author = {Fabian Ihle and Etienne Zink and Steffen Lindner and Michael Menth},
-  journal = {{KuVS Fachgespräch "Network Softwarization"}}
+  journal = {{KuVS Workshop on Network Softwarization}}
   year   = 2025,
   month  = apr
 }

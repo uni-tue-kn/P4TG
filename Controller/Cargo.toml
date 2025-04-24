@@ -1,14 +1,14 @@
 [package]
 name = "p4tg-controller"
 authors = ["Steffen Lindner <steffen@steffen-lindner.net>", "Fabian Ihle <fabian.ihle@uni-tuebingen.de"]
-version = "2.3.2"
+version = "2.3.3"
 edition = "2021"
 license = "Apache-2.0"
 
 
 [dependencies]
 rbfrt = { git = "https://github.com/uni-tue-kn/rbfrt" }
-tokio = { version = "1.20.1", features = ["rt-multi-thread"]}
+tokio = { version = "1.20.1", features = ["full"]}
 axum = { version = "0.7.4" , features =  ["macros", "json"]}
 tower-http = { version = "0.5.2", features = ["cors"] }
 log = "0.4"
@@ -26,6 +26,7 @@ axum-extra = "0.7.4"
 axum-jsonschema = { version = "0.7.0", features = [
     "aide",
 ] }
+console-subscriber = "0.1"
 schemars = { version = "0.8.10", features = ["uuid1"] }
 axum-macros = "0.3.0"
 serde_json = "1.0.108"
