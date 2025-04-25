@@ -279,7 +279,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let monitoring_state = Arc::clone(&state);
 
-    // start frame type monitoring
+    // start frame size monitoring
     tokio::spawn(async move {
         let local_state = monitoring_state;
 

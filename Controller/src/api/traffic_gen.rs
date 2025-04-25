@@ -161,6 +161,7 @@ pub async fn configure_traffic_gen(
                 exp.running = true;
             }
 
+            /*
             // Cancel any existing monitor task
             if let Some(existing_task) = state.monitor_task.lock().await.take() {
                 existing_task.abort();
@@ -179,6 +180,7 @@ pub async fn configure_traffic_gen(
                     *state.monitor_task.lock().await = Some(handle);
                 }
             }
+            */
  
             info!("Traffic generation started.");
             (StatusCode::OK, Json(streams)).into_response()

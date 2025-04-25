@@ -69,6 +69,7 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
                 exp.running = true;
             }
 
+            /*
             // Cancel any existing monitor task
             if let Some(existing_task) = state.monitor_task.lock().await.take() {
                 existing_task.abort();
@@ -87,6 +88,7 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
                     *state.monitor_task.lock().await = Some(handle);
                 }
             }
+            */
 
             info!("Traffic generation restarted.");
 
