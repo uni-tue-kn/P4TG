@@ -155,11 +155,10 @@ pub async fn configure_traffic_gen(
             tg.mode = payload.mode;
             tg.duration = payload.duration;
 
-            {
-                let mut exp = state.experiment.lock().await;
-                exp.start = SystemTime::now();
-                exp.running = true;
-            }
+            // experiment starts now
+            // these values are used to show how long the experiment is running at the GUI
+            state.experiment.lock().await.start = SystemTime::now();
+            state.experiment.lock().await.running = true;
 
             /*
             // Cancel any existing monitor task
@@ -207,9 +206,9 @@ pub async fn stop_traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             state.experiment.lock().await.running = false;
 
             // Cancel any existing monitor task
-            if let Some(existing_task) = state.monitor_task.lock().await.take() {
-                existing_task.abort();
-            }
+            //if let Some(existing_task) = state.monitor_task.lock().await.take() {
+            //    existing_task.abort();
+            //}
 
             StatusCode::OK.into_response()
         }

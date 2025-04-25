@@ -63,11 +63,8 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
 
     match tg.start_traffic_generation(&state, active_streams, mode, active_stream_settings, &mapping).await {
         Ok(streams) => {
-            {
-                let mut exp = state.experiment.lock().await;
-                exp.start = SystemTime::now();
-                exp.running = true;
-            }
+            state.experiment.lock().await.start = SystemTime::now();
+            state.experiment.lock().await.running = true;
 
             /*
             // Cancel any existing monitor task

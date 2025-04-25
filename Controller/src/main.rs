@@ -68,7 +68,7 @@ pub struct AppState {
     pub(crate) arp_handler: Arp,
     pub(crate) tofino2: bool,
     pub(crate) loopback_mode: bool,
-    pub (crate) monitor_task: Mutex<Option<tokio::task::JoinHandle<()>>>,    
+    //pub (crate) monitor_task: Mutex<Option<tokio::task::JoinHandle<()>>>,    
 }
 
 async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config: &Config,
@@ -169,9 +169,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let req = if is_tofino2 {
         info!("ASIC: Tofino2");
         table::Request::new(DEVICE_CONFIGURATION_TF2)
+            .default(true)
     } else {
         info!("ASIC: Tofino1");
         table::Request::new(DEVICE_CONFIGURATION)
+        .default(true)
+
     };
 
     let res = switch.get_table_entries(req).await.unwrap_or_default();
@@ -262,7 +265,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         arp_handler,
         tofino2: is_tofino2,
         loopback_mode,
-        monitor_task: Mutex::new(None),
+        //monitor_task: Mutex::new(None),
     });
 
     state.frame_size_monitor.lock().await.configure(&state.switch).await?;
