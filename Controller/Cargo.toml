@@ -22,7 +22,7 @@ rand = "0.9.1"
 async-trait = "0.1.88"
 thiserror = "2.0.12"
 macaddr = "1.0.1"
-axum-extra = "0.9.1"
+axum-extra = "0.10.1"
 
 console-subscriber = "0.4.1"
 schemars = { version = "0.8.22", features = ["uuid1"] }
