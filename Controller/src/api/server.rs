@@ -168,7 +168,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/ports", get(serve_index))
         .route("/tables", get(serve_index))
         .route("/settings", get(serve_index))
-        .route("/*path", get(static_path));
+        .route("/{*path}", get(static_path));
 
 
     info!("Starting rest api server on port {port}.");
