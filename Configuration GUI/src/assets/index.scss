@@ -335,6 +335,17 @@ table {
     }
 }
 
+.info-modal .modal-header,
+.info-modal .modal-body {
+  color: var(--color-text);
+}
+
+.info-modal .btn-close {
+        [data-theme="dark"] & {
+        filter: invert(1);
+    }
+  }
+
 .input-group-text {
     [data-theme="dark"] & {
         background-color: #050505;
