@@ -18,17 +18,17 @@
  */
 
 use axum::debug_handler;
-use log::{error, info};
+use log::info;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::extract::State;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
+use crate::core::duration_monitor::DurationMonitorTask;
 use crate::AppState;
 use crate::core::traffic_gen_core::types::*;
 use crate::api::docs::traffic_gen::EXAMPLE_POST_1_RESPONSE;
 use crate::api::server::Error;
-use crate::api::helper::duration_monitor::monitor_test_duration;
 
 #[debug_handler]
 #[utoipa::path(
@@ -66,26 +66,16 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
 
-            /*
-            // Cancel any existing monitor task
-            if let Some(existing_task) = state.monitor_task.lock().await.take() {
-                existing_task.abort();
-            }
+            // Cancel any existing duration monitor task
+            DurationMonitorTask::cancel_existing_monitoring_task(&state).await;
 
+            // Check if a duration is desired
             if let Some(t) = duration {
                 if t > 0 {
-                    let state_clone = state.clone();
-                    let handle = tokio::spawn(async move {
-                        let res = tokio::time::timeout(Duration::from_secs(3600), monitor_test_duration(state_clone, t as f64)).await;
-                        if res.is_err() {
-                            error!("monitor_test_duration hung over 1h, canceling.");
-                        }
-                    });
-
-                    *state.monitor_task.lock().await = Some(handle);
+                    // Starts a duration monitor task that waits for duration and stops traffic generation after duration has exceeded
+                    DurationMonitorTask::start(&state, t as f64).await;
                 }
             }
-            */
 
             info!("Traffic generation restarted.");
 

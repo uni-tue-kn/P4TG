@@ -36,7 +36,7 @@ mod api;
 mod error;
 
 use core::FrameSizeMonitor;
-use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen};
+use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen, DurationMonitorTask};
 use crate::core::traffic_gen_core::const_definitions::{PORT_CFG_TF2, DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 
@@ -68,7 +68,7 @@ pub struct AppState {
     pub(crate) arp_handler: Arp,
     pub(crate) tofino2: bool,
     pub(crate) loopback_mode: bool,
-    //pub (crate) monitor_task: Mutex<Option<tokio::task::JoinHandle<()>>>,    
+    pub (crate) monitor_task: Mutex<Option<DurationMonitorTask>>,
 }
 
 async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config: &Config,
@@ -140,6 +140,8 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    console_subscriber::init();
+
     let sample_mode = env::var("SAMPLE").unwrap_or("0".to_owned()).parse().unwrap_or(0);
     let sample_mode = sample_mode == 1;
     let p4_name = env::var("P4_NAME").unwrap_or("traffic_gen".to_owned());
@@ -185,8 +187,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if loopback_mode {
         info!("Loopback mode activated.");
     }
-
-    console_subscriber::init();
 
     // Front panel ports that can be used for traffic generation.
     // At default, the first 10 ports are used for traffic generation.
@@ -265,7 +265,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         arp_handler,
         tofino2: is_tofino2,
         loopback_mode,
-        //monitor_task: Mutex::new(None),
+        monitor_task: Mutex::new(None),
     });
 
     state.frame_size_monitor.lock().await.configure(&state.switch).await?;

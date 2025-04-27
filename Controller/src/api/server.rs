@@ -20,7 +20,7 @@
 use std::sync::Arc;
 use std::env;
 
-use log::{error, info, warn};
+use log::{info, warn};
 use serde::Serialize;
 use axum::{routing::get, Json, Router};
 use axum::http::Method;
@@ -176,9 +176,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await.unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{port}"));
 
-    if let Err(e) = axum::serve(listener, app).await {
-        error!("Axum server crashed: {:?}", e);
-    }
+    axum::serve(listener, app).await.unwrap();
 
 }
 

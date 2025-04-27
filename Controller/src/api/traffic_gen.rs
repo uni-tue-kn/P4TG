@@ -18,17 +18,17 @@
  */
 
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use axum::debug_handler;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
-use log::{error, info};
+use log::info;
 use serde::Serialize;
 use crate::api::helper::validate::validate_request;
-use crate::api::helper::duration_monitor::monitor_test_duration;
 
 use crate::api::server::Error;
+use crate::core::duration_monitor::DurationMonitorTask;
 use crate::AppState;
 
 use crate::api::docs::traffic_gen::{EXAMPLE_GET_1, EXAMPLE_GET_2, EXAMPLE_POST_1_REQUEST, EXAMPLE_POST_1_RESPONSE, EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST};
@@ -160,26 +160,15 @@ pub async fn configure_traffic_gen(
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
 
-            /*
-            // Cancel any existing monitor task
-            if let Some(existing_task) = state.monitor_task.lock().await.take() {
-                existing_task.abort();
-            }
+            // Cancel any existing duration monitor task
+            DurationMonitorTask::cancel_existing_monitoring_task(&state).await;
 
+            // Check if a duration is desired
             if let Some(t) = payload.duration {
                 if t > 0 {
-                    let state_clone = state.clone();
-                    let handle = tokio::spawn(async move {
-                        let res = tokio::time::timeout(Duration::from_secs(3600), monitor_test_duration(state_clone, t as f64)).await;
-                        if res.is_err() {
-                            error!("monitor_test_duration hung over 1h, canceling.");
-                        }
-                    });
-
-                    *state.monitor_task.lock().await = Some(handle);
+                    DurationMonitorTask::start(&state, t as f64).await;
                 }
             }
-            */
  
             info!("Traffic generation started.");
             (StatusCode::OK, Json(streams)).into_response()
@@ -200,16 +189,12 @@ pub async fn stop_traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     let tg = &state.traffic_generator;
     let switch = &state.switch;
 
+    DurationMonitorTask::cancel_existing_monitoring_task(&state).await;
+
     match tg.lock().await.stop(switch).await {
         Ok(_) => {
             info!("Traffic generation stopped.");
             state.experiment.lock().await.running = false;
-
-            // Cancel any existing monitor task
-            //if let Some(existing_task) = state.monitor_task.lock().await.take() {
-            //    existing_task.abort();
-            //}
-
             StatusCode::OK.into_response()
         }
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
