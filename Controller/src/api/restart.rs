@@ -24,7 +24,6 @@ use axum::response::{IntoResponse, Json, Response};
 use axum::extract::State;
 use std::sync::Arc;
 use std::time::SystemTime;
-use crate::core::duration_monitor::DurationMonitorTask;
 use crate::AppState;
 use crate::core::traffic_gen_core::types::*;
 use crate::api::docs::traffic_gen::EXAMPLE_POST_1_RESPONSE;
@@ -67,13 +66,13 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
             state.experiment.lock().await.running = true;
 
             // Cancel any existing duration monitor task
-            DurationMonitorTask::cancel_existing_monitoring_task(&state).await;
+            state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
 
             // Check if a duration is desired
             if let Some(t) = duration {
                 if t > 0 {
                     // Starts a duration monitor task that waits for duration and stops traffic generation after duration has exceeded
-                    DurationMonitorTask::start(&state, t as f64).await;
+                    state.monitor_task.lock().await.start(&state, t).await;
                 }
             }
 

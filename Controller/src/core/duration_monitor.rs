@@ -26,8 +26,8 @@ use tokio::{task::JoinHandle, time::Instant};
 use tokio_util::sync::CancellationToken;
 
 pub struct DurationMonitorTask {
-    pub handle: JoinHandle<()>,
-    pub cancel_token: CancellationToken,
+    pub handle: Option<JoinHandle<()>>,
+    pub cancel_token: Option<CancellationToken>,
 }
 
 impl DurationMonitorTask {
@@ -38,10 +38,10 @@ impl DurationMonitorTask {
     /// - `cancel_token`: The CancellationToken for this task
     async fn monitor_test_duration(
         state: Arc<AppState>,
-        duration_secs: f64,
+        duration_secs: u32,
         cancel_token: CancellationToken,
     )  {
-        let deadline = Instant::now() + Duration::from_secs_f64(duration_secs);
+        let deadline = Instant::now() + Duration::from_secs_f64(duration_secs as f64);
         let mut interval = tokio::time::interval(Duration::from_millis(100));
 
         loop {
@@ -95,7 +95,7 @@ impl DurationMonitorTask {
     ///
     /// - `state`: App state that holds DurationMonitor
     /// - `duration_secs`: Duration to wait in seconds
-    pub async fn start(state: &Arc<AppState>, duration_secs: f64) {
+    pub async fn start(&mut self, state: &Arc<AppState>, duration_secs: u32) {
         let state_clone = state.clone();
         let cancel_token = CancellationToken::new();
         let cancel_token_clone = cancel_token.clone();
@@ -104,23 +104,21 @@ impl DurationMonitorTask {
                 Self::monitor_test_duration(state_clone, duration_secs, cancel_token_clone).await
         });
 
-        *state.monitor_task.lock().await = Some(DurationMonitorTask {
-            handle,
-            cancel_token,
-        });
-        info!("Duration monitor task started for t={duration_secs} s.")
+        self.handle = Some(handle);
+        self.cancel_token = Some(cancel_token);
     }
 
     /// Check if a duration monitor task is running and cancels it using its CancellationToken
-    ///
-    /// - `state`: App state that holds DurationMonitor
-    pub async fn cancel_existing_monitoring_task(state: &Arc<AppState>) {
-        if let Some(existing_task) = state.monitor_task.lock().await.take() {
-            existing_task.cancel_token.cancel();
-            if let Err(e) = existing_task.handle.await {
+    pub async fn cancel_existing_monitoring_task(&mut self) {
+        if let Some(token) = self.cancel_token.take() {
+            token.cancel();
+            info!("Monitoring task cancelled.")
+        }
+
+        if let Some(handle) = self.handle.take() {
+            if let Err(e) = handle.await {
                 error!("Monitor task join error: {e}");
             }
-            info!("Duration monitor task cancelled.")
-        }
+        }        
     }
 }

@@ -28,7 +28,6 @@ use serde::Serialize;
 use crate::api::helper::validate::validate_request;
 
 use crate::api::server::Error;
-use crate::core::duration_monitor::DurationMonitorTask;
 use crate::AppState;
 
 use crate::api::docs::traffic_gen::{EXAMPLE_GET_1, EXAMPLE_GET_2, EXAMPLE_POST_1_REQUEST, EXAMPLE_POST_1_RESPONSE, EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST};
@@ -161,12 +160,12 @@ pub async fn configure_traffic_gen(
             state.experiment.lock().await.running = true;
 
             // Cancel any existing duration monitor task
-            DurationMonitorTask::cancel_existing_monitoring_task(&state).await;
+            state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
 
             // Check if a duration is desired
             if let Some(t) = payload.duration {
                 if t > 0 {
-                    DurationMonitorTask::start(&state, t as f64).await;
+                    state.monitor_task.lock().await.start(&state, t).await;
                 }
             }
  
@@ -189,7 +188,7 @@ pub async fn stop_traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     let tg = &state.traffic_generator;
     let switch = &state.switch;
 
-    DurationMonitorTask::cancel_existing_monitoring_task(&state).await;
+    state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
 
     match tg.lock().await.stop(switch).await {
         Ok(_) => {
