@@ -63,7 +63,7 @@ pub async fn ports(State(state): State<Arc<AppState>>) -> Response {
 
     match pm.get_ports(switch).await {
         Ok(ports) => Json(ports).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:?}", err)))).into_response()
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:?}")))).into_response()
     }
 }
 
@@ -86,12 +86,12 @@ pub async fn add_port(State(state): State<Arc<AppState>>, payload: Json<PortConf
                     StatusCode::CREATED.into_response()
                 }
                 Err(err) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
                 }
             }
         }
         Err(err) => {
-            (StatusCode::BAD_REQUEST, Json(Error::new(format!("{:#?}", err)))).into_response()
+            (StatusCode::BAD_REQUEST, Json(Error::new(format!("{err:#?}")))).into_response()
         }
     }
 }
@@ -112,7 +112,7 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
                     StatusCode::CREATED.into_response()
                 }
                 Err(err) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
                 }
             }
         }

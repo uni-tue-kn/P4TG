@@ -192,7 +192,7 @@ impl RateMonitor {
 
         switch.write_table_entries(meter_requests).await?;
 
-        info!("Configured IAT meter table. Sampling mode: {}", sample_mode);
+        info!("Configured IAT meter table. Sampling mode: {sample_mode}");
 
         Ok(())
     }
@@ -233,7 +233,7 @@ impl RateMonitor {
 
                 // sync register
                 if switch.execute_operation(sync).await.is_err() {
-                    warn!("Error in synchronization for register {}.", MEAN_IAT_REGISTER);
+                    warn!("Error in synchronization for register {MEAN_IAT_REGISTER}.");
                 }
 
                 let fut = switch.get_register_entries(mean_iat_requests.clone()).await;
@@ -241,7 +241,7 @@ impl RateMonitor {
                 match fut {
                     Ok(f) => f,
                     Err(err) => {
-                        warn!("Error in monitor_iat. Error: {}", format!("{:#?}", err));
+                        warn!("Error in monitor_iat. Error: {err:#?}");
                         Register::new("default", HashMap::new())
                     }
                 }
@@ -253,7 +253,7 @@ impl RateMonitor {
 
                 // sync register
                 if switch.execute_operation(sync).await.is_err() {
-                    warn!("Error in synchronization for register {}.", MAE_IAT_REGISTER);
+                    warn!("Error in synchronization for register {MAE_IAT_REGISTER}.");
                 }
 
                 let fut = switch.get_register_entries(mae_iat_requests.clone()).await;
@@ -261,7 +261,7 @@ impl RateMonitor {
                 match fut {
                     Ok(f) => f,
                     Err(err) => {
-                        warn!("Error in monitor_iat. Error: {}", format!("{:#?}", err));
+                        warn!("Error in monitor_iat. Error: {err:#?}");
                         Register::new("default", HashMap::new())
                     }
                 }
@@ -273,8 +273,8 @@ impl RateMonitor {
             // mean iat
             for (index, entry) in mean_iat_register.entries() {
                 let data = entry.get_data();
-                let sum = data.get(&format!("{}.sum", MEAN_IAT_REGISTER));
-                let n = data.get(&format!("{}.n", MEAN_IAT_REGISTER));
+                let sum = data.get(&format!("{MEAN_IAT_REGISTER}.sum"));
+                let n = data.get(&format!("{MEAN_IAT_REGISTER}.n"));
 
                 if sum.is_some() && n.is_some() {
                     let sum = sum.unwrap();
@@ -297,14 +297,14 @@ impl RateMonitor {
                             iat_stats.tx.mean = (sum as f64 / n as f64) as f32;
                             iat_stats.tx.n = n as u32;
 
-                            update_requests.push(register::Request::new(CURRENT_MEAN_IAT_REGISTER).index(*index).data(&format!("{}.f1", CURRENT_MEAN_IAT_REGISTER), iat_stats.tx.mean.round() as u32));
+                            update_requests.push(register::Request::new(CURRENT_MEAN_IAT_REGISTER).index(*index).data(&format!("{CURRENT_MEAN_IAT_REGISTER}.f1"), iat_stats.tx.mean.round() as u32));
                         } else if rx_mapping.contains_key(index) {
                             let port = rx_mapping.get(index).unwrap();
                             let iat_stats = rate_monitor.statistics.iats.entry(*port).or_insert_with(IATStatistics::default);
                             iat_stats.rx.mean = (sum as f64 / n as f64) as f32;
                             iat_stats.rx.n = n as u32;
 
-                            update_requests.push(register::Request::new(CURRENT_MEAN_IAT_REGISTER).index(*index).data(&format!("{}.f1", CURRENT_MEAN_IAT_REGISTER), iat_stats.rx.mean.round() as u32));
+                            update_requests.push(register::Request::new(CURRENT_MEAN_IAT_REGISTER).index(*index).data(&format!("{CURRENT_MEAN_IAT_REGISTER}.f1"), iat_stats.rx.mean.round() as u32));
                         }
                     }
                 }
@@ -313,8 +313,8 @@ impl RateMonitor {
             // mae iat
             for (index, entry) in mae_iat_register.entries() {
                 let data = entry.get_data();
-                let sum = data.get(&format!("{}.sum", MAE_IAT_REGISTER));
-                let n = data.get(&format!("{}.n", MAE_IAT_REGISTER));
+                let sum = data.get(&format!("{MAE_IAT_REGISTER}.sum"));
+                let n = data.get(&format!("{MAE_IAT_REGISTER}.n"));
 
                 if sum.is_some() && n.is_some() {
                     let sum = sum.unwrap();
@@ -346,7 +346,7 @@ impl RateMonitor {
             {
                 let switch = &state.switch;
                 if switch.write_register_entries(update_requests).await.is_err() {
-                    warn!("Error in updating {} register.", CURRENT_MEAN_IAT_REGISTER);
+                    warn!("Error in updating {CURRENT_MEAN_IAT_REGISTER} register.");
                 }
             }
 

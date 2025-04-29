@@ -12,7 +12,7 @@ pub enum P4TGError {
 
 impl From<P4TGError> for RBFRTError {
     fn from(value: P4TGError) -> Self {
-        GenericError { message: format!("{:?}", value)}
+        GenericError { message: format!("{value:?}")}
     }
 }
 

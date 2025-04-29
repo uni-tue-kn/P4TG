@@ -181,7 +181,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let res = switch.get_table_entries(req).await.unwrap_or_default();
     let num_pipes = res[0].get_action_data("num_pipes").unwrap_or(&ActionData::new("num_pipes", 2)).as_u32();
-    info!("#Pipes: {:?}", num_pipes);
+    info!("#Pipes: {num_pipes:?}");
 
 
     if loopback_mode {
@@ -320,7 +320,7 @@ async fn main() {
     match run().await {
         Ok(_) => {}
         Err(e) => {
-            warn!("Error: {}", e);
+            warn!("Error: {e:#?}");
         }
     }
 }

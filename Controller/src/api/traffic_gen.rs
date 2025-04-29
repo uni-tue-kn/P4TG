@@ -180,7 +180,7 @@ pub async fn configure_traffic_gen(
             info!("Traffic generation started.");
             (StatusCode::OK, Json(streams)).into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response(),
     }
 }
 
@@ -204,6 +204,6 @@ pub async fn stop_traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             state.experiment.lock().await.running = false;
             StatusCode::OK.into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
     }
 }

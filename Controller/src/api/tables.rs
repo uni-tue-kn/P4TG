@@ -104,7 +104,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
                     all_entries.push((t.to_owned(), e));
                 }
                 Err(err) => {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Error while reading table: {}. Error: {:#?}", t, err)))).into_response();
+                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("Error while reading table: {t}. Error: {err:#?}")))).into_response();
                 }
             }
         }

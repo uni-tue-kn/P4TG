@@ -143,7 +143,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
     }
 
     if streams.iter().map(|s| s.frame_size).collect::<Vec<u32>>().iter().sum::<u32>() > MAX_BUFFER_SIZE {
-        return Err(Error::new(format!("Sum of packet size too large. Maximal sum of packets size: {}B", MAX_BUFFER_SIZE)));
+        return Err(Error::new(format!("Sum of packet size too large. Maximal sum of packets size: {MAX_BUFFER_SIZE}B")));
     }
 
     if settings.is_empty() && *mode != GenerationMode::Analyze {
@@ -170,10 +170,10 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
     // Verify that port is actually available on this device. This might happen if a configuration from another device is imported.
     for (tx_port, rx_port) in tx_rx_port_mapping.iter(){
         if !available_ports.contains_key(tx_port){
-            return Err(Error::new(format!("Configuration error: TX port {} is not available on this device.", tx_port)));
+            return Err(Error::new(format!("Configuration error: TX port {tx_port} is not available on this device.")));
         }
         if !available_ports.contains_key(rx_port){
-            return Err(Error::new(format!("Configuration error: RX port {} is not available on this device.", rx_port)));
+            return Err(Error::new(format!("Configuration error: RX port {rx_port} is not available on this device.")));
         }        
     }
 

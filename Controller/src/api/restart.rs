@@ -80,6 +80,6 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
 
             (StatusCode::OK, Json(streams)).into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
     }
 }
