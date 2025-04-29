@@ -1,10 +1,10 @@
-name: Controller build
+name: Controller nightly build
 
 on:
   push:
-    branches: [ "main"]
+    branches: [ "nightly"]
   pull_request:
-    branches: [ "main"]
+    branches: [ "nightly"]
 
 jobs:
   build:
@@ -29,5 +29,5 @@ jobs:
 
     - name: Push Controller Image
       run: |
-        docker push unituekn/p4tg-controller:latest
+        docker push unituekn/p4tg-controller:nightly
       working-directory: Controller

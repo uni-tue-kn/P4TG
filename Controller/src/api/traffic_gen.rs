@@ -111,6 +111,8 @@ pub async fn configure_traffic_gen(
 ) -> Response {
     let tg = &mut state.traffic_generator.lock().await;
 
+    // contains the description of the stream, i.e., packet size and rate
+    // only look at active stream settings
     let active_stream_settings: Vec<StreamSetting> = payload.stream_settings
         .clone()
         .into_iter()
@@ -124,14 +126,18 @@ pub async fn configure_traffic_gen(
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
 
+    // Poisson traffic is only allowed to have a single stream
     if payload.mode == GenerationMode::Poisson && active_streams.len() != 1 {
         return (StatusCode::BAD_REQUEST, Json(Error::new("Poisson generation mode only allows for one stream."))).into_response();
     }
 
+    // no streams should be generated in monitor/analyze mode    
     if payload.mode == GenerationMode::Analyze && !active_streams.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(Error::new("No stream definition in analyze mode allowed."))).into_response();
     }
 
+    // contains the mapping of Send->Receive ports
+    // required for analyze mode
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
     match validate_request(
@@ -146,8 +152,10 @@ pub async fn configure_traffic_gen(
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response(),
     }
 
-    match tg.start_traffic_generation(&state, active_streams.clone(), payload.mode, active_stream_settings.clone(), tx_rx_port_mapping).await {
+    match tg.start_traffic_generation(&state, active_streams, payload.mode, active_stream_settings, tx_rx_port_mapping).await {
         Ok(streams) => {
+            // store the settings for synchronization between multiple
+            // GUI clients
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
             tg.stream_settings = payload.stream_settings.clone();
             tg.streams = payload.streams.clone();

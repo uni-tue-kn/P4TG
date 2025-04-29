@@ -1,5 +1,10 @@
 # Changelog 
 
+## v2.3.3
+### Bug Fixes
+- Fixed a crash of the P4TG controller after several hours
+- Fixed text color for InfoModals in dark mode
+
 ## v2.3.2
 ### New Features
 - Add IPv6 support

@@ -140,7 +140,7 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    console_subscriber::init();
+    //console_subscriber::init();
 
     let sample_mode = env::var("SAMPLE").unwrap_or("0".to_owned()).parse().unwrap_or(0);
     let sample_mode = sample_mode == 1;
@@ -175,7 +175,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         info!("ASIC: Tofino1");
         table::Request::new(DEVICE_CONFIGURATION)
-        .default(true)
+            .default(true)
 
     };
 
