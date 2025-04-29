@@ -2,9 +2,9 @@ name: Controller build
 
 on:
   push:
-    branches: [ "main"]
+    branches: [ "main", "nightly" ]
   pull_request:
-    branches: [ "main"]
+    branches: [ "main", "nightly" ]
 
 jobs:
   build:
@@ -13,13 +13,27 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Set Docker tag based on branch
+      id: vars
+      run: |
+        if [ "${{ github.ref_name }}" = "main" ]; then
+          echo "tag=latest" >> $GITHUB_OUTPUT
+        elif [ "${{ github.ref_name }}" = "nightly" ]; then
+          echo "tag=nightly" >> $GITHUB_OUTPUT
+        else
+          echo "tag=dev" >> $GITHUB_OUTPUT
+        fi
+
     - name: Build frontend
       run: cd Configuration\ GUI && npm install && npm run build
       env:
         CI: false
 
     - name: Controller Build
-      run: cd Controller && docker compose build
+      run: docker compose build
+      working-directory: Controller
+      env:
+        TAG: ${{ steps.vars.outputs.tag }}
 
     - name: Log in to Docker Hub
       uses: docker/login-action@v2
@@ -27,7 +41,6 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Push Controller Image
+    - name: Push Docker Image
       run: |
-        docker push unituekn/p4tg-controller:latest
-      working-directory: Controller
+        docker push unituekn/p4tg-controller:${{ steps.vars.outputs.tag }}
