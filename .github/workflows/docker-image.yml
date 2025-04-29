@@ -25,14 +25,12 @@ jobs:
         fi
 
     - name: Build frontend
-      run: npm install && npm run build
-      working-directory: Configuration\ GUI
+      run: cd Configuration\ GUI && npm install && npm run build
       env:
         CI: false
 
     - name: Controller Build
-      run: docker compose build
-      working-directory: Controller
+      run: cd Controller && docker compose build
       env:
         TAG: ${{ steps.vars.outputs.tag }}
 
