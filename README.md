@@ -18,6 +18,8 @@
 ## Overview 
 This repository contains the source code for a P4 based traffic generator based on the Intel Tofino(TM) ASIC, called P4TG (<a href="https://ieeexplore.ieee.org/document/10048513">Paper</a>).
 The paper version corresponds to *v.1.0.0*.
+A second <a href="https://publikationen.uni-tuebingen.de/xmlui/handle/10900/163776">paper</a> describing Enhancements to P4TG was published.
+This paper corresponds to *v.2.3.2*.
 
 In generation mode, P4TG is capable of generating traffic up to 1 Tb/s split across 10x 100 Gb/s ports. 
 With Intel Tofino(TM) 2, P4TG is capable of generating traffic up to 4 Tb/s split across 10x 400 Gb/s ports.
@@ -29,6 +31,7 @@ In analysis mode, P4TG measures rates on the input ports, measures IATs, and for
 - P4TG (v2.2.0) supports VxLAN
 - P4TG (v2.3.0) supports the Intel Tofino 2 with up to 4 Tb/s
 - P4TG (v2.3.2) supports IPv6, SRv6 (Tofino 2 only), many bug fixes, and a dark mode
+- P4TG (v2.3.3) bug fixes and dependency updates
 
 See [Changelog](./CHANGELOG.md) for a full changelog.
 
