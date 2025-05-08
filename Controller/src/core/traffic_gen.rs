@@ -166,7 +166,7 @@ impl TrafficGen {
         // create a multicast group for the monitoring packet
         // that replicates a generated monitoring packet to all TX recirculation ports
         // this results in "parallel" monitoring of each traffic generation port
-        let multicast_ports = port_mapping.iter().map(|(_, p)| p.tx_recirculation).collect::<Vec<_>>();
+        let multicast_ports = port_mapping.values().map(|p| p.tx_recirculation).collect::<Vec<_>>();
 
         create_simple_multicast_group(switch, MONITORING_PACKET_MID, &multicast_ports).await?;
 
@@ -413,8 +413,7 @@ impl TrafficGen {
     /// * `packets`: List of packets that should be generated. Index is the application id.
     pub async fn activate_traffic_gen_applications(&self, switch: &SwitchConnection, packets: &HashMap<u8, StreamPacket>) -> Result<(), RBFRTError> {
 
-        let update_requests: Result<Vec<Request>, P4TGError> = packets.iter()
-            .map(|(_, packet)| {
+        let update_requests: Result<Vec<Request>, P4TGError> = packets.values().map(|packet| {
                 if packet.n_packets == 0 {
                     // The ILP did not find a solution for the configured parameters
                     Err(P4TGError::Error { message: format!("The ILP did not find a valid solution for packet generation of app ID {:}. Try a different rate.", packet.app_id) })
@@ -807,9 +806,9 @@ impl TrafficGen {
                         for j in 1..cmp::min(s.number_of_lse.unwrap()+1, MAX_NUM_MPLS_LABEL+1) {
                             let lse = &mpls_stack[(j-1) as usize];
 
-                            let label_param = format!("label{}", j);
-                            let ttl_param = format!("ttl{}", j);
-                            let tc_param = format!("tc{}", j);
+                            let label_param = format!("label{j}");
+                            let ttl_param = format!("ttl{j}");
+                            let tc_param = format!("tc{j}");
                             req = req.action_data(&label_param, lse.label)
                                     .action_data(&ttl_param, lse.ttl)
                                     .action_data(&tc_param, lse.tc);
@@ -834,7 +833,7 @@ impl TrafficGen {
                     for j in 1..cmp::min(s.number_of_srv6_sids.unwrap()+1, MAX_NUM_SRV6_SIDS+1) {
                         let sid = sid_list[(j-1) as usize];
 
-                        let sid_param = format!("sid{}", j);
+                        let sid_param = format!("sid{j}");
                         req = req.action_data(&sid_param, sid)
                     }
                     reqs.push(req.clone());
@@ -844,9 +843,9 @@ impl TrafficGen {
         }
 
         if self.is_tofino2 {
-            info!("Configure table {}, {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE, SRV6_HEADER_REPLACE_TABLE);
+            info!("Configure table {ETHERNET_IP_HEADER_REPLACE_TABLE}, {VLAN_HEADER_REPLACE_TABLE}, {MPLS_HEADER_REPLACE_TABLE}, & {SRV6_HEADER_REPLACE_TABLE}.");
         } else {
-            info!("Configure table {}, {}, & {}.", ETHERNET_IP_HEADER_REPLACE_TABLE, VLAN_HEADER_REPLACE_TABLE, MPLS_HEADER_REPLACE_TABLE);
+            info!("Configure table {ETHERNET_IP_HEADER_REPLACE_TABLE}, {VLAN_HEADER_REPLACE_TABLE}, & {MPLS_HEADER_REPLACE_TABLE}.");
         }
         
         switch.write_table_entries(reqs).await?;

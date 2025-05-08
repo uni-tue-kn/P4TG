@@ -83,7 +83,7 @@ impl FrameTypeMonitor {
                     .match_key("hdr.ipv6.dst_addr", MatchValue::ternary(0, 0))  // Ignore IPv6 address in this case
                     .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(priority))
-                    .action(&format!("{}.{}", ACTION_PREFIX, action));
+                    .action(&format!("{ACTION_PREFIX}.{action}"));
 
                 // table entry for the RX path
                 let rx_add_request = table::Request::new(FRAME_TYPE_MONITOR)
@@ -92,7 +92,7 @@ impl FrameTypeMonitor {
                     .match_key("hdr.ipv6.dst_addr", MatchValue::ternary(0, 0))  // Ignore IPv6 address in this case
                     .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(priority))
-                    .action(&format!("{}.{}", ACTION_PREFIX, action));
+                    .action(&format!("{ACTION_PREFIX}.{action}"));
 
                 table_entries_frame_type.push(tx_add_request);
                 table_entries_frame_type.push(rx_add_request);
@@ -110,7 +110,7 @@ impl FrameTypeMonitor {
                     .match_key("hdr.ipv6.dst_addr", MatchValue::ternary(Ipv6Addr::from(*base), Ipv6Addr::from(mask)))  
                     .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(priority))
-                    .action(&format!("{}.{}", ACTION_PREFIX, action));
+                    .action(&format!("{ACTION_PREFIX}.{action}"));
 
                 // table entry for the RX path
                 let rx_add_request = table::Request::new(FRAME_TYPE_MONITOR)
@@ -119,7 +119,7 @@ impl FrameTypeMonitor {
                     .match_key("hdr.ipv6.dst_addr", MatchValue::ternary(Ipv6Addr::from(*base), Ipv6Addr::from(mask)))  
                     .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(priority))
-                    .action(&format!("{}.{}", ACTION_PREFIX, action));
+                    .action(&format!("{ACTION_PREFIX}.{action}"));
 
                 table_entries_frame_type.push(tx_add_request);
                 table_entries_frame_type.push(rx_add_request);
@@ -131,13 +131,13 @@ impl FrameTypeMonitor {
                 let tx_add_request = table::Request::new(ETHERNET_TYPE_MONITOR)
                     .match_key("ig_intr_md.ingress_port", MatchValue::exact(mapping.tx_recirculation))
                     .match_key("hdr.ethernet.ether_type", MatchValue::lpm(*ether_type, 16))
-                    .action(&format!("{}.{}", ACTION_PREFIX, action));
+                    .action(&format!("{ACTION_PREFIX}.{action}"));
 
                 // table entry for the RX path
                 let rx_add_request = table::Request::new(ETHERNET_TYPE_MONITOR)
                     .match_key("ig_intr_md.ingress_port", MatchValue::exact(mapping.rx_recirculation))
                     .match_key("hdr.ethernet.ether_type", MatchValue::lpm(*ether_type, 16))
-                    .action(&format!("{}.{}", ACTION_PREFIX, action));
+                    .action(&format!("{ACTION_PREFIX}.{action}"));
 
                 table_entries_ethernet_type.push(tx_add_request);
                 table_entries_ethernet_type.push(rx_add_request);
@@ -159,10 +159,10 @@ impl FrameTypeMonitor {
         }
 
         // dispatch all at once
-        info!("Configure table {}.", FRAME_TYPE_MONITOR);
+        info!("Configure table {FRAME_TYPE_MONITOR}.");
         switch.write_table_entries(table_entries_frame_type).await?;
 
-        info!("Configure table {}.", ETHERNET_TYPE_MONITOR);
+        info!("Configure table {ETHERNET_TYPE_MONITOR}.");
         switch.write_table_entries(table_entries_ethernet_type).await?;
 
         Ok(())
@@ -193,14 +193,14 @@ impl FrameTypeMonitor {
                     let switch = &state.switch;
 
                     if switch.execute_operation(sync).await.is_err() {
-                        warn! {"Encountered error while synchronizing {}.", t};
+                        warn! {"Encountered error while synchronizing {t}."};
                     }
 
                     // read counters
                     match switch.get_table_entries(request).await {
                         Ok(e) => e,
                         Err(err) => {
-                            warn! {"Encountered error while retrieving {} table. Error: {}", t, format!("{:#?}", err)};
+                            warn! {"Encountered error while retrieving {t} table. Error: {err:#?}"};
                             vec![]
                         }
                     }
@@ -228,7 +228,7 @@ impl FrameTypeMonitor {
                             }
                         }
                         
-                        panic!("$COUNTER_SPEC_PKTS missing in {:#?}", entry)
+                        panic!("$COUNTER_SPEC_PKTS missing in {entry:#?}")
                     };
 
                     if tx_mapping.contains_key(&port) {

@@ -28,7 +28,6 @@ use crate::AppState;
 use crate::core::traffic_gen_core::types::*;
 use crate::api::docs::traffic_gen::EXAMPLE_POST_1_RESPONSE;
 use crate::api::server::Error;
-use crate::api::helper::duration_monitor::monitor_test_duration;
 
 #[debug_handler]
 #[utoipa::path(
@@ -63,40 +62,24 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
 
     match tg.start_traffic_generation(&state, active_streams, mode, active_stream_settings, &mapping).await {
         Ok(streams) => {
-            info!("Traffic generation restarted.");
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
 
+            // Cancel any existing duration monitor task
+            state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
+
+            // Check if a duration is desired
             if let Some(t) = duration {
                 if t > 0 {
-
-                    let state_clone = state.clone();
-                    let (tx, mut rx) = tokio::sync::watch::channel(false);
-            
-                    tokio::spawn(async move {
-                        info!("Started test duration monitor for {} s", t);
-                        loop {
-                            // Wait for response from thread 
-                            tokio::select! {
-                                _ = rx.changed() => {
-                                    break;
-                                }
-                                _ = async {
-                                    // test monitor returns true if either duration is over, or traffic generation was stopped manually
-                                    let should_stop = monitor_test_duration(state_clone.clone(), t as f64).await;
-                                    if should_stop {
-                                        let _ = tx.send(true); // Notify the task to exit
-                                    }
-                                } => {}
-                            }
-                            tokio::task::yield_now().await;
-                        }
-                    });
+                    // Starts a duration monitor task that waits for duration and stops traffic generation after duration has exceeded
+                    state.monitor_task.lock().await.start(&state, t).await;
                 }
-            };
+            }
+
+            info!("Traffic generation restarted.");
 
             (StatusCode::OK, Json(streams)).into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
     }
 }

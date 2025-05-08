@@ -56,7 +56,7 @@ pub fn calculate_send_behaviour(frame_size: u32, traffic_rate: f32, max_burst: u
     // Problems could arise if the float 'calculation' does not match the float of the calculated difference.
     // Therefore, 0 <= ... <= 1 should be suitable for a floating error after the comma.
     // This problem wasn't experienced yet and this solution is a safety measurement.
-    problem.add_row(0..1, [(calculation, 1.), (timeout, (-1f32 * traffic_rate) as f64), (num_packets, (frame_size * 8) as f64)]); 
+    problem.add_row(0..1, [(calculation, 1.), (timeout, -traffic_rate as f64), (num_packets, (frame_size * 8) as f64)]); 
     let mut solver = problem.optimise(Sense::Minimise);
     solver.set_option("time_limit", SOLVER_TIME_LIMIT_IN_SECONDS);
 
@@ -64,7 +64,7 @@ pub fn calculate_send_behaviour(frame_size: u32, traffic_rate: f32, max_burst: u
 
     match solved.status() {
         HighsModelStatus::Infeasible => {
-            warn!("No solution available. Requested rate {} with frame size {}", traffic_rate, frame_size);
+            warn!("No solution available. Requested rate {traffic_rate} with frame size {frame_size}");
             (0, 100)
         }
         _ => {

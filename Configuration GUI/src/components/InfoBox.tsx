@@ -17,8 +17,8 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useState} from "react"
-import {Button, Modal} from "react-bootstrap";
+import React, { useState } from "react"
+import { Button, Modal } from "react-bootstrap";
 import styled from "styled-components";
 
 interface Info {
@@ -33,13 +33,15 @@ const Wrapper = styled.div`
 `
 
 
-const InfoBox = ({children}: Info) => {
+const InfoBox = ({ children }: Info) => {
     const [display, set_display] = useState(false)
     return <Wrapper>
         <Modal aria-labelledby="contained-modal-title-vcenter"
-               centered show={display} onHide={() => {
-            set_display(false)
-        }}>
+            centered show={display} onHide={() => {
+                set_display(false)
+            }}
+            className="info-modal"
+        >
             <Modal.Header closeButton>
                 <Modal.Title>Info</Modal.Title>
             </Modal.Header>
@@ -54,7 +56,7 @@ const InfoBox = ({children}: Info) => {
         </Modal>
         <i onClick={() => {
             set_display(true)
-        }} role="button" className="bi bi-question-circle-fill"/>
+        }} role="button" className="bi bi-question-circle-fill" />
     </Wrapper>
 }
 

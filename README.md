@@ -2,7 +2,7 @@
  <img src="./logo.png" />
  <h2>P4TG: Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.3.2-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.3.3-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
 
 </div>
 
@@ -18,6 +18,8 @@
 ## Overview 
 This repository contains the source code for a P4 based traffic generator based on the Intel Tofino(TM) ASIC, called P4TG (<a href="https://ieeexplore.ieee.org/document/10048513">Paper</a>).
 The paper version corresponds to *v.1.0.0*.
+A second <a href="https://publikationen.uni-tuebingen.de/xmlui/handle/10900/163776">paper</a> describing Enhancements to P4TG was published.
+This paper corresponds to *v.2.3.2*.
 
 In generation mode, P4TG is capable of generating traffic up to 1 Tb/s split across 10x 100 Gb/s ports. 
 With Intel Tofino(TM) 2, P4TG is capable of generating traffic up to 4 Tb/s split across 10x 400 Gb/s ports.
@@ -29,6 +31,7 @@ In analysis mode, P4TG measures rates on the input ports, measures IATs, and for
 - P4TG (v2.2.0) supports VxLAN
 - P4TG (v2.3.0) supports the Intel Tofino 2 with up to 4 Tb/s
 - P4TG (v2.3.2) supports IPv6, SRv6 (Tofino 2 only), many bug fixes, and a dark mode
+- P4TG (v2.3.3) bug fixes and dependency updates
 
 See [Changelog](./CHANGELOG.md) for a full changelog.
 
@@ -42,21 +45,21 @@ P4TG consists of:
 
 | **Feature**       | **Status**                           |
 |-------------------|--------------------------------------|
-| Statistics        | ✅ Available (Implemented)           |
-| Tofino 1 support  | ✅ Available (Implemented)           |
-| Tofino 2 support  | ✅ Available (Implemented)           |
-| Web frontend      | ✅ Available (Implemented)           |
-| Rust backend      | ✅ Available (Implemented)           |
-| Ethernet          | ✅ Available (Implemented)           |
-| IPv4              | ✅ Available (Implemented)           |
-| IPv6              | ✅ Available (Implemented)           |
-| QinQ              | ✅ Available (Implemented)           |
-| MPLS              | ✅ Available (Implemented)           |
-| VLAN              | ✅ Available (Implemented)           |
-| VxLAN             | ✅ Available (Implemented)           |
-| SRv6              | ✅ Available (Implemented)           |
-| ARP replies       | ✅ Available (Implemented)           |
-| Dark mode         | ✅ Available (Implemented)           |
+| Statistics        | ✅ Available            |
+| Tofino 1 support  | ✅ Available            |
+| Tofino 2 support  | ✅ Available            |
+| Web frontend      | ✅ Available            |
+| Rust backend      | ✅ Available            |
+| Ethernet          | ✅ Available            |
+| IPv4              | ✅ Available            |
+| IPv6              | ✅ Available            |
+| QinQ              | ✅ Available            |
+| MPLS              | ✅ Available            |
+| VLAN              | ✅ Available            |
+| VxLAN             | ✅ Available            |
+| SRv6              | ✅ Available            |
+| ARP replies       | ✅ Available            |
+| Dark mode         | ✅ Available            |
 | Test profiles     | ⚠️ Experimental (Unstable)           |
 | File reporting    | ⚠️ Experimental (Unstable)           |
 | Auto. testing     | ⚠️ Experimental (Unstable)           |
@@ -144,7 +147,7 @@ The documentation of the REST-API can be found [here](https://uni-tue-kn.github.
 # Cite
 If you use P4TG in any of your publications, please cite the following papers:
 1. S. Lindner, Marco Häberle, and M. Menth: [P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks](https://ieeexplore.ieee.org/abstract/document/10048513), in IEEE Access, vol. 11, p. 17525 – 17535, Feb. 2023, IEEE
-2. F. Ihle, E. Zink, S. Lindner, and M. Menth: Enhancements to P4TG: Protocols, Performance, and Automation, in KuVS Fachgespräch "Network Softwarization", online, Apr. 2025
+2. F. Ihle, E. Zink, S. Lindner, and M. Menth: [Enhancements to P4TG: Protocols, Performance, and Automation](https://publikationen.uni-tuebingen.de/xmlui/bitstream/handle/10900/163776/4th_kuvs_fg_netsoft_11.pdf), in KuVS Workshop on Network Softwarization (KuVS NetSoft), online, Apr. 2025
 
 ```tex
 @article{LiHae23,
@@ -160,7 +163,7 @@ If you use P4TG in any of your publications, please cite the following papers:
 @article{IhZi25,
   title  = {{Enhancements to P4TG: Protocols, Performance, and Automation}},
   author = {Fabian Ihle and Etienne Zink and Steffen Lindner and Michael Menth},
-  journal = {{KuVS Fachgespräch "Network Softwarization"}}
+  journal = {{KuVS Workshop on Network Softwarization (KuVS NetSoft)}}
   year   = 2025,
   month  = apr
 }

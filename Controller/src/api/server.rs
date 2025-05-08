@@ -168,16 +168,16 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/ports", get(serve_index))
         .route("/tables", get(serve_index))
         .route("/settings", get(serve_index))
-        .route("/*path", get(static_path));
+        .route("/{*path}", get(static_path));
 
 
-    info!("Starting rest api server on port {}.", port);
+    info!("Starting rest api server on port {port}.");
 
-
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
-        .await.unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{}", port));
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
+        .await.unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{port}"));
 
     axum::serve(listener, app).await.unwrap();
+
 }
 
 

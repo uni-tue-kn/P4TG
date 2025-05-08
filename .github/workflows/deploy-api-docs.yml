@@ -2,7 +2,7 @@ name: Deploy P4TG API Docs
 
 on:
   push:
-    branches: [ main, srv6 ]
+    branches: [ main ]
 
 jobs:
   deploy:

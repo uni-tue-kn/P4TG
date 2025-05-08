@@ -26,7 +26,6 @@ use axum::response::{IntoResponse, Json, Response};
 use log::info;
 use serde::Serialize;
 use crate::api::helper::validate::validate_request;
-use crate::api::helper::duration_monitor::monitor_test_duration;
 
 use crate::api::server::Error;
 use crate::AppState;
@@ -106,21 +105,33 @@ pub struct Result {
     )),
     )
 )]
-pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: Json<TrafficGenData>) -> Response {
+pub async fn configure_traffic_gen(
+    State(state): State<Arc<AppState>>,
+    payload: Json<TrafficGenData>
+) -> Response {
     let tg = &mut state.traffic_generator.lock().await;
 
     // contains the description of the stream, i.e., packet size and rate
     // only look at active stream settings
-    let active_stream_settings: Vec<StreamSetting> = payload.stream_settings.clone().into_iter().filter(|s| s.active).collect();
+    let active_stream_settings: Vec<StreamSetting> = payload.stream_settings
+        .clone()
+        .into_iter()
+        .filter(|s| s.active)
+        .collect();
+
     let active_stream_ids: Vec<u8> = active_stream_settings.iter().map(|s| s.stream_id).collect();
-    let active_streams: Vec<Stream> = payload.streams.clone().into_iter().filter(|s| active_stream_ids.contains(&s.stream_id)).collect();
+    let active_streams: Vec<Stream> = payload.streams
+        .clone()
+        .into_iter()
+        .filter(|s| active_stream_ids.contains(&s.stream_id))
+        .collect();
 
     // Poisson traffic is only allowed to have a single stream
     if payload.mode == GenerationMode::Poisson && active_streams.len() != 1 {
-        return (StatusCode::BAD_REQUEST, Json(Error::new("Poisson generation mode only allows for one stream."))).into_response()
+        return (StatusCode::BAD_REQUEST, Json(Error::new("Poisson generation mode only allows for one stream."))).into_response();
     }
 
-    // no streams should be generated in monitor/analyze mode
+    // no streams should be generated in monitor/analyze mode    
     if payload.mode == GenerationMode::Analyze && !active_streams.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(Error::new("No stream definition in analyze mode allowed."))).into_response();
     }
@@ -129,10 +140,16 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
     // required for analyze mode
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
-    // validate request
-    match validate_request(&active_streams, &active_stream_settings, &payload.mode, tx_rx_port_mapping, state.port_mapping.clone(), tg.is_tofino2) {
+    match validate_request(
+        &active_streams,
+        &active_stream_settings,
+        &payload.mode,
+        tx_rx_port_mapping,
+        state.port_mapping.clone(),
+        tg.is_tofino2
+    ) {
         Ok(_) => {},
-        Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response()
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response(),
     }
 
     match tg.start_traffic_generation(&state, active_streams, payload.mode, active_stream_settings, tx_rx_port_mapping).await {
@@ -150,38 +167,20 @@ pub async fn configure_traffic_gen(State(state): State<Arc<AppState>>, payload: 
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
 
+            // Cancel any existing duration monitor task
+            state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
+
+            // Check if a duration is desired
             if let Some(t) = payload.duration {
                 if t > 0 {
-
-                    let state_clone = state.clone();
-                    let (tx, mut rx) = tokio::sync::watch::channel(false);
-            
-                    tokio::spawn(async move {
-                        info!("Started test duration monitor for {} s", t);
-                        loop {
-                            // Wait for response from thread 
-                            tokio::select! {
-                                _ = rx.changed() => {
-                                    break;
-                                }
-                                _ = async {
-                                    // test monitor returns true if either duration is over, or traffic generation was stopped manually
-                                    let should_stop = monitor_test_duration(state_clone.clone(), t as f64).await;
-                                    if should_stop {
-                                        let _ = tx.send(true); // Notify the task to exit
-                                    }
-                                } => {}
-                            }
-                            tokio::task::yield_now().await;
-                        }
-                    });
+                    state.monitor_task.lock().await.start(&state, t).await;
                 }
             }
-
+ 
             info!("Traffic generation started.");
             (StatusCode::OK, Json(streams)).into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response(),
     }
 }
 
@@ -197,12 +196,14 @@ pub async fn stop_traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     let tg = &state.traffic_generator;
     let switch = &state.switch;
 
+    state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
+
     match tg.lock().await.stop(switch).await {
         Ok(_) => {
             info!("Traffic generation stopped.");
             state.experiment.lock().await.running = false;
             StatusCode::OK.into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:#?}", err)))).into_response()
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
     }
 }

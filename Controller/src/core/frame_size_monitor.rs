@@ -59,7 +59,7 @@ impl FrameSizeMonitor {
     /// Configures the [frame size monitor table](FRAME_SIZE_MONITOR) in the egress pipeline.
     /// It first clears the table, then rewrites it.
     pub async fn configure(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        info!("Configure table {}.", FRAME_SIZE_MONITOR);
+        info!("Configure table {FRAME_SIZE_MONITOR}.");
 
         // First clear table and then rewrite it
         self.clear(switch).await?;
@@ -111,14 +111,13 @@ impl FrameSizeMonitor {
 
                 // sync counters
                 if switch.execute_operation(sync).await.is_err() {
-                    warn! {"Encountered error while synchronizing {}.", FRAME_SIZE_MONITOR}
+                    warn! {"Encountered error while synchronizing {FRAME_SIZE_MONITOR}."}
                     ;
                 }
 
                 // read counters
                 switch.get_table_entries(request).await.unwrap_or_else(|err| {
-                    warn! {"Encountered error while retrieving {} table. Error: {}", FRAME_SIZE_MONITOR, format!("{:#?}", err)}
-                    ;
+                    warn! {"Encountered error while retrieving {FRAME_SIZE_MONITOR} table. Error: {err:#?}"};
                     vec![]
                 })
             };
@@ -144,7 +143,7 @@ impl FrameSizeMonitor {
                     MatchValue::RangeValue { lower_bytes, higher_bytes } => {
                         (lower_bytes.to_u32(), higher_bytes.to_u32())
                     },
-                    _ => panic!("Wrong match type for {:#?}", entry)
+                    _ => panic!("Wrong match type for {entry:#?}")
                 };
 
                 let count = 'get_count: {
@@ -154,7 +153,7 @@ impl FrameSizeMonitor {
                         }
                     }
 
-                    panic!("$COUNTER_SPEC_PKTS missing in {:#?}", entry)
+                    panic!("$COUNTER_SPEC_PKTS missing in {entry:#?}")
                 };
 
                 if state.port_mapping.contains_key(&port) {

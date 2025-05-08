@@ -23,6 +23,9 @@ mod frame_type_monitor;
 
 pub use frame_type_monitor::FrameTypeMonitor;
 
+pub mod duration_monitor;
+pub use duration_monitor::DurationMonitorTask;
+
 mod rate_monitor;
 pub mod statistics;
 pub mod traffic_gen;

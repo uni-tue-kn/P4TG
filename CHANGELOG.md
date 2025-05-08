@@ -1,5 +1,13 @@
 # Changelog 
 
+## v2.3.3
+### Bug Fixes
+- Fixed a crash of the P4TG controller after several hours
+- Fixed text color for InfoModals in dark mode
+
+### Other
+- Updated dependencies for backend in `Controller/Cargo.toml` and frontend in `Configuration GUI/package.json`
+
 ## v2.3.2
 ### New Features
 - Add IPv6 support

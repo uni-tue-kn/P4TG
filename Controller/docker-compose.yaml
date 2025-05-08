@@ -1,7 +1,7 @@
 services:
   p4tg:
     container_name: p4tg-controller
-    image: unituekn/p4tg-controller:latest
+    image: unituekn/p4tg-controller:${TAG:-latest}
     build:
       context: ..
       dockerfile: Controller/Dockerfile

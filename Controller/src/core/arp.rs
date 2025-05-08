@@ -46,7 +46,7 @@ impl Arp {
         for mapping in port_mapping.values() {
             let req = table::Request::new(ARP_REPLY_TABLE)
                 .match_key("ig_intr_md.ingress_port", MatchValue::exact(mapping.rx_recirculation))
-                .action(&format!("{}.answer_arp", ACTION_PREFIX))
+                .action(&format!("{ACTION_PREFIX}.answer_arp"))
                 .action_data("e_port", mapping.tx_recirculation)
                 .action_data("src_addr", mapping.mac.as_bytes().to_vec())
                 .action_data("valid", false);
@@ -64,7 +64,7 @@ impl Arp {
     pub async fn modify_arp(&self, switch: &SwitchConnection, port: &PortMapping, active: bool) -> Result<(), RBFRTError> {
         let req = table::Request::new(ARP_REPLY_TABLE)
             .match_key("ig_intr_md.ingress_port", MatchValue::exact(port.rx_recirculation))
-            .action(&format!("{}.answer_arp", ACTION_PREFIX))
+            .action(&format!("{ACTION_PREFIX}.answer_arp"))
             .action_data("e_port", port.tx_recirculation)
             .action_data("src_addr", port.mac.as_bytes().to_vec())
             .action_data("valid", active);
