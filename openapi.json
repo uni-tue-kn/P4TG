@@ -1,5 +1,5 @@
 {
-  "openapi": "3.0.3",
+  "openapi": "3.1.0",
   "info": {
     "title": "P4TG REST-API",
     "description": "Documentation of the REST-API of P4TG. Developed by Steffen Lindner (steffen@steffen-lindner.net) and Fabian Ihle (fabian.ihle@uni-tuebingen.de).",
@@ -8,9 +8,10 @@
       "email": "steffen@steffen-lindner.net"
     },
     "license": {
-      "name": "Apache-2.0"
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
     },
-    "version": "2.3.2"
+    "version": "2.3.3"
   },
   "paths": {
     "/api/ports": {
@@ -144,6 +145,9 @@
                     "items": {
                       "$ref": "#/components/schemas/TableDescriptor"
                     }
+                  },
+                  "propertyNames": {
+                    "type": "string"
                   }
                 },
                 "example": "{\"ingress.arp.arp_reply\":[{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"44\",\"src_addr\":\"275592631041392\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"36\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"48\",\"src_addr\":\"229469354273866\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"56\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"28\",\"src_addr\":\"895091910978\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"20\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"148\",\"src_addr\":\"212048241169679\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"156\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"0\",\"src_addr\":\"209364974058556\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"8\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"12\",\"src_addr\":\"70544364758069\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"4\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"172\",\"src_addr\":\"7064363173532\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"164\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"16\",\"src_addr\":\"235739843499203\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"24\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"32\",\"src_addr\":\"249301880200372\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"40\"}}},{\"data\":{\"action\":\"ingress.arp.answer_arp\",\"e_port\":\"188\",\"src_addr\":\"145173983800236\",\"valid\":\"0\"},\"key\":{\"ig_intr_md.ingress_port\":{\"value\":\"180\"}}}],\"ingress.p4tg.frame_type.ethernet_type_monitor\":[{\"data\":{\"$COUNTER_SPEC_BYTES\":\"0\",\"$COUNTER_SPEC_PKTS\":\"0\",\"action\":\"ingress.p4tg.frame_type.ipv4\"},\"key\":{\"hdr.ethernet.ether_type\":{\"value\":\"2048/16\"},\"ig_intr_md.ingress_port\":{\"value\":\"44\"}}},{\"data\":{\"$COUNTER_SPEC_BYTES\":\"0\",\"$COUNTER_SPEC_PKTS\":\"0\",\"action\":\"ingress.p4tg.frame_type.ipv4\"},\"key\":{\"hdr.ethernet.ether_type\":{\"value\":\"2048/16\"},\"ig_intr_md.ingress_port\":{\"value\":\"36\"}}}]}"
@@ -168,7 +172,6 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "nullable": true,
               "minimum": 0
             }
           }
@@ -193,8 +196,7 @@
         "tags": [
           "traffic_gen"
         ],
-        "summary": "Method called on GET /trafficgen",
-        "description": "Returns the currently configured traffic generation",
+        "summary": "Method called on GET /trafficgen\nReturns the currently configured traffic generation",
         "operationId": "traffic_gen",
         "responses": {
           "200": {
@@ -332,8 +334,7 @@
         "tags": [
           "traffic_gen"
         ],
-        "summary": "Method called on POST /trafficgen",
-        "description": "Starts the traffic generation with the specified settings in the POST body",
+        "summary": "Method called on POST /trafficgen\nStarts the traffic generation with the specified settings in the POST body",
         "operationId": "configure_traffic_gen",
         "requestBody": {
           "content": {
@@ -621,10 +622,12 @@
         ],
         "properties": {
           "rx": {
-            "$ref": "#/components/schemas/IATValues"
+            "$ref": "#/components/schemas/IATValues",
+            "description": "RX path"
           },
           "tx": {
-            "$ref": "#/components/schemas/IATValues"
+            "$ref": "#/components/schemas/IATValues",
+            "description": "TX path"
           }
         }
       },
@@ -653,10 +656,12 @@
             "minimum": 0
           },
           "std": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "format": "float",
-            "description": "Standard deviation. Only calculated if sample mode is true.",
-            "nullable": true
+            "description": "Standard deviation. Only calculated if sample mode is true."
           }
         }
       },
@@ -897,7 +902,17 @@
               "additionalProperties": {
                 "type": "number",
                 "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "app_tx_l2": {
@@ -908,7 +923,17 @@
               "additionalProperties": {
                 "type": "number",
                 "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "elapsed_time": {
@@ -922,6 +947,11 @@
             "description": "Frame size statistics that are divided in (lower, upper) sections.",
             "additionalProperties": {
               "$ref": "#/components/schemas/RangeCount"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "frame_type_data": {
@@ -929,6 +959,11 @@
             "description": "Statistics what kind of packets have been received per port",
             "additionalProperties": {
               "$ref": "#/components/schemas/TypeCount"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "iats": {
@@ -936,6 +971,11 @@
             "description": "Statistics of the inter arrival times per port.",
             "additionalProperties": {
               "$ref": "#/components/schemas/IATStatistics"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "out_of_order": {
@@ -944,6 +984,11 @@
             "additionalProperties": {
               "type": "integer",
               "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
               "minimum": 0
             }
           },
@@ -954,6 +999,11 @@
               "type": "integer",
               "format": "int64",
               "minimum": 0
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "rtts": {
@@ -961,6 +1011,11 @@
             "description": "Statistics of the round trip times per port.",
             "additionalProperties": {
               "$ref": "#/components/schemas/RTTStatistics"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "rx_rate_l1": {
@@ -969,6 +1024,11 @@
             "additionalProperties": {
               "type": "number",
               "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "rx_rate_l2": {
@@ -977,6 +1037,11 @@
             "additionalProperties": {
               "type": "number",
               "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "sample_mode": {
@@ -989,6 +1054,11 @@
             "additionalProperties": {
               "type": "number",
               "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "tx_rate_l2": {
@@ -997,6 +1067,11 @@
             "additionalProperties": {
               "type": "number",
               "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           }
         }
@@ -1020,10 +1095,12 @@
             "minimum": 0
           },
           "batches": {
-            "type": "boolean",
+            "type": [
+              "boolean",
+              "null"
+            ],
             "description": "Sends more bursty traffic resulting in a more accurate rate",
-            "example": true,
-            "nullable": true
+            "example": true
           },
           "burst": {
             "type": "integer",
@@ -1033,7 +1110,8 @@
             "minimum": 0
           },
           "encapsulation": {
-            "$ref": "#/components/schemas/Encapsulation"
+            "$ref": "#/components/schemas/Encapsulation",
+            "description": "Encapsulation type."
           },
           "frame_size": {
             "type": "integer",
@@ -1043,55 +1121,69 @@
             "minimum": 0
           },
           "generation_accuracy": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "format": "float",
             "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
-            "example": 99.95,
-            "nullable": true
+            "example": 99.95
           },
           "ip_version": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "description": "Determines the IP version, either v4 or v6. Option to make it backward compatible",
             "example": 4,
-            "nullable": true,
             "minimum": 0
           },
           "n_packets": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
             "example": 11,
-            "nullable": true,
             "minimum": 0
           },
           "n_pipes": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
             "example": 2,
-            "nullable": true,
             "minimum": 0
           },
           "number_of_lse": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "description": "Number of MPLS LSEs in this stream. The value has to equal the length of the MPLS stack in a stream setting.",
             "example": 2,
-            "nullable": true,
             "minimum": 0
           },
           "number_of_srv6_sids": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "description": "Number of SIDs in SRv6 header. At maximum 4 can be used.\nA flag to indicate if there is another IP tunnel following the SRv6 headers",
             "example": 2,
-            "nullable": true,
             "minimum": 0
           },
           "srv6_ip_tunneling": {
-            "type": "boolean",
-            "nullable": true
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "stream_id": {
             "type": "integer",
@@ -1100,11 +1192,13 @@
             "minimum": 0
           },
           "timeout": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
             "example": 81,
-            "nullable": true,
             "minimum": 0
           },
           "traffic_rate": {
@@ -1137,28 +1231,34 @@
             "$ref": "#/components/schemas/Ethernet"
           },
           "ip": {
-            "allOf": [
+            "oneOf": [
+              {
+                "type": "null"
+              },
               {
                 "$ref": "#/components/schemas/IPv4"
               }
-            ],
-            "nullable": true
+            ]
           },
           "ipv6": {
-            "allOf": [
+            "oneOf": [
+              {
+                "type": "null"
+              },
               {
                 "$ref": "#/components/schemas/IPv6"
               }
-            ],
-            "nullable": true
+            ]
           },
           "mpls_stack": {
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "$ref": "#/components/schemas/MPLSHeader"
             },
-            "description": "An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.",
-            "nullable": true
+            "description": "An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream."
           },
           "port": {
             "type": "integer",
@@ -1175,12 +1275,14 @@
             "example": "ff80::1"
           },
           "srv6_base_header": {
-            "allOf": [
+            "oneOf": [
+              {
+                "type": "null"
+              },
               {
                 "$ref": "#/components/schemas/IPv6"
               }
-            ],
-            "nullable": true
+            ]
           },
           "stream_id": {
             "type": "integer",
@@ -1189,20 +1291,25 @@
             "minimum": 0
           },
           "vlan": {
-            "allOf": [
+            "oneOf": [
+              {
+                "type": "null"
+              },
               {
                 "$ref": "#/components/schemas/Vlan"
               }
-            ],
-            "nullable": true
+            ]
           },
           "vxlan": {
-            "allOf": [
+            "oneOf": [
               {
-                "$ref": "#/components/schemas/VxLAN"
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VxLAN",
+                "description": "VxLAN tunnel settings"
               }
-            ],
-            "nullable": true
+            ]
           }
         }
       },
@@ -1217,11 +1324,17 @@
             "type": "object",
             "additionalProperties": {
               "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
             }
           },
           "key": {
             "type": "object",
-            "additionalProperties": {}
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
           }
         }
       },
@@ -1245,7 +1358,17 @@
               "additionalProperties": {
                 "type": "number",
                 "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "packet_loss": {
@@ -1256,7 +1379,17 @@
               "additionalProperties": {
                 "type": "number",
                 "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "rtts": {
@@ -1267,7 +1400,17 @@
               "additionalProperties": {
                 "type": "number",
                 "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "rx_rate_l1": {
@@ -1278,7 +1421,17 @@
               "additionalProperties": {
                 "type": "number",
                 "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "rx_rate_l2": {
@@ -1287,6 +1440,11 @@
             "additionalProperties": {
               "type": "number",
               "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "tx_rate_l1": {
@@ -1297,7 +1455,17 @@
               "additionalProperties": {
                 "type": "number",
                 "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           "tx_rate_l2": {
@@ -1306,6 +1474,11 @@
             "additionalProperties": {
               "type": "number",
               "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           }
         }
@@ -1321,19 +1494,27 @@
         ],
         "properties": {
           "duration": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "description": "The duration of this test in seconds.",
-            "nullable": true,
             "minimum": 0
           },
           "mode": {
-            "$ref": "#/components/schemas/GenerationMode"
+            "$ref": "#/components/schemas/GenerationMode",
+            "description": "Generation mode that should be used."
           },
           "port_tx_rx_mapping": {
             "type": "object",
             "description": "Mapping between TX (send) ports, and RX (receive) ports.\nTraffic send on port TX are expected to be received on port RX.",
             "additionalProperties": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "propertyNames": {
               "type": "integer",
               "format": "int32",
               "minimum": 0
@@ -1368,6 +1549,9 @@
             "additionalProperties": {
               "type": "integer",
               "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
             }
           },
           "tx": {
@@ -1376,6 +1560,9 @@
             "additionalProperties": {
               "type": "integer",
               "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
             }
           }
         }
