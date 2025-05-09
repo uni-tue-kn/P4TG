@@ -473,11 +473,13 @@ impl TrafficGen {
         state.frame_size_monitor.lock().await.on_reset(switch).await?;
         state.frame_type_monitor.lock().await.on_reset(switch).await?;
         state.rate_monitor.lock().await.on_reset(switch).await?;
+        state.rtt_histogram_monitor.lock().await.on_reset(switch).await?;
 
         // call the on_start routine on all relevant parts
         state.frame_size_monitor.lock().await.on_start(switch, &mode).await?;
         state.frame_type_monitor.lock().await.on_start(switch, &mode).await?;
         state.rate_monitor.lock().await.on_start(switch, &mode).await?;
+        state.rtt_histogram_monitor.lock().await.on_start(switch, &mode).await?;
 
         // configure tg mode
         self.configure_traffic_gen_mode_table(switch, &mode).await?;

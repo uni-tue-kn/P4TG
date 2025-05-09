@@ -98,6 +98,9 @@ pub const DEVICE_CONFIGURATION_TF2: &str = "tf2.dev.device_configuration";
  /// This table contains the IP & Ethernet header configuration for each stream
  pub const ETHERNET_IP_HEADER_REPLACE_TABLE: &str = "egress.header_replace.header_replace";
  
+ /// Table used to configure the bins of RTT Histogram
+ pub const RTT_HISTOGRAM_TABLE: &str = "ingress.p4tg.rtt.rtt_histogram";
+
  /// VLAN replace table
  /// This table replaces the header content of QinQ and VLAN frames
  pub const VLAN_HEADER_REPLACE_TABLE: &str = "egress.header_replace.vlan_header_replace";

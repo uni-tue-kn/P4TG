@@ -236,6 +236,7 @@ struct ingress_metadata_t {
     bit<1> vxlan;
     bit<1> arp_reply;
     bit<8> tg_mode;
+    bit<16> bin_index;
 }
 
 struct egress_metadata_t {

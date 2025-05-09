@@ -1,5 +1,20 @@
 # Changelog 
 
+## v2.4.0
+### New features
+- Live RTT histogram generation
+  - Range for histogram and number of bins is configurable on a per-port basis
+    - Configuration is available in the frontend in Settings
+  - Packets are matched in the data plane based on configured histogram settings (no sampling)
+  - .25, .50, .75, and .90 percentiles are calculated based on the histogram data
+  - Histogram is rendered in frontend
+- New API endpoints for histogram configuration: `POST:api/histogram` for histogram configuration and `GET:api/histogram` to retrieve configuration
+
+### Bug fixes
+- Fixed text color in Modals in dark mode
+- Fixed frontend crash if controller goes offline
+- Added missing API docs for `online` endpoint
+
 ## v2.3.3
 ### Bug Fixes
 - Fixed a crash of the P4TG controller after several hours

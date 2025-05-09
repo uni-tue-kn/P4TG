@@ -18,7 +18,7 @@
  */
 
 use std::collections::{BTreeMap, HashMap};
-use serde::{Serialize};
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 #[derive(Serialize, Clone, ToSchema)]
@@ -188,5 +188,42 @@ impl TimeStatistic {
             out_of_order: Default::default(),
             rtt: Default::default()
         }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema, Deserialize)]
+pub struct RttHistogramConfig {
+    pub min: u32,
+    pub max: u32,
+    pub num_bins: u32,
+}
+
+impl RttHistogramConfig {
+    pub fn get_bin_width(&self) -> u32 {
+        (self.max - self.min) / self.num_bins
+    }    
+}
+
+impl Default for RttHistogramConfig {
+    fn default() -> Self {
+        RttHistogramConfig { min: 1500, max: 2500, num_bins: 10 }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema, Default)]
+pub struct RttHistogramData {
+    pub data_bins: HashMap<u32, u128>,
+    pub percentiles: HashMap<u32, f64>,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct RttHistogram {
+    pub config: RttHistogramConfig,
+    pub data: RttHistogramData,
+}
+
+impl RttHistogram {
+    pub fn default() -> RttHistogram {
+        RttHistogram {data: Default::default(), config: Default::default() }
     }
 }

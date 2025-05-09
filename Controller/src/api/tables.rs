@@ -84,6 +84,7 @@ pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
         "egress.header_replace.header_replace",
         "egress.header_replace.vlan_header_replace",
         "egress.header_replace.mpls_replace_c.mpls_header_replace",
+        "ingress.p4tg.rtt.rtt_histogram",
     "egress.is_egress"];
 
     if state.tofino2 {

@@ -25,6 +25,22 @@ export interface MPLSHeader {
     ttl: number
 }
 
+export type RttHistogramConfig = {
+    min: number;
+    max: number;
+    num_bins: number;
+  };
+  
+  export type RttHistogramData = {
+    data_bins: Record<string, number>; // Actually this should be bigint, but Chart does not support bigint for plotting
+    percentiles: Record<string, number>;
+  };
+  
+  export type RttHistogram = {
+    config: RttHistogramConfig;
+    data: RttHistogramData;
+  };
+
 export interface Statistics {
     sample_mode: boolean,
     tx_rate_l1: { [name: string]: number },
@@ -49,7 +65,8 @@ export interface Statistics {
         }
     },
     out_of_order: { [name: string]: number },
-    elapsed_time: number
+    elapsed_time: number,
+    rtt_histogram: { [port: string]: RttHistogram}
 }
 
 export const StatisticsObject: Statistics = {
@@ -66,7 +83,8 @@ export const StatisticsObject: Statistics = {
     app_tx_l2: {},
     app_rx_l2: {},
     out_of_order: {},
-    elapsed_time: 0
+    elapsed_time: 0,
+    rtt_histogram: {}
 }
 
 export interface TimeStatistics {

@@ -26,7 +26,7 @@ use axum::response::{Json, IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use crate::AppState;
-use crate::core::statistics::{IATStatistics, IATValues, RangeCount, RTTStatistics, TimeStatistic, TypeCount};
+use crate::core::statistics::{IATStatistics, IATValues, RTTStatistics, RangeCount, RttHistogram, TimeStatistic, TypeCount};
 
 use crate::api::{docs, helper};
 
@@ -63,7 +63,9 @@ pub struct Statistics {
     /// Number of out of order packets per port.
     pub(crate) out_of_order: HashMap<u32, u64>,
     /// Elapsed time since the traffic generation has started in seconds.
-    pub(crate) elapsed_time: u32
+    pub(crate) elapsed_time: u32,
+    /// RTT histogram data per port and per bin.
+    pub(crate) rtt_histogram: HashMap<u32, RttHistogram>    
 }
 
 #[derive(Serialize, ToSchema)]
@@ -99,6 +101,7 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
     let frame_size_monitor = &state.frame_size_monitor;
     let frame_type_monitor = &state.frame_type_monitor;
     let rate_monitor = &state.rate_monitor;
+    let rtt_histogram_monitor = &state.rtt_histogram_monitor;
 
     let mut stats = Statistics {
         sample_mode: state.sample_mode,
@@ -114,12 +117,14 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
         rtts: Default::default(),
         packet_loss: Default::default(),
         out_of_order: Default::default(),
-        elapsed_time: 0
+        elapsed_time: 0,
+        rtt_histogram: Default::default(),
     };
 
 
     stats.frame_size = frame_size_monitor.lock().await.statistics.frame_size.clone();
     stats.frame_type_data = frame_type_monitor.lock().await.statistics.frame_type_data.clone();
+    stats.rtt_histogram = rtt_histogram_monitor.lock().await.histogram.clone();
 
     let monitor_statistics =  rate_monitor.lock().await.statistics.clone();
 

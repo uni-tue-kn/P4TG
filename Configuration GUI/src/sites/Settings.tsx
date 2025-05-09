@@ -29,6 +29,7 @@ import {
     Encapsulation,
     GenerationMode, P4TGInfos,
     PortInfo,
+    RttHistogramConfig,
     Stream,
     StreamSettings, TrafficGenData,
 } from "../common/Interfaces";
@@ -39,6 +40,7 @@ import {GitHub} from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
 import {validatePorts, validateStreams, validateStreamSettings} from "../common/Validators";
+import HistogramSettings from '../components/settings/HistogramSettings';
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -59,6 +61,8 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
     // @ts-ignore
     const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
+    // @ts-ignore
+    const [histogram_settings, set_histogram_settings] = useState<Record<string, RttHistogramConfig>>(JSON.parse(localStorage.getItem("histogramSettings")) || {})
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
@@ -84,28 +88,42 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     }
 
     const loadGen = async () => {
-        let stats = await get({route: "/trafficgen"})
 
-        if (Object.keys(stats.data).length > 1) {
-            let old_streams = JSON.stringify(streams)
+        let histogram_config = await get({route: "/histogram"})
+        if (histogram_config !== undefined) {
+            if (Object.keys(histogram_config.data).length > 1) {
+                let old_hist = JSON.stringify(histogram_settings)
 
-            if (old_streams != JSON.stringify(stats.data.streams)) {
-                set_mode(stats.data.mode)
-                set_duration(stats.data.duration)
-                set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
-                set_stream_settings(stats.data.stream_settings)
-                set_streams(stats.data.streams)
-
-                localStorage.setItem("streams", JSON.stringify(stats.data.streams))
-                localStorage.setItem("gen-mode", stats.data.mode)
-                localStorage.setItem("duration", stats.data.duration)
-                localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
-                localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
+                if (old_hist != JSON.stringify(histogram_config.data)){
+                    set_histogram_settings(histogram_config.data)
+                    localStorage.setItem("histogramSettings", JSON.stringify(histogram_config.data))
+                }
             }
+        }
 
-            set_running(true)
-        } else {
-            set_running(false)
+
+        let stats = await get({route: "/trafficgen"})
+        if (stats !== undefined) {
+            if (Object.keys(stats.data).length > 1) {
+                let old_streams = JSON.stringify(streams)
+
+                if (old_streams != JSON.stringify(stats.data.streams)) {
+                    set_mode(stats.data.mode)
+                    set_duration(stats.data.duration)
+                    set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
+                    set_stream_settings(stats.data.stream_settings)
+                    set_streams(stats.data.streams)
+
+                    localStorage.setItem("streams", JSON.stringify(stats.data.streams))
+                    localStorage.setItem("gen-mode", stats.data.mode)
+                    localStorage.setItem("duration", stats.data.duration)
+                    localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
+                    localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
+                }
+                set_running(true)
+            } else {
+                set_running(false)
+            }
         }
     }
 
@@ -126,6 +144,9 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
         localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
 
+        localStorage.setItem("histogramSettings", JSON.stringify(histogram_settings))
+
+
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(port_tx_rx_mapping))
 
         alert("Settings saved.")
@@ -136,6 +157,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
         set_streams([])
         set_stream_settings([])
+        set_histogram_settings({})
         set_mode(GenerationMode.NONE)
         set_duration(0)
         set_port_tx_rx_mapping({})
@@ -263,6 +285,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                              onChange={(event: any) => {
                                  set_streams([]);
                                  set_stream_settings([]);
+                                 set_histogram_settings({});
                                  if (event.target.value != "" && event.target.value != GenerationMode.ANALYZE) {
                                      addStream();
                                  }
@@ -421,19 +444,20 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                             if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                                 return <tr key={i}>
                                     <StyledCol>{v.port} ({v.pid})</StyledCol>
-                                    <StyledCol>
+                                    <StyledCol className="d-flex align-items-center gap-2">
                                         <Form.Select disabled={running || !v.status} required
                                                      defaultValue={port_tx_rx_mapping[v.pid] || -1}
                                                      onChange={(event: any) => {
-                                                         let current = port_tx_rx_mapping;
+                                                        const value = parseInt(event.target.value);
+                                                        const updatedMapping = { ...port_tx_rx_mapping };
 
-                                                         if (parseInt(event.target.value) == -1) {
-                                                             delete current[v.pid]
-                                                         } else {
-                                                             current[v.pid] = parseInt(event.target.value);
-                                                         }
+                                                        if (value === -1) {
+                                                            delete updatedMapping[v.pid]
+                                                        } else {
+                                                           updatedMapping[v.pid] = parseInt(event.target.value);
+                                                        }
 
-                                                         set_port_tx_rx_mapping(current);
+                                                        set_port_tx_rx_mapping(updatedMapping);
                                                      }}>
                                             <option value={-1}>Select RX Port</option>
                                             {ports.map((v, i) => {
@@ -444,7 +468,8 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                                             })
                                             }
                                         </Form.Select>
-
+                                        
+                                        <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings}/>
                                     </StyledCol>
                                     <StreamSettingsList stream_settings={stream_settings} streams={streams}
                                                         running={running} port={v} p4tg_infos={p4tg_infos}/>

@@ -35,8 +35,7 @@ mod core;
 mod api;
 mod error;
 
-use core::FrameSizeMonitor;
-use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen, DurationMonitorTask};
+use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen, DurationMonitorTask, HistogramMonitor, FrameSizeMonitor};
 use crate::core::traffic_gen_core::const_definitions::{PORT_CFG_TF2, DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 
@@ -60,6 +59,7 @@ pub struct AppState {
     pub(crate) traffic_generator: Mutex<TrafficGen>,
     pub(crate) port_mapping: HashMap<u32, PortMapping>,
     pub(crate) rate_monitor: Mutex<RateMonitor>,
+    pub(crate) rtt_histogram_monitor: Mutex<HistogramMonitor>,
     pub(crate) switch: SwitchConnection,
     pub(crate) pm: PortManager,
     pub(crate) experiment: Mutex<Experiment>,
@@ -243,6 +243,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     rate_monitor.init_iat_meter(&switch, sample_mode).await?;
     rate_monitor.on_reset(&switch).await?;
 
+    let mut rtt_histogram_monitor = HistogramMonitor::new(port_mapping.clone());
+    rtt_histogram_monitor.init_rtt_histogram_table(&switch).await?;
+
     let mut traffic_generator = TrafficGen::new(is_tofino2, num_pipes);
     traffic_generator.stop(&switch).await?;
 
@@ -257,6 +260,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         traffic_generator: Mutex::new(traffic_generator),
         port_mapping,
         rate_monitor: Mutex::new(rate_monitor),
+        rtt_histogram_monitor: Mutex::new(rtt_histogram_monitor),
         switch,
         pm,
         sample_mode,
@@ -296,6 +300,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let local_state = monitoring_state;
 
         FrameTypeMonitor::monitor_statistics(local_state).await;
+    });
+
+    let monitoring_state = Arc::clone(&state);
+
+    // start RTT histogram monitoring
+    tokio::spawn(async move {
+        let local_state = monitoring_state;
+
+        HistogramMonitor::monitor_histogram(local_state).await;
     });
 
     let monitoring_state = Arc::clone(&state);

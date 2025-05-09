@@ -15,6 +15,7 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 import {
@@ -27,10 +28,13 @@ import {
     Tooltip,
     Filler,
     Legend, ArcElement,
+    BarElement,
+    ChartDataset,
 } from 'chart.js'
+import annotationPlugin from 'chartjs-plugin-annotation';
 
-import {Doughnut, Line} from 'react-chartjs-2'
-import {formatBits, secondsToTime} from "./SendReceiveMonitor";
+import {Doughnut, Line, Chart} from 'react-chartjs-2'
+import {secondsToTime} from "./SendReceiveMonitor";
 import {Statistics, TimeStatistics} from "../common/Interfaces";
 import React, {useState} from "react";
 import {Col, Form, Row } from 'react-bootstrap';
@@ -41,10 +45,12 @@ ChartJS.register(
     PointElement,
     ArcElement,
     LineElement,
+    BarElement,
     Title,
     Tooltip,
     Filler,
-    Legend
+    Legend,
+    annotationPlugin
 )
 
 const rate_options = {
@@ -166,6 +172,20 @@ const rtt_options = {
     },
 }
 
+function getTimeUnit(value: number): [value: number, unit: string]{
+    const units = ['ns', 'μs', 'ms', 's'];
+    let unitIndex = 0;
+
+    // Scale the value and determine the correct unit
+    while (value >= 1000 && unitIndex < units.length - 1) {
+        value /= 1000;
+        unitIndex++;
+    }
+    const unit = units[unitIndex];
+
+    return [value, unit];
+}
+
 const generateLineData = (data_key: string, use_key: boolean, data: TimeStatistics, port_mapping: { [name: number]: number }): [string[], number[]] => {
     let cum_data: {[name: number]: number}[] = []
 
@@ -210,6 +230,129 @@ const generateLineData = (data_key: string, use_key: boolean, data: TimeStatisti
 
     return [Object.keys(ret_data).map(v => secondsToTime(parseInt(v))), Object.values(ret_data)]
 }
+
+const generateHistogram = (
+    data: Statistics,
+    port_mapping: { [name: number]: number }
+): [string[], number[]] => {
+    const histogram_data = data["rtt_histogram"];
+    let combined_bins: { [binIndex: string]: number } = {};
+    let min = Infinity;
+    let max = -Infinity;
+    let num_bins = 0;
+
+    if (histogram_data) {
+        const ports = Object.values(port_mapping).map(String);
+        ports.forEach(port => {
+            
+            const config = histogram_data[port]?.config;
+            const data = histogram_data[port]?.data;
+            if (config && data) {
+                min = Math.min(min, config.min);
+                max = Math.max(max, config.max);
+                num_bins = config.num_bins;
+
+                for (let i = 0; i < config.num_bins; i++) {
+                    const binKey = i.toString();
+                    const value = data.data_bins[binKey] || 0;
+                    combined_bins[binKey] = (combined_bins[binKey] || 0) + value;
+                }
+            }
+        });
+    }
+
+    if (min === Infinity || max === -Infinity || num_bins === 0) {
+        return [[], []]; // no valid data
+    }
+
+    const binWidth = (max - min) / num_bins;
+    const labels: string[] = [];
+    const values: number[] = [];
+
+    for (let i = 0; i < num_bins; i++) {
+        const start = Math.round(min + i * binWidth);
+        let [start_val, start_unit] = getTimeUnit(start);
+        const end = Math.round(min + (i + 1) * binWidth);
+
+        let [end_val, _] = getTimeUnit(end);
+        labels.push(`${start_val}-${end_val} ${start_unit}`);
+        values.push(combined_bins[i.toString()] || 0);
+    }
+
+    return [labels, values];
+};
+
+const getPercentileAnnotations = (
+    data: Statistics,
+    port_mapping: { [name: number]: number }
+): [Record<string, any>, ChartDataset[]] => {
+    const annotations: Record<string, any> = {};
+    const legend_dataset: ChartDataset[] = [];
+
+    // Avoids redundant percentile labels from different ports
+    const seenPercentiles = new Set<string>();
+
+    const histogram = data["rtt_histogram"];
+
+    const percentileColors: Record<string, string> = {
+        '25': '#3c82e7',
+        '50': '#e74c3c',
+        '75': '#e7a23c',
+        '90': '#a23ce7',
+    };
+
+    if (histogram) {
+        const ports = Object.values(port_mapping).map(String);
+
+        ports.forEach(port => {
+            const config = histogram[port]?.config;
+            const data = histogram[port]?.data;            
+            if (config && data) {
+
+                const percentile_data = data.percentiles;
+
+                Object.entries(percentile_data).forEach(([key, value]) => {
+                    const binWidth = (config.max - config.min) / config.num_bins;
+                    const binIndex = Math.floor((value - config.min) / binWidth);
+
+                    const color = percentileColors[key] || 'gray';
+
+                    if (value != null) {
+                        annotations[`p${key}`] = {
+                            type: 'line',
+                            scaleID: 'x',
+                            value: binIndex,
+                            borderColor: color,
+                            borderWidth: 2,
+                            borderDash: [6, 6],
+                        };
+
+                        if (!seenPercentiles.has(key)) {
+                            seenPercentiles.add(key);
+                            // Push an invisible data point so we can render a legend in the chart
+                            legend_dataset.push({
+                                label: `${key}th percentile`,
+                                data: [{ x: binIndex, y: 0 }],
+                                borderColor: color,
+                                borderDash: [6, 6],
+                                pointRadius: 0,
+                                fill: false,
+                                type: 'line',
+                                tension: 0,
+                                showLine: true,
+                                borderWidth: 2,
+                            });                              
+                        }                     
+                    }
+                });
+
+
+            }
+        });
+    }
+
+    return [annotations, legend_dataset];
+};
 
 const get_frame_types = (stats: Statistics, port_mapping: {[name: number]: number}, type: string): { tx: number, rx: number } => {
     let ret = { "tx": 0, "rx": 0 }
@@ -315,6 +458,8 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)
     const [labels_out_of_order, line_data_out_of_order] = generateLineData("out_of_order", false, data, port_mapping)
     const [labels_rtt, line_data_rtt] = get_rtt(data, port_mapping)
+    const [labels_rtt_hist, hist_data_rtt] = generateHistogram(stats, port_mapping);
+    const [percentileAnnotations, legend_dataset] = getPercentileAnnotations(stats, port_mapping);
 
     const [visual_select, set_visual_select] = useState("rate")
 
@@ -499,6 +644,46 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
         ],
     }
 
+    const rtt_hist_data = {
+        labels: labels_rtt_hist,
+        datasets: [
+            {
+                label: 'RTT distribution',
+                data: hist_data_rtt,
+                backgroundColor: 'rgba(53, 162, 235, 0.5)'                     
+            },
+            ...legend_dataset
+        ]
+    }
+
+    const rtt_histogram_options = {
+        responsive: true,
+        aspectRatio: 4,
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: '#Packets'
+                }
+            },
+            x: {
+                title: {
+                    display: true,
+                    text: 'RTT Range (μs)'
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: true,
+            },
+            annotation: {
+                annotations: percentileAnnotations
+            }
+        },
+    };    
+
     // @ts-ignore
     return <>
         {visual_select == "rate" ?
@@ -535,6 +720,12 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
             null
         }
 
+        {visual_select == "rtt_histogram" ?
+            <Chart type="bar" options={rtt_histogram_options} data={rtt_hist_data} /> 
+            :
+            null
+        }     
+
         <Row className={"text-center mb-3 mt-3"}>
             <Form onChange={(event: any) => set_visual_select(event.target.id)}>
                 <Form.Check
@@ -561,6 +752,14 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                     checked={visual_select == "rtt"}
                     id={`rtt`}
                 />
+                <Form.Check
+                    inline
+                    label="RTT Histogram"
+                    type="radio"
+                    name={"visuals"}
+                    checked={visual_select == "rtt_histogram"}
+                    id={`rtt_histogram`}
+                />                
                 <Form.Check
                     inline
                     label="Frames"
