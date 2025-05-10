@@ -300,6 +300,7 @@ impl TrafficGenEvent for HistogramMonitor {
 
         for (_, hist) in self.histogram.iter_mut() {
             hist.data.data_bins.clear();
+            hist.data.percentiles.clear();
         }
 
         Ok(())
@@ -316,6 +317,7 @@ impl TrafficGenEvent for HistogramMonitor {
 
         for (_, hist) in self.histogram.iter_mut() {
             hist.data.data_bins.clear();
+            hist.data.percentiles.clear();
         }
 
         Ok(())
