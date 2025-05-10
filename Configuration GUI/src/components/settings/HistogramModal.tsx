@@ -18,7 +18,7 @@
  */
 
 import { RttHistogramConfig } from "../../common/Interfaces";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
 import { post } from "../../common/API";
 
@@ -48,6 +48,15 @@ const HistogramModal = ({
     const [unit, setUnit] = useState("ns");
     const getMultiplier = (unit: string) => units.find(u => u.label === unit)?.multiplier || 1;
 
+    // useEffect to reset tmp_data when data changes
+    useEffect(() => {
+        if (show){ 
+            set_tmp_data({ ...data });
+            setUnit("ns");
+            setAlertMessage(null);
+        }
+    }, [show]); // This will run whenever `data` prop changes
+
     const hideRestore = () => {
         set_tmp_data({ ...data });
         setUnit("ns");
@@ -71,6 +80,7 @@ const HistogramModal = ({
             alert("Histogram config saved.")
             hide()
         } else {
+            // TODO better error handling
             setAlertMessage("Error")
         }
 
@@ -94,12 +104,16 @@ const HistogramModal = ({
         const max = tmp_data.max * getMultiplier(unit);
 
         if (min >= max) {
-            setAlertMessage("Minimum value must be less than maximum value in range.");
+            setAlertMessage("Minimum value must be less than maximum value of range.");
             return;
         }
         if (tmp_data.num_bins > 100) {
             setAlertMessage("100 bins are supported at maximum.");
             return;
+        }
+        if (tmp_data.num_bins > (max - min)) {
+            setAlertMessage("Too many bins for too less of range. Increase range, or decrease number of bins.");
+            return;            
         }
 
         setAlertMessage(null);
