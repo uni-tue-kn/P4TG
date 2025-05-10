@@ -29,7 +29,7 @@ const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: Statistics, time_stats: TimeStatistics, port_mapping: { [name: number]: number }, mode: GenerationMode, visual: boolean }) => {
+const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary }: { stats: Statistics, time_stats: TimeStatistics, port_mapping: { [name: number]: number }, mode: GenerationMode, visual: boolean, is_summary: boolean }) => {
     const [total_tx, set_total_tx] = useState(0);
     const [total_rx, set_total_rx] = useState(0);
     const [iat_tx, set_iat_tx] = useState({ "mean": 0, "std": 0, "n": 0, "mae": 0 });
@@ -283,7 +283,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual }: { stats: St
 
     return <>
     { visual ?
-        <Visuals data={time_stats} stats={stats} port_mapping={port_mapping}/>
+        <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary}/>
         :
         null
     }
