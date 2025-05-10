@@ -99,85 +99,94 @@ impl HistogramMonitor {
     /// - `state`: App state that holds the switch connection.
     pub async fn monitor_histogram(state: Arc<AppState>) {
         loop {
-            let switch = &state.switch;
-            // Sync RTT Histogram counters
-            {
-                let sync = Request::new(RTT_HISTOGRAM_TABLE)
-                    .operation(table::TableOperation::SyncCounters);
-                if switch.execute_operation(sync).await.is_err() {
-                    warn!("Error in synchronization for table {RTT_HISTOGRAM_TABLE}.");
-                }
-            }
-
-            let port_mapping = {
-                let rtt_histogram_monitor = state.rtt_histogram_monitor.lock().await;
-                rtt_histogram_monitor.port_mapping.clone()
+            let running = {
+                let experiment = state.experiment.lock().await;
+                experiment.running
             };
 
-            // Retrieve all entries from table for RTT histogram
-            let req = Request::new(RTT_HISTOGRAM_TABLE);
+            if running {
 
-            match switch.get_table_entries(req).await {
-                Ok(res) => {
-                    let mut rtt_histogram_monitor = state.rtt_histogram_monitor.lock().await;
+                let switch = &state.switch;
+                // Sync RTT Histogram counters
+                {
+                    let sync = Request::new(RTT_HISTOGRAM_TABLE)
+                        .operation(table::TableOperation::SyncCounters);
+                    if switch.execute_operation(sync).await.is_err() {
+                        warn!("Error in synchronization for table {RTT_HISTOGRAM_TABLE}.");
+                    }
+                }
 
-                    // Clone keys so we can iterate without borrowing whole map
-                    let ports: Vec<u32> = rtt_histogram_monitor.histogram.keys().cloned().collect();
+                let port_mapping = {
+                    let rtt_histogram_monitor = state.rtt_histogram_monitor.lock().await;
+                    rtt_histogram_monitor.port_mapping.clone()
+                };
 
-                    for port in ports {
-                        if let Some(hist) = rtt_histogram_monitor.histogram.get(&port) {
-                            let hist_config = &hist.config;
-                            let mut bins_data = HashMap::new();
+                // Retrieve all entries from table for RTT histogram
+                let req = Request::new(RTT_HISTOGRAM_TABLE);
 
-                            for b in 0..hist_config.num_bins {
-                                if let Some(mapping) = port_mapping.get(&port) {
-                                    let rx_port = mapping.rx_recirculation;
+                match switch.get_table_entries(req).await {
+                    Ok(res) => {
+                        let mut rtt_histogram_monitor = state.rtt_histogram_monitor.lock().await;
 
-                                    let hist_entries: Vec<&table::TableEntry> = res
-                                        .iter()
-                                        .filter(|t| {
-                                            t.has_action_data("bin_index")
-                                                && t.get_action_data("bin_index").unwrap().as_u32()
-                                                    == b
-                                                && t.has_key("ig_md.ig_port")
-                                                && t.get_key("ig_md.ig_port")
+                        // Clone keys so we can iterate without borrowing whole map
+                        let ports: Vec<u32> = rtt_histogram_monitor.histogram.keys().cloned().collect();
+
+                        for port in ports {
+                            if let Some(hist) = rtt_histogram_monitor.histogram.get(&port) {
+                                let hist_config = &hist.config;
+                                let mut bins_data = HashMap::new();
+
+                                for b in 0..hist_config.num_bins {
+                                    if let Some(mapping) = port_mapping.get(&port) {
+                                        let rx_port = mapping.rx_recirculation;
+
+                                        let hist_entries: Vec<&table::TableEntry> = res
+                                            .iter()
+                                            .filter(|t| {
+                                                t.has_action_data("bin_index")
+                                                    && t.get_action_data("bin_index").unwrap().as_u32()
+                                                        == b
+                                                    && t.has_key("ig_md.ig_port")
+                                                    && t.get_key("ig_md.ig_port")
+                                                        .unwrap()
+                                                        .get_exact_value()
+                                                        .to_u32()
+                                                        == rx_port
+                                            })
+                                            .collect();
+
+                                        let pkt_bin_count: u128 = hist_entries
+                                            .iter()
+                                            .map(|e| {
+                                                e.get_action_data("$COUNTER_SPEC_PKTS")
                                                     .unwrap()
-                                                    .get_exact_value()
-                                                    .to_u32()
-                                                    == rx_port
-                                        })
-                                        .collect();
-
-                                    let pkt_bin_count: u128 = hist_entries
-                                        .iter()
-                                        .map(|e| {
-                                            e.get_action_data("$COUNTER_SPEC_PKTS")
-                                                .unwrap()
-                                                .as_u128()
-                                        })
-                                        .sum();
-                                    bins_data.insert(b, pkt_bin_count);
+                                                    .as_u128()
+                                            })
+                                            .sum();
+                                        bins_data.insert(b, pkt_bin_count);
+                                    }
                                 }
-                            }
 
-                            // Calculate percentiles
-                            let percentiles: Vec<f64> = vec![0.25, 0.5, 0.75, 0.9];
-                            let percentile_results =
-                                Self::estimate_percentiles_from_bins(&bins_data, percentiles, hist);
+                                // Calculate percentiles
+                                let percentiles: Vec<f64> = vec![0.25, 0.5, 0.75, 0.9];
+                                let percentile_results =
+                                    Self::estimate_percentiles_from_bins(&bins_data, percentiles, hist);
 
-                            if let Some(hist_data_mut) =
-                                rtt_histogram_monitor.histogram.get_mut(&port)
-                            {
-                                hist_data_mut.data.data_bins = bins_data;
-                                hist_data_mut.data.percentiles = percentile_results;
+                                if let Some(hist_data_mut) =
+                                    rtt_histogram_monitor.histogram.get_mut(&port)
+                                {
+                                    hist_data_mut.data.data_bins = bins_data;
+                                    hist_data_mut.data.percentiles = percentile_results;
+                                }
                             }
                         }
                     }
-                }
-                Err(e) => {
-                    warn!("Encountered error while retrieving {RTT_HISTOGRAM_TABLE} table. Error: {e:#?}");
+                    Err(e) => {
+                        warn!("Encountered error while retrieving {RTT_HISTOGRAM_TABLE} table. Error: {e:#?}");
+                    }
                 }
             }
+
 
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
