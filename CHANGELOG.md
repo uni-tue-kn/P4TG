@@ -14,6 +14,7 @@
 - Fixed text color in Modals in dark mode
 - Fixed frontend crash if controller goes offline
 - Added missing API docs for `online` endpoint
+- Fixed RX frame type statistic for ARP frames in frontend
 
 ## v2.3.3
 ### Bug Fixes
