@@ -20,6 +20,7 @@
 
 use std::collections::HashMap;
 
+use crate::api::histogram::HistogramConfigRequest;
 use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
 use crate::core::traffic_gen_core::const_definitions::{MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2};
@@ -179,4 +180,22 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
     Ok(())
 
+}
+
+pub fn validate_histogram(request: &HistogramConfigRequest) -> Result<(), Error>  {
+
+    let port = request.port;
+
+    if request.config.min >= request.config.max {
+        return Err(Error::new(format!("Histogram config error port {port}: Minimum value must be less than maximum value of range.")));        
+    }
+    if request.config.num_bins > 100 {
+        return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 100 bins are supported at maximum.")));        
+
+    }
+    if request.config.num_bins > (request.config.max - request.config.min) {
+        return Err(Error::new(format!("Histogram config error port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));        
+    }    
+
+    Ok(())
 }

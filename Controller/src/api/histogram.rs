@@ -9,6 +9,8 @@ use crate::AppState;
 use axum::response::{Json, IntoResponse, Response};
 use crate::api::server::Error;
 
+use super::helper::validate::validate_histogram;
+
 
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct HistogramConfigRequest {
@@ -44,6 +46,11 @@ pub async fn configure_histogram(
     payload: Json<HistogramConfigRequest>
 ) -> Response {
     
+    match validate_histogram(&payload) {
+        Ok(_) => {},
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response(),
+    }
+
     if state.traffic_generator.lock().await.running {
         return (StatusCode::BAD_REQUEST, Json(Error::new("Traffic generation is currently running. Stop it first."))).into_response();
     }
