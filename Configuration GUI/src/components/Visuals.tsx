@@ -25,19 +25,18 @@ import {
     PointElement,
     LineElement,
     Title,
-    Tooltip,
     Filler,
     Legend, ArcElement,
     BarElement,
-    ChartDataset,
+    ChartData,
 } from 'chart.js'
 import annotationPlugin from 'chartjs-plugin-annotation';
 
-import {Doughnut, Line, Chart} from 'react-chartjs-2'
+import {Bar, Doughnut, Line} from 'react-chartjs-2'
 import {secondsToTime} from "./SendReceiveMonitor";
 import {Statistics, TimeStatistics} from "../common/Interfaces";
 import React, {useState} from "react";
-import {Col, Form, Row } from 'react-bootstrap';
+import {Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
 
 ChartJS.register(
     CategoryScale,
@@ -47,7 +46,6 @@ ChartJS.register(
     LineElement,
     BarElement,
     Title,
-    Tooltip,
     Filler,
     Legend,
     annotationPlugin
@@ -231,6 +229,12 @@ const generateLineData = (data_key: string, use_key: boolean, data: TimeStatisti
     return [Object.keys(ret_data).map(v => secondsToTime(parseInt(v))), Object.values(ret_data)]
 }
 
+const renderTooltip = (props: any) => (
+    <Tooltip id="tooltip-disabled" {...props}>
+      RTT Histogram is only available in the port view.
+    </Tooltip>
+  );
+
 const generateHistogram = (
     data: Statistics,
     port_mapping: { [name: number]: number }
@@ -274,8 +278,14 @@ const generateHistogram = (
         let [start_val, start_unit] = getTimeUnit(start);
         const end = Math.round(min + (i + 1) * binWidth);
 
-        let [end_val, _] = getTimeUnit(end);
-        labels.push(`${start_val}-${end_val} ${start_unit}`);
+        let [end_val, end_unit] = getTimeUnit(end);
+        let label;
+        if (end_unit == start_unit) {
+            label = `${start_val} – ${end_val} ${start_unit}`
+        } else {
+            label = `${start_val} ${start_unit} – ${end_val} ${end_unit}`
+        }
+        labels.push(label);
         values.push(combined_bins[i.toString()] || 0);
     }
 
@@ -285,12 +295,8 @@ const generateHistogram = (
 const getPercentileAnnotations = (
     data: Statistics,
     port_mapping: { [name: number]: number }
-): [Record<string, any>, ChartDataset[]] => {
+): Record<string, any> => {
     const annotations: Record<string, any> = {};
-    const legend_dataset: ChartDataset[] = [];
-
-    // Avoids redundant percentile labels from different ports
-    const seenPercentiles = new Set<string>();
 
     const histogram = data["rtt_histogram"];
 
@@ -306,14 +312,20 @@ const getPercentileAnnotations = (
 
         ports.forEach(port => {
             const config = histogram[port]?.config;
-            const data = histogram[port]?.data;            
-            if (config && data) {
+            const data = histogram[port]?.data;         
 
+            if (config && data) {
                 const percentile_data = data.percentiles;
+                const maxYValue = Math.max(...Object.values(data.data_bins));
+                let percentileIndex = 0
 
                 Object.entries(percentile_data).forEach(([key, value]) => {
                     const binWidth = (config.max - config.min) / config.num_bins;
                     const binIndex = Math.floor((value - config.min) / binWidth);
+
+                    // Check if multiple percentiles are at the same xValue. Place them 7% below each other
+                    const offsetFactor = 0.065;
+                    const yOffset = maxYValue * 0.95 * (1 - offsetFactor * percentileIndex);
 
                     const color = percentileColors[key] || 'gray';
 
@@ -326,24 +338,28 @@ const getPercentileAnnotations = (
                             borderWidth: 2,
                             borderDash: [6, 6],
                         };
-
-                        if (!seenPercentiles.has(key)) {
-                            seenPercentiles.add(key);
-                            // Push an invisible data point so we can render a legend in the chart
-                            legend_dataset.push({
-                                label: `${key}th percentile`,
-                                data: [{ x: binIndex, y: 0 }],
-                                borderColor: color,
-                                borderDash: [6, 6],
-                                pointRadius: 0,
-                                fill: false,
-                                type: 'line',
-                                tension: 0,
-                                showLine: true,
-                                borderWidth: 2,
-                            });                              
-                        }                     
+                        annotations[`label_p${key}`] = {
+                            type: 'label',
+                            xScaleID: 'x',
+                            yScaleID: 'y',
+                            xValue: binIndex - 0.15,
+                            yValue: yOffset,
+                            content: [`p${key}`],
+                            backgroundColor: `${color}80`, // 50% opacity background color
+                            font: {
+                                size: 18,
+                                family: 'sans-serif',
+                                color: '#fff',
+                            },
+                            padding: 4, // Reduced padding for a tighter fit
+                            borderRadius: 7,
+                            position: 'center',
+                            xAdjust: 0,
+                            yAdjust: -10,
+                            borderShadowColor: '2px 2px 4px rgba(0, 0, 0, 0.2)', // Add a subtle shadow to lift the label
+                        };
                     }
+                    percentileIndex += 1
                 });
 
 
@@ -351,7 +367,7 @@ const getPercentileAnnotations = (
         });
     }
 
-    return [annotations, legend_dataset];
+    return annotations;
 };
 
 const get_frame_types = (stats: Statistics, port_mapping: {[name: number]: number}, type: string): { tx: number, rx: number } => {
@@ -452,14 +468,14 @@ const get_rtt = (data: TimeStatistics, port_mapping: {[name: number]: number}): 
     return [Object.keys(ret_data[0]).map(v => secondsToTime(parseInt(v))), Object.values(ret_data[0])]
 }
 
-const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Statistics, port_mapping: { [name: number]: number }}) => {
+const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics, stats: Statistics, port_mapping: { [name: number]: number }, is_summary: boolean}) => {
     const [labels_tx, line_data_tx] = generateLineData("tx_rate_l1", true, data, port_mapping)
     const [labels_rx, line_data_rx] = generateLineData("rx_rate_l1", false, data, port_mapping)
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)
     const [labels_out_of_order, line_data_out_of_order] = generateLineData("out_of_order", false, data, port_mapping)
     const [labels_rtt, line_data_rtt] = get_rtt(data, port_mapping)
     const [labels_rtt_hist, hist_data_rtt] = generateHistogram(stats, port_mapping);
-    const [percentileAnnotations, legend_dataset] = getPercentileAnnotations(stats, port_mapping);
+    const percentileAnnotations = getPercentileAnnotations(stats, port_mapping);
 
     const [visual_select, set_visual_select] = useState("rate")
 
@@ -586,7 +602,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                     get_frame_types(stats, port_mapping, "ipv4").rx,
                     get_frame_types(stats, port_mapping, "ipv6").rx,
                     get_frame_types(stats, port_mapping, "mpls").rx,
-                    get_frame_types(stats, port_mapping, "arp").tx,
+                    get_frame_types(stats, port_mapping, "arp").rx,
                     get_frame_types(stats, port_mapping, "unknown").rx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
@@ -644,7 +660,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
         ],
     }
 
-    const rtt_hist_data = {
+    const rtt_hist_data: ChartData<"bar"> = {
         labels: labels_rtt_hist,
         datasets: [
             {
@@ -652,7 +668,6 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                 data: hist_data_rtt,
                 backgroundColor: 'rgba(53, 162, 235, 0.5)'                     
             },
-            ...legend_dataset
         ]
     }
 
@@ -670,7 +685,7 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
             x: {
                 title: {
                     display: true,
-                    text: 'RTT Range (μs)'
+                    text: 'RTT Range'
                 }
             }
         },
@@ -682,7 +697,20 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                 annotations: percentileAnnotations
             }
         },
-    };    
+    };
+
+    // Conditional rendering
+    const rttHistogramCheck = (
+        <Form.Check
+        inline
+        label="RTT Histogram"
+        type="radio"
+        name={"visuals"}
+        checked={visual_select === "rtt_histogram"}
+        disabled={is_summary}
+        id={`rtt_histogram`}
+        />
+    );    
 
     // @ts-ignore
     return <>
@@ -721,10 +749,10 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
         }
 
         {visual_select == "rtt_histogram" ?
-            <Chart type="bar" options={rtt_histogram_options} data={rtt_hist_data} /> 
+            <Bar options={rtt_histogram_options} data={rtt_hist_data} />
             :
             null
-        }     
+        }
 
         <Row className={"text-center mb-3 mt-3"}>
             <Form onChange={(event: any) => set_visual_select(event.target.id)}>
@@ -752,14 +780,15 @@ const Visuals = ({data, stats, port_mapping}: {data: TimeStatistics, stats: Stat
                     checked={visual_select == "rtt"}
                     id={`rtt`}
                 />
-                <Form.Check
-                    inline
-                    label="RTT Histogram"
-                    type="radio"
-                    name={"visuals"}
-                    checked={visual_select == "rtt_histogram"}
-                    id={`rtt_histogram`}
-                />                
+                {is_summary ? 
+                    <OverlayTrigger placement="top" overlay={renderTooltip}>
+                        <span className="d-inline-block">
+                            {rttHistogramCheck}
+                        </span>
+                    </OverlayTrigger>
+                    : 
+                    rttHistogramCheck
+                }       
                 <Form.Check
                     inline
                     label="Frames"
