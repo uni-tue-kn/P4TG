@@ -65,25 +65,23 @@ const HistogramModal = ({
     };
 
     const updateConfig = async (pid: number, min: number, max: number, num_bins: number) => {
-        let update = await post({
-            route: "/histogram", body: {
-                port: pid,
-                config: {
-                    min: min,
-                    max: max,
-                    num_bins: num_bins
+            let update = await post({
+                route: "/histogram", body: {
+                    port: pid,
+                    config: {
+                        min: min,
+                        max: max,
+                        num_bins: num_bins
+                    }
                 }
+            })
+
+            if (update && update.status === 200) {
+                alert("Histogram config saved.")
+                hide()
+            } else {
+                setAlertMessage("Config is not valid.")
             }
-        })
-
-        if (update.status === 200) {
-            alert("Histogram config saved.")
-            hide()
-        } else {
-            // TODO better error handling
-            setAlertMessage("Error")
-        }
-
     }
 
     const handleUnit = (newUnit: string) => {
@@ -113,6 +111,14 @@ const HistogramModal = ({
         }
         if (tmp_data.num_bins > (max - min)) {
             setAlertMessage("Too many bins for too less of range. Increase range, or decrease number of bins.");
+            return;            
+        }
+        if (min > 2 ** 32 - 1) {
+            setAlertMessage("Minimum range exceeds range of 32-bit.");
+            return;            
+        }
+        if (max > 2 ** 32 - 1) {
+            setAlertMessage("Maximum range exceeds range of 32-bit.");
             return;            
         }
 
