@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use log::{info, warn};
 use rbfrt::{
     error::RBFRTError,
-    table::{self, MatchValue, Request, ToBytes},
+    table::{self, MatchValue, Request, TableEntry, ToBytes},
     SwitchConnection,
 };
 
@@ -180,8 +180,9 @@ impl HistogramMonitor {
                                             .sum();
                                         bins_data.insert(b, pkt_bin_count);
 
-                                        let bin_middle_value: f64 = hist_config.min as f64
-                                            + b as f64 * hist_config.get_bin_width() as f64 / 2f64;
+                                        let bin_middle_value: f64 = hist_config.min as f64 + b as f64 * hist_config.get_bin_width() as f64
+                                            + (hist_config.get_bin_width() as f64 / 2f64);
+
                                         running_sum_frequency +=
                                             bin_middle_value * pkt_bin_count as f64;
                                         total_pkt_count += pkt_bin_count;
