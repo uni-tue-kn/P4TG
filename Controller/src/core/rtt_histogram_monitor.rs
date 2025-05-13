@@ -143,6 +143,7 @@ impl HistogramMonitor {
                                 let mut missed_bin_count = 0;
                                 // Used to calculate the mean RTT based on the histogram
                                 let mut running_sum_frequency: f64 = 0.0;
+                                let mut running_sum_square: f64 = 0.0;
                                 let mut total_pkt_count = 0;
 
                                 if let Some(mapping) = port_mapping.get(&port) {
@@ -180,11 +181,13 @@ impl HistogramMonitor {
                                             .sum();
                                         bins_data.insert(b, pkt_bin_count);
 
-                                        let bin_middle_value: f64 = hist_config.min as f64 + b as f64 * hist_config.get_bin_width() as f64
+                                        let bin_middle_value: f64 = hist_config.min as f64
+                                            + b as f64 * hist_config.get_bin_width() as f64
                                             + (hist_config.get_bin_width() as f64 / 2f64);
 
                                         running_sum_frequency +=
                                             bin_middle_value * pkt_bin_count as f64;
+                                        running_sum_square += bin_middle_value.powi(2) * pkt_bin_count as f64;
                                         total_pkt_count += pkt_bin_count;
                                     }
 
@@ -215,16 +218,21 @@ impl HistogramMonitor {
                                 let mean_rtt: f64 =
                                     (running_sum_frequency / total_pkt_count as f64).max(0f64);
 
+                                let variance = (running_sum_square / total_pkt_count as f64).max(0f64) - mean_rtt.powi(2);
+                                let std_dev = variance.sqrt();
+
+                                /*
                                 // After knowing the mean, we have to iterate the bin data a second time to calculate the standard deviation
                                 let mut variance_sum = 0f64;
                                 for (b, pkt_count) in &bins_data {
                                     let bin_middle_value: f64 = hist_config.min as f64
-                                        + *b as f64 * hist_config.get_bin_width() as f64 / 2f64;
+                                        + *b as f64 * hist_config.get_bin_width() as f64
+                                        + (hist_config.get_bin_width() as f64 / 2f64);
                                     let diff = bin_middle_value - mean_rtt;
                                     variance_sum += *pkt_count as f64 * diff * diff;
                                 }
                                 let variance = variance_sum / (total_pkt_count as f64 - 1f64);
-                                let std_dev = variance.sqrt();
+                                 */
 
                                 // Map y-axis of histogram to probability from [0, 1]
                                 let frequencies_bin = bins_data
