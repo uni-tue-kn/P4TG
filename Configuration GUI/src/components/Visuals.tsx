@@ -281,10 +281,10 @@ const generateHistogram = (
 
         let [end_val, end_unit] = getTimeUnit(end);
         let label;
-        if (end_unit == start_unit) {
-            label = `${start_val} – ${end_val} ${start_unit}`
+        if (end_unit === start_unit) {
+            label = `${start_val.toFixed(2)} – ${end_val.toFixed(2)} ${start_unit}`
         } else {
-            label = `${start_val} ${start_unit} – ${end_val} ${end_unit}`
+            label = `${start_val.toFixed(2)} ${start_unit} – ${end_val.toFixed(2)} ${end_unit}`
         }
         labels.push(label);
         values.push(combined_bins[i.toString()] || 0);
