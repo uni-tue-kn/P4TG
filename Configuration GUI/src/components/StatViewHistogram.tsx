@@ -47,9 +47,6 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
 
 
     useEffect(() => {
-        console.log(typeof rx_port)
-        console.log(port_mapping)
-
         if (Object.values(port_mapping).includes(rx_port)) {
             set_min_value(stats.rtt_histogram[rx_port].config.min)
             set_max_value(stats.rtt_histogram[rx_port].config.max)

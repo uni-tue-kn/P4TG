@@ -18,7 +18,7 @@
  */
 
 import React from "react"
-import {Button, Col, Form, Modal} from "react-bootstrap";
+import {Button, Col, Form } from "react-bootstrap";
 import {StreamSettings} from "../../../common/Interfaces";
 import {StyledRow} from "../../../sites/Settings";
 import {randomMAC} from "../SettingsModal";
