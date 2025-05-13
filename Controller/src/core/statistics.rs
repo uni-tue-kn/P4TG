@@ -193,8 +193,11 @@ impl TimeStatistic {
 
 #[derive(Serialize, Debug, Clone, ToSchema, Deserialize)]
 pub struct RttHistogramConfig {
+    /// Minimum range for histogram.
     pub min: u32,
+    /// Maximum range for histogram.
     pub max: u32,
+    // Number of bins for histogram.
     pub num_bins: u32,
 }
 
@@ -212,8 +215,18 @@ impl Default for RttHistogramConfig {
 
 #[derive(Serialize, Debug, Clone, ToSchema, Default)]
 pub struct RttHistogramData {
-    pub data_bins: HashMap<u32, u128>,
+    /// HashMap with bin index as key and probability as value.
+    pub data_bins: HashMap<u32, f64>,
+    /// HashMap with percentiles and their values.
     pub percentiles: HashMap<u32, f64>,
+    /// Mean RTT calculated from the histogram data.
+    pub mean_rtt: f64,
+    /// Standard deviation calculated from the histogram data.
+    pub std_dev_rtt: f64,
+    /// Total number of packets matched to bins.
+    pub total_pkt_count: u128,
+    /// Number of packets not matched to any bin.
+    pub missed_bin_count: u128
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]

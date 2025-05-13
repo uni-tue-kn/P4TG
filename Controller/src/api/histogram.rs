@@ -20,8 +20,6 @@ pub struct HistogramConfigRequest {
     pub config: RttHistogramConfig,
 }
 
-// TODO parameter validation --> Crash if too many bins: Something of the HistogramMonitor locks up
-
 /// Method called on POST /histogram
 /// Configures the histogram settings for the specified RX dev port.
 #[debug_handler]

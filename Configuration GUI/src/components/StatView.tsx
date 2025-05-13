@@ -18,18 +18,19 @@
  */
 
 import React, {useEffect, useState} from 'react'
-import {Col, Row, Table} from "react-bootstrap";
+import {Col, OverlayTrigger, Row, Table, Tooltip} from "react-bootstrap";
 import {GenerationMode, Statistics, TimeStatistics} from "../common/Interfaces";
 import {formatBits} from "./SendReceiveMonitor";
 
 import styled from 'styled-components'
 import Visuals from "./Visuals";
+import { formatNanoSeconds } from '../common/Helper';
 
 const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary }: { stats: Statistics, time_stats: TimeStatistics, port_mapping: { [name: number]: number }, mode: GenerationMode, visual: boolean, is_summary: boolean }) => {
+const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port }: { stats: Statistics, time_stats: TimeStatistics, port_mapping: { [name: number]: number }, mode: GenerationMode, visual: boolean, is_summary: boolean, rx_port: number }) => {
     const [total_tx, set_total_tx] = useState(0);
     const [total_rx, set_total_rx] = useState(0);
     const [iat_tx, set_iat_tx] = useState({ "mean": 0, "std": 0, "n": 0, "mae": 0 });
@@ -37,6 +38,12 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary }:
     const [rtt, set_rtt] = useState({ "mean": 0, "max": 0, "min": 0, "jitter": 0, "n": 0, "current": 0 })
     const [lost_packets, set_lost_packets] = useState(0);
     const [out_of_order_packets, set_out_of_order_packets] = useState(0);
+
+    const renderTooltip = (props: any, message: string) => (
+        <Tooltip id="tooltip-disabled" {...props}>
+            {message}
+        </Tooltip>
+    );
 
     const get_frame_types = (type: string): { tx: number, rx: number } => {
         let ret = { "tx": 0, "rx": 0 }
@@ -235,30 +242,6 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary }:
         return parseFloat((packets / Math.pow(k, i)).toFixed(dm)).toFixed(dm) + ' ' + sizes[i];
     }
 
-    const formatNanoSeconds = (ns: number | string, decimals: number = 2) => {
-        if (typeof ns == "string") {
-            return ns
-        }
-
-
-
-        if (ns === 0 || ns < 0) return '0 ns';
-
-        const k = 1000;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['ns', 'us', 'ms', 's', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-
-        const i = Math.floor(Math.log(ns) / Math.log(k));
-
-        let si = sizes[i]
-
-        if (i < 0) {
-            si = "ps"
-        }
-
-        return parseFloat((ns / Math.pow(k, i)).toFixed(dm)) + ' ' + si;
-    }
-
     const addRates = (object: { [name: string]: number }, keys: string[] | number[]) => {
         let ret = 0
 
@@ -283,7 +266,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary }:
 
     return <>
     { visual ?
-        <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary}/>
+        <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary} rx_port={rx_port}/>
         :
         null
     }
@@ -396,6 +379,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary }:
             <Col className={"col-12 col-md-8"}>
                 <Table striped bordered hover size="sm" className={`mt-3 mb-3 ${mode == GenerationMode.ANALYZE ? "opacity-50" : ""}`}>
                     <thead className={"table-dark"}>
+                    <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, "Sampled values")}>
                         <tr>
                             <th className={"col-2"}>Current RTT</th>
                             <th className={"col-2"}><Overline>RTT</Overline></th>
@@ -404,6 +388,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary }:
                             <th className={"col-2"}>Jitter</th>
                             <th className={"col-2"}>#Rtts</th>
                         </tr>
+                    </OverlayTrigger>
                     </thead>
                     <tbody>
                         <tr>

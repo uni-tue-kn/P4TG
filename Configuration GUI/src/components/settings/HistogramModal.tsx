@@ -107,8 +107,8 @@ const HistogramModal = ({
             setAlertMessage("Minimum value must be less than maximum value of range.");
             return;
         }
-        if (tmp_data.num_bins > 100) {
-            setAlertMessage("100 bins are supported at maximum.");
+        if (tmp_data.num_bins > 200) {
+            setAlertMessage("200 bins per port are supported at maximum.");
             return;
         }
         if (tmp_data.num_bins > (max - min)) {

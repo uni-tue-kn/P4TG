@@ -303,7 +303,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
             className="mt-3"
         >
             <Tab eventKey="Summary" title="Summary">
-                <StatView stats={statistics} time_stats={time_statistics} port_mapping={port_tx_rx_mapping} visual={visual} mode={mode} is_summary={true}/>
+                <StatView stats={statistics} time_stats={time_statistics} port_mapping={port_tx_rx_mapping} visual={visual} mode={mode} is_summary={true} rx_port={0}/>
             </Tab>
             {activePorts().map((v, i) => {
                 let mapping: { [name: number]: number } = {[v.tx]: v.rx}
@@ -313,7 +313,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
                         className={"mt-3"}
                     >
                         <Tab eventKey={"Overview"} title={"Overview"}>
-                            <StatView stats={statistics} time_stats={time_statistics} port_mapping={mapping} mode={mode} visual={visual} is_summary={false}/>
+                            <StatView stats={statistics} time_stats={time_statistics} port_mapping={mapping} mode={mode} visual={visual} is_summary={false} rx_port={v.rx}/>
                         </Tab>
                         {Object.keys(mapping).map(Number).map(v => {
                             let stream_ids = getStreamIDsByPort(v)

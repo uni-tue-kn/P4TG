@@ -34,6 +34,10 @@ export type RttHistogramConfig = {
   export type RttHistogramData = {
     data_bins: Record<string, number>; // Actually this should be bigint, but Chart does not support bigint for plotting
     percentiles: Record<string, number>;
+    mean_rtt: number;
+    std_dev_rtt: number;
+    missed_bin_count: number;
+    total_pkt_count: number;
   };
   
   export type RttHistogram = {

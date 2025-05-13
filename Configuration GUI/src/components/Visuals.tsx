@@ -32,11 +32,12 @@ import {
 } from 'chart.js'
 import annotationPlugin from 'chartjs-plugin-annotation';
 
-import {Bar, Doughnut, Line} from 'react-chartjs-2'
-import {secondsToTime} from "./SendReceiveMonitor";
-import {Statistics, TimeStatistics} from "../common/Interfaces";
-import React, {useState} from "react";
-import {Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { Bar, Doughnut, Line } from 'react-chartjs-2'
+import { secondsToTime } from "./SendReceiveMonitor";
+import { Statistics, TimeStatistics } from "../common/Interfaces";
+import React, { useState } from "react";
+import { Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import StatViewHistogram from './StatViewHistogram';
 
 ChartJS.register(
     CategoryScale,
@@ -170,7 +171,7 @@ const rtt_options = {
     },
 }
 
-function getTimeUnit(value: number): [value: number, unit: string]{
+function getTimeUnit(value: number): [value: number, unit: string] {
     const units = ['ns', 'μs', 'ms', 's'];
     let unitIndex = 0;
 
@@ -185,10 +186,10 @@ function getTimeUnit(value: number): [value: number, unit: string]{
 }
 
 const generateLineData = (data_key: string, use_key: boolean, data: TimeStatistics, port_mapping: { [name: number]: number }): [string[], number[]] => {
-    let cum_data: {[name: number]: number}[] = []
+    let cum_data: { [name: number]: number }[] = []
 
-    if(data_key in data) {
-        if(use_key) {
+    if (data_key in data) {
+        if (use_key) {
             Object.keys(port_mapping).map(v => {
                 // @ts-ignore
                 if (v in data[data_key]) {
@@ -213,7 +214,7 @@ const generateLineData = (data_key: string, use_key: boolean, data: TimeStatisti
         const found = Object.keys(acc)
 
         key.forEach(k => {
-            if(Object.keys(acc).includes(k)) {
+            if (Object.keys(acc).includes(k)) {
                 // @ts-ignore
                 acc[k] += current[k]
             }
@@ -231,9 +232,9 @@ const generateLineData = (data_key: string, use_key: boolean, data: TimeStatisti
 
 const renderTooltip = (props: any) => (
     <Tooltip id="tooltip-disabled" {...props}>
-      RTT Histogram is only available in the port view.
+        RTT Histogram is only available in the port view.
     </Tooltip>
-  );
+);
 
 const generateHistogram = (
     data: Statistics,
@@ -248,7 +249,7 @@ const generateHistogram = (
     if (histogram_data) {
         const ports = Object.values(port_mapping).map(String);
         ports.forEach(port => {
-            
+
             const config = histogram_data[port]?.config;
             const data = histogram_data[port]?.data;
             if (config && data) {
@@ -312,7 +313,7 @@ const getPercentileAnnotations = (
 
         ports.forEach(port => {
             const config = histogram[port]?.config;
-            const data = histogram[port]?.data;         
+            const data = histogram[port]?.data;
 
             if (config && data) {
                 const percentile_data = data.percentiles;
@@ -351,18 +352,15 @@ const getPercentileAnnotations = (
                                 family: 'sans-serif',
                                 color: '#fff',
                             },
-                            padding: 4, // Reduced padding for a tighter fit
+                            padding: 4,
                             borderRadius: 7,
                             position: 'center',
                             xAdjust: 0,
                             yAdjust: -10,
-                            borderShadowColor: '2px 2px 4px rgba(0, 0, 0, 0.2)', // Add a subtle shadow to lift the label
                         };
                     }
                     percentileIndex += 1
                 });
-
-
             }
         });
     }
@@ -370,7 +368,7 @@ const getPercentileAnnotations = (
     return annotations;
 };
 
-const get_frame_types = (stats: Statistics, port_mapping: {[name: number]: number}, type: string): { tx: number, rx: number } => {
+const get_frame_types = (stats: Statistics, port_mapping: { [name: number]: number }, type: string): { tx: number, rx: number } => {
     let ret = { "tx": 0, "rx": 0 }
 
     if (stats.frame_type_data == undefined) {
@@ -380,7 +378,7 @@ const get_frame_types = (stats: Statistics, port_mapping: {[name: number]: numbe
     Object.keys(stats.frame_type_data).forEach((v: string) => {
         if (Object.keys(port_mapping).includes(v)) {
             // @ts-ignore
-            if(!(type in stats.frame_type_data[v].tx)) {
+            if (!(type in stats.frame_type_data[v].tx)) {
                 ret.tx += 0
             }
             else {
@@ -391,7 +389,7 @@ const get_frame_types = (stats: Statistics, port_mapping: {[name: number]: numbe
 
         if (Object.values(port_mapping).map(Number).includes(parseInt(v))) {
             // @ts-ignore
-            if(!(type in stats.frame_type_data[v].rx)) {
+            if (!(type in stats.frame_type_data[v].rx)) {
                 ret.rx += 0
             }
             else {
@@ -404,7 +402,7 @@ const get_frame_types = (stats: Statistics, port_mapping: {[name: number]: numbe
     return ret
 }
 
-const get_frame_stats = (stats: Statistics, port_mapping: {[name: number]: number}, type: string, low: number, high: number) => {
+const get_frame_stats = (stats: Statistics, port_mapping: { [name: number]: number }, type: string, low: number, high: number) => {
     let ret = 0
 
     if (stats.frame_size == undefined || port_mapping == undefined) {
@@ -426,10 +424,10 @@ const get_frame_stats = (stats: Statistics, port_mapping: {[name: number]: numbe
     return ret
 }
 
-const get_rtt = (data: TimeStatistics, port_mapping: {[name: number]: number}): [string[], number[]] => {
-    let cum_data: {[name: number]: number}[] = []
+const get_rtt = (data: TimeStatistics, port_mapping: { [name: number]: number }): [string[], number[]] => {
+    let cum_data: { [name: number]: number }[] = []
 
-    if("rtt" in data) {
+    if ("rtt" in data) {
         Object.values(port_mapping).map(v => {
             // @ts-ignore
             if (v in data["rtt"]) {
@@ -443,7 +441,7 @@ const get_rtt = (data: TimeStatistics, port_mapping: {[name: number]: number}): 
         const key = Object.keys(current)
 
         key.forEach(k => {
-            if(Object.keys(acc[0]).includes(k)) {
+            if (Object.keys(acc[0]).includes(k)) {
                 // @ts-ignore
                 acc[0][k] += current[k]
                 // @ts-ignore
@@ -460,7 +458,7 @@ const get_rtt = (data: TimeStatistics, port_mapping: {[name: number]: number}): 
         return acc
     }, [{}, {}])
 
-    Object.keys(ret_data[0]).forEach (v => {
+    Object.keys(ret_data[0]).forEach(v => {
         // @ts-ignore
         ret_data[0][v] = ret_data[0][v] / ret_data[1][v]
     })
@@ -468,7 +466,7 @@ const get_rtt = (data: TimeStatistics, port_mapping: {[name: number]: number}): 
     return [Object.keys(ret_data[0]).map(v => secondsToTime(parseInt(v))), Object.values(ret_data[0])]
 }
 
-const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics, stats: Statistics, port_mapping: { [name: number]: number }, is_summary: boolean}) => {
+const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: TimeStatistics, stats: Statistics, port_mapping: { [name: number]: number }, is_summary: boolean, rx_port: number }) => {
     const [labels_tx, line_data_tx] = generateLineData("tx_rate_l1", true, data, port_mapping)
     const [labels_rx, line_data_rx] = generateLineData("rx_rate_l1", false, data, port_mapping)
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)
@@ -485,14 +483,14 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
             {
                 fill: true,
                 label: 'TX rate',
-                data: line_data_tx.map(val => val * 10**-9),
+                data: line_data_tx.map(val => val * 10 ** -9),
                 borderColor: 'rgb(53, 162, 235)',
                 backgroundColor: 'rgba(53, 162, 235, 0.5)',
             },
             {
                 fill: true,
                 label: 'RX rate',
-                data: line_data_rx.map(val => val * 10**-9),
+                data: line_data_rx.map(val => val * 10 ** -9),
                 borderColor: 'rgb(183,85,40)',
                 backgroundColor: 'rgb(250,122,64, 0.5)',
             },
@@ -525,10 +523,10 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
             {
                 fill: true,
                 label: 'RTT',
-                data: line_data_rtt.map(val => val * 10**-3),
+                data: line_data_rtt.map(val => val * 10 ** -3),
                 borderColor: 'rgb(53, 162, 235)',
                 backgroundColor: 'rgba(53, 162, 235, 0.5)',
-            },            
+            },
         ]
     }
 
@@ -540,9 +538,9 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
             {
                 label: 'TX frame types',
                 data: [get_frame_types(stats, port_mapping, "multicast").tx,
-                    get_frame_types(stats, port_mapping, "broadcast").tx,
-                    get_frame_types(stats, port_mapping, "unicast").tx,
-                    get_frame_types(stats, port_mapping, "vxlan").tx],
+                get_frame_types(stats, port_mapping, "broadcast").tx,
+                get_frame_types(stats, port_mapping, "unicast").tx,
+                get_frame_types(stats, port_mapping, "vxlan").tx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
@@ -554,9 +552,9 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
             {
                 label: 'RX frame types',
                 data: [get_frame_types(stats, port_mapping, "multicast").rx,
-                    get_frame_types(stats, port_mapping, "broadcast").rx,
-                    get_frame_types(stats, port_mapping, "unicast").rx,
-                    get_frame_types(stats, port_mapping, "vxlan").rx],
+                get_frame_types(stats, port_mapping, "broadcast").rx,
+                get_frame_types(stats, port_mapping, "unicast").rx,
+                get_frame_types(stats, port_mapping, "vxlan").rx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
@@ -666,7 +664,7 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
             {
                 label: 'RTT distribution',
                 data: hist_data_rtt,
-                backgroundColor: 'rgba(53, 162, 235, 0.5)'                     
+                backgroundColor: 'rgba(53, 162, 235, 0.5)'
             },
         ]
     }
@@ -679,7 +677,7 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
                 beginAtZero: true,
                 title: {
                     display: true,
-                    text: '#Packets'
+                    text: 'Probability'
                 }
             },
             x: {
@@ -702,26 +700,26 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
     // Conditional rendering
     const rttHistogramCheck = (
         <Form.Check
-        inline
-        label="RTT Histogram"
-        type="radio"
-        name={"visuals"}
-        checked={visual_select === "rtt_histogram"}
-        disabled={is_summary}
-        id={`rtt_histogram`}
+            inline
+            label="RTT Histogram"
+            type="radio"
+            name={"visuals"}
+            checked={visual_select === "rtt_histogram"}
+            disabled={is_summary}
+            id={`rtt_histogram`}
         />
-    );    
+    );
 
     // @ts-ignore
     return <>
         {visual_select == "rate" ?
-            <Line options={rate_options} data={rate_data}/>
+            <Line options={rate_options} data={rate_data} />
             :
             null
         }
 
         {visual_select == "loss" ?
-            <Line options={loss_options} data={loss_data}/>
+            <Line options={loss_options} data={loss_data} />
             :
             null
         }
@@ -729,13 +727,13 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
         {visual_select == "frame" ?
             <Row>
                 <Col className={"col-4"}>
-                    <Doughnut data={frame_type_data} options={frame_options} title={"Frame types"}/>
+                    <Doughnut data={frame_type_data} options={frame_options} title={"Frame types"} />
                 </Col>
                 <Col className={"col-4"}>
-                    <Doughnut data={ethernet_type_data} options={frame_options}/>
+                    <Doughnut data={ethernet_type_data} options={frame_options} />
                 </Col>
                 <Col className={"col-4"}>
-                    <Doughnut data={frame_size_data} options={frame_options}/>
+                    <Doughnut data={frame_size_data} options={frame_options} />
                 </Col>
             </Row>
             :
@@ -743,13 +741,16 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
         }
 
         {visual_select == "rtt" ?
-            <Line options={rtt_options} data={rtt_data}/>
+            <Line options={rtt_options} data={rtt_data} />
             :
             null
         }
 
         {visual_select == "rtt_histogram" ?
-            <Bar options={rtt_histogram_options} data={rtt_hist_data} />
+            <>
+                <StatViewHistogram stats={stats} port_mapping={port_mapping} rx_port={rx_port}/>
+                <Bar options={rtt_histogram_options} data={rtt_hist_data} />
+            </>
             :
             null
         }
@@ -780,15 +781,15 @@ const Visuals = ({data, stats, port_mapping, is_summary}: {data: TimeStatistics,
                     checked={visual_select == "rtt"}
                     id={`rtt`}
                 />
-                {is_summary ? 
+                {is_summary ?
                     <OverlayTrigger placement="top" overlay={renderTooltip}>
                         <span className="d-inline-block">
                             {rttHistogramCheck}
                         </span>
                     </OverlayTrigger>
-                    : 
+                    :
                     rttHistogramCheck
-                }       
+                }
                 <Form.Check
                     inline
                     label="Frames"
