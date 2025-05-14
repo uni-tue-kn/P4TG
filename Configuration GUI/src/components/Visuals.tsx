@@ -241,6 +241,7 @@ const generateHistogram = (
     port_mapping: { [name: number]: number }
 ): [string[], number[]] => {
     const histogram_data = data["rtt_histogram"];
+    // We only use the probabilities from the bin_data here
     let combined_bins: { [binIndex: string]: number } = {};
     let min = Infinity;
     let max = -Infinity;
@@ -259,7 +260,7 @@ const generateHistogram = (
 
                 for (let i = 0; i < config.num_bins; i++) {
                     const binKey = i.toString();
-                    const value = data.data_bins[binKey] || 0;
+                    const value = data.data_bins[binKey]?.probability || 0;
                     combined_bins[binKey] = (combined_bins[binKey] || 0) + value;
                 }
             }
@@ -317,7 +318,9 @@ const getPercentileAnnotations = (
 
             if (config && data) {
                 const percentile_data = data.percentiles;
-                const maxYValue = Math.max(...Object.values(data.data_bins));
+                const maxYValue = Math.max(
+                    ...Object.values(data.data_bins).map((entry) => entry.probability)
+                );
                 let percentileIndex = 0
 
                 Object.entries(percentile_data).forEach(([key, value]) => {

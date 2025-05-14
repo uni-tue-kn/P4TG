@@ -233,10 +233,8 @@ impl Default for RttHistogramConfig {
 
 #[derive(Serialize, Debug, Clone, ToSchema, Default)]
 pub struct RttHistogramData {
-    /// HashMap with bin index as key and probability as value.
-    pub data_bins: HashMap<u32, f64>,
-    /// HashMap with bin index as key and bin count as value.
-    pub count_bins: HashMap<u32, u128>,
+    /// HashMap with bin index as key and bin count with probability as value.
+    pub data_bins: HashMap<u32, RttHistogramBinEntry>,
     /// HashMap with percentiles and their values.
     pub percentiles: HashMap<u32, f64>,
     /// Mean RTT calculated from the histogram data.
@@ -247,6 +245,14 @@ pub struct RttHistogramData {
     pub total_pkt_count: u128,
     /// Number of packets not matched to any bin.
     pub missed_bin_count: u128,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema, Default)]
+pub struct RttHistogramBinEntry {
+    /// Number of packets in this bin.
+    pub count: u128,
+    /// Probability for this bin based on total_pkt_count.
+    pub probability: f64,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]

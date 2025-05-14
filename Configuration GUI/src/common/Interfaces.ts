@@ -31,8 +31,13 @@ export type RttHistogramConfig = {
     num_bins: number;
   };
   
+export type RttHistogramBinEntry = {
+    count: bigint,
+    probability: number,
+}
+
   export type RttHistogramData = {
-    data_bins: Record<string, number>; // Actually this should be bigint, but Chart does not support bigint for plotting
+    data_bins: Record<string, RttHistogramBinEntry>;
     percentiles: Record<string, number>;
     mean_rtt: number;
     std_dev_rtt: number;

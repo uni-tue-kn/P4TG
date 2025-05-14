@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use log::{info, warn};
 use rbfrt::{
     error::RBFRTError,
-    table::{self, MatchValue, Request, TableEntry, ToBytes},
+    table::{self, MatchValue, Request, ToBytes},
     SwitchConnection,
 };
 
@@ -12,7 +12,7 @@ use crate::core::traffic_gen_core::const_definitions::RTT_HISTOGRAM_TABLE;
 use crate::{AppState, PortMapping};
 
 use super::{
-    statistics::RttHistogram,
+    statistics::{RttHistogram, RttHistogramBinEntry},
     traffic_gen_core::{event::TrafficGenEvent, types::GenerationMode},
 };
 
@@ -179,7 +179,14 @@ impl HistogramMonitor {
                                                     .as_u128()
                                             })
                                             .sum();
-                                        bins_data.insert(b, pkt_bin_count);
+                                        // Insert bin count. Probabilities will be updated later
+                                        bins_data.insert(
+                                            b,
+                                            RttHistogramBinEntry {
+                                                count: pkt_bin_count,
+                                                probability: 0f64,
+                                            },
+                                        );
 
                                         let bin_middle_value: f64 = hist_config.min as f64
                                             + b as f64 * hist_config.get_bin_width() as f64
@@ -224,34 +231,17 @@ impl HistogramMonitor {
                                         - mean_rtt.powi(2));
                                 let std_dev = variance.sqrt();
 
-                                /*
-                                // After knowing the mean, we have to iterate the bin data a second time to calculate the standard deviation
-                                let mut variance_sum = 0f64;
-                                for (b, pkt_count) in &bins_data {
-                                    let bin_middle_value: f64 = hist_config.min as f64
-                                        + *b as f64 * hist_config.get_bin_width() as f64
-                                        + (hist_config.get_bin_width() as f64 / 2f64);
-                                    let diff = bin_middle_value - mean_rtt;
-                                    variance_sum += *pkt_count as f64 * diff * diff;
-                                }
-                                let variance = variance_sum / (total_pkt_count as f64 - 1f64);
-                                 */
-
                                 // Map y-axis of histogram to probability from [0, 1]
-                                let probabilities_bin = bins_data
-                                    .clone()
-                                    .into_iter()
-                                    .map(|(b, count)| {
-                                        (b, count as f64 / total_pkt_count as f64 * 100f64)
-                                    })
-                                    .collect::<HashMap<u32, f64>>();
+                                for (_bin_index, entry) in bins_data.iter_mut() {
+                                    entry.probability =
+                                        entry.count as f64 / total_pkt_count as f64 * 100f64;
+                                }
 
                                 // Write data
                                 if let Some(hist_data_mut) =
                                     rtt_histogram_monitor.histogram.get_mut(&port)
                                 {
-                                    hist_data_mut.data.data_bins = probabilities_bin;
-                                    hist_data_mut.data.count_bins = bins_data;
+                                    hist_data_mut.data.data_bins = bins_data;
                                     hist_data_mut.data.percentiles = percentile_results;
                                     hist_data_mut.data.missed_bin_count = missed_bin_count;
                                     hist_data_mut.data.total_pkt_count = total_pkt_count;
@@ -317,7 +307,7 @@ impl HistogramMonitor {
     }
 
     fn estimate_percentiles_from_bins(
-        bins_data: &HashMap<u32, u128>,
+        bins_data: &HashMap<u32, RttHistogramBinEntry>,
         percentiles: Vec<f64>,
         hist: &RttHistogram,
     ) -> HashMap<u32, f64> {
@@ -329,15 +319,15 @@ impl HistogramMonitor {
         let mut sorted_bins: Vec<_> = bins_data.iter().collect();
         sorted_bins.sort_by_key(|&(index, _)| *index);
 
-        let total: u128 = sorted_bins.iter().map(|&(_, count)| *count).sum();
+        let total: u128 = sorted_bins.iter().map(|&(_, entry)| entry.count).sum();
 
         let mut results = HashMap::new();
         let mut cumulative = 0u128;
         let mut current_percentile_index = 0;
 
-        for &(bin_index, count) in &sorted_bins {
+        for &(bin_index, entry) in &sorted_bins {
             // Calculate cumulative sum of bins until percentile is reached
-            cumulative += count;
+            cumulative += entry.count;
             let current_fraction = cumulative as f64 / total as f64;
 
             // Catch up on all percentiles less than or equal to this point
