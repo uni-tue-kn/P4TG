@@ -142,7 +142,7 @@ impl HistogramMonitor {
                                 let mut bins_data = HashMap::new();
                                 let mut missed_bin_count = 0;
                                 // Used to calculate the mean RTT based on the histogram
-                                let mut running_sum_frequency: f64 = 0.0;
+                                let mut running_sum: f64 = 0.0;
                                 let mut running_sum_square: f64 = 0.0;
                                 let mut total_pkt_count = 0;
 
@@ -185,9 +185,9 @@ impl HistogramMonitor {
                                             + b as f64 * hist_config.get_bin_width() as f64
                                             + (hist_config.get_bin_width() as f64 / 2f64);
 
-                                        running_sum_frequency +=
-                                            bin_middle_value * pkt_bin_count as f64;
-                                        running_sum_square += bin_middle_value.powi(2) * pkt_bin_count as f64;
+                                        running_sum += bin_middle_value * pkt_bin_count as f64;
+                                        running_sum_square +=
+                                            bin_middle_value.powi(2) * pkt_bin_count as f64;
                                         total_pkt_count += pkt_bin_count;
                                     }
 
@@ -216,9 +216,12 @@ impl HistogramMonitor {
 
                                 // Calculate mean RTT from histogram data
                                 let mean_rtt: f64 =
-                                    (running_sum_frequency / total_pkt_count as f64).max(0f64);
+                                    (running_sum / total_pkt_count as f64).max(0f64);
 
-                                let variance = (running_sum_square / total_pkt_count as f64).max(0f64) - mean_rtt.powi(2);
+                                let variance = (total_pkt_count as f64
+                                    / (total_pkt_count as f64 - 1f64))
+                                    * ((running_sum_square / total_pkt_count as f64).max(0f64)
+                                        - mean_rtt.powi(2));
                                 let std_dev = variance.sqrt();
 
                                 /*
@@ -235,16 +238,20 @@ impl HistogramMonitor {
                                  */
 
                                 // Map y-axis of histogram to probability from [0, 1]
-                                let frequencies_bin = bins_data
+                                let probabilities_bin = bins_data
+                                    .clone()
                                     .into_iter()
-                                    .map(|(b, count)| (b, count as f64 / total_pkt_count as f64))
+                                    .map(|(b, count)| {
+                                        (b, count as f64 / total_pkt_count as f64 * 100f64)
+                                    })
                                     .collect::<HashMap<u32, f64>>();
 
                                 // Write data
                                 if let Some(hist_data_mut) =
                                     rtt_histogram_monitor.histogram.get_mut(&port)
                                 {
-                                    hist_data_mut.data.data_bins = frequencies_bin;
+                                    hist_data_mut.data.data_bins = probabilities_bin;
+                                    hist_data_mut.data.count_bins = bins_data;
                                     hist_data_mut.data.percentiles = percentile_results;
                                     hist_data_mut.data.missed_bin_count = missed_bin_count;
                                     hist_data_mut.data.total_pkt_count = total_pkt_count;

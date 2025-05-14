@@ -677,7 +677,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
                 beginAtZero: true,
                 title: {
                     display: true,
-                    text: 'Probability'
+                    text: 'Probability (%)'
                 }
             },
             x: {
@@ -748,7 +748,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
 
         {visual_select == "rtt_histogram" ?
             <>
-                <StatViewHistogram stats={stats} port_mapping={port_mapping} rx_port={rx_port}/>
+                <StatViewHistogram stats={stats} port_mapping={port_mapping} rx_port={rx_port} />
                 <Bar options={rtt_histogram_options} data={rtt_hist_data} />
             </>
             :
