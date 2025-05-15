@@ -62,7 +62,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     // @ts-ignore
     const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
     // @ts-ignore
-    const [histogram_settings, set_histogram_settings] = useState<Record<string, RttHistogramConfig>>(JSON.parse(localStorage.getItem("histogramSettings")) || {})
+    const [histogram_settings, set_histogram_settings] = useState<Record<string, RttHistogramConfig>>(JSON.parse(localStorage.getItem("histogram_config")) || {})
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
@@ -89,19 +89,6 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
     const loadGen = async () => {
 
-        let histogram_config = await get({route: "/histogram"})
-        if (histogram_config !== undefined) {
-            if (Object.keys(histogram_config.data).length > 1) {
-                let old_hist = JSON.stringify(histogram_settings)
-
-                if (old_hist != JSON.stringify(histogram_config.data)){
-                    set_histogram_settings(histogram_config.data)
-                    localStorage.setItem("histogramSettings", JSON.stringify(histogram_config.data))
-                }
-            }
-        }
-
-
         let stats = await get({route: "/trafficgen"})
         if (stats !== undefined) {
             if (Object.keys(stats.data).length > 1) {
@@ -113,12 +100,14 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                     set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
                     set_stream_settings(stats.data.stream_settings)
                     set_streams(stats.data.streams)
+                    set_histogram_settings(stats.data.histogram_config)
 
                     localStorage.setItem("streams", JSON.stringify(stats.data.streams))
                     localStorage.setItem("gen-mode", stats.data.mode)
                     localStorage.setItem("duration", stats.data.duration)
                     localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
                     localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
+                    localStorage.setItem("histogram_config", JSON.stringify(stats.data.histogram_config))
                 }
                 set_running(true)
             } else {
@@ -144,7 +133,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
         localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
 
-        localStorage.setItem("histogramSettings", JSON.stringify(histogram_settings))
+        localStorage.setItem("histogram_config", JSON.stringify(histogram_settings))
 
 
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(port_tx_rx_mapping))
@@ -185,6 +174,15 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         }
     }
 
+    const updateHistogramSettings = (pid: number, updated: RttHistogramConfig) => {
+        const updatedData = {
+            ...histogram_settings,
+            [String(pid)]: updated
+        };
+        set_histogram_settings(updatedData);
+        localStorage.setItem("histogram_config", JSON.stringify(updatedData)); // Optional but probably helpful
+    }
+
     const removeStream = (id: number) => {
         set_streams(streams.filter(v => v.stream_id != id))
         set_stream_settings(stream_settings.filter(v => v.stream_id != id))
@@ -197,6 +195,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
             "streams": streams,
             "port_tx_rx_mapping": port_tx_rx_mapping,
             "duration": duration
+            // TODO histogram config
         }
 
         const json = `data:text/json;charset=utf-8,${encodeURIComponent(
@@ -469,7 +468,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
                                             }
                                         </Form.Select>
                                         
-                                        <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings}/>
+                                        <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings} set_data={updateHistogramSettings}/>
                                     </StyledCol>
                                     <StreamSettingsList stream_settings={stream_settings} streams={streams}
                                                         running={running} port={v} p4tg_infos={p4tg_infos}/>
