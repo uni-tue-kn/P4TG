@@ -8,11 +8,19 @@
   - Packets are matched in the data plane based on configured histogram settings (no sampling)
   - .25, .50, .75, and .90 percentiles are calculated based on the histogram data
   - Histogram is rendered in frontend
+  - The `GET:api/traffic_gen` endpoint now includes the histogram config
 - New API endpoints for histogram configuration: `POST:api/histogram` for histogram configuration and `GET:api/histogram` to retrieve configuration
+- Test automation by providing a list of tests
+  - The `POST:api/trafficgen` endpoint now accepts either a single TrafficGen object, or a list of TrafficGen objects for test automation
+  - Configuration of multiple sequential tests is available in the frontend settings
+  - Visualization and statistics per test are available in the frontend and are provided in the `GET:api/statistics` and `GET:api/time_statistics` endpoints
+  - The `DELETE:api/trafficgen` is extended with an optional `skip: boolean` parameter to skip a single test
+  - Objects in / for `POST:api/trafficgen`, `GET:api/trafficgen`, `GET:api/statistics`, and `GET:api/time_statistics` now have an optional `name` and `histogram_config` entry
 
 ### Bug fixes
 - Fixed text color in Modals in dark mode
 - Fixed frontend crash if controller goes offline
+- Fixed bug in port validation on settings import
 - Added missing API docs for `online` endpoint
 - Fixed RX frame type statistic for ARP frames in frontend
 
