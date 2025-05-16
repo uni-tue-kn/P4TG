@@ -70,25 +70,6 @@ const HistogramModal = ({
         hide();
     };
 
-    const updateConfig = async (pid: number, min: number, max: number, num_bins: number) => {
-            let update = await post({
-                route: "/histogram", body: {
-                    port: pid,
-                    config: {
-                        min: min,
-                        max: max,
-                        num_bins: num_bins
-                    }
-                }
-            })
-
-            if (update && update.status === 200) {
-                alert("Histogram config saved.")
-                hide()
-            } else {
-                setAlertMessage("Config is not valid.")
-            }
-    }
 
     const handleUnit = (newUnit: string) => {
         // Changes the displayed value for min and max if the unit is changed in the dropdown, e.g., 2500 ns -> 2.5 us
