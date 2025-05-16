@@ -26,12 +26,12 @@ use axum::response::{Json, IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use crate::AppState;
-use crate::core::statistics::{IATStatistics, IATValues, RTTStatistics, RangeCount, RttHistogram, TimeStatistic, TypeCount};
+use crate::core::statistics::{HistoryTimeStatistic, IATStatistics, IATValues, RTTStatistics, RangeCount, RttHistogram, TimeStatistic, CommonTimeStatistic, TypeCount};
 
 use crate::api::{docs, helper};
 
-#[derive(Serialize, ToSchema)]
-pub struct Statistics {
+#[derive(Serialize, ToSchema, Clone)]
+pub struct CommonStatistics {
     /// Indicates whether the sample mode is used or not.
     /// In sampling mode, IATs are sampled and not calculated in the data plane.
     /// It is recommended to don't use the sample mode to get more precise values
@@ -65,10 +65,41 @@ pub struct Statistics {
     /// Elapsed time since the traffic generation has started in seconds.
     pub(crate) elapsed_time: u32,
     /// RTT histogram data per port and per bin.
-    pub(crate) rtt_histogram: HashMap<u32, RttHistogram>    
+    pub(crate) rtt_histogram: HashMap<u32, RttHistogram>,
+    // Name of the test for the statistics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) name: Option<String>,
+
 }
 
-#[derive(Serialize, ToSchema)]
+
+#[derive(Serialize, ToSchema, Clone)]
+pub struct Statistics {
+    #[serde(flatten)]
+    pub(crate) inner: CommonStatistics,
+
+    /// Save previous statistics, where the key is the test number of the statistics. 
+    /// Skip serializing if there are no previous statistics.
+    // If this is Statistics instead of HistoryStatistics, we have a recursive stack overflow
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) previous_statistics: Option<BTreeMap<u32, HistoryStatistics>>,    
+}
+
+#[derive(Serialize, ToSchema, Clone)]
+pub struct HistoryStatistics {
+    #[serde(flatten)]
+    pub(crate) inner: CommonStatistics
+}
+
+impl From<Statistics> for HistoryStatistics {
+    fn from(stats: Statistics) -> Self {
+        HistoryStatistics {
+            inner: stats.inner,
+        }
+    }
+}
+
+#[derive(Serialize, ToSchema, Clone)]
 pub struct TimeStatistics {
     /// L1 send rates per port.
     pub(crate) tx_rate_l1: HashMap<u32, HashMap<u32, f64>>,
@@ -83,7 +114,7 @@ pub struct TimeStatistics {
     /// Number of lost packets per port.
     pub(crate) packet_loss: HashMap<u32, HashMap<u32, f64>>,
     /// Number of out of order packets per port.
-    pub(crate) out_of_order: HashMap<u32, HashMap<u32, f64>>,
+    pub(crate) out_of_order: HashMap<u32, HashMap<u32, f64>>, 
 }
 
 #[utoipa::path(
@@ -98,12 +129,28 @@ pub struct TimeStatistics {
 )]
 /// Returns the current statistics such as traffic rates, frame types, etc.
 pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
+    let stats = get_statistics(&state).await;
+
+    (StatusCode::OK, Json(stats)).into_response()
+}
+
+pub async fn get_statistics(state: &Arc<AppState>) -> Statistics {
     let frame_size_monitor = &state.frame_size_monitor;
     let frame_type_monitor = &state.frame_type_monitor;
     let rate_monitor = &state.rate_monitor;
     let rtt_histogram_monitor = &state.rtt_histogram_monitor;
 
-    let mut stats = Statistics {
+    let collected_statistics = state.multiple_tests.collected_statistics.lock().await;
+
+    let previous_statistics_map = (!collected_statistics.is_empty()).then(|| {
+        collected_statistics
+            .iter()
+            .enumerate()
+            .map(|(i, stats)| ((i + 1) as u32, HistoryStatistics::from(stats.clone())))
+            .collect::<BTreeMap<u32, HistoryStatistics>>()
+    });
+
+    let mut stats = Statistics { inner: CommonStatistics {
         sample_mode: state.sample_mode,
         frame_size: Default::default(),
         frame_type_data: Default::default(),
@@ -119,12 +166,15 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
         out_of_order: Default::default(),
         elapsed_time: 0,
         rtt_histogram: Default::default(),
+        name: None},
+        previous_statistics: previous_statistics_map,
     };
 
 
-    stats.frame_size = frame_size_monitor.lock().await.statistics.frame_size.clone();
-    stats.frame_type_data = frame_type_monitor.lock().await.statistics.frame_type_data.clone();
-    stats.rtt_histogram = rtt_histogram_monitor.lock().await.histogram.clone();
+    stats.inner.frame_size = frame_size_monitor.lock().await.statistics.frame_size.clone();
+    stats.inner.frame_type_data = frame_type_monitor.lock().await.statistics.frame_type_data.clone();
+    stats.inner.rtt_histogram = rtt_histogram_monitor.lock().await.histogram.clone();
+    stats.inner.name = state.traffic_generator.lock().await.name.clone();
 
     let monitor_statistics =  rate_monitor.lock().await.statistics.clone();
 
@@ -175,23 +225,23 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
             iats.insert(*port, iat_stats);
         }
 
-        stats.iats = iats;
+        stats.inner.iats = iats;
 
     }
     else {
-        stats.iats = monitor_statistics.iats.clone();
+        stats.inner.iats = monitor_statistics.iats.clone();
     }
 
-    stats.rtts = rtt_stats;
-    stats.tx_rate_l1 = monitor_statistics.tx_rate_l1.clone();
-    stats.rx_rate_l1 = monitor_statistics.rx_rate_l1.clone();
-    stats.tx_rate_l2 = monitor_statistics.tx_rate_l2.clone();
-    stats.rx_rate_l2 = monitor_statistics.rx_rate_l2.clone();
-    stats.app_tx_l2 = monitor_statistics.app_tx_l2.clone();
-    stats.app_rx_l2 = monitor_statistics.app_rx_l2.clone();
-    stats.packet_loss = monitor_statistics.packet_loss.clone();
-    stats.out_of_order = monitor_statistics.out_of_order.clone();
-    stats.elapsed_time = {
+    stats.inner.rtts = rtt_stats;
+    stats.inner.tx_rate_l1 = monitor_statistics.tx_rate_l1.clone();
+    stats.inner.rx_rate_l1 = monitor_statistics.rx_rate_l1.clone();
+    stats.inner.tx_rate_l2 = monitor_statistics.tx_rate_l2.clone();
+    stats.inner.rx_rate_l2 = monitor_statistics.rx_rate_l2.clone();
+    stats.inner.app_tx_l2 = monitor_statistics.app_tx_l2.clone();
+    stats.inner.app_rx_l2 = monitor_statistics.app_rx_l2.clone();
+    stats.inner.packet_loss = monitor_statistics.packet_loss.clone();
+    stats.inner.out_of_order = monitor_statistics.out_of_order.clone();
+    stats.inner.elapsed_time = {
         let experiment = state.experiment.lock().await;
         if experiment.running {
             experiment.start.elapsed().unwrap_or(Duration::from_secs(0)).as_secs() as u32
@@ -201,12 +251,13 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
         }
     };
 
-    (StatusCode::OK, Json(stats)).into_response()
+    stats
+
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Params {
-    limit: Option<usize>,
+    pub limit: Option<usize>,
 }
 
 #[utoipa::path(
@@ -224,8 +275,24 @@ pub struct Params {
 )]
 /// Returns the current statistics over time with one data point per second.
 pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): Query<Params>) -> Response {
+    let stats = get_time_statistics(&state, params).await;
+    (StatusCode::OK, Json(stats)).into_response()
+}
+
+pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> TimeStatistic {
     let rate_monitor = &state.rate_monitor;
     let stats = rate_monitor.lock().await.time_statistics.clone();
+    let collected_time_statistics = state.multiple_tests.collected_time_statistics.lock().await.clone();
+    let name = state.traffic_generator.lock().await.name.clone();
+
+    // Convert collected_time_statistics into BTreeMap
+    let previous_time_statistics_map = (!collected_time_statistics.is_empty()).then(|| {
+        collected_time_statistics
+            .iter()
+            .enumerate()
+            .map(|(i, stats)| ((i + 1) as u32, HistoryTimeStatistic::from(stats.clone())))
+            .collect::<BTreeMap<u32, HistoryTimeStatistic>>()
+    });    
 
     let limit = params.limit.unwrap_or(usize::MAX);
 
@@ -242,38 +309,40 @@ pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): 
     };
 
     // get every ratio-nth element
-    let tx: BTreeMap<u32, BTreeMap<u32, f64>> = stats.tx_rate_l1.clone()
+    let tx: BTreeMap<u32, BTreeMap<u32, f64>> = stats.inner.tx_rate_l1.clone()
         .into_iter()
         .map(|v|
             (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
 
-    let rx: BTreeMap<u32, BTreeMap<u32, f64>> = stats.rx_rate_l1.clone()
+    let rx: BTreeMap<u32, BTreeMap<u32, f64>> = stats.inner.rx_rate_l1.clone()
         .into_iter()
         .map(|v|
             (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
 
-    let packet_loss: BTreeMap<u32, BTreeMap<u32, u64>> = stats.packet_loss.clone()
+    let packet_loss: BTreeMap<u32, BTreeMap<u32, u64>> = stats.inner.packet_loss.clone()
         .into_iter()
         .map(|v|
             (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
 
-    let out_of_order: BTreeMap<u32, BTreeMap<u32, u64>> = stats.out_of_order.clone()
+    let out_of_order: BTreeMap<u32, BTreeMap<u32, u64>> = stats.inner.out_of_order.clone()
         .into_iter()
         .map(|v|
             (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();
 
-    let rtt: BTreeMap<u32, BTreeMap<u32, u64>> = stats.rtt.clone()
+    let rtt: BTreeMap<u32, BTreeMap<u32, u64>> = stats.inner.rtt.clone()
         .into_iter()
         .map(|v|
             (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();            
 
-    let stats = TimeStatistic {
+    TimeStatistic { inner: CommonTimeStatistic {
         tx_rate_l1: tx,
         rx_rate_l1: rx,
         packet_loss,
         out_of_order,
-        rtt
-    };
+        rtt,
+        name
+        },
+        previous_statistics: previous_time_statistics_map
+    }
 
-    (StatusCode::OK, Json(stats)).into_response()
 }
