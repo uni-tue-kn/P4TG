@@ -482,10 +482,10 @@ impl RateMonitor {
 
                                 // time statistic
                                 if running {
-                                    state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
+                                    state.rate_monitor.lock().await.time_statistics.inner.tx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
 
                                     // remove potential old data
-                                    state.rate_monitor.lock().await.time_statistics.tx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                                    state.rate_monitor.lock().await.time_statistics.inner.tx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
                                 }
 
                             } else {
@@ -494,14 +494,14 @@ impl RateMonitor {
 
                                 // time statistics
                                 if running {
-                                    state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
-                                    state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_default().insert(elapsed_time, packet_loss);
-                                    state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_default().insert(elapsed_time, out_of_order);
+                                    state.rate_monitor.lock().await.time_statistics.inner.rx_rate_l1.entry(*port).or_default().insert(elapsed_time, new_rate.rate_l1);
+                                    state.rate_monitor.lock().await.time_statistics.inner.packet_loss.entry(*port).or_default().insert(elapsed_time, packet_loss);
+                                    state.rate_monitor.lock().await.time_statistics.inner.out_of_order.entry(*port).or_default().insert(elapsed_time, out_of_order);
 
                                     // remove potential old data
-                                    state.rate_monitor.lock().await.time_statistics.rx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
-                                    state.rate_monitor.lock().await.time_statistics.packet_loss.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
-                                    state.rate_monitor.lock().await.time_statistics.out_of_order.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                                    state.rate_monitor.lock().await.time_statistics.inner.rx_rate_l1.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                                    state.rate_monitor.lock().await.time_statistics.inner.packet_loss.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                                    state.rate_monitor.lock().await.time_statistics.inner.out_of_order.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
                                 }
 
                                 // only write packet loss if its from a rx recirc port
@@ -551,10 +551,10 @@ impl RateMonitor {
                             let port = rx_reverse_mapping.get(&port).unwrap();
 
                             state.rate_monitor.lock().await.rtt_storage.entry(*port).or_insert(VecDeque::with_capacity(RTT_STORAGE)).push_back(rtt);
-                            state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, rtt);
+                            state.rate_monitor.lock().await.time_statistics.inner.rtt.entry(*port).or_insert(BTreeMap::default()).insert(elapsed_time, rtt);
 
                             // remove potential old data
-                            state.rate_monitor.lock().await.time_statistics.rtt.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
+                            state.rate_monitor.lock().await.time_statistics.inner.rtt.entry(*port).or_default().retain(|key, _| *key <= elapsed_time);
                         }
 
 
@@ -596,8 +596,8 @@ impl TrafficGenEvent for RateMonitor {
     async fn on_start(&mut self, switch: &SwitchConnection, mode: &GenerationMode) -> Result<(), RBFRTError> {
         switch.clear_tables(vec![MONITOR_IAT_TABLE, IS_INGRESS_TABLE]).await?;
 
-        self.time_statistics.tx_rate_l1.clear();
-        self.time_statistics.rx_rate_l1.clear();
+        self.time_statistics.inner.tx_rate_l1.clear();
+        self.time_statistics.inner.rx_rate_l1.clear();
 
         // allow iat generation
         let req = table::Request::new(MONITOR_IAT_TABLE).match_key("ig_intr_md.ingress_port", MatchValue::lpm(0, 0)).action("ingress.p4tg.nop");
@@ -625,11 +625,11 @@ impl TrafficGenEvent for RateMonitor {
         self.rtt_storage.clear();
         self.tx_iat_storage.clear();
         self.rx_iat_storage.clear();
-        self.time_statistics.tx_rate_l1.clear();
-        self.time_statistics.rx_rate_l1.clear();
-        self.time_statistics.packet_loss.clear();
-        self.time_statistics.out_of_order.clear();
-        self.time_statistics.rtt.clear();
+        self.time_statistics.inner.tx_rate_l1.clear();
+        self.time_statistics.inner.rx_rate_l1.clear();
+        self.time_statistics.inner.packet_loss.clear();
+        self.time_statistics.inner.out_of_order.clear();
+        self.time_statistics.inner.rtt.clear();
 
         let monitoring_registers = vec!["ingress.p4tg.rx_seq",
                                         "egress.tx_seq",
