@@ -25,6 +25,8 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use utoipa::ToSchema;
 
+use crate::core::statistics::RttHistogramConfig;
+
 /// Describes the supported encapsulations of P4TG.
 /// Currently, MPLS, VLAN, QinQ, and SRv6 are supported.
 ///
@@ -120,6 +122,13 @@ pub struct MPLSHeader {
     pub ttl: u32
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+#[serde(untagged)]
+pub enum TrafficGenTests {
+    SingleTest( TrafficGenData),
+    MultipleTest(Vec<TrafficGenData>)
+}
+
 /// Represents the body of the GET / POST endpoints of /trafficgen
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct TrafficGenData {
@@ -131,9 +140,14 @@ pub struct TrafficGenData {
     pub(crate) streams: Vec<Stream>,
     /// Mapping between TX (send) ports, and RX (receive) ports.
     /// Traffic send on port TX are expected to be received on port RX.
-    pub(crate) port_tx_rx_mapping: HashMap<u32, u32>,
+    pub(crate) port_tx_rx_mapping: HashMap<String, u32>,
     /// The duration of this test in seconds.
-    pub(crate) duration: Option<u32>
+    pub(crate) duration: Option<u32>,
+    /// Mapping between RX port and histogram config.
+    pub(crate) histogram_config: HashMap<String, RttHistogramConfig>,
+    /// The name of the test. This is used to identify the test in the UI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
