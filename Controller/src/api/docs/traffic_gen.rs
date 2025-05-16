@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use lazy_static::lazy_static;
+use crate::core::statistics::RttHistogramConfig;
 use crate::core::traffic_gen_core::types::*;
 
 lazy_static! {
@@ -59,7 +60,7 @@ lazy_static! {
         ],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: Some(10),
-        histogram_config: HashMap::new(),
+        histogram_config: None,
     };
 
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
@@ -117,7 +118,7 @@ lazy_static! {
         ],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
-        histogram_config: HashMap::new(),
+        histogram_config: None,
     };
 
 
@@ -195,7 +196,7 @@ lazy_static! {
         ],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
-        histogram_config: HashMap::new(),
+        histogram_config: None,
 };
 
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
@@ -252,7 +253,7 @@ lazy_static! {
         ],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
-        histogram_config: HashMap::new(),
+        histogram_config: None,
     };
 
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
@@ -323,7 +324,7 @@ lazy_static! {
             }
         ],
         duration: None,
-        histogram_config: HashMap::new(),
+        histogram_config: None,
     };
 
     pub static ref EXAMPLE_POST_4_RESPONSE: Vec<Stream> = vec![Stream {
@@ -393,7 +394,7 @@ lazy_static! {
         ],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
-        histogram_config: HashMap::new(),
+        histogram_config: None,
     };
 
     pub static ref EXAMPLE_POST_5_RESPONSE: Vec<Stream> = vec![Stream {
@@ -470,7 +471,11 @@ lazy_static! {
         ],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
-        histogram_config: HashMap::new(),
+        histogram_config: Some(HashMap::from([("136".to_string(), RttHistogramConfig {
+            min: 1000,
+            max: 2000,
+            num_bins: 100,
+        })])),
     };
 
 
