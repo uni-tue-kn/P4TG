@@ -60,13 +60,15 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
     let mapping = tg.port_mapping.clone();
     let duration = tg.duration;
 
+    // Cancel any existing duration monitor task
+    state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
+    state.multiple_tests.multiple_test_monitor_task.lock().await.cancel_existing_monitoring_task().await;
+
     match tg.start_traffic_generation(&state, active_streams, mode, active_stream_settings, &mapping).await {
         Ok(streams) => {
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
 
-            // Cancel any existing duration monitor task
-            state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
 
             // Check if a duration is desired
             if let Some(t) = duration {
