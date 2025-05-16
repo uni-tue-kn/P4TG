@@ -106,25 +106,33 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     const NumTests = ({ running }: { running: boolean }) => {
         const total_tests = Object.keys(savedConfigs).length;
-        const num_avail_stats = Math.min(Object.keys(statistics.previous_statistics || {}).length + 1, total_tests);
+        let num_avail_stats = Object.keys(statistics.previous_statistics || {}).length ;
+        let last_test = false
+
+        if (num_avail_stats !== total_tests){
+            num_avail_stats += 1
+            last_test = num_avail_stats === total_tests
+        }
 
         return (
             <TestNumber>
-                {running && num_avail_stats !== total_tests ? (
+                {running ? (
                     <span
                         className="spinner-border spinner-border-sm"
                         role="status"
                         aria-hidden="true"
                         style={{
                             verticalAlign: 'middle',
-                            animationDuration: '0.5s' // Make spinner slower
+                            animationDuration: '0.5s'
                         }}
                     />
-                ) : !running && num_avail_stats !== total_tests ? (
+                ) : !running && (num_avail_stats !== total_tests) || last_test ? (
                     <i className="bi bi-pause-circle-fill" />
-                ) : (
+                ) : !running && num_avail_stats === total_tests ? (
                     <i className="bi bi-check-circle-fill" />
-                )} &nbsp;
+                )
+                    : null}
+                &nbsp;
                 Test {num_avail_stats} / {total_tests}
             </TestNumber>
         );
