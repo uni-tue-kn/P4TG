@@ -34,12 +34,14 @@ const HistogramModal = ({
     data,
     disabled,
     pid,
+    set_data
 }: {
     show: boolean,
     hide: () => void,
     data: RttHistogramConfig,
     disabled: boolean,
     pid: number
+    set_data: (pid: number, updated: RttHistogramConfig) => void,
 }) => {
 
     const [tmp_data, set_tmp_data] = useState(data || [])
@@ -51,7 +53,11 @@ const HistogramModal = ({
     // useEffect to reset tmp_data when data changes
     useEffect(() => {
         if (show){ 
-            set_tmp_data({ ...data });
+            set_tmp_data({
+                min: data?.min ?? 1500,
+                max: data?.max ?? 2500,
+                num_bins: data?.num_bins ?? 10,
+            });
             setUnit("ns");
             setAlertMessage(null);
         }
@@ -124,11 +130,15 @@ const HistogramModal = ({
 
         setAlertMessage(null);
 
-        data.num_bins = tmp_data.num_bins
-        data.min = min
-        data.max = max
+        set_data(pid, {
+            num_bins: tmp_data.num_bins,
+            min,
+            max
+        });
+        
+        hide();
 
-        updateConfig(pid, min, max, tmp_data.num_bins)
+        //updateConfig(pid, min, max, tmp_data.num_bins)
     }
 
     const handleChange = (field: keyof RttHistogramConfig, value: string) => {
@@ -163,7 +173,6 @@ const HistogramModal = ({
                             onChange={(e) => handleChange("min", e.target.value)}
                             required
                             disabled={disabled}
-                            defaultValue={1500}
                         />
                     </Col>
                     <Col sm={1} className="text-center">
@@ -176,7 +185,6 @@ const HistogramModal = ({
                             onChange={(e) => handleChange("max", e.target.value)}
                             required
                             disabled={disabled}
-                            defaultValue={2500}
                         />
                     </Col>
                     <Col sm={3}>
@@ -199,7 +207,6 @@ const HistogramModal = ({
                             min={1}
                             required
                             disabled={disabled}
-                            defaultValue={10}
                         />
                     </Col>
                 </Form.Group>
