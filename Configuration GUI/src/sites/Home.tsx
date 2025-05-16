@@ -17,16 +17,14 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
-import {Button, Col, Form, Row, Tab, Tabs} from 'react-bootstrap'
-import {del, get, post} from "../common/API";
+import React, { useEffect, useState } from 'react'
+import { Button, Col, Form, Nav, Row, Tab, Tabs } from 'react-bootstrap'
+import { del, get, post } from "../common/API";
 import SendReceiveMonitor from "../components/SendReceiveMonitor";
-import StatView from "../components/StatView";
 import Loader from "../components/Loader";
 
 import {
     ASIC,
-    Encapsulation,
     GenerationMode,
     P4TGInfos,
     Statistics as StatInterface,
@@ -34,10 +32,11 @@ import {
     Stream,
     StreamSettings,
     TimeStatistics,
-    TimeStatisticsObject
+    TimeStatisticsObject,
+    TrafficGenData
 } from '../common/Interfaces'
 import styled from "styled-components";
-import StreamView from "../components/StreamView";
+import SummaryView from '../components/SummaryView';
 
 styled(Row)`
     display: flex;
@@ -57,6 +56,18 @@ const StyledLink = styled.a`
     }
 `
 
+const TestNumber = styled.span`
+    margin-right: 10px;
+    min-width: 140px;
+    max-width: 140px;
+    text-align: center;
+    margin-bottom: 10px;
+    background: var(--color-secondary);
+    padding: 10px 5px 10px 5px;
+    color: #FFF;
+    border-radius: 10px;
+    display: inline-block;
+`
 
 export const GitHub = () => {
     return <Row className="mt-2">
@@ -67,7 +78,7 @@ export const GitHub = () => {
     </Row>
 }
 
-const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
+const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const [loaded, set_loaded] = useState(false)
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
@@ -79,11 +90,45 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
+    // @ts-ignore
+    const [histogram_settings, set_histogram_settings] = useState<Record<string, RttHistogramConfig>>(JSON.parse(localStorage.getItem("histogram_config")) || {})
+
+    const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>(
+        JSON.parse(localStorage.getItem("saved_configs") || '{}') as Record<string, TrafficGenData>
+    );
+    const [activeTab, setActiveTab] = useState(running ? "current" : Object.keys(savedConfigs)[0]);
+
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
     const [statistics, set_statistics] = useState<StatInterface>(StatisticsObject)
     const [time_statistics, set_time_statistics] = useState<TimeStatistics>(TimeStatisticsObject)
+
+    const NumTests = ({ running }: { running: boolean }) => {
+        const total_tests = Object.keys(savedConfigs).length;
+        const num_avail_stats = Math.min(Object.keys(statistics.previous_statistics || {}).length + 1, total_tests);
+
+        return (
+            <TestNumber>
+                {running && num_avail_stats !== total_tests ? (
+                    <span
+                        className="spinner-border spinner-border-sm"
+                        role="status"
+                        aria-hidden="true"
+                        style={{
+                            verticalAlign: 'middle',
+                            animationDuration: '0.5s' // Make spinner slower
+                        }}
+                    />
+                ) : !running && num_avail_stats !== total_tests ? (
+                    <i className="bi bi-pause-circle-fill" />
+                ) : (
+                    <i className="bi bi-check-circle-fill" />
+                )} &nbsp;
+                Test {num_avail_stats} / {total_tests}
+            </TestNumber>
+        );
+    }
 
     useEffect(() => {
         const refresh = async () => {
@@ -106,60 +151,33 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
 
     }, [])
 
-    const activePorts = (): { "tx": number, "rx": number }[] => {
-        let active_ports: { tx: number, rx: number }[] = []
-        let exists: number[] = []
+    useEffect(() => {
+        // Only hide overlay if it was shown for starting a test (mode 0 means "starting")
+        console.log(mode)
+        if (running && overlay && mode !== 0) {
+            set_overlay(false);
+        }
+    }, [mode]);
 
-        Object.keys(port_tx_rx_mapping).forEach((tx_port: string) => {
-            let port = parseInt(tx_port)
-            exists.push(port)
-            active_ports.push({tx: port, rx: port_tx_rx_mapping[port]})
-        })
+    // Update activeTab when `running` changes
+    useEffect(() => {
+        // Either switch to the first tab, or stay at the active tab if its not the "Running" one 
+        setActiveTab(running ? "current" : activeTab === "current" ? Object.keys(savedConfigs)[0] : activeTab);
+    }, [running]);
 
-        return active_ports
-    }
-
-    const getStreamIDsByPort = (pid: number): number[] => {
-        let ret: number[] = []
-
-        stream_settings.forEach(v => {
-            if (v.port === pid && v.active) {
-                streams.forEach(s => {
-                    if (s.stream_id === v.stream_id) {
-                        ret.push(s.app_id)
-                        return
-                    }
-                })
-            }
-        })
-
-        return ret
-    }
-
-    const getStreamFrameSize = (stream_id: number): number => {
-        let ret = 0
-
-        streams.forEach(v => {
-            if (v.app_id === stream_id) {
-                ret = v.frame_size
-                if (v.encapsulation === Encapsulation.Q) {
-                    ret += 4
-                } else if (v.encapsulation === Encapsulation.QinQ) {
-                    ret += 8
-                }
-                else if (v.encapsulation === Encapsulation.MPLS) {
-                    ret += v.number_of_lse * 4 // 4 bytes per LSE
-                }
-
-                if (v.vxlan) {
-                    ret += 50 // 50 bytes overhead
-                }
-
-                return
-            }
-        })
-
-        return ret
+    const serializeSavedConfigs = () => {
+        if (Object.keys(savedConfigs).length === 1) {
+            // If there is only one config, return it as an object
+            // This triggers the singleTest behaviour in the backend
+            return Object.values(savedConfigs)[0];
+        } else {
+            // Set the name of each config to the key
+            // and return an array of objects
+            // with the name and the config
+            return Object.entries(savedConfigs).map(([key, config]) => {
+                return { ...config, name: key };
+            });
+        }
     }
 
     const onSubmit = async (event: any) => {
@@ -167,49 +185,61 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
 
         let max_rate = 100;
 
-        if(p4tg_infos.asic === ASIC.Tofino2) {
+        if (p4tg_infos.asic === ASIC.Tofino2) {
             max_rate = 400;
         }
 
         set_overlay(true)
 
         if (running) {
-            await del({route: "/trafficgen"})
+            await del({ route: "/trafficgen" })
             set_running(false)
+            set_overlay(false)
         } else {
-            if (streams.length === 0 && mode !== GenerationMode.ANALYZE) {
-                alert("You need to define at least one stream.")
-            } else {
+            for (const [name, config] of Object.entries(savedConfigs)) {
                 let overall_rate = 0
-                streams.forEach((v) => {
-                    if (stream_settings.some((setting) => v.stream_id == setting.stream_id && setting.active)) {
+                config.streams.forEach((v) => {
+                    if (config.stream_settings.some((setting) => v.stream_id == setting.stream_id && setting.active)) {
                         overall_rate += v.traffic_rate
                     }
                 })
-
-                if (mode !== GenerationMode.MPPS && overall_rate > max_rate) {
-                    alert("Sum of stream rates > " + max_rate + " Gbps!")
-                } else {
-                    await post({
-                        route: "/trafficgen",
-                        body: {
-                            "streams": streams,
-                            "stream_settings": stream_settings,
-                            "port_tx_rx_mapping": port_tx_rx_mapping,
-                            "mode": mode,
-                            "duration": duration
-                        }
-                    })
-
-                    set_running(true)
+                if (config.mode !== GenerationMode.MPPS && overall_rate > max_rate) {
+                    alert("Sum of stream rates > " + max_rate + " Gbps for test " + name + "!")
+                    set_overlay(false)
+                    return;
+                }
+                if (config.streams.length === 0 && config.mode !== GenerationMode.ANALYZE) {
+                    alert("You need to define at least one traffic configuration for " + name + ".");
+                    set_overlay(false)
+                    return;
+                }
+                if (!config.stream_settings.some(s => s.active) && config.mode !== GenerationMode.ANALYZE) {
+                    alert("You need to have at least one active stream setting for " + name + ".");
+                    set_overlay(false);
+                    return;
                 }
             }
+
+            // Delete all previous statistics in local state
+            set_statistics(StatisticsObject)
+            set_time_statistics(TimeStatisticsObject)
+            // Reset the mode to 0 to detect when traffic generation actually starts
+            set_mode(0)
+
+            await post({
+                route: "/trafficgen",
+                body: serializeSavedConfigs()
+            });
+
+            set_running(true)
+
+            // Overlay will be hidden in the loadGen function
+            // This is because the POST does immediately return if a list of tests is given
         }
-        set_overlay(false)
     }
 
     const loadStatistics = async () => {
-        let stats = await get({route: "/statistics"})
+        let stats = await get({ route: "/statistics" })
 
         if (stats !== undefined && stats.status === 200) {
             set_statistics(stats.data)
@@ -217,7 +247,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
     }
 
     const loadTimeStatistics = async () => {
-        let stats = await get({route: "/time_statistics?limit=100"})
+        let stats = await get({ route: "/time_statistics?limit=100" })
 
         if (stats !== undefined && stats.status === 200) {
             set_time_statistics(stats.data)
@@ -226,7 +256,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
 
 
     const loadGen = async () => {
-        let stats = await get({route: "/trafficgen"})
+        let stats = await get({ route: "/trafficgen" })
 
         if (stats !== undefined && Object.keys(stats.data).length > 1) {
             set_mode(stats.data.mode)
@@ -234,14 +264,15 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
             set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
             set_stream_settings(stats.data.stream_settings)
             set_streams(stats.data.streams)
+            set_histogram_settings(stats.data.histogram_config)
 
             localStorage.setItem("streams", JSON.stringify(stats.data.streams))
             localStorage.setItem("gen-mode", String(stats.data.mode))
             localStorage.setItem("duration", String(stats.data.duration))
             localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
+            localStorage.setItem("histogram_config", JSON.stringify(stats.data.histogram_config))
 
-            //set_streams(stats.data.streams)
             set_running(true)
         } else {
             set_running(false)
@@ -251,36 +282,53 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
 
     const reset = async () => {
         set_overlay(true)
-        await get({route: "/reset"})
+        await get({ route: "/reset" })
+        set_overlay(false)
+    }
+
+    const skip = async () => {
+        set_overlay(true)
+        await del({ route: "/trafficgen?skip=true" })
         set_overlay(false)
     }
 
     const restart = async () => {
         set_overlay(true)
-        await get({route: "/restart"})
+        await get({ route: "/restart" })
         set_overlay(false)
     }
 
     return <Loader loaded={loaded} overlay={overlay}>
         <form onSubmit={onSubmit}>
             <Row className={"mb-3"}>
-                <SendReceiveMonitor stats={statistics} running={running}/>
+                <SendReceiveMonitor stats={statistics} running={running} />
                 <Col className={"text-end col-4"}>
+                    {savedConfigs && Object.keys(savedConfigs).length > 0 &&
+                        <>
+                            {running &&
+                                <Button onClick={skip} className="mb-1" variant="warning"><i
+                                    className="bi bi-skip-forward-fill" /> Skip </Button>
+                            }
+                            {" "}
+                            <NumTests running={running} />
+
+                        </>
+                    }
                     {running ?
                         <>
                             <Button type={"submit"} className="mb-1" variant="danger"><i
-                                className="bi bi-stop-fill"/> Stop</Button>
+                                className="bi bi-stop-fill" /> Stop</Button>
                             {" "}
                             <Button onClick={restart} className="mb-1" variant="primary"><i
-                                className="bi bi-arrow-clockwise"/> Restart </Button>
+                                className="bi bi-arrow-clockwise" /> Restart </Button>
                         </>
                         :
                         <>
                             <Button type={"submit"} className="mb-1" variant="primary"><i
-                                className="bi bi-play-circle-fill"/> Start </Button>
+                                className="bi bi-play-circle-fill" /> Start </Button>
                             {" "}
                             <Button onClick={reset} className="mb-1" variant="warning"><i
-                                className="bi bi-trash-fill"/> Reset </Button>
+                                className="bi bi-trash-fill" /> Reset </Button>
                         </>
                     }
                 </Col>
@@ -289,7 +337,7 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
         </form>
 
         <Form>
-            <Form.Check // prettier-ignore
+            <Form.Check
                 type="switch"
                 id="custom-switch"
                 checked={visual}
@@ -298,43 +346,87 @@ const Home = ({p4tg_infos} : {p4tg_infos: P4TGInfos}) => {
             />
         </Form>
 
-        <Tabs
-            defaultActiveKey="Summary"
-            className="mt-3"
-        >
-            <Tab eventKey="Summary" title="Summary">
-                <StatView stats={statistics} time_stats={time_statistics} port_mapping={port_tx_rx_mapping} visual={visual} mode={mode} is_summary={true} rx_port={0}/>
-            </Tab>
-            {activePorts().map((v, i) => {
-                let mapping: { [name: number]: number } = {[v.tx]: v.rx}
-                return <Tab eventKey={i} key={i} title={v.tx + " → " + v.rx}>
-                    <Tabs
-                        defaultActiveKey={"Overview"}
-                        className={"mt-3"}
-                    >
-                        <Tab eventKey={"Overview"} title={"Overview"}>
-                            <StatView stats={statistics} time_stats={time_statistics} port_mapping={mapping} mode={mode} visual={visual} is_summary={false} rx_port={v.rx}/>
-                        </Tab>
-                        {Object.keys(mapping).map(Number).map(v => {
-                            let stream_ids = getStreamIDsByPort(v)
+        {statistics.previous_statistics && Object.keys(statistics.previous_statistics).length > 0 ? (
+            (() => {
+                const savedConfigKeys = Object.keys(savedConfigs);
 
-                            return stream_ids.map((stream: number, i) => {
-                                let stream_frame_size = getStreamFrameSize(stream)
-                                return <Tab key={i} eventKey={stream} title={"Stream " + stream}>
-                                    <StreamView stats={statistics} port_mapping={mapping} stream_id={stream}
-                                                frame_size={stream_frame_size}/>
-                                </Tab>
-                            })
-                        })}
+                return (
+                    <Tab.Container activeKey={activeTab} onSelect={(key) => key && setActiveTab(key)}>
+                        <Nav variant="tabs" className="mt-3">
 
-                    </Tabs>
+                            {running &&
+                                <Nav.Item key={"current"}>
+                                    <Nav.Link eventKey={"current"}>Running</Nav.Link>
+                                </Nav.Item>
+                            }
+                            {savedConfigKeys.map((name) => (
+                                <Nav.Item key={name}>
+                                    <Nav.Link eventKey={name}>{name}</Nav.Link>
+                                </Nav.Item>
+                            ))}
+                        </Nav>
 
-                </Tab>
-            })}
+                        <Tab.Content className="mt-3">
+                            {running &&
+                                <Tab.Pane eventKey="current" key="current">
+                                    <SummaryView
+                                        statistics={statistics}
+                                        time_statistics={time_statistics}
+                                        port_tx_rx_mapping={port_tx_rx_mapping}
+                                        visual={visual}
+                                        mode={mode}
+                                        stream_settings={stream_settings}
+                                        streams={streams}
+                                    />
+                                </Tab.Pane>
+                            }
 
-        </Tabs>
+                            {savedConfigKeys.map((name) => {
+                                /// Find the statistics for the current test identified by the name field
+                                const statData = Object.values(statistics.previous_statistics || {}).find(
+                                    (stat: any) => stat.name === name
+                                ) ?? StatisticsObject;
+                                const timeStatsData = Object.values(time_statistics.previous_statistics || {}).find(
+                                    (stat: any) => stat.name === name
+                                ) ?? TimeStatisticsObject;
+                                const config = savedConfigs[name];
 
-        <GitHub/>
+                                return (
+                                    <Tab.Pane eventKey={name} key={name}>
+                                        <>
+                                            <SummaryView
+                                                statistics={statData}
+                                                time_statistics={timeStatsData}
+                                                port_tx_rx_mapping={config.port_tx_rx_mapping}
+                                                visual={visual}
+                                                mode={config.mode}
+                                                stream_settings={config.stream_settings}
+                                                streams={config.streams}
+                                            />
+                                        </>
+                                    </Tab.Pane>
+                                );
+                            })}
+                        </Tab.Content>
+                    </Tab.Container>
+                );
+            })()
+        ) : (
+            // OLD VIEW here — no previous_statistics present. Rendered when only a single test is applied.
+            <>
+                <SummaryView
+                    statistics={statistics}
+                    time_statistics={time_statistics}
+                    port_tx_rx_mapping={port_tx_rx_mapping}
+                    visual={visual}
+                    mode={mode}
+                    stream_settings={stream_settings}
+                    streams={streams}
+                />
+            </>
+
+        )}
+        <GitHub />
 
 
     </Loader>
