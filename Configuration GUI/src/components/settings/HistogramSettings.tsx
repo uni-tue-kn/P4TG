@@ -27,31 +27,40 @@ const HistogramSettings = ({
     mapping,
     disabled,
     data,
+    set_data
 }: {
     port: { pid: number, port: number, channel: number, loopback: string, status: boolean }
     mapping: { [name: number]: number },
-    disabled: boolean
-    data: Record<string, RttHistogramConfig>
+    disabled: boolean,
+    data: Record<string, RttHistogramConfig>,
+    set_data: (pid: number, updated: RttHistogramConfig) => void
 }) => {
     const [show, set_show] = useState(false)
 
     const rx_pid = mapping[port.pid]
 
-
     return <>
-        <HistogramModal disabled={disabled} data={data[String(rx_pid)]} show={show} pid={rx_pid} hide={() => set_show(false)} />
+        {rx_pid !== undefined && (
+            <HistogramModal
+                disabled={disabled}
+                data={data[String(rx_pid)]}
+                show={show}
+                pid={rx_pid}
+                hide={() => set_show(false)}
+                set_data={set_data}
+            />
+        )}
         <StyledCol className="justify-content-center align-items-center">
             <button
                 type="button"
                 className="btn btn-config border-0 p-0"
                 onClick={() => set_show(true)}
-                disabled={rx_pid===undefined}
+                disabled={rx_pid === undefined}
                 aria-label="Configure Histogram"
             >
                 <i className="bi bi-bar-chart-line-fill" />
             </button>
         </StyledCol>
-
     </>
 }
 
