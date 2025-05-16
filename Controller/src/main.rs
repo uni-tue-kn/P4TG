@@ -30,6 +30,8 @@ use rbfrt::util::{AutoNegotiation, FEC, Loopback, Port, Speed};
 use rbfrt::util::FEC::BF_FEC_TYP_REED_SOLOMON;
 use rbfrt::util::PortManager;
 use tokio::sync::Mutex;
+use api::statistics::Statistics;
+use core::statistics::TimeStatistic;
 
 mod core;
 mod api;
@@ -49,7 +51,14 @@ pub struct PortMapping {
 /// Stores the start time of the current experiment
 pub struct Experiment {
     start: std::time::SystemTime,
-    running: bool
+    running: bool,
+}
+
+/// Stores statistics and configurations, as well as an abort signal for multiple tests
+pub struct MultiTest {
+    pub(crate) collected_statistics: Mutex<Vec<Statistics>>,
+    pub(crate) collected_time_statistics: Mutex<Vec<TimeStatistic>>,
+    pub (crate) multiple_test_monitor_task: Mutex<DurationMonitorTask>,
 }
 
 /// App state that is used between threads
@@ -69,6 +78,7 @@ pub struct AppState {
     pub(crate) tofino2: bool,
     pub(crate) loopback_mode: bool,
     pub (crate) monitor_task: Mutex<DurationMonitorTask>,
+    pub (crate) multiple_tests: MultiTest
 }
 
 async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config: &Config,
@@ -270,6 +280,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tofino2: is_tofino2,
         loopback_mode,
         monitor_task: Mutex::new(DurationMonitorTask { handle: None, cancel_token: None }),
+        multiple_tests: MultiTest { collected_statistics: Default::default(), collected_time_statistics: Default::default(), multiple_test_monitor_task: Mutex::new(DurationMonitorTask { handle: None, cancel_token: None }) }
     });
 
     state.frame_size_monitor.lock().await.configure(&state.switch).await?;
