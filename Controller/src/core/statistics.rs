@@ -182,37 +182,76 @@ impl IATValues {
     }
 }
 
+/// Common fields for time-based statistics
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct CommonTimeStatistic {
+    /// L1 send rates per test and port
+    pub(crate) tx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
+    /// L1 receive rates per test and port
+    pub(crate) rx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
+    /// Number of lost packets per test and port
+    pub(crate) packet_loss: BTreeMap<u32, BTreeMap<u32, u64>>,
+    /// Number of out-of-order packets per test and port
+    pub(crate) out_of_order: BTreeMap<u32, BTreeMap<u32, u64>>,
+    /// RTT values per test and port
+    pub(crate) rtt: BTreeMap<u32, BTreeMap<u32, u64>>,
+    /// Name of the test those stats belong to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) name: Option<String>,    
+}
+
+
 /// Represents the time-based statistics
 /// for visualisation
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct TimeStatistic {
-    pub(crate) tx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
-    pub(crate) rx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
-    pub(crate) packet_loss: BTreeMap<u32, BTreeMap<u32, u64>>,
-    pub(crate) out_of_order: BTreeMap<u32, BTreeMap<u32, u64>>,
-    pub(crate) rtt: BTreeMap<u32, BTreeMap<u32, u64>>,
+    #[serde(flatten)]
+    pub(crate) inner: CommonTimeStatistic,
+
+    /// Save previous statistics, where the key is the test number of the statistics. 
+    /// Skip serializing if there are no previous statistics.
+    /// If this is `TimeStatistic` instead of `HistoryTimeStatistic`, we have a recursive stack overflow
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) previous_statistics: Option<BTreeMap<u32, HistoryTimeStatistic>>,       
 }
 
 impl TimeStatistic {
     pub fn default() -> TimeStatistic {
-        TimeStatistic {
+        TimeStatistic { inner: CommonTimeStatistic {
             tx_rate_l1: Default::default(),
             rx_rate_l1: Default::default(),
             packet_loss: Default::default(),
             out_of_order: Default::default(),
             rtt: Default::default(),
+            name: None,
+            },
+            previous_statistics: None,
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct HistoryTimeStatistic {
+    #[serde(flatten)]
+    pub(crate) inner: CommonTimeStatistic,
+}
+
+impl From<TimeStatistic> for HistoryTimeStatistic {
+    fn from(stat: TimeStatistic) -> Self {
+        HistoryTimeStatistic {
+            inner: stat.inner,
         }
     }
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema, Deserialize)]
 pub struct RttHistogramConfig {
+    // Number of bins for histogram.
+    pub num_bins: u32,    
     /// Minimum range for histogram.
     pub min: u32,
     /// Maximum range for histogram.
     pub max: u32,
-    // Number of bins for histogram.
-    pub num_bins: u32,
 }
 
 impl RttHistogramConfig {
