@@ -20,11 +20,11 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 use axum::debug_handler;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use crate::api::helper::validate::validate_request;
 
 use crate::api::server::Error;
@@ -32,6 +32,11 @@ use crate::AppState;
 
 use crate::api::docs::traffic_gen::{EXAMPLE_GET_1, EXAMPLE_GET_2, EXAMPLE_POST_1_REQUEST, EXAMPLE_POST_1_RESPONSE, EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST};
 use crate::core::traffic_gen_core::types::*;
+
+#[derive(Debug, Deserialize)]
+pub struct StopTrafficGenParams {
+    pub skip: Option<bool>,
+}
 
 /// Method called on GET /trafficgen
 /// Returns the currently configured traffic generation
@@ -61,7 +66,9 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             stream_settings: tg.stream_settings.clone(),
             streams: tg.streams.clone(),
             port_tx_rx_mapping: tg.port_mapping.clone(),
-            duration: tg.duration
+            duration: tg.duration,
+            histogram_config: tg.histogram_config.clone(),
+            name: tg.name.clone()
         };
 
         (StatusCode::OK, Json(tg_data)).into_response()
@@ -107,8 +114,36 @@ pub struct Result {
 )]
 pub async fn configure_traffic_gen(
     State(state): State<Arc<AppState>>,
-    payload: Json<TrafficGenData>
+    payload: Json<TrafficGenTests>
 ) -> Response {
+
+    // Cancel any existing duration monitor task
+    state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
+    state.multiple_tests.multiple_test_monitor_task.lock().await.cancel_existing_monitoring_task().await;
+
+    // Clear History statistics
+    let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
+    stats_lock.clear();
+    let mut stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
+    stats_lock.clear();
+
+    match payload {
+        axum::Json(TrafficGenTests::SingleTest(traffic_gen_data)) => {
+            // Just start a single test.
+            start_single_test(&state, traffic_gen_data).await
+        },
+        axum::Json(TrafficGenTests::MultipleTest(traffic_gen_datas)) => {
+            // This starts an async task that sequentially runs all the tests.
+            let streams: Vec<Vec<Stream>> = traffic_gen_datas.clone().into_iter().map(|t: TrafficGenData| t.streams).collect();
+            state.multiple_tests.multiple_test_monitor_task.lock().await.start_multiple_tests(&state, traffic_gen_datas).await;
+            (StatusCode::OK, Json(streams)).into_response()
+        },
+    }
+}
+
+
+pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -> Response {
+
     let tg = &mut state.traffic_generator.lock().await;
 
     // contains the description of the stream, i.e., packet size and rate
@@ -136,6 +171,20 @@ pub async fn configure_traffic_gen(
         return (StatusCode::BAD_REQUEST, Json(Error::new("No stream definition in analyze mode allowed."))).into_response();
     }
 
+    // Write histogram config into state. The tables will be later populated by init_histogram_config
+    for (rx, config) in payload.histogram_config.clone() {
+        let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
+
+        let port_number = rx.parse::<u32>().unwrap_or(0);
+
+        if let Some(hist) = histogram_monitor.histogram.get_mut(&port_number) {
+            hist.config = config.clone();
+            hist.data.data_bins.clear();
+        } else {
+            return (StatusCode::BAD_REQUEST, Json(Error::new("Port is not available on this device."))).into_response();
+        }
+    }
+
     // contains the mapping of Send->Receive ports
     // required for analyze mode
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
@@ -152,7 +201,7 @@ pub async fn configure_traffic_gen(
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response(),
     }
 
-    match tg.start_traffic_generation(&state, active_streams, payload.mode, active_stream_settings, tx_rx_port_mapping).await {
+    match tg.start_traffic_generation(state, active_streams, payload.mode, active_stream_settings, tx_rx_port_mapping).await {
         Ok(streams) => {
             // store the settings for synchronization between multiple
             // GUI clients
@@ -161,22 +210,21 @@ pub async fn configure_traffic_gen(
             tg.streams = payload.streams.clone();
             tg.mode = payload.mode;
             tg.duration = payload.duration;
+            tg.histogram_config = payload.histogram_config;
+            tg.name = payload.name;
 
             // experiment starts now
             // these values are used to show how long the experiment is running at the GUI
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
 
-            // Cancel any existing duration monitor task
-            state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
-
             // Check if a duration is desired
             if let Some(t) = payload.duration {
                 if t > 0 {
-                    state.monitor_task.lock().await.start(&state, t).await;
+                    state.monitor_task.lock().await.start(state, t).await;
                 }
             }
- 
+
             info!("Traffic generation started.");
             (StatusCode::OK, Json(streams)).into_response()
         }
@@ -187,16 +235,30 @@ pub async fn configure_traffic_gen(
 #[utoipa::path(
     delete,
     path = "/api/trafficgen",
+    params(
+        ("skip" = Option<bool>, Query, description = "If set to true, only the current test will be skipped.")
+    ),
     responses(
     (status = 200,
     description = "Stops the currently running traffic generation."))
 )]
 /// Stops the current traffic generation
-pub async fn stop_traffic_gen(State(state): State<Arc<AppState>>) -> Response {
+pub async fn stop_traffic_gen(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<StopTrafficGenParams>,
+) -> Response {
     let tg = &state.traffic_generator;
     let switch = &state.switch;
 
+    // Cancel any existing duration monitor task
     state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
+
+    let skip_current_test = params.skip.unwrap_or(false);
+
+    if !skip_current_test {
+        // Cancel the multiple test monitor task if skip is set to false
+        state.multiple_tests.multiple_test_monitor_task.lock().await.cancel_existing_monitoring_task().await;
+    }
 
     match tg.lock().await.stop(switch).await {
         Ok(_) => {
