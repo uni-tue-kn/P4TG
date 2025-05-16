@@ -20,6 +20,8 @@
 
 use std::collections::HashMap;
 
+use log::warn;
+
 use crate::api::histogram::HistogramConfigRequest;
 use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
