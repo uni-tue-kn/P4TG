@@ -30,7 +30,7 @@ use crate::PortMapping;
 
 /// Validates an incoming traffic generation request.
 /// Checks if the MPLS/SRv6 configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
-pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode, tx_rx_port_mapping: &HashMap<u32, u32>, available_ports: HashMap<u32, PortMapping>, is_tofino2: bool) -> Result<(), Error> {
+pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode, tx_rx_port_mapping: &HashMap<String, u32>, available_ports: HashMap<u32, PortMapping>, is_tofino2: bool) -> Result<(), Error> {
     for stream in streams.iter(){
         // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::Mpls {
@@ -170,7 +170,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
     // Verify that port is actually available on this device. This might happen if a configuration from another device is imported.
     for (tx_port, rx_port) in tx_rx_port_mapping.iter(){
-        if !available_ports.contains_key(tx_port){
+        if !available_ports.contains_key(&tx_port.parse::<u32>().unwrap_or(0u32)){
             return Err(Error::new(format!("Configuration error: TX port {tx_port} is not available on this device.")));
         }
         if !available_ports.contains_key(rx_port){
