@@ -67,7 +67,7 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             streams: tg.streams.clone(),
             port_tx_rx_mapping: tg.port_mapping.clone(),
             duration: tg.duration,
-            histogram_config: tg.histogram_config.clone(),
+            histogram_config: Some(tg.histogram_config.clone()),
             name: tg.name.clone()
         };
 
@@ -183,13 +183,14 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
     }
 
     // Write histogram config into state. The tables will be later populated by init_histogram_config
-    for (rx, config) in payload.histogram_config.clone() {
+    let histogram_config_cloned = payload.histogram_config.clone();
+    for (rx, config) in histogram_config_cloned.unwrap_or_default() {
         let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
 
         let port_number = rx.parse::<u32>().unwrap_or(0);
 
         if let Some(hist) = histogram_monitor.histogram.get_mut(&port_number) {
-            hist.config = config.clone();
+            hist.config = config;
             hist.data.data_bins.clear();
         } else {
             return (StatusCode::BAD_REQUEST, Json(Error::new("Port is not available on this device."))).into_response();
@@ -218,10 +219,10 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
             // GUI clients
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
             tg.stream_settings = payload.stream_settings.clone();
-            tg.streams = payload.streams.clone();
+            tg.histogram_config = payload.histogram_config.unwrap_or_default();
+            tg.mode = payload.mode;
             tg.mode = payload.mode;
             tg.duration = payload.duration;
-            tg.histogram_config = payload.histogram_config;
             tg.name = payload.name;
 
             // experiment starts now

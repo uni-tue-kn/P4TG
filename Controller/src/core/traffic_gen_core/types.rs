@@ -144,7 +144,7 @@ pub struct TrafficGenData {
     /// The duration of this test in seconds.
     pub(crate) duration: Option<u32>,
     /// Mapping between RX port and histogram config.
-    pub(crate) histogram_config: HashMap<String, RttHistogramConfig>,
+    pub(crate) histogram_config: Option<HashMap<String, RttHistogramConfig>>,
     /// The name of the test. This is used to identify the test in the UI.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,
