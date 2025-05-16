@@ -25,7 +25,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
 use serde::{Deserialize, Serialize};
-use crate::api::helper::validate::validate_request;
+use crate::api::helper::validate::{validate_multiple_test, validate_request};
 
 use crate::api::server::Error;
 use crate::AppState;
@@ -135,8 +135,19 @@ pub async fn configure_traffic_gen(
         axum::Json(TrafficGenTests::MultipleTest(traffic_gen_datas)) => {
             // This starts an async task that sequentially runs all the tests.
             let streams: Vec<Vec<Stream>> = traffic_gen_datas.clone().into_iter().map(|t: TrafficGenData| t.streams).collect();
-            state.multiple_tests.multiple_test_monitor_task.lock().await.start_multiple_tests(&state, traffic_gen_datas).await;
-            (StatusCode::OK, Json(streams)).into_response()
+
+            // Request validation
+            match validate_multiple_test(traffic_gen_datas.clone()) {
+                Ok(_) => {
+                    state.multiple_tests.multiple_test_monitor_task.lock().await.start_multiple_tests(&state, traffic_gen_datas).await;
+                    (StatusCode::OK, Json(streams)).into_response()
+                }
+                Err(e) => {
+                    (StatusCode::BAD_REQUEST, Json(e)).into_response()
+                }
+            }
+
+
         },
     }
 }

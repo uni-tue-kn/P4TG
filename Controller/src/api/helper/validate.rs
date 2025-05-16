@@ -199,3 +199,31 @@ pub fn validate_histogram(request: &HistogramConfigRequest) -> Result<(), Error>
 
     Ok(())
 }
+
+pub fn validate_multiple_test(tests: Vec<TrafficGenData>) -> Result<(), Error> {
+    if tests.is_empty() {
+        return Err(Error::new("No tests provided."));
+    }
+
+    for (idx,test) in tests.iter().enumerate() {
+
+        // Validate that each test has a name
+        if test.name.is_none() {
+            warn!("Test with ID #{idx} has no name.");
+            return Err(Error::new(format!("Test #{idx} has no name.")));
+        }
+
+        // Validate that names are unique
+        if tests.iter().filter(|t| t.name == test.name).count() > 1 {
+            warn!("Test with ID #{idx} has a duplicate name.");
+            return Err(Error::new(format!("Test #{idx} has a duplicate name.")));
+        }
+
+        // Validate that each test has a duration
+        if test.duration.is_none() || test.duration.is_some_and(|d| d == 0) {
+            warn!("Test with ID #{} has no duration. It will run infinitely.", test.name.clone().unwrap());
+        }
+    }
+
+    Ok(())
+}
