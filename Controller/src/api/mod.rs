@@ -18,8 +18,8 @@
  */
 pub mod server;
 mod online;
-mod statistics;
-mod traffic_gen;
+pub mod statistics;
+pub mod traffic_gen;
 mod ports;
 mod tables;
 mod histogram;
