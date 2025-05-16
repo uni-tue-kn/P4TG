@@ -18,9 +18,9 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import React, {useEffect, useRef, useState} from 'react'
-import {Button, Col, Form, Row, Table} from "react-bootstrap";
-import {get} from "../common/API";
+import React, { useEffect, useRef, useState } from 'react'
+import { Button, Col, Form, Nav, Row, Tab, Table } from "react-bootstrap";
+import { get } from "../common/API";
 import Loader from "../components/Loader";
 import {
     DefaultMPLSHeader,
@@ -36,10 +36,10 @@ import {
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
 
-import {GitHub} from "./Home";
+import { GitHub } from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
-import {validatePorts, validateStreams, validateStreamSettings} from "../common/Validators";
+import { validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
 import HistogramSettings from '../components/settings/HistogramSettings';
 
 export const StyledRow = styled.tr`
@@ -53,8 +53,10 @@ export const StyledCol = styled.td`
     text-indent: 5px;
 `
 
+const CONFIG_STORAGE_KEY = "saved_configs";
 
-const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
+
+const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const [ports, set_ports] = useState<PortInfo[]>([])
     const [running, set_running] = useState(false)
     // @ts-ignore
@@ -72,8 +74,11 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     const [loaded, set_loaded] = useState(false)
     const ref = useRef()
 
+    const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>({});
+    const [activeConfigName, setActiveConfigName] = useState<string>("Test1");
+
     const loadPorts = async () => {
-        let stats = await get({route: "/ports"})
+        let stats = await get({ route: "/ports" })
 
         if (stats.status === 200) {
             set_ports(stats.data)
@@ -89,7 +94,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
     const loadGen = async () => {
 
-        let stats = await get({route: "/trafficgen"})
+        let stats = await get({ route: "/trafficgen" })
         if (stats !== undefined) {
             if (Object.keys(stats.data).length > 1) {
                 let old_streams = JSON.stringify(streams)
@@ -126,19 +131,114 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         }
     }, [streams])
 
-    const save = () => {
+    useEffect(() => {
+        let configs = JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY) || "{}");
+
+        // If no configs, create default one
+        if (Object.keys(configs).length === 0) {
+            const defaultConfig: TrafficGenData = {
+                mode: GenerationMode.NONE,
+                duration: 0,
+                streams: [],
+                stream_settings: [],
+                port_tx_rx_mapping: {},
+                histogram_config: {}
+            };
+            configs = { Test1: defaultConfig };
+            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs));
+        }
+
+        setSavedConfigs(configs);
+
+        // Load first available config or fallback
+        const names = Object.keys(configs);
+        if (names.length > 0) {
+            setActiveConfigName(names[0]);
+            loadConfigToState(configs[names[0]]);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeConfigName && savedConfigs[activeConfigName]) {
+            loadConfigToState(savedConfigs[activeConfigName]);
+        }
+    }, [activeConfigName, savedConfigs]);
+
+
+    const loadConfigToState = (config: TrafficGenData) => {
+        set_streams(config.streams || []);
+        set_stream_settings(config.stream_settings || []);
+
+        set_mode(config.mode ?? GenerationMode.NONE);
+        set_duration(config.duration ?? 0);
+        set_port_tx_rx_mapping(config.port_tx_rx_mapping || {});
+        set_histogram_settings(config.histogram_config || {});
+    };
+
+    const saveCurrentAsNamedConfig = (name: string) => {
+        const newConfig: TrafficGenData = {
+            mode, duration, streams, stream_settings, port_tx_rx_mapping: port_tx_rx_mapping, histogram_config: histogram_settings,
+        };
+
+        const updated = { ...savedConfigs, [name]: newConfig };
+        setSavedConfigs(updated);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updated));
+        setActiveConfigName(name);
+    };
+
+    const deleteConfig = (name: string) => {
+        const updated = { ...savedConfigs };
+        delete updated[name];
+        setSavedConfigs(updated);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updated));
+
+        if (activeConfigName === name) {
+            const first = Object.keys(updated)[0];
+            if (first) {
+                setActiveConfigName(first);
+                loadConfigToState(updated[first]);
+            } else {
+                set_streams([]);
+                set_stream_settings([]);
+                set_mode(GenerationMode.NONE);
+                set_duration(0);
+                set_port_tx_rx_mapping({});
+                set_histogram_settings({});
+            }
+        }
+    };
+
+
+    const save = (do_alert: boolean = false) => {
         localStorage.setItem("streams", JSON.stringify(streams))
         localStorage.setItem("gen-mode", String(mode))
         localStorage.setItem("duration", String(duration))
-
         localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
-
         localStorage.setItem("histogram_config", JSON.stringify(histogram_settings))
-
-
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(port_tx_rx_mapping))
 
-        alert("Settings saved.")
+        const newConfig: TrafficGenData = {
+            streams: streams,
+            mode: mode,
+            duration: duration,
+            stream_settings: stream_settings,
+            histogram_config: histogram_settings,
+            port_tx_rx_mapping: port_tx_rx_mapping,
+        };
+
+        // Update the savedConfigs object with new config for activeConfigName
+        const updatedSavedConfigs = {
+            ...savedConfigs,
+            [activeConfigName]: newConfig,
+        };
+
+        // Update state and localStorage
+        setSavedConfigs(updatedSavedConfigs);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedSavedConfigs));
+
+        if (do_alert) {
+            alert("Settings saved.")
+        }
     }
 
     const reset = () => {
@@ -150,6 +250,17 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         set_mode(GenerationMode.NONE)
         set_duration(0)
         set_port_tx_rx_mapping({})
+
+        const defaultConfig: TrafficGenData = {
+            mode: GenerationMode.NONE,
+            duration: 0,
+            streams: [],
+            stream_settings: [],
+            port_tx_rx_mapping: {},
+            histogram_config: {}
+        };
+        setSavedConfigs({ Test1: defaultConfig })
+        setActiveConfigName("Test1")
 
         alert("Reset complete.")
     }
@@ -189,14 +300,9 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     }
 
     const exportSettings = () => {
-        const settings = {
-            "mode": mode,
-            "stream_settings": stream_settings,
-            "streams": streams,
-            "port_tx_rx_mapping": port_tx_rx_mapping,
-            "duration": duration
-            // TODO histogram config
-        }
+        const settings = savedConfigs
+
+        console.log(savedConfigs)
 
         const json = `data:text/json;charset=utf-8,${encodeURIComponent(
             JSON.stringify(settings, null, "\t")
@@ -222,7 +328,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         streams.forEach(s => {
             const ports_from_settings: number[] = stream_settings.filter(setting => setting.port && setting.stream_id == s.stream_id).map(setting => setting.port);
             available_dev_ports.forEach(p => {
-                if (!ports_from_settings.includes(p)){
+                if (!ports_from_settings.includes(p)) {
                     const default_stream_settings = DefaultStreamSettings(s.stream_id, p);
                     if (s.encapsulation === Encapsulation.MPLS) {
                         for (let i = 0; i < s.number_of_lse; i++) {
@@ -241,6 +347,13 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         stream_settings.sort((a, b) => a.stream_id - b.stream_id);
     }
 
+    function isSingleTrafficGenData(val: unknown): val is TrafficGenData {
+        return typeof val === 'object' && val !== null
+            && 'streams' in val
+            && 'stream_settings' in val
+        // you can add more checks if needed for safety
+    }
+
     const loadSettings = (e: any) => {
         e.preventDefault()
 
@@ -248,29 +361,52 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         fileReader.readAsText(e.target.files[0], "UTF-8");
 
         fileReader.onload = (e: any) => {
-            let data: TrafficGenData = JSON.parse(e.target.result)
+            const data = JSON.parse(e.target.result);
+            let new_config: Record<string, TrafficGenData> = {};
 
-        
-            if(!validateStreams(data.streams) || !validateStreamSettings(data.stream_settings)) {
-                alert("Settings not valid.")
-                // @ts-ignore
-                ref.current.value = ""
-            } else if (!validatePorts(data.port_tx_rx_mapping, ports)){
-                alert("Settings not valid. Configured dev_port IDs are not available on this device.")
+            if (typeof data === 'object' && data !== null) {
+                if (Object.values(data).every(isSingleTrafficGenData)) {
+                    // It's Record<string, TrafficGenData>
+                    new_config = data;
+
+                } else if (isSingleTrafficGenData(data)) {
+                    // It's a single TrafficGenData
+                    new_config = { Test1: data }
+                } else {
+                    console.log("unknoiwn")
+                    // TODO
+                }
             }
-            else {
-                localStorage.setItem("streams", JSON.stringify(data.streams))
-                localStorage.setItem("gen-mode", String(data.mode))
-                localStorage.setItem("duration", data.duration ? String(data.duration) : "0")
 
-                localStorage.setItem("streamSettings", JSON.stringify(data.stream_settings))
+            Object.entries(new_config).forEach(([name, config]) => {
+                console.log(config)
+                if (!validateStreams(config.streams) || !validateStreamSettings(config.stream_settings)) {
+                    alert("Settings not valid for config " + name + ".")
+                    console.log("error")
+                    // @ts-ignore
+                    ref.current.value = ""
+                } else if (!validatePorts(config.port_tx_rx_mapping, ports)) {
+                    alert("Settings not valid for config " + name + ". Configured dev_port IDs are not available on this device.")
+                    console.log("error")
+                } else {
+                    console.log("all good")
+                }
+            });
 
-                localStorage.setItem("port_tx_rx_mapping", JSON.stringify(data.port_tx_rx_mapping))
+            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(new_config))
 
-                alert("Import successfull. Reloading...")
+            const first_test = Object.values(new_config)[0];
 
-                window.location.reload()
-            }
+            localStorage.setItem("streams", JSON.stringify(first_test.streams))
+            localStorage.setItem("gen-mode", String(first_test.mode))
+            localStorage.setItem("duration", first_test.duration ? String(first_test.duration) : "0")
+            localStorage.setItem("streamSettings", JSON.stringify(first_test.stream_settings))
+            localStorage.setItem("port_tx_rx_mapping", JSON.stringify(first_test.port_tx_rx_mapping))
+            localStorage.setItem("histogram_config", first_test.histogram_config ? JSON.stringify(first_test.histogram_config) : "{}")
+
+            alert("Import successfull. Reloading...")
+
+            window.location.reload()
         }
     }
 
@@ -278,224 +414,314 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
     // @ts-ignore
     return <Loader loaded={loaded}>
-        <Row className={"align-items-center"}>
-            <Col className={"col-2"}>
-                <Form.Select disabled={running} required
-                             onChange={(event: any) => {
-                                 set_streams([]);
-                                 set_stream_settings([]);
-                                 set_histogram_settings({});
-                                 if (event.target.value != "" && event.target.value != GenerationMode.ANALYZE) {
-                                     addStream();
-                                 }
-                                 set_mode(parseInt(event.target.value));
-                                 set_duration(0);
-                             }}>
-                    <option value={GenerationMode.NONE}>Generation Mode</option>
-                    <option selected={mode === GenerationMode.CBR} value={GenerationMode.CBR}>CBR</option>
-                    <option selected={mode === GenerationMode.POISSON} value={GenerationMode.POISSON}>Poisson</option>
-                    <option selected={mode === GenerationMode.MPPS} value={GenerationMode.MPPS}>Mpps</option>
-                    <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
-                </Form.Select>
-            </Col>
-            <Col className={"col-auto"}>
-                <InfoBox>
-                    <>
-                        <p>P4TG supports multiple modes.</p>
 
-                        <h5>Constant bit rate (CBR)</h5>
+        <Tab.Container activeKey={activeConfigName} onSelect={(k) => {
+            save();
+            if (k) setActiveConfigName(k);
+        }}>
+            <Nav variant="tabs">
+                {Object.keys(savedConfigs).map((name) => (
+                    <Nav.Item key={name}>
+                        <Nav.Link eventKey={name} active={activeConfigName === name} disabled={running}>
+                            {name}
+                            {" "}
+                            {name !== "Test1" && (
+                                <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "5px" }}>
+                                    <Button
+                                        size="sm"
+                                        disabled={running}
+                                        variant="outline-primary"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            deleteConfig(name);
+                                        }}
+                                        style={{
+                                            padding: "0px",
+                                            borderWidth: "1px",
+                                            width: "20px",
+                                            height: "20px",
+                                            display: "flex",
+                                            justifyContent: "center",
+                                            alignItems: "center",
+                                        }}
+                                    >
+                                        <i className="bi bi-x" />
+                                    </Button>
+                                </div>
+                            )}
+                        </Nav.Link>
+                    </Nav.Item>
+                ))}
+                <Nav.Item>
+                        <Button
+                            size="sm"
+                            onClick={() => {
+                                // Save current settings before adding a new tab
+                                save();
 
-                        <p>Constant bit rate (CBR) traffic sends traffic with a constant rate.</p>
+                                // Find the highest Test number in existing keys
+                                const existingTests = Object.keys(savedConfigs)
+                                    .filter(name => name.startsWith("Test"))
+                                    .map(name => parseInt(name.replace("Test", "").trim()))
+                                    .filter(num => !isNaN(num));
 
-                        <h5>Poisson</h5>
+                                const nextIndex = existingTests.length > 0 ? Math.max(...existingTests) + 1 : 1;
+                                const newName = `Test ${nextIndex}`;
 
-                        <p>Poisson traffic is traffic with random inter-arrival times but a constant average traffic
-                            rate.</p>
+                                if (!savedConfigs[newName]) {
+                                    // Create new default config for the new tab
+                                    const defaultConfig: TrafficGenData = {
+                                        mode: GenerationMode.NONE,
+                                        duration: 0,
+                                        streams: [],
+                                        stream_settings: [],
+                                        port_tx_rx_mapping: {},
+                                        histogram_config: {}
+                                    };
+                                    const updatedConfigs = { ...savedConfigs, [newName]: defaultConfig };
+                                    setSavedConfigs(updatedConfigs);
+                                    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+                                    setActiveConfigName(newName);
+                                } else {
+                                    alert("Name already exists.");
+                                }
+                            }}
+                            variant="outline-secondary"
+                            disabled={running}
+                            style={{ marginLeft: "10px", marginTop: "0px" }}
+                        >
+                            <i className="bi bi-plus-circle-fill" /> Add Test
+                        </Button>
+                </Nav.Item>
+            </Nav>
 
-                        <h5>Mpps</h5>
+            <Tab.Content>
+                {Object.keys(savedConfigs).map((name) => (
+                    <Tab.Pane eventKey={name} key={name}>
+                        <Row className={"align-items-center"}>
 
-                        <p>In Mpps mode, P4TG generates traffic with a fixed number of packets per seconds.</p>
-
-                        <h5>Monitor/Analyze</h5>
-
-                        <p>In monitor/analyze mode, P4TG forwards traffic received on its ports and measures L1/L2
-                            rates, packet sizes/types and inter-arrival times.</p>
-
-                    </>
-                </InfoBox>
-            </Col>
-        
-            <Col className={"col-auto"}>
-                <div>
-                    <span>Test duration     </span>
-                    <InfoBox>
-                            <>
-                            <h5>Test duration</h5>
-
-                            <p>If a test duration (in seconds) is specified, traffic generation will automatically stop after the duration is exceeded. A value of 0 indicates generation of infinite duration.</p>
-                            </>
-                    </InfoBox> 
-                </div>
-            </Col>
-         
-            <Col className={"col-auto"}>
-                <Form.Control className={"col-3 text-start"}
-                                onChange={(event: any) => set_duration(parseInt(event.target.value))}
-                                min={0}
-                                step={1}
-                                placeholder={duration > 0 ? String(duration) + " s" : "∞ s"}
-                                disabled={running} type={"number"}/>
-
-            </Col>
-            <Col className={"text-end"}>
-                <Button onClick={importSettings} disabled={running} variant={"primary"}>
-                    <i className="bi bi-cloud-arrow-down-fill"/> Import
-                </Button>
-                {" "}
-                <Button onClick={exportSettings} disabled={running} variant={"danger"}>
-                    <i className="bi bi-cloud-arrow-up-fill"/> Export
-                </Button>
-            </Col>
-        </Row>
-        <Row>
-
-        </Row>
-        {mode != GenerationMode.ANALYZE ?
-            <Row>
-                <Col>
-                    <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
-                        <thead className={"table-dark"}>
-                        <tr>
-                            <th>Stream-ID</th>
-                            <th>Frame Size</th>
-                            <th>Rate</th>
-                            <th>Mode &nbsp;
+                            <Col className={"col-2"}>
+                                <Form.Select disabled={running} required
+                                    onChange={(event: any) => {
+                                        set_streams([]);
+                                        set_stream_settings([]);
+                                        set_histogram_settings({});
+                                        if (event.target.value != "" && event.target.value != GenerationMode.ANALYZE) {
+                                            addStream();
+                                        }
+                                        set_mode(parseInt(event.target.value));
+                                        set_duration(0);
+                                    }}>
+                                    <option value={GenerationMode.NONE}>Generation Mode</option>
+                                    <option selected={mode === GenerationMode.CBR} value={GenerationMode.CBR}>CBR</option>
+                                    <option selected={mode === GenerationMode.POISSON} value={GenerationMode.POISSON}>Poisson</option>
+                                    <option selected={mode === GenerationMode.MPPS} value={GenerationMode.MPPS}>Mpps</option>
+                                    <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
+                                </Form.Select>
+                            </Col>
+                            <Col className={"col-auto"}>
                                 <InfoBox>
                                     <>
-                                        <h5>Rate Precision</h5>
+                                        <p>P4TG supports multiple modes.</p>
 
-                                        <p>In this mode, several packets may be generated at once (burst) to fit the configured traffic rate more precisely. </p>
+                                        <h5>Constant bit rate (CBR)</h5>
 
-                                        <h5>IAT Precision</h5>
+                                        <p>Constant bit rate (CBR) traffic sends traffic with a constant rate.</p>
 
-                                        <p>In this mode, a single packet is generated at once and all packets have the same inter-arrival times. This mode should be used if the traffic should be very "smooth", i.e., without bursts.
-                                            However, the configured traffic rate may not be met precisely.</p>
+                                        <h5>Poisson</h5>
+
+                                        <p>Poisson traffic is traffic with random inter-arrival times but a constant average traffic
+                                            rate.</p>
+
+                                        <h5>Mpps</h5>
+
+                                        <p>In Mpps mode, P4TG generates traffic with a fixed number of packets per seconds.</p>
+
+                                        <h5>Monitor/Analyze</h5>
+
+                                        <p>In monitor/analyze mode, P4TG forwards traffic received on its ports and measures L1/L2
+                                            rates, packet sizes/types and inter-arrival times.</p>
+
                                     </>
                                 </InfoBox>
-                            </th>
-                            <th>VxLAN &nbsp;
-                                <InfoBox>
-                                    <p>VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC
-                                        7348</a>) adds an additional outer Ethernet, IP and VxLAN header to the packet.
-                                    </p>
-                                </InfoBox>
-                            </th>
-                            <th>IP Version</th>
-                            <th>Encapsulation &nbsp;
-                                <InfoBox>
-                                    <p>P4TG supports various encapsulations for the generated IP/UDP packet.</p>
-                                </InfoBox>
-                            </th>
-                            <th>Options</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {streams.map((v, i) => {
-                            v.app_id = i + 1;
-                            return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}
-                                                  stream_settings={stream_settings} p4tg_infos={p4tg_infos}/>
-                        })}
+                            </Col>
 
-                        </tbody>
-                    </Table>
+                            <Col className={"col-auto"}>
+                                <div>
+                                    <span>Test duration     </span>
+                                    <InfoBox>
+                                        <>
+                                            <h5>Test duration</h5>
 
-                </Col>
-            </Row>
-            : null
-        }
-        <Row className={"mb-3"}>
-            <Col className={"text-start"}>
-                {running ? null :
-                    mode === GenerationMode.CBR || mode == GenerationMode.MPPS ?
-                        <Button onClick={addStream} variant="primary"><i className="bi bi-plus"/> Add
-                            stream</Button>
-                        :
-                        null
-                }
-            </Col>
-        </Row>
+                                            <p>If a test duration (in seconds) is specified, traffic generation will automatically stop after the duration is exceeded. A value of 0 indicates generation of infinite duration.</p>
+                                        </>
+                                    </InfoBox>
+                                </div>
+                            </Col>
 
-        {streams.length > 0 || mode == GenerationMode.ANALYZE ?
-            <Row>
-                <Col>
-                    <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
-                        <thead className={"table-dark"}>
-                        <tr>
-                            <th>TX Port</th>
-                            <th>RX Port</th>
-                            {streams.map((v, i) => {
-                                return <th key={i}>Stream {v.app_id}</th>
-                            })}
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {ports.map((v, i) => {
-                            if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                                return <tr key={i}>
-                                    <StyledCol>{v.port} ({v.pid})</StyledCol>
-                                    <StyledCol className="d-flex align-items-center gap-2">
-                                        <Form.Select disabled={running || !v.status} required
-                                                     defaultValue={port_tx_rx_mapping[v.pid] || -1}
-                                                     onChange={(event: any) => {
-                                                        const value = parseInt(event.target.value);
-                                                        const updatedMapping = { ...port_tx_rx_mapping };
+                            <Col className={"col-auto"}>
+                                <Form.Control className={"col-3 text-start"}
+                                    onChange={(event: any) => set_duration(parseInt(event.target.value))}
+                                    min={0}
+                                    step={1}
+                                    placeholder={duration > 0 ? String(duration) + " s" : "∞ s"}
+                                    disabled={running} type={"number"} />
 
-                                                        if (value === -1) {
-                                                            delete updatedMapping[v.pid]
-                                                        } else {
-                                                           updatedMapping[v.pid] = parseInt(event.target.value);
-                                                        }
+                            </Col>
+                            <Col className={"text-end"}>
+                                <Button onClick={importSettings} disabled={running} variant={"primary"}>
+                                    <i className="bi bi-cloud-arrow-down-fill" /> Import
+                                </Button>
+                                {" "}
+                                <Button onClick={exportSettings} disabled={running} variant={"danger"}>
+                                    <i className="bi bi-cloud-arrow-up-fill" /> Export
+                                </Button>
+                            </Col>
+                        </Row>
+                        <Row>
 
-                                                        set_port_tx_rx_mapping(updatedMapping);
-                                                     }}>
-                                            <option value={-1}>Select RX Port</option>
+                        </Row>
+                        {mode != GenerationMode.ANALYZE ?
+                            <Row>
+                                <Col>
+                                    <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
+                                        <thead className={"table-dark"}>
+                                            <tr>
+                                                <th>Stream-ID</th>
+                                                <th>Frame Size</th>
+                                                <th>Rate</th>
+                                                <th>Mode &nbsp;
+                                                    <InfoBox>
+                                                        <>
+                                                            <h5>Rate Precision</h5>
+
+                                                            <p>In this mode, several packets may be generated at once (burst) to fit the configured traffic rate more precisely. </p>
+
+                                                            <h5>IAT Precision</h5>
+
+                                                            <p>In this mode, a single packet is generated at once and all packets have the same inter-arrival times. This mode should be used if the traffic should be very "smooth", i.e., without bursts.
+                                                                However, the configured traffic rate may not be met precisely.</p>
+                                                        </>
+                                                    </InfoBox>
+                                                </th>
+                                                <th>VxLAN &nbsp;
+                                                    <InfoBox>
+                                                        <p>VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC
+                                                            7348</a>) adds an additional outer Ethernet, IP and VxLAN header to the packet.
+                                                        </p>
+                                                    </InfoBox>
+                                                </th>
+                                                <th>IP Version</th>
+                                                <th>Encapsulation &nbsp;
+                                                    <InfoBox>
+                                                        <p>P4TG supports various encapsulations for the generated IP/UDP packet.</p>
+                                                    </InfoBox>
+                                                </th>
+                                                <th>Options</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {streams.map((v, i) => {
+                                                v.app_id = i + 1;
+                                                return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}
+                                                    stream_settings={stream_settings} p4tg_infos={p4tg_infos} />
+                                            })}
+
+                                        </tbody>
+                                    </Table>
+
+                                </Col>
+                            </Row>
+                            : null
+                        }
+                        <Row className={"mb-3"}>
+                            <Col className={"text-start"}>
+                                {running ? null :
+                                    mode === GenerationMode.CBR || mode == GenerationMode.MPPS ?
+                                        <Button onClick={addStream} variant="primary"><i className="bi bi-plus" /> Add
+                                            stream</Button>
+                                        :
+                                        null
+                                }
+                            </Col>
+                        </Row>
+
+                        {streams.length > 0 || mode == GenerationMode.ANALYZE ?
+                            <Row>
+                                <Col>
+                                    <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
+                                        <thead className={"table-dark"}>
+                                            <tr>
+                                                <th>TX Port</th>
+                                                <th>RX Port</th>
+                                                {streams.map((v, i) => {
+                                                    return <th key={i}>Stream {v.app_id}</th>
+                                                })}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
                                             {ports.map((v, i) => {
                                                 if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                                                    return <option key={i}
-                                                                   value={v.pid}>{v.port} ({v.pid})</option>
+                                                    return <tr key={i}>
+                                                        <StyledCol>{v.port} ({v.pid})</StyledCol>
+                                                        <StyledCol className="d-flex align-items-center gap-2">
+                                                            <Form.Select disabled={running || !v.status} required
+                                                                defaultValue={port_tx_rx_mapping[v.pid] || -1}
+                                                                onChange={(event: any) => {
+                                                                    const value = parseInt(event.target.value);
+                                                                    const updatedMapping = { ...port_tx_rx_mapping };
+
+                                                                    if (value === -1) {
+                                                                        delete updatedMapping[v.pid]
+                                                                    } else {
+                                                                        updatedMapping[v.pid] = parseInt(event.target.value);
+                                                                    }
+
+                                                                    set_port_tx_rx_mapping(updatedMapping);
+                                                                }}>
+                                                                <option value={-1}>Select RX Port</option>
+                                                                {ports.map((v, i) => {
+                                                                    if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
+                                                                        return <option key={i}
+                                                                            value={v.pid}>{v.port} ({v.pid})</option>
+                                                                    }
+                                                                })
+                                                                }
+                                                            </Form.Select>
+
+                                                            <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings} set_data={updateHistogramSettings} />
+                                                        </StyledCol>
+                                                        <StreamSettingsList stream_settings={stream_settings} streams={streams}
+                                                            running={running} port={v} p4tg_infos={p4tg_infos} />
+
+                                                    </tr>
                                                 }
-                                            })
-                                            }
-                                        </Form.Select>
-                                        
-                                        <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings} set_data={updateHistogramSettings}/>
-                                    </StyledCol>
-                                    <StreamSettingsList stream_settings={stream_settings} streams={streams}
-                                                        running={running} port={v} p4tg_infos={p4tg_infos}/>
+                                            })}
 
-                                </tr>
-                            }
-                        })}
+                                        </tbody>
+                                    </Table>
 
-                        </tbody>
-                    </Table>
+                                </Col>
+                            </Row>
+                            :
+                            null
+                        }
 
-                </Col>
-            </Row>
-            :
-            null
-        }
-
-        <Row>
-            <Col>
-                <Button onClick={save} disabled={running} variant="primary"><i className="bi bi-check"/> Save</Button>
-                {" "}
-                <Button onClick={reset} disabled={running} variant="danger"><i className="bi bi-x-octagon-fill"/> Reset</Button>
-            </Col>
-        </Row>
+                        <Row>
+                            <Col>
+                                <Button onClick={() => save(true)} disabled={running} variant="primary"><i className="bi bi-check" /> Save</Button>
+                                {" "}
+                                <Button onClick={reset} disabled={running} variant="danger"><i className="bi bi-x-octagon-fill" /> Reset</Button>
+                            </Col>
+                        </Row>
+                        {/* End of layout */}
+                    </Tab.Pane>
+                ))}
+            </Tab.Content>
+        </Tab.Container>
 
         <input
-            style={{display: "none"}}
+            style={{ display: "none" }}
             accept=".json"
             // @ts-ignore
             ref={ref}
@@ -503,7 +729,7 @@ const Settings = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
             type="file"
         />
 
-        <GitHub/>
+        <GitHub />
 
 
     </Loader>
