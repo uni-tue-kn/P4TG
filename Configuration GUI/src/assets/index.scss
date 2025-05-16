@@ -38,6 +38,8 @@
     /* Text Colors */
     --color-text: #000000;
     --color-sidebar-selected-icon: #ffffff;
+    --bs-link-color: #000000;
+    --bs-link-hover-color: #e74c3c;
 
     /* Selector Colors */
     --color-selector: #ffffff;
@@ -68,6 +70,9 @@
     /* Text Colors */
     --color-text: #ffffff;
     --color-sidebar-selected-icon: #ffffff;
+    --bs-link-color: #ffffff;
+    --bs-link-hover-color: #e74c3c;
+
 
     /* Selector Colors */
     --color-selector: var(--color-light-grey);
@@ -201,6 +206,40 @@ table {
         }
     }
 
+    &-outline-primary {
+        border-color: var(--color-primary);
+
+        &:hover {
+            background-color: var(--color-primary);
+            border-color: var(--color-primary);
+        }
+
+        [data-theme="dark"] & {
+            background-color: var(--color-secondary);
+
+            &:hover {
+                background-color: var(--color-primary);
+            }
+        }
+    }
+
+    &-outline-secondary {
+        border-color: var(--color-secondary);
+
+        &:hover {
+            background-color: var(--color-primary);
+            border-color: var(--color-primary);
+        }
+
+        [data-theme="dark"] & {
+            background-color: var(--color-tab-active-bg);
+
+            &:hover {
+                background-color: var(--color-primary);
+            }
+        }
+    }
+
     &-dark {
         background-color: var(--color-secondary);
         border-color: var(--color-secondary);
@@ -214,7 +253,7 @@ table {
 
 .nav-item {
     button {
-        color: #000;
+        color: var(--color-text);
 
         &.hover,
         &.active {
@@ -245,6 +284,7 @@ table {
     .nav-link {
         &.active {
             background-color: var(--color-tab-active-bg);
+            border-color: var(--color-primary);
 
             [data-theme="dark"] & {
                 border-color: var(--color-tab-active-bg);
