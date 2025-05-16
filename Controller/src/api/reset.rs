@@ -45,6 +45,12 @@ pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
     let rate = state.rate_monitor.lock().await.on_reset(switch).await;
     let rtt_histogram = state.rtt_histogram_monitor.lock().await.on_reset(switch).await;
 
+    // Clear History statistics
+    let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
+    stats_lock.clear();
+    let mut stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
+    stats_lock.clear();
+
     if frame_size.is_ok() && frame_type.is_ok() && rate.is_ok() && rtt_histogram.is_ok(){
         (StatusCode::OK, Json(Reset { message: "Reset complete".to_owned() })).into_response()
     }
