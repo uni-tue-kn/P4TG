@@ -75,7 +75,9 @@ export interface Statistics {
     },
     out_of_order: { [name: string]: number },
     elapsed_time: number,
-    rtt_histogram: { [port: string]: RttHistogram}
+    rtt_histogram: { [port: string]: RttHistogram},
+    previous_statistics?: Record<number, Statistics>,
+    name?: string,
 }
 
 export const StatisticsObject: Statistics = {
@@ -93,7 +95,7 @@ export const StatisticsObject: Statistics = {
     app_rx_l2: {},
     out_of_order: {},
     elapsed_time: 0,
-    rtt_histogram: {}
+    rtt_histogram: {},
 }
 
 export interface TimeStatistics {
@@ -103,6 +105,8 @@ export interface TimeStatistics {
     rx_rate_l1: { [name: number]: {
             [name: number]: number
         } },
+    previous_statistics?: Record<number, TimeStatistics>,
+    name?: string,
 }
 
 export const TimeStatisticsObject: TimeStatistics = {
@@ -313,8 +317,10 @@ export interface TrafficGenData {
     mode: GenerationMode,
     streams: Stream[],
     stream_settings: StreamSettings[],
-    port_tx_rx_mapping: { [name: number]: number}[],
-    duration: number
+    port_tx_rx_mapping: { [name: number]: number},
+    duration: number,
+    histogram_config: { [name: string]: RttHistogramConfig},
+    name?: string,
 }
 
 export interface PortInfo {
