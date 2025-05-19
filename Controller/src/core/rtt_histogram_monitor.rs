@@ -383,6 +383,10 @@ impl TrafficGenEvent for HistogramMonitor {
         for (_, hist) in self.histogram.iter_mut() {
             hist.data.data_bins.clear();
             hist.data.percentiles.clear();
+            hist.data.missed_bin_count = 0;
+            hist.data.total_pkt_count = 0;
+            hist.data.mean_rtt = 0f64;
+            hist.data.std_dev_rtt = 0f64;
         }
 
         Ok(())
