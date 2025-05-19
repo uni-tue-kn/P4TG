@@ -191,8 +191,8 @@ pub fn validate_histogram(request: &HistogramConfigRequest) -> Result<(), Error>
     if request.config.min >= request.config.max {
         return Err(Error::new(format!("Histogram config error port {port}: Minimum value must be less than maximum value of range.")));        
     }
-    if request.config.num_bins > 200 {
-        return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 200 bins per port are supported at maximum.")));        
+    if request.config.num_bins > 500 {
+        return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 500 bins per port are supported at maximum.")));        
 
     }
     if request.config.num_bins > (request.config.max - request.config.min) {

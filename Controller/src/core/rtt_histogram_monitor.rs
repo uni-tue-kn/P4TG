@@ -84,7 +84,7 @@ impl HistogramMonitor {
         }
 
         let number_requests = requests.len();
-        if number_requests > 4096 {
+        if number_requests > 8196 {
             return Err(RBFRTError::GenericError { message: (format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")) });
         }
 

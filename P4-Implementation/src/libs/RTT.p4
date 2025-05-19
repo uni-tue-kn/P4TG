@@ -55,7 +55,7 @@ control RTT(inout header_t hdr,
         } 
         counters = histogram_counter;
         default_action = count_missed_bin;
-        size = 4096;
+        size = 8192;
     }
 
     apply {
