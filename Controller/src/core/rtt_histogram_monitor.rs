@@ -34,14 +34,6 @@ impl HistogramMonitor {
         &mut self,
         switch: &SwitchConnection,
     ) -> Result<(), RBFRTError> {
-        // Init default settings for detected recirculation ports
-        for port in self.port_mapping.keys() {
-            // Keep existing entries
-            self.histogram
-                .entry(*port)
-                .or_insert(RttHistogram::default());
-        }
-
         switch.clear_table(RTT_HISTOGRAM_TABLE).await?;
 
         let mut requests = vec![];

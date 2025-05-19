@@ -253,8 +253,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     rate_monitor.init_iat_meter(&switch, sample_mode).await?;
     rate_monitor.on_reset(&switch).await?;
 
-    let mut rtt_histogram_monitor = HistogramMonitor::new(port_mapping.clone());
-    rtt_histogram_monitor.init_rtt_histogram_table(&switch).await?;
+    let rtt_histogram_monitor = HistogramMonitor::new(port_mapping.clone());
 
     let mut traffic_generator = TrafficGen::new(is_tofino2, num_pipes);
     traffic_generator.stop(&switch).await?;

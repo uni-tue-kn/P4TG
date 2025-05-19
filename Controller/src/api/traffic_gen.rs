@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::helper::validate::{validate_multiple_test, validate_request};
 
 use crate::api::server::Error;
+use crate::core::statistics::{RttHistogram, RttHistogramData};
 use crate::AppState;
 
 use crate::api::docs::traffic_gen::{EXAMPLE_GET_1, EXAMPLE_GET_2, EXAMPLE_POST_1_REQUEST, EXAMPLE_POST_1_RESPONSE, EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST};
@@ -189,11 +190,24 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
 
         let port_number = rx.parse::<u32>().unwrap_or(0);
 
-        if let Some(hist) = histogram_monitor.histogram.get_mut(&port_number) {
-            hist.config = config;
-            hist.data.data_bins.clear();
+        // Check if the port is available for histogram config, i.e., if it is in the port mapping
+        if state.port_mapping.contains_key(&port_number) {
+            // Create new histogram config with empty data from payload
+            histogram_monitor.histogram.insert(port_number, RttHistogram {
+                config,
+                data: RttHistogramData::default()
+            });
         } else {
-            return (StatusCode::BAD_REQUEST, Json(Error::new("Port is not available on this device."))).into_response();
+            return (StatusCode::BAD_REQUEST, Json(Error::new(format!("Port {port_number} is not available for histogram config on this device.")))).into_response();
+        }
+    }
+
+    // Write default histogram config for active rx ports that do not have a histogram config set
+    for (_tx, rx) in payload.port_tx_rx_mapping.clone() {
+        let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
+        if histogram_monitor.histogram.get_mut(&rx).is_none() {
+            info!("Adding default histogram config for rx port {rx}");
+            histogram_monitor.histogram.insert(rx, RttHistogram::default());
         }
     }
 
