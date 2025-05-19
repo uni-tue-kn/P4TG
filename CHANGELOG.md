@@ -23,6 +23,7 @@
 - Fixed bug in port validation on settings import
 - Added missing API docs for `online` endpoint
 - Fixed RX frame type statistic for ARP frames in frontend
+- Fixed stream setting button enabled while traffic generation is running
 
 ## v2.3.3
 ### Bug Fixes

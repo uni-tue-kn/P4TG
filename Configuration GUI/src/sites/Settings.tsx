@@ -54,6 +54,7 @@ export const StyledCol = styled.td`
 `
 
 const CONFIG_STORAGE_KEY = "saved_configs";
+const DEFAULT_CONFIG_NAME = "Test 1";
 
 
 const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
@@ -75,7 +76,10 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const ref = useRef()
 
     const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>({});
-    const [activeConfigName, setActiveConfigName] = useState<string>("Test1");
+    const [activeConfigName, setActiveConfigName] = useState<string>(DEFAULT_CONFIG_NAME);
+
+    const [renamingTab, setRenamingTab] = useState<string | null>(null);
+    const [renameValue, setRenameValue] = useState<string>("");
 
     const loadPorts = async () => {
         let stats = await get({ route: "/ports" })
@@ -144,7 +148,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                 port_tx_rx_mapping: {},
                 histogram_config: {}
             };
-            configs = { Test1: defaultConfig };
+            configs = { DEFAULT_CONFIG_NAME: defaultConfig };
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs));
         }
 
@@ -259,8 +263,8 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             port_tx_rx_mapping: {},
             histogram_config: {}
         };
-        setSavedConfigs({ Test1: defaultConfig })
-        setActiveConfigName("Test1")
+        setSavedConfigs({ DEFAULT_CONFIG_NAME: defaultConfig })
+        setActiveConfigName(DEFAULT_CONFIG_NAME)
 
         alert("Reset complete.")
     }
@@ -371,10 +375,11 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                 } else if (isSingleTrafficGenData(data)) {
                     // It's a single TrafficGenData
-                    new_config = { Test1: data }
+                    new_config = { DEFAULT_CONFIG_NAME: data }
                 } else {
                     console.log("unknoiwn")
-                    // TODO
+                    alert("Could not serialize file content. Please check the file.")
+                    return;
                 }
             }
 
@@ -382,14 +387,11 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                 console.log(config)
                 if (!validateStreams(config.streams) || !validateStreamSettings(config.stream_settings)) {
                     alert("Settings not valid for config " + name + ".")
-                    console.log("error")
                     // @ts-ignore
                     ref.current.value = ""
                 } else if (!validatePorts(config.port_tx_rx_mapping, ports)) {
                     alert("Settings not valid for config " + name + ". Configured dev_port IDs are not available on this device.")
-                    console.log("error")
                 } else {
-                    console.log("all good")
                 }
             });
 
@@ -412,6 +414,29 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     fillPortsOnMissingSetting(streams, stream_settings);
 
+    const handleRenameTab = (oldName: string, newName: string) => {
+        if (!newName || newName === oldName || savedConfigs[newName]) {
+            // Invalid name or name already exists
+            setRenamingTab(null);
+            setRenameValue("");
+            return;
+        }
+        // Rename in savedConfigs
+        const updatedConfigs: Record<string, TrafficGenData> = {};
+        Object.entries(savedConfigs).forEach(([k, v]) => {
+            if (k === oldName) {
+                updatedConfigs[newName] = v;
+            } else {
+                updatedConfigs[k] = v;
+            }
+        });
+        setSavedConfigs(updatedConfigs);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+        setActiveConfigName(newName);
+        setRenamingTab(null);
+        setRenameValue("");
+    };
+
     // @ts-ignore
     return <Loader loaded={loaded}>
 
@@ -422,76 +447,115 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             <Nav variant="tabs">
                 {Object.keys(savedConfigs).map((name) => (
                     <Nav.Item key={name}>
-                        <Nav.Link eventKey={name} active={activeConfigName === name} disabled={running}>
-                            {name}
-                            {" "}
-                            {name !== "Test1" && (
-                                <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "5px" }}>
-                                    <Button
+                        <Nav.Link
+                            eventKey={name}
+                            active={activeConfigName === name}
+                            disabled={running}
+                            onDoubleClick={() => {
+                                if (running) return;
+                                setRenamingTab(name);
+                                setRenameValue(name);
+                            }}
+                            style={{ userSelect: "none" }}
+                        >
+                            {renamingTab === name ? (
+                                // Double clicked on tab --> open rename input field
+                                <Form
+                                    style={{ display: "inline-flex", alignItems: "center" }}
+                                    onSubmit={e => {
+                                        e.preventDefault();
+                                        if (renameValue.length > 20) {
+                                            alert("Name too long (max 20 characters).");
+                                            return;
+                                        }
+                                        handleRenameTab(name, renameValue);
+                                    }}
+                                >
+                                    <Form.Control
                                         size="sm"
+                                        autoFocus
+                                        value={renameValue}
+                                        maxLength={20}
+                                        onChange={e => setRenameValue(e.target.value.slice(0, 20))}
+                                        onBlur={() => handleRenameTab(name, renameValue)}
+                                        style={{ width: "90px", display: "inline-block", marginRight: "4px", padding: "0px 4px" }}
                                         disabled={running}
-                                        variant="outline-primary"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            deleteConfig(name);
-                                        }}
-                                        style={{
-                                            padding: "0px",
-                                            borderWidth: "1px",
-                                            width: "20px",
-                                            height: "20px",
-                                            display: "flex",
-                                            justifyContent: "center",
-                                            alignItems: "center",
-                                        }}
-                                    >
-                                        <i className="bi bi-x" />
-                                    </Button>
-                                </div>
+                                        // This line is required to enable spaces in input
+                                        onKeyDown={e => e.stopPropagation()}
+                                    />
+                                </Form>
+                            ) : (
+                                <>
+                                    {name}
+                                    {name !== Object.keys(savedConfigs)[0] && (
+                                        // Add delete button only if it's not the first tab
+                                        <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "5px" }}>
+                                            <Button
+                                                size="sm"
+                                                disabled={running}
+                                                variant="outline-primary"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    deleteConfig(name);
+                                                }}
+                                                style={{
+                                                    padding: "0px",
+                                                    borderWidth: "1px",
+                                                    width: "20px",
+                                                    height: "20px",
+                                                    display: "flex",
+                                                    justifyContent: "center",
+                                                    alignItems: "center",
+                                                }}
+                                            >
+                                                <i className="bi bi-x" />
+                                            </Button>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </Nav.Link>
                     </Nav.Item>
                 ))}
                 <Nav.Item>
-                        <Button
-                            size="sm"
-                            onClick={() => {
-                                // Save current settings before adding a new tab
-                                save();
+                    <Button
+                        size="sm"
+                        onClick={() => {
+                            // Save current settings before adding a new tab
+                            save();
 
-                                // Find the highest Test number in existing keys
-                                const existingTests = Object.keys(savedConfigs)
-                                    .filter(name => name.startsWith("Test"))
-                                    .map(name => parseInt(name.replace("Test", "").trim()))
-                                    .filter(num => !isNaN(num));
+                            const nextIndex = Object.keys(savedConfigs).length > 0 ? Object.keys(savedConfigs).length + 1 : 1;
+                            let newName = `Test ${nextIndex}`;
+                            if (savedConfigs[newName]) {
+                                // This breaks if two tests in the middle are deleted and a new one is added. Fix this in the future
+                                newName = `Test ${nextIndex + 1}`;
+                            }
 
-                                const nextIndex = existingTests.length > 0 ? Math.max(...existingTests) + 1 : 1;
-                                const newName = `Test ${nextIndex}`;
-
-                                if (!savedConfigs[newName]) {
-                                    // Create new default config for the new tab
-                                    const defaultConfig: TrafficGenData = {
-                                        mode: GenerationMode.NONE,
-                                        duration: 0,
-                                        streams: [],
-                                        stream_settings: [],
-                                        port_tx_rx_mapping: {},
-                                        histogram_config: {}
-                                    };
-                                    const updatedConfigs = { ...savedConfigs, [newName]: defaultConfig };
-                                    setSavedConfigs(updatedConfigs);
-                                    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
-                                    setActiveConfigName(newName);
-                                } else {
-                                    alert("Name already exists.");
-                                }
-                            }}
-                            variant="outline-secondary"
-                            disabled={running}
-                            style={{ marginLeft: "10px", marginTop: "0px" }}
-                        >
-                            <i className="bi bi-plus-circle-fill" /> Add Test
-                        </Button>
+                            if (!savedConfigs[newName]) {
+                                // Create new default config for the new tab
+                                const defaultConfig: TrafficGenData = {
+                                    mode: GenerationMode.NONE,
+                                    duration: 0,
+                                    streams: [],
+                                    stream_settings: [],
+                                    port_tx_rx_mapping: {},
+                                    histogram_config: {}
+                                };
+                                const updatedConfigs = { ...savedConfigs, [newName]: defaultConfig };
+                                setSavedConfigs(updatedConfigs);
+                                localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+                                setActiveConfigName(newName);
+                            } else {
+                                // Should actually never happen
+                                alert("Name already exists.");
+                            }
+                        }}
+                        variant="outline-secondary"
+                        disabled={running}
+                        style={{ marginLeft: "10px", marginTop: "0px" }}
+                    >
+                        <i className="bi bi-plus-circle-fill" /> Add Test
+                    </Button>
                 </Nav.Item>
             </Nav>
 
