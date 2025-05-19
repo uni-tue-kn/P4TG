@@ -219,8 +219,8 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
             // GUI clients
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
             tg.stream_settings = payload.stream_settings.clone();
+            tg.streams = payload.streams.clone();
             tg.histogram_config = payload.histogram_config.unwrap_or_default();
-            tg.mode = payload.mode;
             tg.mode = payload.mode;
             tg.duration = payload.duration;
             tg.name = payload.name;
