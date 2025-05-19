@@ -148,7 +148,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                 port_tx_rx_mapping: {},
                 histogram_config: {}
             };
-            configs = { DEFAULT_CONFIG_NAME: defaultConfig };
+            configs = { [DEFAULT_CONFIG_NAME]: defaultConfig };
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs));
         }
 
@@ -263,7 +263,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             port_tx_rx_mapping: {},
             histogram_config: {}
         };
-        setSavedConfigs({ DEFAULT_CONFIG_NAME: defaultConfig })
+        setSavedConfigs({ [DEFAULT_CONFIG_NAME]: defaultConfig })
         setActiveConfigName(DEFAULT_CONFIG_NAME)
 
         alert("Reset complete.")
@@ -375,7 +375,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                 } else if (isSingleTrafficGenData(data)) {
                     // It's a single TrafficGenData
-                    new_config = { DEFAULT_CONFIG_NAME: data }
+                    new_config = { [DEFAULT_CONFIG_NAME]: data }
                 } else {
                     console.log("unknoiwn")
                     alert("Could not serialize file content. Please check the file.")
