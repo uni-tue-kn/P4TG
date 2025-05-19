@@ -311,7 +311,7 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             <Row className={"mb-3"}>
                 <SendReceiveMonitor stats={statistics} running={running} />
                 <Col className={"text-end col-4"}>
-                    {savedConfigs && Object.keys(savedConfigs).length > 0 &&
+                    {savedConfigs && Object.keys(savedConfigs).length > 1 &&
                         <>
                             {running &&
                                 <Button onClick={skip} className="mb-1" variant="warning"><i
