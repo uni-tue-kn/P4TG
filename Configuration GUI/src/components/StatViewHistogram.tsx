@@ -48,17 +48,20 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
 
     useEffect(() => {
         if (Object.values(port_mapping).includes(rx_port)) {
-            set_min_value(stats.rtt_histogram[rx_port].config.min)
-            set_max_value(stats.rtt_histogram[rx_port].config.max)
-            set_num_bins(stats.rtt_histogram[rx_port].config.num_bins)
-            set_mean_rtt(stats.rtt_histogram[rx_port].data.mean_rtt)
-            set_std_rtt(stats.rtt_histogram[rx_port].data.std_dev_rtt)
-            set_bin_width(calculateBinWidth(minValue, maxValue, numBins))
-            set_total_packet_count(stats.rtt_histogram[rx_port].data.total_pkt_count)
-            set_missed_bin_count(stats.rtt_histogram[rx_port].data.missed_bin_count)
-            if (Object.keys(stats.rtt_histogram[rx_port].data.percentiles).includes("25")) {
-                const p_data = stats.rtt_histogram[rx_port].data.percentiles;
-                setPercentileData({ "25": p_data["25"], "50": p_data["50"], "75": p_data["75"], "90": p_data["90"] })
+            const rttHistogram = stats.rtt_histogram[rx_port];
+            if (!rttHistogram) return;
+
+            set_min_value(rttHistogram.config.min);
+            set_max_value(rttHistogram.config.max);
+            set_num_bins(rttHistogram.config.num_bins);
+            set_mean_rtt(rttHistogram.data.mean_rtt);
+            set_std_rtt(rttHistogram.data.std_dev_rtt);
+            set_bin_width(calculateBinWidth(rttHistogram.config.min, rttHistogram.config.max, rttHistogram.config.num_bins));
+            set_total_packet_count(rttHistogram.data.total_pkt_count);
+            set_missed_bin_count(rttHistogram.data.missed_bin_count);
+            if (rttHistogram.data.percentiles && Object.keys(rttHistogram.data.percentiles).includes("25")) {
+                const p_data = rttHistogram.data.percentiles;
+                setPercentileData({ "25": p_data["25"], "50": p_data["50"], "75": p_data["75"], "90": p_data["90"] });
             }
         }
 
