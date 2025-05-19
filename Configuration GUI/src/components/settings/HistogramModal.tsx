@@ -198,7 +198,7 @@ const HistogramModal = ({
                     Close
                 </Button>
                 <Button variant="primary" onClick={submit} disabled={disabled}>
-                    Save
+                    Confirm
                 </Button>
             </Modal.Footer>
         </form>
