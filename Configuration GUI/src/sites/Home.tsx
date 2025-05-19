@@ -148,7 +148,7 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         refresh()
 
         const interval_stats = setInterval(async () => await Promise.all([loadStatistics()]), 500);
-        const interval_loadgen = setInterval(async () => await Promise.all([loadGen()]), 5000);
+        const interval_loadgen = setInterval(async () => await Promise.all([loadGen()]), 2000);
         const inverval_timestats = setInterval(async () => await Promise.all([loadTimeStatistics()]), 2000);
 
         return () => {
@@ -161,8 +161,8 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     useEffect(() => {
         // Only hide overlay if it was shown for starting a test (mode 0 means "starting")
-        console.log(mode)
-        if (running && overlay && mode !== 0) {
+        // Only apply this logic if there are multiple tests
+        if (Object.keys(savedConfigs).length > 1 && running && overlay && mode !== 0) {
             set_overlay(false);
         }
     }, [mode]);
@@ -241,8 +241,12 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
             set_running(true)
 
-            // Overlay will be hidden in the loadGen function
-            // This is because the POST does immediately return if a list of tests is given
+            // For multiple tests, overlay will be hidden in the loadGen function
+            // This is because the POST does immediately return if a list of tests is given.
+            // For a single test, the overlay can be hidden here, as the POST call returns when traffic gen is configured
+            if (Object.keys(savedConfigs).length == 1) {
+                set_overlay(false)
+            }
         }
     }
 
