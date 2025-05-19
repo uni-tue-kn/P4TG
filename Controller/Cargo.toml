@@ -28,7 +28,7 @@ axum-macros = "0.5.0"
 serde_json = "1.0.140"
 include_dir = "0.7.4"
 mime_guess = "2.0.5"
-utoipa = { version = "5.3.1", features = ["axum_extras"] }
+utoipa = { git = "https://github.com/juhaku/utoipa.git", rev = "cecda0531bf7d90800af66b186055932ee730526", features = ["axum_extras"] }
 # TEMPORAL FIX FOR BUG IN SWAGGER-UI
 utoipa-swagger-ui = { git = "https://github.com/juhaku/utoipa.git", rev = "cecda0531bf7d90800af66b186055932ee730526", features = ["axum"] }
 lazy_static = "1.5.0"
