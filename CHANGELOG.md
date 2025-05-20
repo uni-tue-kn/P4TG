@@ -3,13 +3,15 @@
 ## v2.4.0
 ### New features
 - Live RTT histogram generation
-  - Range for histogram and number of bins is configurable on a per-port basis
-    - Configuration is available in the frontend in Settings
-  - Packets are matched in the data plane based on configured histogram settings (no sampling)
-  - .25, .50, .75, and .90 percentiles are calculated based on the histogram data
-  - Histogram is rendered in frontend
-  - The `GET:api/traffic_gen` endpoint now includes the histogram config
-- New API endpoints for histogram configuration: `POST:api/histogram` for histogram configuration and `GET:api/histogram` to retrieve configuration
+  - The range for the histogram (minimum and maximum) and the number of bins can be configured on a per-port basis.
+    - The configuration is available in the front end in the RX port settings or via the REST API.
+  - Packets are matched to bins in the data plane based on the configured histogram settings (no sampling required).
+  - The .25, .50, .75 and .90 percentiles are calculated based on the histogram data.
+  - The mean and standard deviation are also calculated based on the histogram data. Depending on the histogram configuration, these calculations may yield more accurate results than sampling.
+  - The histogram is rendered in the front end.
+  - The `GET:api/statistics` endpoint contains the histogram configuration and data for each RX port.
+- New API endpoints for histogram configuration: `POST:api/histogram` for histogram configuration and `GET:api/histogram` to retrieve configuration.
+  - Histograms can also be configured using the `POST:api/trafficgen` endpoint.
 - Test automation by providing a list of tests
   - The `POST:api/trafficgen` endpoint now accepts either a single TrafficGen object, or a list of TrafficGen objects for test automation
   - Configuration of multiple sequential tests is available in the frontend settings

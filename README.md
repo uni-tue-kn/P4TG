@@ -32,7 +32,7 @@ In analysis mode, P4TG measures rates on the input ports, measures IATs, and for
 - P4TG (v2.3.0) supports the Intel Tofino 2 with up to 4 Tb/s
 - P4TG (v2.3.2) supports IPv6, SRv6 (Tofino 2 only), many bug fixes, and a dark mode
 - P4TG (v2.3.3) bug fixes and dependency updates
-- P4TG (v2.4.0) live RTT histogram and percentile support
+- P4TG (v2.4.0) Automated testing, live RTT histogram and percentile support
 
 See [Changelog](./CHANGELOG.md) for a full changelog.
 
@@ -62,9 +62,9 @@ P4TG consists of:
 | ARP replies       | ✅ Available            |
 | Dark mode         | ✅ Available            |
 | RTT histogram and percentile reporting | ✅ Available     |
+| Auto. testing     | ✅ Available           |
 | Test profiles     | ⚠️ Experimental (Unstable)           |
 | File reporting    | ⚠️ Experimental (Unstable)           |
-| Auto. testing     | ⚠️ Experimental (Unstable)           |
 | Localization      | ⚠️ Experimental (Unstable)           |
 | NDP               | ⏳ Planned (Not yet implemented)     |
 | NETCONF           | ⏳ Planned (Not yet implemented)     |
@@ -140,6 +140,7 @@ The documentation of the REST-API can be found [here](https://uni-tue-kn.github.
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-2.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-3.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-4.png"/>
+<img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-5.png"/>
 
 # Cite
 If you use P4TG in any of your publications, please cite the following papers:
