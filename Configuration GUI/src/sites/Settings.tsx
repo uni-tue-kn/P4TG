@@ -214,11 +214,20 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
 
     const save = (do_alert: boolean = false) => {
+
+        // Iterate histogram settings and remove any entry which key(port) is not in port_tx_rx_mapping
+        const filteredHistogramSettings: Record<string, RttHistogramConfig> = {};
+        Object.entries(histogram_settings).forEach(([rx_port, config]) => {
+            if (port_tx_rx_mapping.hasOwnProperty(rx_port)) {
+                filteredHistogramSettings[rx_port] = config;
+            }
+        });
+
         localStorage.setItem("streams", JSON.stringify(streams))
         localStorage.setItem("gen-mode", String(mode))
         localStorage.setItem("duration", String(duration))
         localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
-        localStorage.setItem("histogram_config", JSON.stringify(histogram_settings))
+        localStorage.setItem("histogram_config", JSON.stringify(filteredHistogramSettings))
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(port_tx_rx_mapping))
 
         const newConfig: TrafficGenData = {
@@ -226,7 +235,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             mode: mode,
             duration: duration,
             stream_settings: stream_settings,
-            histogram_config: histogram_settings,
+            histogram_config: filteredHistogramSettings,
             port_tx_rx_mapping: port_tx_rx_mapping,
         };
 
@@ -377,7 +386,6 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                     // It's a single TrafficGenData
                     new_config = { [DEFAULT_CONFIG_NAME]: data }
                 } else {
-                    console.log("unknoiwn")
                     alert("Could not serialize file content. Please check the file.")
                     return;
                 }
