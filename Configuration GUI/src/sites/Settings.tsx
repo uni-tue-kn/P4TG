@@ -215,11 +215,12 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     const save = (do_alert: boolean = false) => {
 
-        // Iterate histogram settings and remove any entry which key(port) is not in port_tx_rx_mapping
+        // Iterate histogram settings and remove any entry which key (port) is not a value in port_tx_rx_mapping
         const filteredHistogramSettings: Record<string, RttHistogramConfig> = {};
+        const rxPorts = Object.values(port_tx_rx_mapping).map(String);
         Object.entries(histogram_settings).forEach(([rx_port, config]) => {
-            if (port_tx_rx_mapping.hasOwnProperty(rx_port)) {
-                filteredHistogramSettings[rx_port] = config;
+            if (rxPorts.includes(rx_port)) {
+            filteredHistogramSettings[rx_port] = config;
             }
         });
 
