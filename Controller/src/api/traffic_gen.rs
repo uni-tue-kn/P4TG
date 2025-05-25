@@ -155,9 +155,6 @@ pub async fn configure_traffic_gen(
 
 
 pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -> Response {
-
-    let tg = &mut state.traffic_generator.lock().await;
-
     // contains the description of the stream, i.e., packet size and rate
     // only look at active stream settings
     let active_stream_settings: Vec<StreamSetting> = payload.stream_settings
@@ -181,6 +178,12 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
     // no streams should be generated in monitor/analyze mode    
     if payload.mode == GenerationMode::Analyze && !active_streams.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(Error::new("No stream definition in analyze mode allowed."))).into_response();
+    }
+
+    // Clear histogram config state and release lock when out of scope
+    {
+        let mut histogram_configs = state.rtt_histogram_monitor.lock().await;
+        histogram_configs.histogram.clear();
     }
 
     // Write histogram config into state. The tables will be later populated by init_histogram_config
@@ -214,6 +217,8 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
     // contains the mapping of Send->Receive ports
     // required for analyze mode
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
+
+    let tg = &mut state.traffic_generator.lock().await;
 
     match validate_request(
         &active_streams,

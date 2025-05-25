@@ -343,6 +343,17 @@ impl HistogramMonitor {
 
         results
     }
+
+    fn clear_data(&mut self) {
+        for (_, hist) in self.histogram.iter_mut() {
+            hist.data.data_bins.clear();
+            hist.data.percentiles.clear();
+            hist.data.missed_bin_count = 0;
+            hist.data.total_pkt_count = 0;
+            hist.data.mean_rtt = 0f64;
+            hist.data.std_dev_rtt = 0f64;
+        }
+    }
 }
 
 #[async_trait]
@@ -352,13 +363,10 @@ impl TrafficGenEvent for HistogramMonitor {
         switch: &SwitchConnection,
         _mode: &GenerationMode,
     ) -> Result<(), RBFRTError> {
-        // Reconfigures the histogram table
+        // Reconfigures the histogram table and deletes all statistics.
+        // Histogram config is deleted in start_single_test
         self.init_rtt_histogram_table(switch).await?;
-
-        for (_, hist) in self.histogram.iter_mut() {
-            hist.data.data_bins.clear();
-            hist.data.percentiles.clear();
-        }
+        self.clear_data();
 
         Ok(())
     }
@@ -368,18 +376,9 @@ impl TrafficGenEvent for HistogramMonitor {
     }
 
     /// Reset the state.
-    async fn on_reset(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        // Reconfigures the histogram table
-        self.init_rtt_histogram_table(switch).await?;
-
-        for (_, hist) in self.histogram.iter_mut() {
-            hist.data.data_bins.clear();
-            hist.data.percentiles.clear();
-            hist.data.missed_bin_count = 0;
-            hist.data.total_pkt_count = 0;
-            hist.data.mean_rtt = 0f64;
-            hist.data.std_dev_rtt = 0f64;
-        }
+    async fn on_reset(&mut self, _switch: &SwitchConnection) -> Result<(), RBFRTError> {
+        // Deletes all statistics, keeps the configuration
+        self.clear_data();
 
         Ok(())
     }
