@@ -140,15 +140,16 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Statistics {
     let rate_monitor = &state.rate_monitor;
     let rtt_histogram_monitor = &state.rtt_histogram_monitor;
 
-    let collected_statistics = state.multiple_tests.collected_statistics.lock().await;
-
-    let previous_statistics_map = (!collected_statistics.is_empty()).then(|| {
-        collected_statistics
-            .iter()
-            .enumerate()
-            .map(|(i, stats)| ((i + 1) as u32, HistoryStatistics::from(stats.clone())))
-            .collect::<BTreeMap<u32, HistoryStatistics>>()
-    });
+    let previous_statistics_map = {
+        let collected_statistics = state.multiple_tests.collected_statistics.lock().await;
+        (!collected_statistics.is_empty()).then(|| {
+            collected_statistics
+                .iter()
+                .enumerate()
+                .map(|(i, stats)| ((i + 1) as u32, HistoryStatistics::from(stats.clone())))
+                .collect::<BTreeMap<u32, HistoryStatistics>>()
+        })
+    };
 
     let mut stats = Statistics { inner: CommonStatistics {
         sample_mode: state.sample_mode,
@@ -171,10 +172,12 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Statistics {
     };
 
 
-    stats.inner.frame_size = frame_size_monitor.lock().await.statistics.frame_size.clone();
-    stats.inner.frame_type_data = frame_type_monitor.lock().await.statistics.frame_type_data.clone();
-    stats.inner.rtt_histogram = rtt_histogram_monitor.lock().await.histogram.clone();
-    stats.inner.name = state.traffic_generator.lock().await.name.clone();
+    {
+        stats.inner.frame_size = frame_size_monitor.lock().await.statistics.frame_size.clone();
+        stats.inner.frame_type_data = frame_type_monitor.lock().await.statistics.frame_type_data.clone();
+        stats.inner.rtt_histogram = rtt_histogram_monitor.lock().await.histogram.clone();
+        stats.inner.name = state.traffic_generator.lock().await.name.clone();
+    }
 
     let monitor_statistics =  rate_monitor.lock().await.statistics.clone();
 
@@ -282,8 +285,9 @@ pub async fn time_statistics(State(state): State<Arc<AppState>>, Query(params): 
 pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> TimeStatistic {
     let rate_monitor = &state.rate_monitor;
     let stats = rate_monitor.lock().await.time_statistics.clone();
-    let collected_time_statistics = state.multiple_tests.collected_time_statistics.lock().await.clone();
-    let name = state.traffic_generator.lock().await.name.clone();
+    let collected_time_statistics = {
+        state.multiple_tests.collected_time_statistics.lock().await.clone()
+    };
 
     // Convert collected_time_statistics into BTreeMap
     let previous_time_statistics_map = (!collected_time_statistics.is_empty()).then(|| {
@@ -292,7 +296,7 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> TimeS
             .enumerate()
             .map(|(i, stats)| ((i + 1) as u32, HistoryTimeStatistic::from(stats.clone())))
             .collect::<BTreeMap<u32, HistoryTimeStatistic>>()
-    });    
+    });
 
     let limit = params.limit.unwrap_or(usize::MAX);
 
@@ -334,6 +338,8 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> TimeS
         .map(|v|
             (v.0, v.1.into_iter().filter(|elem| elem.0 % (step as u32) == 0).collect())).collect();            
 
+
+    let name = state.traffic_generator.lock().await.name.clone();
     TimeStatistic { inner: CommonTimeStatistic {
         tx_rate_l1: tx,
         rx_rate_l1: rx,

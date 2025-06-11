@@ -20,24 +20,14 @@ export const formatNanoSeconds = (ns: number | string, decimals: number = 2) => 
     return parseFloat((ns / Math.pow(k, i)).toFixed(dm)) + ' ' + si;
 }
 
-export const formatPackets = (packets: number | string, decimals: number = 2) => {
-    if (typeof packets == "string") {
-        return packets
-    }
-
-    if (packets === 0 || packets < 0) return '0';
+export const formatFrameCount = (packets: number, decimals: number = 2) => {
+    if (packets === 0) return '0';
 
     const k = 1000;
     const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
+    const sizes = ['', 'K', 'M', 'B', 'T'];
 
     const i = Math.floor(Math.log(packets) / Math.log(k));
 
-    let si = sizes[i]
-
-    if (i < 0) {
-        si = ""
-    }
-
-    return parseFloat((packets / Math.pow(k, i)).toFixed(dm)) + ' ' + si;
+    return parseFloat((packets / Math.pow(k, i)).toFixed(dm)).toFixed(dm) + ' ' + sizes[i];
 }

@@ -24,7 +24,7 @@ import {formatBits} from "./SendReceiveMonitor";
 
 import styled from 'styled-components'
 import Visuals from "./Visuals";
-import { formatNanoSeconds } from '../common/Helper';
+import { formatNanoSeconds, formatFrameCount } from '../common/Helper';
 
 const Overline = styled.span`
   text-decoration: overline;
@@ -227,19 +227,6 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         let n_mae = Math.max(1, all_mae.filter(a => a > 0).length)
 
         return { mean: all_mean / all_n, std: all_std / all_n, n: all_n, mae: sum_mae / n_mae }
-    }
-
-
-    const formatFrameCount = (packets: number, decimals: number = 2) => {
-        if (packets === 0) return '0';
-
-        const k = 1000;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['', 'K', 'M', 'B', 'T'];
-
-        const i = Math.floor(Math.log(packets) / Math.log(k));
-
-        return parseFloat((packets / Math.pow(k, i)).toFixed(dm)).toFixed(dm) + ' ' + sizes[i];
     }
 
     const addRates = (object: { [name: string]: number }, keys: string[] | number[]) => {

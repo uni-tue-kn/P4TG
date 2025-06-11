@@ -22,7 +22,7 @@ import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
 import { Statistics } from "../common/Interfaces";
 
 import styled from 'styled-components'
-import { formatNanoSeconds, formatPackets } from '../common/Helper';
+import { formatNanoSeconds, formatFrameCount } from '../common/Helper';
 
 const Overline = styled.span`
   text-decoration: overline;
@@ -112,8 +112,8 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
                         <tr>
                             <td>{formatNanoSeconds(meanRtt)}</td>
                             <td>{formatNanoSeconds(stdRtt)}</td>
-                            <td>{formatPackets(missedBinCount)}</td>
-                            <td>{formatPackets(totalPacketCount)}</td>
+                            <td>{formatFrameCount(missedBinCount)}</td>
+                            <td>{formatFrameCount(totalPacketCount)}</td>
                         </tr>
                     </tbody>
                 </Table>
