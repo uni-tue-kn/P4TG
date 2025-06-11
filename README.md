@@ -72,23 +72,25 @@ P4TG consists of:
 
 ## Installation & Start Instructions
 
-### Data plane
+A more detailed installation guide for open-p4studio and P4TG can be found [here](SDE.md).
+
+### Quick Start
+
+#### Data plane
 
 Go to `P4-Implementation` and compile p4tg via `make compile`. 
 This compiles the program and copies the resulting configs to the target directory.
 
-Afterwards, start p4tg via `make start`.
-
 - **For Intel Tofino1**, run `make compile TARGET=tofino` and `make start TARGET=tofino`.
 - **For Intel Tofino2**, run `make compile TARGET=tofino2` and `make start TARGET=tofino2`.
 
-This requires a fully setup [SDE](https://github.com/p4lang/open-p4studio) with set `$SDE` and `$SDE_INSTALL` environment variables.
+This requires a fully setup [SDE](https://github.com/p4lang/open-p4studio) with set `$SDE` and `$SDE_INSTALL` environment variables (see [here](SDE.md)).
 
 Tested on:
   - SDE 9.9.0 (up to v2.0.0)
   - SDE 9.13.{0,...,4}
 
-### Control plane
+#### Control plane
 
 The controller is written in Rust and can be started via `cd Controller && docker compose up`. This will pull a prebuilt docker image.
 
@@ -96,7 +98,7 @@ The controller then starts a REST-API server at port `P4TG_PORT` (default 8000) 
 It also serves the configuration GUI at port `P4TG_PORT` and endpoint `/`.
 The configuration GUI can then be accessed at http://*ip-of-tofino-controller*:`P4TG_PORT`
 
-#### Configuration 
+### Configuration 
 
 Set `SAMPLE=1` in `docker-compose.yaml` to activate IAT sampling mode instead of data plane measurement.
 Data plane measurement mode (`SAMPLE=0`) is more accurate and the default.
