@@ -11,9 +11,123 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "2.3.3"
+    "version": "2.4.0"
   },
   "paths": {
+    "/api/histogram": {
+      "get": {
+        "tags": [
+          "histogram"
+        ],
+        "summary": "Method called on GET /histogram\nReturns the histogram configuration of all RX ports.",
+        "operationId": "config",
+        "responses": {
+          "200": {
+            "description": "Returns the histogram configuration of all RX ports.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/RttHistogramConfig"
+                  },
+                  "propertyNames": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                },
+                "example": "{\"136\":{\"max\":2500,\"min\":1500,\"num_bins\":50},\"144\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"152\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"160\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"168\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"176\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"184\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"192\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"312\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"320\":{\"max\":2500,\"min\":1500,\"num_bins\":10}}"
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "histogram"
+        ],
+        "summary": "Method called on POST /histogram\nConfigures the histogram settings for the specified RX dev port.",
+        "operationId": "configure_histogram",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistogramConfigRequest"
+              },
+              "examples": {
+                "Example 1": {
+                  "summary": "Range 1500-2000ns with 50 bins",
+                  "value": {
+                    "config": {
+                      "max": 2000,
+                      "min": 1500,
+                      "num_bins": 50
+                    },
+                    "port": 136
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Returns the configured histogram config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/RttHistogramConfig"
+                  },
+                  "propertyNames": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                },
+                "examples": {
+                  "Example 1": {
+                    "summary": "Range 1500-2000ns with 50 bins",
+                    "value": {
+                      "136": {
+                        "max": 2000,
+                        "min": 1500,
+                        "num_bins": 50
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/online": {
+      "get": {
+        "tags": [
+          "online"
+        ],
+        "summary": "Online endpoint\nReturns the currently configured ports",
+        "operationId": "online",
+        "responses": {
+          "200": {
+            "description": "Returns the status of P4TG.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Online"
+                },
+                "example": "[{\"asic\":\"Tofino2\",\"loopback\":false,\"status\":\"online\",\"version\":\"2.4.0\"}]"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ports": {
       "get": {
         "tags": [
@@ -211,6 +325,7 @@
                     "summary": "First example",
                     "value": {
                       "duration": 10,
+                      "histogram_config": null,
                       "mode": 1,
                       "port_tx_rx_mapping": {
                         "128": 136
@@ -264,6 +379,7 @@
                     "summary": "Second example",
                     "value": {
                       "duration": null,
+                      "histogram_config": null,
                       "mode": 1,
                       "port_tx_rx_mapping": {
                         "128": 136
@@ -347,6 +463,7 @@
                   "summary": "VxLAN 1024 (+50) byte @ 100 Gbps",
                   "value": {
                     "duration": null,
+                    "histogram_config": null,
                     "mode": 1,
                     "port_tx_rx_mapping": {
                       "128": 136
@@ -397,6 +514,7 @@
                   "summary": "VLAN 64 (+4) byte @ 80 Gbps",
                   "value": {
                     "duration": null,
+                    "histogram_config": null,
                     "mode": 1,
                     "port_tx_rx_mapping": {
                       "128": 136
@@ -446,9 +564,11 @@
                   "summary": "Poisson @ 30 Gbps",
                   "value": {
                     "duration": null,
+                    "histogram_config": null,
                     "mode": 3,
+                    "name": "Poisson",
                     "port_tx_rx_mapping": {
-                      "68": 68
+                      "66": 68
                     },
                     "stream_settings": [
                       {
@@ -552,6 +672,17 @@
         ],
         "summary": "Stops the current traffic generation",
         "operationId": "stop_traffic_gen",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "description": "If set to true, only the current test will be skipped.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Stops the currently running traffic generation."
@@ -562,6 +693,233 @@
   },
   "components": {
     "schemas": {
+      "Asic": {
+        "type": "string",
+        "enum": [
+          "Tofino1",
+          "Tofino2"
+        ]
+      },
+      "CommonStatistics": {
+        "type": "object",
+        "required": [
+          "sample_mode",
+          "frame_size",
+          "tx_rate_l1",
+          "tx_rate_l2",
+          "rx_rate_l1",
+          "rx_rate_l2",
+          "app_tx_l2",
+          "app_rx_l2",
+          "frame_type_data",
+          "iats",
+          "rtts",
+          "packet_loss",
+          "out_of_order",
+          "elapsed_time",
+          "rtt_histogram"
+        ],
+        "properties": {
+          "app_rx_l2": {
+            "type": "object",
+            "description": "L2 receive rate per stream and port.\nThe number corresponds to the app_id in the Stream description.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "app_tx_l2": {
+            "type": "object",
+            "description": "L2 send rate per stream and port.\nThe number corresponds to the app_id in the Stream description.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "format": "double"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "elapsed_time": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Elapsed time since the traffic generation has started in seconds.",
+            "minimum": 0
+          },
+          "frame_size": {
+            "type": "object",
+            "description": "Frame size statistics that are divided in (lower, upper) sections.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RangeCount"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "frame_type_data": {
+            "type": "object",
+            "description": "Statistics what kind of packets have been received per port",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TypeCount"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "iats": {
+            "type": "object",
+            "description": "Statistics of the inter arrival times per port.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IATStatistics"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "out_of_order": {
+            "type": "object",
+            "description": "Number of out of order packets per port.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "packet_loss": {
+            "type": "object",
+            "description": "Number of lost packets per port.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "rtt_histogram": {
+            "type": "object",
+            "description": "RTT histogram data per port and per bin.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RttHistogram"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "rtts": {
+            "type": "object",
+            "description": "Statistics of the round trip times per port.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RTTStatistics"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "rx_rate_l1": {
+            "type": "object",
+            "description": "L1 receive rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "rx_rate_l2": {
+            "type": "object",
+            "description": "L2 receive rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "sample_mode": {
+            "type": "boolean",
+            "description": "Indicates whether the sample mode is used or not.\nIn sampling mode, IATs are sampled and not calculated in the data plane.\nIt is recommended to don't use the sample mode to get more precise values"
+          },
+          "tx_rate_l1": {
+            "type": "object",
+            "description": "L1 send rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "tx_rate_l2": {
+            "type": "object",
+            "description": "L2 send rates per port.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        }
+      },
       "EmptyResponse": {
         "type": "object",
         "required": [
@@ -612,6 +970,32 @@
           "Mpps",
           "Poisson",
           "Analyze"
+        ]
+      },
+      "HistogramConfigRequest": {
+        "type": "object",
+        "required": [
+          "port",
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/RttHistogramConfig",
+            "description": "The configuration object. It holds the minimum and maximum value, and the number of bins."
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The dev port number to configure the histogram on.",
+            "minimum": 0
+          }
+        }
+      },
+      "HistoryStatistics": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonStatistics"
+          }
         ]
       },
       "IATStatistics": {
@@ -774,6 +1158,29 @@
           }
         }
       },
+      "Online": {
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "asic",
+          "loopback"
+        ],
+        "properties": {
+          "asic": {
+            "$ref": "#/components/schemas/Asic"
+          },
+          "loopback": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
       "RTTStatistics": {
         "type": "object",
         "required": [
@@ -875,206 +1282,151 @@
           }
         }
       },
-      "Statistics": {
+      "RttHistogram": {
         "type": "object",
         "required": [
-          "sample_mode",
-          "frame_size",
-          "tx_rate_l1",
-          "tx_rate_l2",
-          "rx_rate_l1",
-          "rx_rate_l2",
-          "app_tx_l2",
-          "app_rx_l2",
-          "frame_type_data",
-          "iats",
-          "rtts",
-          "packet_loss",
-          "out_of_order",
-          "elapsed_time"
+          "config",
+          "data"
         ],
         "properties": {
-          "app_rx_l2": {
-            "type": "object",
-            "description": "L2 receive rate per stream and port.\nThe number corresponds to the app_id in the Stream description.",
-            "additionalProperties": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "number",
-                "format": "double"
-              },
-              "propertyNames": {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
-              }
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
+          "config": {
+            "$ref": "#/components/schemas/RttHistogramConfig"
           },
-          "app_tx_l2": {
-            "type": "object",
-            "description": "L2 send rate per stream and port.\nThe number corresponds to the app_id in the Stream description.",
-            "additionalProperties": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "number",
-                "format": "double"
-              },
-              "propertyNames": {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
-              }
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "elapsed_time": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Elapsed time since the traffic generation has started in seconds.",
-            "minimum": 0
-          },
-          "frame_size": {
-            "type": "object",
-            "description": "Frame size statistics that are divided in (lower, upper) sections.",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/RangeCount"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "frame_type_data": {
-            "type": "object",
-            "description": "Statistics what kind of packets have been received per port",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/TypeCount"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "iats": {
-            "type": "object",
-            "description": "Statistics of the inter arrival times per port.",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/IATStatistics"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "out_of_order": {
-            "type": "object",
-            "description": "Number of out of order packets per port.",
-            "additionalProperties": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "packet_loss": {
-            "type": "object",
-            "description": "Number of lost packets per port.",
-            "additionalProperties": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "rtts": {
-            "type": "object",
-            "description": "Statistics of the round trip times per port.",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/RTTStatistics"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "rx_rate_l1": {
-            "type": "object",
-            "description": "L1 receive rates per port.",
-            "additionalProperties": {
-              "type": "number",
-              "format": "double"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "rx_rate_l2": {
-            "type": "object",
-            "description": "L2 receive rates per port.",
-            "additionalProperties": {
-              "type": "number",
-              "format": "double"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "sample_mode": {
-            "type": "boolean",
-            "description": "Indicates whether the sample mode is used or not.\nIn sampling mode, IATs are sampled and not calculated in the data plane.\nIt is recommended to don't use the sample mode to get more precise values"
-          },
-          "tx_rate_l1": {
-            "type": "object",
-            "description": "L1 send rates per port.",
-            "additionalProperties": {
-              "type": "number",
-              "format": "double"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "tx_rate_l2": {
-            "type": "object",
-            "description": "L2 send rates per port.",
-            "additionalProperties": {
-              "type": "number",
-              "format": "double"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
+          "data": {
+            "$ref": "#/components/schemas/RttHistogramData"
           }
         }
+      },
+      "RttHistogramBinEntry": {
+        "type": "object",
+        "required": [
+          "count",
+          "probability"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Number of packets in this bin.",
+            "minimum": 0
+          },
+          "probability": {
+            "type": "number",
+            "format": "double",
+            "description": "Probability for this bin based on total_pkt_count."
+          }
+        }
+      },
+      "RttHistogramConfig": {
+        "type": "object",
+        "required": [
+          "num_bins",
+          "min",
+          "max"
+        ],
+        "properties": {
+          "max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum range for histogram.",
+            "minimum": 0
+          },
+          "min": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Minimum range for histogram.",
+            "minimum": 0
+          },
+          "num_bins": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RttHistogramData": {
+        "type": "object",
+        "required": [
+          "data_bins",
+          "percentiles",
+          "mean_rtt",
+          "std_dev_rtt",
+          "total_pkt_count",
+          "missed_bin_count"
+        ],
+        "properties": {
+          "data_bins": {
+            "type": "object",
+            "description": "HashMap with bin index as key and bin count with probability as value.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RttHistogramBinEntry"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "mean_rtt": {
+            "type": "number",
+            "format": "double",
+            "description": "Mean RTT calculated from the histogram data."
+          },
+          "missed_bin_count": {
+            "type": "integer",
+            "description": "Number of packets not matched to any bin.",
+            "minimum": 0
+          },
+          "percentiles": {
+            "type": "object",
+            "description": "HashMap with percentiles and their values.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "std_dev_rtt": {
+            "type": "number",
+            "format": "double",
+            "description": "Standard deviation calculated from the histogram data."
+          },
+          "total_pkt_count": {
+            "type": "integer",
+            "description": "Total number of packets matched to bins.",
+            "minimum": 0
+          }
+        }
+      },
+      "Statistics": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CommonStatistics"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "previous_statistics": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "Save previous statistics, where the key is the test number of the statistics.\nSkip serializing if there are no previous statistics.",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/HistoryStatistics"
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        ]
       },
       "Stream": {
         "type": "object",
@@ -1502,9 +1854,29 @@
             "description": "The duration of this test in seconds.",
             "minimum": 0
           },
+          "histogram_config": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Mapping between RX port and histogram config.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RttHistogramConfig"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "mode": {
             "$ref": "#/components/schemas/GenerationMode",
             "description": "Generation mode that should be used."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the test. This is used to identify the test in the UI."
           },
           "port_tx_rx_mapping": {
             "type": "object",
@@ -1515,9 +1887,7 @@
               "minimum": 0
             },
             "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
+              "type": "string"
             }
           },
           "stream_settings": {
