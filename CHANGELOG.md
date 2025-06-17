@@ -2,7 +2,7 @@
 
 ## v2.4.0
 ### New features
-- Live RTT histogram generation
+- Live RTT histogram generation (#16)
   - The range for the histogram (minimum and maximum) and the number of bins can be configured on a per-port basis.
     - The configuration is available in the front end in the RX port settings or via the REST API.
   - Packets are matched to bins in the data plane based on the configured histogram settings (no sampling required).
@@ -26,6 +26,7 @@
 - Added missing API docs for `online` endpoint
 - Fixed RX frame type statistic for ARP frames in frontend
 - Fixed stream setting button enabled while traffic generation is running
+- Changed the P4 Makefile to work with open-p4studio
 
 ## v2.3.3
 ### Bug Fixes
