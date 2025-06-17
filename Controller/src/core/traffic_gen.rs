@@ -39,6 +39,8 @@ use crate::core::traffic_gen_core::helper::{calculate_overhead, create_packet};
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
 
+use super::statistics::RttHistogramConfig;
+
 /// A Traffic Generator object.
 /// The traffic generator controls the main configuration of P4TG.
 /// It configures the internal traffic generator and triggers the insertion of appropriate forwarding rules.
@@ -62,13 +64,17 @@ pub struct TrafficGen {
     /// (e.g., multiple open web browsers) to the same settings.
     /// The port mapping indicates which ports are used for traffic generation and on which port the returning traffic
     /// is expected.
-    pub port_mapping: HashMap<u32, u32>,
+    pub port_mapping: HashMap<String, u32>,
     /// Indicates if tofino2 is used
     pub is_tofino2: bool,
     /// Indicates the number of available pipes in hardware
     pub num_pipes: u32,
     /// Duration of this test in seconds. 0 for unlimited
-    pub duration: Option<u32>
+    pub duration: Option<u32>,
+    /// Mapping between RX port and histogram config.
+    pub(crate) histogram_config: HashMap<String, RttHistogramConfig>,
+    /// Name of the current test
+    pub(crate) name: Option<String>
 }
 
 impl TrafficGen {
@@ -82,7 +88,9 @@ impl TrafficGen {
             port_mapping: HashMap::new(),
             is_tofino2,
             num_pipes,
-            duration: None
+            duration: None,
+            histogram_config: HashMap::new(),
+            name: None
         }
     }
 
@@ -461,7 +469,7 @@ impl TrafficGen {
                                           streams: Vec<Stream>,
                                           mode: GenerationMode,
                                           stream_settings: Vec<StreamSetting>,
-                                          tx_rx_mapping: &HashMap<u32, u32>) -> Result<Vec<Stream>, RBFRTError> {
+                                          tx_rx_mapping: &HashMap<String, u32>) -> Result<Vec<Stream>, RBFRTError> {
         let switch = &state.switch;
         let port_mapping = &state.port_mapping;
 
@@ -473,11 +481,13 @@ impl TrafficGen {
         state.frame_size_monitor.lock().await.on_reset(switch).await?;
         state.frame_type_monitor.lock().await.on_reset(switch).await?;
         state.rate_monitor.lock().await.on_reset(switch).await?;
+        state.rtt_histogram_monitor.lock().await.on_reset(switch).await?;
 
         // call the on_start routine on all relevant parts
         state.frame_size_monitor.lock().await.on_start(switch, &mode).await?;
         state.frame_type_monitor.lock().await.on_start(switch, &mode).await?;
         state.rate_monitor.lock().await.on_start(switch, &mode).await?;
+        state.rtt_histogram_monitor.lock().await.on_start(switch, &mode).await?;
 
         // configure tg mode
         self.configure_traffic_gen_mode_table(switch, &mode).await?;
@@ -605,12 +615,12 @@ impl TrafficGen {
     ///
     /// * `tx_rx_mapping`: Mapping of TX port to expected RX port from the REST API. This is only relevant for the ANALYZE mode.
     /// * `port_mapping`: Mapping of front panel port to TX / RX recirculation port
-    async fn configure_analyze_forwarding(&self, switch: &SwitchConnection, port_mapping: &HashMap<u32, PortMapping>, tx_rx_mapping: &HashMap<u32, u32>) -> Result<(), RBFRTError> {
+    async fn configure_analyze_forwarding(&self, switch: &SwitchConnection, port_mapping: &HashMap<u32, PortMapping>, tx_rx_mapping: &HashMap<String, u32>) -> Result<(), RBFRTError> {
         let mut reqs = vec![];
 
         for (tx, rx) in tx_rx_mapping {
             let rx_recirc = port_mapping.get(rx).ok_or(P4TGError::Error {message: "Incorrect configuration.".to_owned()})?.rx_recirculation;
-            let tx_recirc = port_mapping.get(tx).ok_or(P4TGError::Error {message: "Incorrect configuration.".to_owned()})?.tx_recirculation;
+            let tx_recirc = port_mapping.get(&tx.parse::<u32>().unwrap_or(0)).ok_or(P4TGError::Error {message: "Incorrect configuration.".to_owned()})?.tx_recirculation;
 
             // received packets from front panel RX recirc ports are sent to TX recirc ports for outgoing port
             let req = table::Request::new(DEFAULT_FORWARD_TABLE)

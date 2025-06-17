@@ -20,6 +20,9 @@
 
 use std::collections::HashMap;
 
+use log::warn;
+
+use crate::api::histogram::HistogramConfigRequest;
 use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
 use crate::core::traffic_gen_core::const_definitions::{MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2};
@@ -29,7 +32,7 @@ use crate::PortMapping;
 
 /// Validates an incoming traffic generation request.
 /// Checks if the MPLS/SRv6 configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
-pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode, tx_rx_port_mapping: &HashMap<u32, u32>, available_ports: HashMap<u32, PortMapping>, is_tofino2: bool) -> Result<(), Error> {
+pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode, tx_rx_port_mapping: &HashMap<String, u32>, available_ports: HashMap<u32, PortMapping>, is_tofino2: bool) -> Result<(), Error> {
     for stream in streams.iter(){
         // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::Mpls {
@@ -169,7 +172,7 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
     // Verify that port is actually available on this device. This might happen if a configuration from another device is imported.
     for (tx_port, rx_port) in tx_rx_port_mapping.iter(){
-        if !available_ports.contains_key(tx_port){
+        if !available_ports.contains_key(&tx_port.parse::<u32>().unwrap_or(0u32)){
             return Err(Error::new(format!("Configuration error: TX port {tx_port} is not available on this device.")));
         }
         if !available_ports.contains_key(rx_port){
@@ -179,4 +182,50 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
     Ok(())
 
+}
+
+pub fn validate_histogram(request: &HistogramConfigRequest) -> Result<(), Error>  {
+
+    let port = request.port;
+
+    if request.config.min >= request.config.max {
+        return Err(Error::new(format!("Histogram config error port {port}: Minimum value must be less than maximum value of range.")));        
+    }
+    if request.config.num_bins > 500 {
+        return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 500 bins per port are supported at maximum.")));        
+
+    }
+    if request.config.num_bins > (request.config.max - request.config.min) {
+        return Err(Error::new(format!("Histogram config error port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));        
+    }    
+
+    Ok(())
+}
+
+pub fn validate_multiple_test(tests: Vec<TrafficGenData>) -> Result<(), Error> {
+    if tests.is_empty() {
+        return Err(Error::new("No tests provided."));
+    }
+
+    for (idx,test) in tests.iter().enumerate() {
+
+        // Validate that each test has a name
+        if test.name.is_none() {
+            warn!("Test with ID #{idx} has no name.");
+            return Err(Error::new(format!("Test #{idx} has no name.")));
+        }
+
+        // Validate that names are unique
+        if tests.iter().filter(|t| t.name == test.name).count() > 1 {
+            warn!("Test with ID #{idx} has a duplicate name.");
+            return Err(Error::new(format!("Test #{idx} has a duplicate name.")));
+        }
+
+        // Validate that each test has a duration
+        if test.duration.is_none() || test.duration.is_some_and(|d| d == 0) {
+            warn!("Test with ID #{} has no duration. It will run infinitely.", test.name.clone().unwrap());
+        }
+    }
+
+    Ok(())
 }

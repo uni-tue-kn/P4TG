@@ -73,11 +73,9 @@ const MPLS = ({stream, data, set_data, running}: Props) => {
 
         {Array.from({length: stream.number_of_lse}, (_, i) => {
 
-            {
-                if (data.mpls_stack[i] === undefined) {
-                    // Settings were never saved before, initialize with default header
-                    data.mpls_stack[i] = DefaultMPLSHeader()
-                }
+            if (data.mpls_stack[i] === undefined) {
+                // Settings were never saved before, initialize with default header
+                data.mpls_stack[i] = DefaultMPLSHeader()
             }
 
             return <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">

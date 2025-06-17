@@ -289,7 +289,7 @@ const SettingsModal = ({
                     Close
                 </Button>
                 <Button variant="primary" onClick={submit} disabled={running}>
-                    Save
+                    Confirm
                 </Button>
             </Modal.Footer>
         </form>

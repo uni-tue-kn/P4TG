@@ -18,10 +18,11 @@
  */
 pub mod server;
 mod online;
-mod statistics;
-mod traffic_gen;
+pub mod statistics;
+pub mod traffic_gen;
 mod ports;
 mod tables;
+mod histogram;
 
 mod helper;
 mod reset;
@@ -40,3 +41,4 @@ pub use ports::add_port;
 pub use reset::reset;
 pub use restart::restart;
 pub use config::config;
+pub use histogram::configure_histogram;

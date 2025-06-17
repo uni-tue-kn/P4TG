@@ -1,5 +1,33 @@
 # Changelog 
 
+## v2.4.0
+### New features
+- Live RTT histogram generation (#16)
+  - The range for the histogram (minimum and maximum) and the number of bins can be configured on a per-port basis.
+    - The configuration is available in the front end in the RX port settings or via the REST API.
+  - Packets are matched to bins in the data plane based on the configured histogram settings (no sampling required).
+  - The .25, .50, .75 and .90 percentiles are calculated based on the histogram data.
+  - The mean and standard deviation are also calculated based on the histogram data. Depending on the histogram configuration, these calculations may yield more accurate results than sampling.
+  - The histogram is rendered in the front end.
+  - The `GET:api/statistics` endpoint contains the histogram configuration and data for each RX port.
+- New API endpoints for histogram configuration: `POST:api/histogram` for histogram configuration and `GET:api/histogram` to retrieve configuration.
+  - Histograms can also be configured using the `POST:api/trafficgen` endpoint.
+- Test automation by providing a list of tests
+  - The `POST:api/trafficgen` endpoint now accepts either a single TrafficGen object, or a list of TrafficGen objects for test automation
+  - Configuration of multiple sequential tests is available in the frontend settings
+  - Visualization and statistics per test are available in the frontend and are provided in the `GET:api/statistics` and `GET:api/time_statistics` endpoints
+  - The `DELETE:api/trafficgen` is extended with an optional `skip: boolean` parameter to skip a single test
+  - Objects in / for `POST:api/trafficgen`, `GET:api/trafficgen`, `GET:api/statistics`, and `GET:api/time_statistics` now have an optional `name` and `histogram_config` entry
+
+### Bug fixes
+- Fixed text color in Modals in dark mode
+- Fixed frontend crash if controller goes offline
+- Fixed bug in port validation on settings import
+- Added missing API docs for `online` endpoint
+- Fixed RX frame type statistic for ARP frames in frontend
+- Fixed stream setting button enabled while traffic generation is running
+- Changed the P4 Makefile to work with open-p4studio
+
 ## v2.3.3
 ### Bug Fixes
 - Fixed a crash of the P4TG controller after several hours

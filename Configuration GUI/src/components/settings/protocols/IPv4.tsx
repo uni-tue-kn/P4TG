@@ -18,7 +18,7 @@
  */
 
 import React from "react"
-import {Button, Col, Form, Modal, Row} from "react-bootstrap";
+import {Button, Col, Form, Row} from "react-bootstrap";
 import { randomIP } from "../SettingsModal";
 
 import InfoBox from "../../InfoBox";

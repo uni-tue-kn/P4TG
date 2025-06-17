@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use lazy_static::lazy_static;
+use crate::core::statistics::RttHistogramConfig;
 use crate::core::traffic_gen_core::types::*;
 
 lazy_static! {
     pub static ref EXAMPLE_GET_1: TrafficGenData = TrafficGenData {
+        name: None,
         mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
                 port: 128,
@@ -56,12 +58,14 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: Some(10),
+        histogram_config: None,
     };
 
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
+        name: None,
         stream_settings: vec![StreamSetting {
                 port: 128,
                 stream_id: 1,
@@ -112,8 +116,9 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)]),
-        duration: None
+        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+        duration: None,
+        histogram_config: None,
     };
 
 
@@ -137,6 +142,7 @@ lazy_static! {
     }];
 
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
+        name: None,
         mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
                 port: 128,
@@ -188,11 +194,13 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)]),
-        duration: None
+        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+        duration: None,
+        histogram_config: None,
 };
 
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
+        name: None,
         mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
                 port: 128,
@@ -243,8 +251,9 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)]),
-        duration: None
+        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+        duration: None,
+        histogram_config: None,
     };
 
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
@@ -268,7 +277,8 @@ lazy_static! {
 
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Poisson,
-        port_tx_rx_mapping: HashMap::from([(68, 68)]),
+        name: Some("Poisson".to_string()),
+        port_tx_rx_mapping: HashMap::from([("66".to_string(), 68)]),
         stream_settings: vec![
             StreamSetting {
                 active: true,
@@ -314,6 +324,7 @@ lazy_static! {
             }
         ],
         duration: None,
+        histogram_config: None,
     };
 
     pub static ref EXAMPLE_POST_4_RESPONSE: Vec<Stream> = vec![Stream {
@@ -337,6 +348,7 @@ lazy_static! {
 
     pub static ref EXAMPLE_POST_4_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
+        name: None,
         stream_settings: vec![StreamSetting {
                 port: 128,
                 stream_id: 1,
@@ -380,8 +392,9 @@ lazy_static! {
                 srv6_ip_tunneling: None,
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
+        histogram_config: None,
     };
 
     pub static ref EXAMPLE_POST_5_RESPONSE: Vec<Stream> = vec![Stream {
@@ -405,6 +418,7 @@ lazy_static! {
 
     pub static ref EXAMPLE_POST_5_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
+        name: None,
         stream_settings: vec![StreamSetting {
                 port: 128,
                 stream_id: 1,
@@ -455,8 +469,13 @@ lazy_static! {
                 srv6_ip_tunneling: Some(true),
             }
         ],
-        port_tx_rx_mapping: HashMap::from([(128, 136)]),
+        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
+        histogram_config: Some(HashMap::from([("136".to_string(), RttHistogramConfig {
+            min: 1000,
+            max: 2000,
+            num_bins: 100,
+        })])),
     };
 
 

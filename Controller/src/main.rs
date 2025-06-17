@@ -30,13 +30,14 @@ use rbfrt::util::{AutoNegotiation, FEC, Loopback, Port, Speed};
 use rbfrt::util::FEC::BF_FEC_TYP_REED_SOLOMON;
 use rbfrt::util::PortManager;
 use tokio::sync::Mutex;
+use api::statistics::Statistics;
+use core::statistics::TimeStatistic;
 
 mod core;
 mod api;
 mod error;
 
-use core::FrameSizeMonitor;
-use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen, DurationMonitorTask};
+use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen, DurationMonitorTask, HistogramMonitor, FrameSizeMonitor};
 use crate::core::traffic_gen_core::const_definitions::{PORT_CFG_TF2, DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 
@@ -50,7 +51,14 @@ pub struct PortMapping {
 /// Stores the start time of the current experiment
 pub struct Experiment {
     start: std::time::SystemTime,
-    running: bool
+    running: bool,
+}
+
+/// Stores statistics and configurations, as well as an abort signal for multiple tests
+pub struct MultiTest {
+    pub(crate) collected_statistics: Mutex<Vec<Statistics>>,
+    pub(crate) collected_time_statistics: Mutex<Vec<TimeStatistic>>,
+    pub (crate) multiple_test_monitor_task: Mutex<DurationMonitorTask>,
 }
 
 /// App state that is used between threads
@@ -60,6 +68,7 @@ pub struct AppState {
     pub(crate) traffic_generator: Mutex<TrafficGen>,
     pub(crate) port_mapping: HashMap<u32, PortMapping>,
     pub(crate) rate_monitor: Mutex<RateMonitor>,
+    pub(crate) rtt_histogram_monitor: Mutex<HistogramMonitor>,
     pub(crate) switch: SwitchConnection,
     pub(crate) pm: PortManager,
     pub(crate) experiment: Mutex<Experiment>,
@@ -69,6 +78,7 @@ pub struct AppState {
     pub(crate) tofino2: bool,
     pub(crate) loopback_mode: bool,
     pub (crate) monitor_task: Mutex<DurationMonitorTask>,
+    pub (crate) multiple_tests: MultiTest
 }
 
 async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config: &Config,
@@ -243,6 +253,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     rate_monitor.init_iat_meter(&switch, sample_mode).await?;
     rate_monitor.on_reset(&switch).await?;
 
+    let rtt_histogram_monitor = HistogramMonitor::new(port_mapping.clone());
+
     let mut traffic_generator = TrafficGen::new(is_tofino2, num_pipes);
     traffic_generator.stop(&switch).await?;
 
@@ -257,6 +269,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         traffic_generator: Mutex::new(traffic_generator),
         port_mapping,
         rate_monitor: Mutex::new(rate_monitor),
+        rtt_histogram_monitor: Mutex::new(rtt_histogram_monitor),
         switch,
         pm,
         sample_mode,
@@ -266,6 +279,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tofino2: is_tofino2,
         loopback_mode,
         monitor_task: Mutex::new(DurationMonitorTask { handle: None, cancel_token: None }),
+        multiple_tests: MultiTest { collected_statistics: Default::default(), collected_time_statistics: Default::default(), multiple_test_monitor_task: Mutex::new(DurationMonitorTask { handle: None, cancel_token: None }) }
     });
 
     state.frame_size_monitor.lock().await.configure(&state.switch).await?;
@@ -296,6 +310,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let local_state = monitoring_state;
 
         FrameTypeMonitor::monitor_statistics(local_state).await;
+    });
+
+    let monitoring_state = Arc::clone(&state);
+
+    // start RTT histogram monitoring
+    tokio::spawn(async move {
+        let local_state = monitoring_state;
+
+        HistogramMonitor::monitor_histogram(local_state).await;
     });
 
     let monitoring_state = Arc::clone(&state);

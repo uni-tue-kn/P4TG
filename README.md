@@ -2,7 +2,7 @@
  <img src="./logo.png" />
  <h2>P4TG: Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.3.3-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.4.0-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
 
 </div>
 
@@ -32,6 +32,7 @@ In analysis mode, P4TG measures rates on the input ports, measures IATs, and for
 - P4TG (v2.3.0) supports the Intel Tofino 2 with up to 4 Tb/s
 - P4TG (v2.3.2) supports IPv6, SRv6 (Tofino 2 only), many bug fixes, and a dark mode
 - P4TG (v2.3.3) bug fixes and dependency updates
+- P4TG (v2.4.0) Automated testing, live RTT histogram and percentile support
 
 See [Changelog](./CHANGELOG.md) for a full changelog.
 
@@ -60,46 +61,44 @@ P4TG consists of:
 | SRv6              | ✅ Available            |
 | ARP replies       | ✅ Available            |
 | Dark mode         | ✅ Available            |
+| RTT histogram and percentile reporting | ✅ Available     |
+| Auto. testing     | ✅ Available           |
 | Test profiles     | ⚠️ Experimental (Unstable)           |
 | File reporting    | ⚠️ Experimental (Unstable)           |
-| Auto. testing     | ⚠️ Experimental (Unstable)           |
 | Localization      | ⚠️ Experimental (Unstable)           |
 | NDP               | ⏳ Planned (Not yet implemented)     |
 | NETCONF           | ⏳ Planned (Not yet implemented)     |
-| RTT percentile reporting | ⏳ Planned (Not yet implemented)     |
 
 
 ## Installation & Start Instructions
 
-### Data plane
+A more detailed installation guide for open-p4studio and P4TG can be found [here](SDE.md).
+
+### Quick Start
+
+#### Data plane
 
 Go to `P4-Implementation` and compile p4tg via `make compile`. 
 This compiles the program and copies the resulting configs to the target directory.
 
-Afterwards, start p4tg via `make start`.
-
 - **For Intel Tofino1**, run `make compile TARGET=tofino` and `make start TARGET=tofino`.
 - **For Intel Tofino2**, run `make compile TARGET=tofino2` and `make start TARGET=tofino2`.
 
-This requires a fully setup [SDE](https://github.com/p4lang/open-p4studio) with set `$SDE` and `$SDE_INSTALL` environment variables.
+This requires a fully setup [SDE](https://github.com/p4lang/open-p4studio) with set `$SDE` and `$SDE_INSTALL` environment variables (see [here](SDE.md)).
 
 Tested on:
   - SDE 9.9.0 (up to v2.0.0)
-  - SDE 9.13.0 
-  - SDE 9.13.1
-  - SDE 9.13.2
-  - SDE 9.13.3
-  - SDE 9.13.4
+  - SDE 9.13.{0,...,4}
 
-### Control plane
+#### Control plane
 
 The controller is written in Rust and can be started via `cd Controller && docker compose up`. This will pull a prebuilt docker image.
 
-The controller then starts a REST-API server at port `P4TG_PORT` and endpoint `/api` (see `docker-compose.yaml`) that is used to communicate with the configuration GUI.
+The controller then starts a REST-API server at port `P4TG_PORT` (default 8000) and endpoint `/api` (see `docker-compose.yaml`) that is used to communicate with the configuration GUI.
 It also serves the configuration GUI at port `P4TG_PORT` and endpoint `/`.
 The configuration GUI can then be accessed at http://*ip-of-tofino-controller*:`P4TG_PORT`
 
-#### Configuration 
+### Configuration 
 
 Set `SAMPLE=1` in `docker-compose.yaml` to activate IAT sampling mode instead of data plane measurement.
 Data plane measurement mode (`SAMPLE=0`) is more accurate and the default.
@@ -143,6 +142,7 @@ The documentation of the REST-API can be found [here](https://uni-tue-kn.github.
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-2.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-3.png"/>
 <img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-4.png"/>
+<img alt="image" style="border-radius: 10px; border: 1px solid #000;" src="preview-5.png"/>
 
 # Cite
 If you use P4TG in any of your publications, please cite the following papers:

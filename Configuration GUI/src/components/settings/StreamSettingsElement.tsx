@@ -40,13 +40,13 @@ const StreamSettingsElement = ({
         <StyledCol>
             <Form.Check
                 className={"d-inline"}
-                disabled={!isActive && (running || !port_status)}
+                disabled={running || !port_status}
                 defaultChecked={isActive}
                 type={"switch"}
                 onChange={(event) => {
                     setIsActive(!isActive);
                     stream.active = !stream.active
-                }
+                    }
                 }
             />
 

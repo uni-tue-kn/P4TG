@@ -23,15 +23,17 @@ use axum::http::StatusCode;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::Serialize;
+use utoipa::ToSchema;
+use crate::api::docs;
 use crate::AppState;
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, JsonSchema, ToSchema)]
 pub enum Asic {
     Tofino1,
     Tofino2
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, JsonSchema, ToSchema)]
 pub struct Online {
     pub(crate) status: String,
     pub(crate) version: String,
@@ -40,6 +42,17 @@ pub struct Online {
 }
 
 /// Online endpoint
+/// Returns the currently configured ports
+#[utoipa::path(
+    get,
+    path = "/api/online",
+    responses(
+    (status = 200,
+    body = Online,
+    description = "Returns the status of P4TG.",
+    example = json!(*docs::online::EXAMPLE_GET_1)
+    ))
+)]
 pub async fn online(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Online>) {
     (StatusCode::OK, Json(Online {status: "online".to_owned(),
         version: env!("CARGO_PKG_VERSION").parse().unwrap(),
