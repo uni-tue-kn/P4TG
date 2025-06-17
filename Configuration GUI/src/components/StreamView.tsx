@@ -17,12 +17,12 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
-import {Col, Row, Table} from "react-bootstrap";
-import {Statistics} from "../common/Interfaces";
-import {formatBits} from "./SendReceiveMonitor";
+import React, { useEffect, useState } from 'react'
+import { Col, Row, Table } from "react-bootstrap";
+import { Statistics } from "../common/Interfaces";
+import { formatBits } from "./SendReceiveMonitor";
 
-const StreamView = ({stats, port_mapping, stream_id, frame_size}: {
+const StreamView = ({ stats, port_mapping, stream_id, frame_size }: {
     stats: Statistics,
     port_mapping: { [name: number]: number },
     stream_id: number,
@@ -57,24 +57,24 @@ const StreamView = ({stats, port_mapping, stream_id, frame_size}: {
             <Col>
                 <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
                     <thead className={"table-dark"}>
-                    <tr>
-                        <th className={"col-2"}>TX L1</th>
-                        <th className={"col-2"}>RX L1</th>
-                        <th className={"col-2"}>TX L2</th>
-                        <th className={"col-2"}>RX L2</th>
-                        <th className={"col-2"}>Frame Size</th>
-                        <th className={"col-2"}>Loss rate</th>
-                    </tr>
+                        <tr>
+                            <th className={"col-2"}>TX L1</th>
+                            <th className={"col-2"}>RX L1</th>
+                            <th className={"col-2"}>TX L2</th>
+                            <th className={"col-2"}>RX L2</th>
+                            <th className={"col-2"}>Frame Size</th>
+                            <th className={"col-2"}>Loss rate</th>
+                        </tr>
                     </thead>
                     <tbody>
-                    <tr>
-                        <td>{formatBits(tx_rate_l2 * (frame_size + 20) / frame_size)}</td>
-                        <td>{formatBits(rx_rate_l2 * (frame_size + 20) / frame_size)}</td>
-                        <td>{formatBits(tx_rate_l2)}</td>
-                        <td>{formatBits(rx_rate_l2)}</td>
-                        <td>{frame_size} B</td>
-                        <td>{tx_rate_l2 > 0 && (1 - rx_rate_l2 / tx_rate_l2) > 0 ? (100 * (1 - rx_rate_l2 / tx_rate_l2)).toFixed(2) : "0.00"}%</td>
-                    </tr>
+                        <tr>
+                            <td>{formatBits(tx_rate_l2 * (frame_size + 20) / frame_size)}</td>
+                            <td>{formatBits(rx_rate_l2 * (frame_size + 20) / frame_size)}</td>
+                            <td>{formatBits(tx_rate_l2)}</td>
+                            <td>{formatBits(rx_rate_l2)}</td>
+                            <td>{frame_size} B</td>
+                            <td>{tx_rate_l2 > 0 && (1 - rx_rate_l2 / tx_rate_l2) > 0 ? (100 * (1 - rx_rate_l2 / tx_rate_l2)).toFixed(2) : "0.00"}%</td>
+                        </tr>
                     </tbody>
                 </Table>
             </Col>

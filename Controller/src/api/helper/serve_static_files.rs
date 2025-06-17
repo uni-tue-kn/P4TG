@@ -17,11 +17,9 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-
-
-use axum::http::{header, HeaderValue, Response, StatusCode};
-use axum::extract::Path;
 use axum::body::Body;
+use axum::extract::Path;
+use axum::http::{header, HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
 use include_dir::{include_dir, Dir};
 
@@ -60,11 +58,8 @@ pub async fn serve_index() -> impl IntoResponse {
             .unwrap(),
         Some(file) => Response::builder()
             .status(StatusCode::OK)
-            .header(
-                header::CONTENT_TYPE,
-                "text/html"
-            )
+            .header(header::CONTENT_TYPE, "text/html")
             .body(Body::from(file.contents()))
-            .unwrap()
+            .unwrap(),
     }
 }

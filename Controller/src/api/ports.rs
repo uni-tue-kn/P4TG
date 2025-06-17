@@ -17,33 +17,33 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::sync::Arc;
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::{Json, IntoResponse, Response};
-use rbfrt::util::{AutoNegotiation, Loopback, Port, Speed, FEC};
-use serde::{Deserialize, Serialize};
 use crate::api::docs;
 use crate::api::server::Error;
 use crate::AppState;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Json, Response};
+use rbfrt::util::{AutoNegotiation, Loopback, Port, Speed, FEC};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PortConfiguration {
     pid: u32,
     speed: Speed,
     fec: FEC,
-    auto_neg: AutoNegotiation
+    auto_neg: AutoNegotiation,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PortStats {
-    pid: u32
+    pid: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ArpReply {
     pid: u32,
-    arp_reply: bool
+    arp_reply: bool,
 }
 
 /// Returns the currently configured ports
@@ -63,16 +63,23 @@ pub async fn ports(State(state): State<Arc<AppState>>) -> Response {
 
     match pm.get_ports(switch).await {
         Ok(ports) => Json(ports).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:?}")))).into_response()
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Error::new(format!("{err:?}"))),
+        )
+            .into_response(),
     }
 }
 
-pub async fn add_port(State(state): State<Arc<AppState>>, payload: Json<PortConfiguration>) -> Response {
+pub async fn add_port(
+    State(state): State<Arc<AppState>>,
+    payload: Json<PortConfiguration>,
+) -> Response {
     let pm = &state.pm;
 
     match pm.frontpanel_port(payload.pid) {
         Ok((port, channel)) => {
-            let mut req = Port::new(port , channel)
+            let mut req = Port::new(port, channel)
                 .speed(payload.speed.clone())
                 .fec(payload.fec.clone())
                 .auto_negotiation(payload.auto_neg.clone());
@@ -82,17 +89,19 @@ pub async fn add_port(State(state): State<Arc<AppState>>, payload: Json<PortConf
             }
 
             match pm.update_port(&state.switch, &req).await {
-                Ok(_) => {
-                    StatusCode::CREATED.into_response()
-                }
-                Err(err) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
-                }
+                Ok(_) => StatusCode::CREATED.into_response(),
+                Err(err) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(Error::new(format!("{err:#?}"))),
+                )
+                    .into_response(),
             }
         }
-        Err(err) => {
-            (StatusCode::BAD_REQUEST, Json(Error::new(format!("{err:#?}")))).into_response()
-        }
+        Err(err) => (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(format!("{err:#?}"))),
+        )
+            .into_response(),
     }
 }
 
@@ -101,23 +110,38 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
 
     match mapping.get(&payload.pid) {
         Some(port) => {
-            match &state.arp_handler.modify_arp(&state.switch, port, payload.arp_reply).await {
+            match &state
+                .arp_handler
+                .modify_arp(&state.switch, port, payload.arp_reply)
+                .await
+            {
                 Ok(_) => {
                     let port = &state.pm.frontpanel_port(payload.pid);
 
                     if let Ok((port, _)) = port {
-                        state.config.lock().await.update_arp_state(*port, payload.arp_reply);
+                        state
+                            .config
+                            .lock()
+                            .await
+                            .update_arp_state(*port, payload.arp_reply);
                     }
 
                     StatusCode::CREATED.into_response()
                 }
-                Err(err) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
-                }
+                Err(err) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(Error::new(format!("{err:#?}"))),
+                )
+                    .into_response(),
             }
         }
-        None => {
-            (StatusCode::BAD_REQUEST, Json(Error::new(format!("PID {} is not configured.", payload.pid)))).into_response()
-        }
+        None => (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(format!(
+                "PID {} is not configured.",
+                payload.pid
+            ))),
+        )
+            .into_response(),
     }
 }

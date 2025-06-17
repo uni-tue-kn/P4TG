@@ -16,13 +16,13 @@
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
-pub mod server;
-mod online;
-pub mod statistics;
-pub mod traffic_gen;
-mod ports;
-mod tables;
 mod histogram;
+mod online;
+mod ports;
+pub mod server;
+pub mod statistics;
+mod tables;
+pub mod traffic_gen;
 
 mod helper;
 mod reset;
@@ -31,14 +31,14 @@ mod restart;
 mod config;
 mod docs;
 
-pub use online::online;
-pub use statistics::statistics;
-pub use traffic_gen::traffic_gen;
-pub use traffic_gen::configure_traffic_gen;
-pub use traffic_gen::stop_traffic_gen;
-pub use ports::ports;
-pub use ports::add_port;
-pub use reset::reset;
-pub use restart::restart;
 pub use config::config;
 pub use histogram::configure_histogram;
+pub use online::online;
+pub use ports::add_port;
+pub use ports::ports;
+pub use reset::reset;
+pub use restart::restart;
+pub use statistics::statistics;
+pub use traffic_gen::configure_traffic_gen;
+pub use traffic_gen::stop_traffic_gen;
+pub use traffic_gen::traffic_gen;

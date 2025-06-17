@@ -17,12 +17,12 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import {Button, Col, Form, Row} from "react-bootstrap";
+import { Button, Col, Form, Row } from "react-bootstrap";
 import { randomIPv6 } from "../SettingsModal";
 
 import InfoBox from "../../InfoBox";
-import {StreamSettings} from "../../../common/Interfaces";
-import {StyledRow} from "../../../sites/Settings";
+import { StreamSettings } from "../../../common/Interfaces";
+import { StyledRow } from "../../../sites/Settings";
 
 interface Props {
     data: StreamSettings,
@@ -30,21 +30,21 @@ interface Props {
     running: boolean
 }
 
-const IPv6 = ({data, set_data, running}: Props) => {
+const IPv6 = ({ data, set_data, running }: Props) => {
     return <>
-            <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
+        <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
             <Form.Label className={"col-3 text-start"}>
                 Source
             </Form.Label>
             <Col className={"col-7 text-end"}>
                 <Row>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({ipv6: {...data.ipv6, ipv6_src: event.target.value}})}
-                                      disabled={running} type={"text"} value={data.ipv6.ipv6_src}/>
+                        <Form.Control onChange={(event: any) => set_data({ ipv6: { ...data.ipv6, ipv6_src: event.target.value } })}
+                            disabled={running} type={"text"} value={data.ipv6.ipv6_src} />
                     </Col>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({ipv6: {...data.ipv6, ipv6_src_mask: event.target.value}})}
-                                      disabled={running} type={"text"} value={data.ipv6.ipv6_src_mask}/>
+                        <Form.Control onChange={(event: any) => set_data({ ipv6: { ...data.ipv6, ipv6_src_mask: event.target.value } })}
+                            disabled={running} type={"text"} value={data.ipv6.ipv6_src_mask} />
                     </Col>
                     <Col className={"col-1"}>
                         <InfoBox>
@@ -63,7 +63,7 @@ const IPv6 = ({data, set_data, running}: Props) => {
                 </Row>
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({ipv6: {...data.ipv6, ipv6_src: randomIPv6()}})}><i className="bi bi-shuffle"/></Button>
+                <Button disabled={running} onClick={() => set_data({ ipv6: { ...data.ipv6, ipv6_src: randomIPv6() } })}><i className="bi bi-shuffle" /></Button>
             </Col>
         </Form.Group>
 
@@ -74,17 +74,17 @@ const IPv6 = ({data, set_data, running}: Props) => {
             <Col className={"col-7 text-end"}>
                 <Row>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({ipv6: {...data.ipv6, ipv6_dst: event.target.value}})}
-                                      disabled={running} type={"text"} value={data.ipv6.ipv6_dst}/>
+                        <Form.Control onChange={(event: any) => set_data({ ipv6: { ...data.ipv6, ipv6_dst: event.target.value } })}
+                            disabled={running} type={"text"} value={data.ipv6.ipv6_dst} />
                     </Col>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({ipv6: {...data.ipv6, ipv6_dst_mask: event.target.value}})}
-                                      disabled={running} type={"text"} value={data.ipv6.ipv6_dst_mask}/>
+                        <Form.Control onChange={(event: any) => set_data({ ipv6: { ...data.ipv6, ipv6_dst_mask: event.target.value } })}
+                            disabled={running} type={"text"} value={data.ipv6.ipv6_dst_mask} />
                     </Col>
                     <Col className={"col-1"}>
                         <InfoBox>
                             <>
-                            <p>IP addresses can be randomized to simulate multiple flows.</p>
+                                <p>IP addresses can be randomized to simulate multiple flows.</p>
                                 <p>The second value (default ::) represents a randomization mask that can be used to randomize parts of the src/dst address. The maximum value for the mask is ::ffff:ffff on Tofino 1 and ::ff:ffff:ffff on Tofino 2</p>
 
                                 <p>In the dataplane, a 48 bit value (least-significant 48 bits of a randomized IPv6 address) is generated and bitwise ANDed with the randomization mask. The resulting IP address is bitwise ORed with the src/dst address.</p>
@@ -99,8 +99,8 @@ const IPv6 = ({data, set_data, running}: Props) => {
 
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({ipv6: {...data.ipv6, ipv6_dst: randomIPv6()}})}>
-                    <i className="bi bi-shuffle"/>
+                <Button disabled={running} onClick={() => set_data({ ipv6: { ...data.ipv6, ipv6_dst: randomIPv6() } })}>
+                    <i className="bi bi-shuffle" />
                 </Button>
             </Col>
         </Form.Group>
@@ -110,8 +110,8 @@ const IPv6 = ({data, set_data, running}: Props) => {
                 Traffic Class
             </Form.Label>
             <Col className={"col-7 text-end"}>
-                <Form.Control onChange={(event: any) => set_data({ipv6: {...data.ipv6, ipv6_traffic_class: parseInt(event.target.value)}})}
-                              disabled={running} type={"number"} defaultValue={data.ipv6.ipv6_traffic_class}/>
+                <Form.Control onChange={(event: any) => set_data({ ipv6: { ...data.ipv6, ipv6_traffic_class: parseInt(event.target.value) } })}
+                    disabled={running} type={"number"} defaultValue={data.ipv6.ipv6_traffic_class} />
             </Col>
         </Form.Group>
         <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextPassword">
@@ -119,10 +119,10 @@ const IPv6 = ({data, set_data, running}: Props) => {
                 Flow Label
             </Form.Label>
             <Col className={"col-7 text-end"}>
-                <Form.Control onChange={(event: any) => set_data({ipv6: {...data.ipv6, ipv6_flow_label: parseInt(event.target.value)}})}
-                              disabled={running} type={"number"} defaultValue={data.ipv6.ipv6_flow_label}/>
+                <Form.Control onChange={(event: any) => set_data({ ipv6: { ...data.ipv6, ipv6_flow_label: parseInt(event.target.value) } })}
+                    disabled={running} type={"number"} defaultValue={data.ipv6.ipv6_flow_label} />
             </Col>
-        </Form.Group>        
+        </Form.Group>
     </>
 }
 

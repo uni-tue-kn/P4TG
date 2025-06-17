@@ -26,7 +26,10 @@ pub fn average(numbers: &VecDeque<u64>) -> f64 {
 
 pub fn std(numbers: &VecDeque<u64>) -> f64 {
     let mean = numbers.iter().sum::<u64>() as f64 / max(1, numbers.len()) as f64;
-    let sum_of_squared_diff: f64 = numbers.iter().map(|x| f64::powf(mean - (*x as f64), 2f64)).sum();
+    let sum_of_squared_diff: f64 = numbers
+        .iter()
+        .map(|x| f64::powf(mean - (*x as f64), 2f64))
+        .sum();
 
     if numbers.len() < 2 {
         return 0f64;

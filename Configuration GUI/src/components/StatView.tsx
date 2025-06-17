@@ -17,10 +17,10 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
-import {Col, OverlayTrigger, Row, Table, Tooltip} from "react-bootstrap";
-import {GenerationMode, Statistics, TimeStatistics} from "../common/Interfaces";
-import {formatBits} from "./SendReceiveMonitor";
+import React, { useEffect, useState } from 'react'
+import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
+import { GenerationMode, Statistics, TimeStatistics } from "../common/Interfaces";
+import { formatBits } from "./SendReceiveMonitor";
 
 import styled from 'styled-components'
 import Visuals from "./Visuals";
@@ -59,7 +59,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         Object.keys(stats.frame_type_data).forEach((v: string) => {
             if (Object.keys(port_mapping).includes(v)) {
                 // @ts-ignore
-                if(!(type in stats.frame_type_data[v].tx)) {
+                if (!(type in stats.frame_type_data[v].tx)) {
                     ret.tx += 0
                 }
                 else {
@@ -71,7 +71,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
 
             if (Object.values(port_mapping).map(Number).includes(parseInt(v))) {
                 // @ts-ignore
-                if(!(type in stats.frame_type_data[v].rx)) {
+                if (!(type in stats.frame_type_data[v].rx)) {
                     ret.rx += 0
                 }
                 else {
@@ -252,11 +252,11 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
 
 
     return <>
-    { visual ?
-        <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary} rx_port={rx_port}/>
-        :
-        null
-    }
+        {visual ?
+            <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary} rx_port={rx_port} />
+            :
+            null
+        }
         <Row className={"mb-3"}>
             <Col className={"col-12 col-md-6 col-sm-12"}>
                 <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
@@ -366,16 +366,16 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
             <Col className={"col-12 col-md-8"}>
                 <Table striped bordered hover size="sm" className={`mt-3 mb-3 ${mode == GenerationMode.ANALYZE ? "opacity-50" : ""}`}>
                     <thead className={"table-dark"}>
-                    <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, "Sampled values")}>
-                        <tr>
-                            <th className={"col-2"}>Current RTT</th>
-                            <th className={"col-2"}><Overline>RTT</Overline></th>
-                            <th className={"col-2"}>Minimum RTT</th>
-                            <th className={"col-2"}>Maximum RTT</th>
-                            <th className={"col-2"}>Jitter</th>
-                            <th className={"col-2"}>#Rtts</th>
-                        </tr>
-                    </OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, "Sampled values")}>
+                            <tr>
+                                <th className={"col-2"}>Current RTT</th>
+                                <th className={"col-2"}><Overline>RTT</Overline></th>
+                                <th className={"col-2"}>Minimum RTT</th>
+                                <th className={"col-2"}>Maximum RTT</th>
+                                <th className={"col-2"}>Jitter</th>
+                                <th className={"col-2"}>#Rtts</th>
+                            </tr>
+                        </OverlayTrigger>
                     </thead>
                     <tbody>
                         <tr>
@@ -405,7 +405,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                             let key = v.toLowerCase()
                             let data = get_frame_types(key)
 
-                            if(key == "total") {
+                            if (key == "total") {
                                 data.tx = ["multicast", "broadcast", "unicast", "vxlan"].reduce((acc, curr) => {
                                     acc += get_frame_types(curr).tx
 
@@ -419,7 +419,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                                 }, 0)
                             }
 
-                            if(key == "non-unicast") {
+                            if (key == "non-unicast") {
                                 data.tx = ["multicast", "broadcast"].reduce((acc, curr) => {
                                     acc += get_frame_types(curr).tx
 
@@ -433,7 +433,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                                 }, 0)
                             }
                             return <tr>
-                                <td>{v != " " ? v : "\u00A0" }</td> {/* Quick hack for empty row */}
+                                <td>{v != " " ? v : "\u00A0"}</td> {/* Quick hack for empty row */}
                                 <td>{v != " " ? formatFrameCount(data.tx) : null}</td>
                                 <td>{v != " " ? formatFrameCount(data.rx) : null}</td>
                             </tr>

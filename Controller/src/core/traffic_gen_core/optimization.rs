@@ -17,9 +17,9 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
+use crate::core::traffic_gen_core::const_definitions::SOLVER_TIME_LIMIT_IN_SECONDS;
 use highs::{HighsModelStatus, Sense};
 use log::warn;
-use crate::core::traffic_gen_core::const_definitions::SOLVER_TIME_LIMIT_IN_SECONDS;
 
 /// Calculates the number of packets (n) that should be sent per timeout ns limited by `max_burst`.
 /// Optimized for traffic rate accuracy and burst minimization.
@@ -40,23 +40,36 @@ pub fn calculate_send_behaviour(frame_size: u32, traffic_rate: f32, max_burst: u
     let d = (real_iat - real_iat.floor()) / real_iat;
 
     let min_packets = if max_burst == 1 { 1 } else { 2 };
-    let max_packets = if max_burst == 1 { 1 } else {((( d / accuracy) as u32) + 1).max(30)};
+    let max_packets = if max_burst == 1 {
+        1
+    } else {
+        (((d / accuracy) as u32) + 1).max(30)
+    };
 
     // calc + num packets for objective
     let calculation = problem.add_column(1., 0..100);
     let num_packets = problem.add_integer_column(1., min_packets..max_packets);
 
     // Should be at least 30 ns for rate mode
-    let timeout = if max_burst == 1 { problem.add_integer_column(0., 1..u32::MAX)} 
-                                        else {
-                                           problem.add_integer_column(1., 30..u32::MAX) }; // timeout in 32bit ns
+    let timeout = if max_burst == 1 {
+        problem.add_integer_column(0., 1..u32::MAX)
+    } else {
+        problem.add_integer_column(1., 30..u32::MAX)
+    }; // timeout in 32bit ns
 
     // 0 <= calc - timeout * rate + (num_packets * frame_size * 8) <= 1
     // Constraint is bound 0 <= ... <= 1 to overcome possible float problems.
     // Problems could arise if the float 'calculation' does not match the float of the calculated difference.
     // Therefore, 0 <= ... <= 1 should be suitable for a floating error after the comma.
     // This problem wasn't experienced yet and this solution is a safety measurement.
-    problem.add_row(0..1, [(calculation, 1.), (timeout, -traffic_rate as f64), (num_packets, (frame_size * 8) as f64)]); 
+    problem.add_row(
+        0..1,
+        [
+            (calculation, 1.),
+            (timeout, -traffic_rate as f64),
+            (num_packets, (frame_size * 8) as f64),
+        ],
+    );
     let mut solver = problem.optimise(Sense::Minimise);
     solver.set_option("time_limit", SOLVER_TIME_LIMIT_IN_SECONDS);
 
@@ -64,12 +77,17 @@ pub fn calculate_send_behaviour(frame_size: u32, traffic_rate: f32, max_burst: u
 
     match solved.status() {
         HighsModelStatus::Infeasible => {
-            warn!("No solution available. Requested rate {traffic_rate} with frame size {frame_size}");
+            warn!(
+                "No solution available. Requested rate {traffic_rate} with frame size {frame_size}"
+            );
             (0, 100)
         }
         _ => {
             let solution = solved.get_solution().columns().to_vec();
-            (solution.get(1).unwrap().round() as u16, solution.get(2).unwrap().round() as u32)
+            (
+                solution.get(1).unwrap().round() as u16,
+                solution.get(2).unwrap().round() as u32,
+            )
         }
     }
 }
@@ -106,7 +124,8 @@ mod tests {
             calculate_send_behaviour(final_size, traffic_rate / number_pipes as f32, max_burst);
         assert_ne!(0, n_packets);
 
-        let rate_l1 = (n_packets as u32 * final_size * 8) as f32 / timeout as f32 * number_pipes as f32;
+        let rate_l1 =
+            (n_packets as u32 * final_size * 8) as f32 / timeout as f32 * number_pipes as f32;
         let accuracy = 1f32 - ((rate_l1 - traffic_rate).abs() / traffic_rate);
         println!("#Packets:{n_packets}, Timeout: {timeout}, Rate: {rate_l1}, Target: {traffic_rate}, Accuracy: {accuracy}");
 

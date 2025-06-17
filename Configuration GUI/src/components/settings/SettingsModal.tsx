@@ -18,12 +18,12 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { Encapsulation, P4TGInfos, Stream, StreamSettings} from "../../common/Interfaces";
+import { Encapsulation, P4TGInfos, Stream, StreamSettings } from "../../common/Interfaces";
 import React, { useState } from "react";
-import { Accordion, Button, Modal, Alert} from "react-bootstrap";
+import { Accordion, Button, Modal, Alert } from "react-bootstrap";
 
 import { VLAN, Ethernet, IPv4, QinQ, VxLAN, MPLS, IPv6, SRv6 } from "./protocols";
-import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask} from "../../common/Validators";
+import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask } from "../../common/Validators";
 
 export const randomMAC = (allow_multicast = true) => {
     let mac = "XX:XX:XX:XX:XX:XX".replace(/X/g, function () {
@@ -122,7 +122,7 @@ const SettingsModal = ({
             return
         } else if (stream.ip_version == 4 && !validateIP(tmp_data.ip.ip_dst)) {
             setAlertMessage("Destination IP not valid.")
-            return       
+            return
         } else if (stream.ip_version == 4 && !validateToS(tmp_data.ip.ip_tos)) {
             setAlertMessage("IP ToS not valid.")
             return
@@ -134,22 +134,22 @@ const SettingsModal = ({
             return
         } else if (stream.ip_version == 6 && !validateTrafficClass(tmp_data.ipv6.ipv6_traffic_class)) {
             setAlertMessage("IP traffic class not valid.")
-            return          
+            return
         } else if (stream.ip_version == 6 && !validateFlowLabel(tmp_data.ipv6.ipv6_flow_label)) {
             setAlertMessage("IP flow label not valid.")
-            return  
+            return
         } else if (stream.ip_version == 6 && !validateIPv6RandomMask(tmp_data.ipv6.ipv6_src_mask, p4tg_infos.asic)) {
             setAlertMessage("IPv6 source mask not valid.")
-            return    
+            return
         } else if (stream.ip_version == 6 && !validateIPv6RandomMask(tmp_data.ipv6.ipv6_dst_mask, p4tg_infos.asic)) {
             setAlertMessage("IPv6 destination mask not valid.")
-            return                                      
+            return
         } else if (!validateMPLS(tmp_data.mpls_stack)) {
             setAlertMessage("MPLS stack is not valid.")
             return
-        } else if (!validateSIDList(tmp_data.sid_list)){
+        } else if (!validateSIDList(tmp_data.sid_list)) {
             setAlertMessage("SID list is not valid.")
-            return            
+            return
         } else if (!validateIPv6(tmp_data.srv6_base_header.ipv6_src)) {
             setAlertMessage("SRv6 Source IP not valid.")
             return
@@ -185,14 +185,14 @@ const SettingsModal = ({
         <form onSubmit={submit}>
             <Modal.Body>
                 {alertMessage && (
-                            <Alert
-                                variant="danger"
-                                onClose={() => setAlertMessage(null)}
-                                dismissible
-                            >
-                                {alertMessage}
-                            </Alert>
-                        )}
+                    <Alert
+                        variant="danger"
+                        onClose={() => setAlertMessage(null)}
+                        dismissible
+                    >
+                        {alertMessage}
+                    </Alert>
+                )}
                 <Accordion defaultActiveKey={['0']} alwaysOpen>
                     {stream.vxlan ?
                         <> <Accordion.Item eventKey="5">
@@ -260,10 +260,10 @@ const SettingsModal = ({
                         </>
                         :
                         null
-                    }                    
+                    }
 
                     {stream.encapsulation != Encapsulation.SRv6 || (stream.encapsulation == Encapsulation.SRv6 && stream.srv6_ip_tunneling) ?
-                        stream.ip_version == 6 ? 
+                        stream.ip_version == 6 ?
                             <>
                                 <Accordion.Item eventKey="1">
                                     <Accordion.Header>IPv6</Accordion.Header>

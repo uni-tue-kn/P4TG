@@ -17,30 +17,35 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::sync::Arc;
 use std::env;
+use std::sync::Arc;
 
-use log::{info, warn};
-use serde::Serialize;
-use axum::{routing::get, Json, Router};
 use axum::http::Method;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
+use axum::{routing::get, Json, Router};
+use log::{info, warn};
+use serde::Serialize;
 
-use utoipa::{openapi::security::{ApiKey, ApiKeyValue, SecurityScheme}, Modify, OpenApi};
+use utoipa::{
+    openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
+    Modify, OpenApi,
+};
 use utoipa_swagger_ui::SwaggerUi;
 
+use crate::api::{
+    add_port, config, configure_histogram, configure_traffic_gen, online, ports, reset, restart,
+    statistics, stop_traffic_gen, traffic_gen,
+};
 use tower_http::cors::{Any, CorsLayer};
-use crate::api::{add_port, config, configure_histogram, configure_traffic_gen, online, ports, reset, restart, statistics, stop_traffic_gen, traffic_gen};
-
 
 use crate::api::helper::serve_static_files::{serve_index, static_path};
+use crate::api::histogram;
 use crate::api::ports::arp_reply;
 use crate::api::statistics::time_statistics;
+use crate::api::tables;
 use crate::api::tables::tables;
 use crate::AppState;
-use crate::api::tables;
-use crate::api::histogram;
 
 use crate::core::traffic_gen_core::types::*;
 
@@ -83,7 +88,7 @@ use crate::core::traffic_gen_core::types::*;
         crate::core::statistics::IATStatistics,
         crate::core::statistics::RTTStatistics,
         crate::core::statistics::IATValues
-        ),       
+        ),
     ),
     info(
         title = "P4TG REST-API",
@@ -110,16 +115,17 @@ impl Modify for SecurityAddon {
     }
 }
 
-
 #[derive(Serialize)]
 pub struct Error {
-    pub(crate) message: String
+    pub(crate) message: String,
 }
 
 impl Error {
-    pub fn new<T: Into<String> + AsRef<str>>(message: T)-> Error {
+    pub fn new<T: Into<String> + AsRef<str>>(message: T) -> Error {
         warn!("Error from REST API: {}", message.as_ref());
-        Error { message: message.into() }
+        Error {
+            message: message.into(),
+        }
     }
 }
 
@@ -136,8 +142,10 @@ pub fn generate_api_json() {
 }
 
 pub async fn start_api_server(state: Arc<AppState>) {
-
-    let port = env::var("P4TG_PORT").unwrap_or("8000".to_owned()).parse().unwrap_or(8000);
+    let port = env::var("P4TG_PORT")
+        .unwrap_or("8000".to_owned())
+        .parse()
+        .unwrap_or(8000);
 
     let cors = CorsLayer::new()
         // allow `GET` and `POST` when accessing the resource
@@ -146,13 +154,17 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .allow_origin(Any)
         .allow_headers(Any);
 
-
     // Router for the REST API
     let api_router = Router::new()
         .route("/online", get(online))
         .route("/statistics", get(statistics))
         .route("/time_statistics", get(time_statistics))
-        .route("/trafficgen", get(traffic_gen).post(configure_traffic_gen).delete(stop_traffic_gen))
+        .route(
+            "/trafficgen",
+            get(traffic_gen)
+                .post(configure_traffic_gen)
+                .delete(stop_traffic_gen),
+        )
         .route("/reset", get(reset))
         .route("/restart", get(restart))
         .route("/ports", get(ports))
@@ -160,7 +172,10 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/ports/arp", post(arp_reply))
         .route("/tables", get(tables))
         .route("/config", get(config))
-        .route("/histogram", get(histogram::config).post(configure_histogram))
+        .route(
+            "/histogram",
+            get(histogram::config).post(configure_histogram),
+        )
         .layer(cors)
         .with_state(Arc::clone(&state));
 
@@ -175,17 +190,11 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/settings", get(serve_index))
         .route("/{*path}", get(static_path));
 
-
     info!("Starting rest api server on port {port}.");
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
-        .await.unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{port}"));
+        .await
+        .unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{port}"));
 
     axum::serve(listener, app).await.unwrap();
-
 }
-
-
-
-
-

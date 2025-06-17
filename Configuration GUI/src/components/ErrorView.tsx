@@ -19,7 +19,7 @@
 
 import React from 'react'
 
-import {Toast, ToastContainer} from "react-bootstrap";
+import { Toast, ToastContainer } from "react-bootstrap";
 
 import styled from 'styled-components'
 
@@ -35,7 +35,7 @@ interface ErrorProps {
     close: () => void
 }
 
-const ErrorView = ({error, time, message, close}: ErrorProps) => {
+const ErrorView = ({ error, time, message, close }: ErrorProps) => {
 
     const theme = localStorage.getItem("theme") || "light";
 

@@ -20,7 +20,7 @@
 
 import React from "react";
 import styled from "styled-components"
-import {Spinner} from "react-bootstrap";
+import { Spinner } from "react-bootstrap";
 
 import P4TGLogo from "../assets/p4tg_logo.png"
 
@@ -89,16 +89,16 @@ interface Props {
     center?: boolean
 }
 
-export default ({children, loaded = true, overlay = false, center = false}: Props) => {
+export default ({ children, loaded = true, overlay = false, center = false }: Props) => {
     return <ContentWrapper>{loaded ?
         children
         :
         <LoadWrapper>
             <SpinnerWrapper>
-                <StyledSpinner animation="border"/>
+                <StyledSpinner animation="border" />
 
                 <p>
-                    <StyledImg src={P4TGLogo} alt="P4TG Logo"/>
+                    <StyledImg src={P4TGLogo} alt="P4TG Logo" />
                 </p>
             </SpinnerWrapper>
         </LoadWrapper>
@@ -107,10 +107,10 @@ export default ({children, loaded = true, overlay = false, center = false}: Prop
             overlay ?
                 <LoadWrapperAbsolute>
                     <SpinnerWrapper>
-                        <StyledSpinner animation="border"/>
+                        <StyledSpinner animation="border" />
 
                         <p>
-                            <StyledImg src={P4TGLogo} alt="P4TG Logo"/>
+                            <StyledImg src={P4TGLogo} alt="P4TG Logo" />
                         </p>
                     </SpinnerWrapper>
                 </LoadWrapperAbsolute>

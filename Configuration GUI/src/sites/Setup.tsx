@@ -17,10 +17,10 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useState} from 'react'
+import React, { useState } from 'react'
 import styled from 'styled-components'
-import {Button, Container, Form} from "react-bootstrap";
-import {GitHub} from "./Home"
+import { Button, Container, Form } from "react-bootstrap";
+import { GitHub } from "./Home"
 
 import P4TGLogo from "../assets/p4tg_logo_white.png"
 
@@ -59,7 +59,7 @@ const Setup = () => {
     return <>
         <Wrapper>
             <StyledContainer>
-                <h3 className={"mb-4 text-center"}><StyledImg src={P4TGLogo} alt="P4TG log"/></h3>
+                <h3 className={"mb-4 text-center"}><StyledImg src={P4TGLogo} alt="P4TG log" /></h3>
                 <form onSubmit={onSubmit}>
                     <Form.Control
                         required
@@ -70,7 +70,7 @@ const Setup = () => {
                     />
                     <Button className="col-12" type={"submit"} variant="danger">Connect</Button>
                 </form>
-                <GitHub/>
+                <GitHub />
             </StyledContainer>
         </Wrapper>
 

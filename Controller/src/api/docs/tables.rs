@@ -1,8 +1,8 @@
 use lazy_static::lazy_static;
 use serde_json::json;
 
-lazy_static!(
-  pub static ref EXAMPLE_GET_1: String = json!({
+lazy_static! {
+    pub static ref EXAMPLE_GET_1: String = json!({
     "ingress.p4tg.frame_type.ethernet_type_monitor": [
         {
             "key": {
@@ -166,5 +166,6 @@ lazy_static!(
                 "valid": "0"
             }
         }
-    ]}).to_string();
-);
+    ]})
+    .to_string();
+}

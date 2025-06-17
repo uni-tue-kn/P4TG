@@ -20,12 +20,16 @@
 use rbfrt::error::RBFRTError;
 use rbfrt::SwitchConnection;
 
-use async_trait::async_trait;
 use crate::core::traffic_gen_core::types::GenerationMode;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait TrafficGenEvent {
-    async fn on_start(&mut self, switch: &SwitchConnection, mode: &GenerationMode) -> Result<(), RBFRTError>;
+    async fn on_start(
+        &mut self,
+        switch: &SwitchConnection,
+        mode: &GenerationMode,
+    ) -> Result<(), RBFRTError>;
     async fn on_stop(&self, switch: &SwitchConnection) -> Result<(), RBFRTError>;
     async fn on_reset(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError>;
 }

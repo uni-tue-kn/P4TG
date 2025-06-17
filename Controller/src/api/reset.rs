@@ -17,15 +17,14 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::sync::Arc;
-use axum::extract::State;
-use axum::http::StatusCode;
-use crate::AppState;
-use axum::response::{Json, IntoResponse, Response};
 use crate::api::server::Error;
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::core::traffic_gen_core::types::Reset;
-
+use crate::AppState;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Json, Response};
+use std::sync::Arc;
 
 /// Resets the statistics
 #[utoipa::path(
@@ -43,7 +42,12 @@ pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
     let frame_size = state.frame_size_monitor.lock().await.on_reset(switch).await;
     let frame_type = state.frame_type_monitor.lock().await.on_reset(switch).await;
     let rate = state.rate_monitor.lock().await.on_reset(switch).await;
-    let rtt_histogram = state.rtt_histogram_monitor.lock().await.on_reset(switch).await;
+    let rtt_histogram = state
+        .rtt_histogram_monitor
+        .lock()
+        .await
+        .on_reset(switch)
+        .await;
 
     // Clear History statistics
     let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
@@ -51,16 +55,31 @@ pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
     let mut stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
     stats_lock.clear();
 
-    if frame_size.is_ok() && frame_type.is_ok() && rate.is_ok() && rtt_histogram.is_ok(){
-        (StatusCode::OK, Json(Reset { message: "Reset complete".to_owned() })).into_response()
-    }
-    else {
+    if frame_size.is_ok() && frame_type.is_ok() && rate.is_ok() && rtt_histogram.is_ok() {
+        (
+            StatusCode::OK,
+            Json(Reset {
+                message: "Reset complete".to_owned(),
+            }),
+        )
+            .into_response()
+    } else {
         for error in [frame_size, frame_type, rate, rtt_histogram] {
             if error.is_err() {
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{:?}", error.err().unwrap())))).into_response();
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(Error::new(format!("{:?}", error.err().unwrap()))),
+                )
+                    .into_response();
             }
         }
 
-        (StatusCode::OK, Json(Reset { message: "Reset complete".to_owned() })).into_response()
+        (
+            StatusCode::OK,
+            Json(Reset {
+                message: "Reset complete".to_owned(),
+            }),
+        )
+            .into_response()
     }
 }

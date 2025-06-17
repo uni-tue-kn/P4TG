@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use serde_json::json;
 
-lazy_static!(
+lazy_static! {
     pub static ref EXAMPLE_GET_1: String = json!([
         {
             "status": "online",
@@ -11,4 +11,4 @@ lazy_static!(
         }
     ])
     .to_string();
-);
+}

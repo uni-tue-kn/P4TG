@@ -52,7 +52,7 @@ const HistogramModal = ({
 
     // useEffect to reset tmp_data when data changes
     useEffect(() => {
-        if (show){ 
+        if (show) {
             set_tmp_data({
                 min: data?.min ?? 1500,
                 max: data?.max ?? 2500,
@@ -98,15 +98,15 @@ const HistogramModal = ({
         }
         if (tmp_data.num_bins > (max - min)) {
             setAlertMessage("Too many bins for too less of range. Increase range, or decrease number of bins.");
-            return;            
+            return;
         }
         if (min > 2 ** 32 - 1) {
             setAlertMessage("Minimum range exceeds range of 32-bit.");
-            return;            
+            return;
         }
         if (max > 2 ** 32 - 1) {
             setAlertMessage("Maximum range exceeds range of 32-bit.");
-            return;            
+            return;
         }
 
         setAlertMessage(null);
@@ -116,7 +116,7 @@ const HistogramModal = ({
             min,
             max
         });
-        
+
         hide();
 
         //updateConfig(pid, min, max, tmp_data.num_bins)

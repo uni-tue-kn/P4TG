@@ -40,13 +40,10 @@ pub use traffic_gen::TrafficGen;
 
 pub use rate_monitor::RateMonitor;
 
-pub mod traffic_gen_core;
 mod arp;
 mod config;
+pub mod traffic_gen_core;
 
 pub use config::Config;
 
 pub use arp::Arp;
-
-
-

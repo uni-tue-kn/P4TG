@@ -18,9 +18,9 @@
  */
 
 import React from 'react'
-import {Col} from "react-bootstrap";
+import { Col } from "react-bootstrap";
 import styled from "styled-components";
-import {Statistics} from "../common/Interfaces";
+import { Statistics } from "../common/Interfaces";
 import Status from "../components/Status";
 
 const Stat = styled.span<{ active: boolean }>`
@@ -80,13 +80,13 @@ export const formatPacketRate = (packets: number, decimals: number = 2) => {
     return parseFloat((packets / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
-const Speed = ({up, speed, packet}: { up: boolean, speed: number, packet: number }) => {
+const Speed = ({ up, speed, packet }: { up: boolean, speed: number, packet: number }) => {
 
     return <Stat active={up}>
         {up ?
-            <i className="bi bi-arrow-up-circle-fill"/>
+            <i className="bi bi-arrow-up-circle-fill" />
             :
-            <i className="bi bi-arrow-down-circle-fill"/>
+            <i className="bi bi-arrow-down-circle-fill" />
         }
         {formatBits(speed)} ({formatPacketRate(packet)})
     </Stat>
@@ -95,13 +95,13 @@ const Speed = ({up, speed, packet}: { up: boolean, speed: number, packet: number
 export const secondsToTime = (s: number) => {
     let hours = Math.floor(s / 3600);
     let minutes = Math.floor((s % 3600) / 60)
-    let seconds = Math.floor( (s % 3600) % 60)
+    let seconds = Math.floor((s % 3600) % 60)
 
     return hours + "h " + minutes + "m " + seconds + "s";
 
 }
 
-const SendReceiveMonitor = ({stats, running}: {
+const SendReceiveMonitor = ({ stats, running }: {
     stats: Statistics,
     running: boolean
 }) => {
@@ -116,9 +116,9 @@ const SendReceiveMonitor = ({stats, running}: {
     const packet_rate_rx = (rx_rate_l1 / 8) / (mean_frame_size_rx + 20)
 
     return <Col className={"col-8 text-start"}>
-        <Speed up={true} speed={tx_rate_l1} packet={packet_rate_tx}/>
-        <Speed up={false} speed={rx_rate_l1} packet={packet_rate_rx}/>
-        {running ? <Status stats={stats} running={running}/> : null}
+        <Speed up={true} speed={tx_rate_l1} packet={packet_rate_tx} />
+        <Speed up={false} speed={rx_rate_l1} packet={packet_rate_rx} />
+        {running ? <Status stats={stats} running={running} /> : null}
 
 
         {stats.elapsed_time > 0 ?
@@ -130,7 +130,7 @@ const SendReceiveMonitor = ({stats, running}: {
         {
             tx_rate_l1 > 0 && (1 - rx_rate_l1 / tx_rate_l1) > 0.001 ?
                 <>
-                    <i className="bi bi-exclamation-circle-fill text-danger"/> {(100 * (1 - rx_rate_l1 / tx_rate_l1)).toFixed(2)} %
+                    <i className="bi bi-exclamation-circle-fill text-danger" /> {(100 * (1 - rx_rate_l1 / tx_rate_l1)).toFixed(2)} %
                 </>
                 :
                 null

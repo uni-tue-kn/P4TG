@@ -19,7 +19,10 @@
 
 use std::time::Duration;
 
-use crate::{api::statistics::{get_statistics, get_time_statistics, Params}, AppState};
+use crate::{
+    api::statistics::{get_statistics, get_time_statistics, Params},
+    AppState,
+};
 use log::{error, info};
 use std::sync::Arc;
 use tokio::{task::JoinHandle, time::Instant};
@@ -132,7 +135,7 @@ impl DurationMonitorTask {
             'outer: for (idx, traffic_gen_data) in payloads.iter().enumerate() {
                 // Start the test
                 let idx = idx + 1;
-                
+
                 let _ = start_single_test(&state_clone, traffic_gen_data.clone()).await;
 
                 loop {
@@ -162,7 +165,6 @@ impl DurationMonitorTask {
                 // Wait 2s between tests
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
-
         });
 
         self.handle = Some(handle);
@@ -174,7 +176,7 @@ impl DurationMonitorTask {
         let stats = get_statistics(state).await;
         let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
         stats_lock.push(stats);
-        let time_stats = get_time_statistics(state, Params {limit: None}).await;
+        let time_stats = get_time_statistics(state, Params { limit: None }).await;
         let mut time_stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
         time_stats_lock.push(time_stats);
     }

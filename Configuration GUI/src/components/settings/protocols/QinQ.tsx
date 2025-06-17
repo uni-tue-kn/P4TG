@@ -18,9 +18,9 @@
  */
 
 import React from "react"
-import {Col, Form, Row} from "react-bootstrap";
-import {StyledRow} from "../../../sites/Settings";
-import {StreamSettings} from "../../../common/Interfaces";
+import { Col, Form, Row } from "react-bootstrap";
+import { StyledRow } from "../../../sites/Settings";
+import { StreamSettings } from "../../../common/Interfaces";
 
 interface Props {
     data: StreamSettings,
@@ -28,7 +28,7 @@ interface Props {
     running: boolean
 }
 
-const QinQ = ({data, set_data, running}: Props) => {
+const QinQ = ({ data, set_data, running }: Props) => {
     return <>
         <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
             <Form.Label className={"col-3 text-start"}>
@@ -37,8 +37,8 @@ const QinQ = ({data, set_data, running}: Props) => {
             <Col className={"col-7 text-end"}>
                 <Row>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({vlan: {...data.vlan, pcp: parseInt(event.target.value)}})}
-                                      disabled={running} type={"number"} value={data.vlan.pcp}/>
+                        <Form.Control onChange={(event: any) => set_data({ vlan: { ...data.vlan, pcp: parseInt(event.target.value) } })}
+                            disabled={running} type={"number"} value={data.vlan.pcp} />
                     </Col>
                 </Row>
             </Col>
@@ -50,8 +50,8 @@ const QinQ = ({data, set_data, running}: Props) => {
             <Col className={"col-7 text-end"}>
                 <Row>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({vlan: {...data.vlan, dei: parseInt(event.target.value)}})}
-                                      disabled={running} type={"number"} max={1} min={0} value={data.vlan.dei}/>
+                        <Form.Control onChange={(event: any) => set_data({ vlan: { ...data.vlan, dei: parseInt(event.target.value) } })}
+                            disabled={running} type={"number"} max={1} min={0} value={data.vlan.dei} />
                     </Col>
                 </Row>
             </Col>
@@ -64,8 +64,8 @@ const QinQ = ({data, set_data, running}: Props) => {
                 <Row>
                     <Col>
                         <Form.Control
-                            onChange={(event: any) => set_data({vlan: {...data.vlan, vlan_id: parseInt(event.target.value)}})}
-                            disabled={running} type={"number"} value={data.vlan.vlan_id}/>
+                            onChange={(event: any) => set_data({ vlan: { ...data.vlan, vlan_id: parseInt(event.target.value) } })}
+                            disabled={running} type={"number"} value={data.vlan.vlan_id} />
                     </Col>
                 </Row>
             </Col>
@@ -78,8 +78,8 @@ const QinQ = ({data, set_data, running}: Props) => {
                 <Row>
                     <Col>
                         <Form.Control
-                            onChange={(event: any) => set_data({vlan: {...data.vlan, inner_pcp: parseInt(event.target.value)}})}
-                            disabled={running} type={"number"} value={data.vlan.inner_pcp}/>
+                            onChange={(event: any) => set_data({ vlan: { ...data.vlan, inner_pcp: parseInt(event.target.value) } })}
+                            disabled={running} type={"number"} value={data.vlan.inner_pcp} />
                     </Col>
                 </Row>
             </Col>
@@ -92,8 +92,8 @@ const QinQ = ({data, set_data, running}: Props) => {
                 <Row>
                     <Col>
                         <Form.Control
-                            onChange={(event: any) => set_data({vlan: {...data.vlan, inner_dei: parseInt(event.target.value)}})}
-                            disabled={running} type={"number"} max={1} min={0} value={data.vlan.inner_dei}/>
+                            onChange={(event: any) => set_data({ vlan: { ...data.vlan, inner_dei: parseInt(event.target.value) } })}
+                            disabled={running} type={"number"} max={1} min={0} value={data.vlan.inner_dei} />
                     </Col>
                 </Row>
             </Col>
@@ -106,8 +106,8 @@ const QinQ = ({data, set_data, running}: Props) => {
                 <Row>
                     <Col>
                         <Form.Control
-                            onChange={(event: any) => set_data({vlan: {...data.vlan, inner_vlan_id: parseInt(event.target.value)}})}
-                            disabled={running} type={"number"} value={data.vlan.inner_vlan_id}/>
+                            onChange={(event: any) => set_data({ vlan: { ...data.vlan, inner_vlan_id: parseInt(event.target.value) } })}
+                            disabled={running} type={"number"} value={data.vlan.inner_vlan_id} />
                     </Col>
                 </Row>
             </Col>

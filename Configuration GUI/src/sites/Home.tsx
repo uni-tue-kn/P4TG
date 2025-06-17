@@ -106,10 +106,10 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     const NumTests = ({ running }: { running: boolean }) => {
         const total_tests = Object.keys(savedConfigs).length;
-        let num_avail_stats = Object.keys(statistics.previous_statistics || {}).length ;
+        let num_avail_stats = Object.keys(statistics.previous_statistics || {}).length;
         let last_test = false
 
-        if (num_avail_stats !== total_tests){
+        if (num_avail_stats !== total_tests) {
             num_avail_stats += 1
             last_test = num_avail_stats === total_tests
         }
