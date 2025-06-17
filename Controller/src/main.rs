@@ -16,36 +16,41 @@
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
+use api::statistics::Statistics;
+use core::statistics::TimeStatistic;
+use log::{info, warn};
+use macaddr::MacAddr;
+use rbfrt::error::RBFRTError;
+use rbfrt::table::ActionData;
+use rbfrt::util::PortManager;
+use rbfrt::util::FEC::BF_FEC_TYP_REED_SOLOMON;
+use rbfrt::util::{AutoNegotiation, Loopback, Port, Speed, FEC};
+use rbfrt::{table, SwitchConnection};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
-use rbfrt::table::ActionData;
-use rbfrt::{table, SwitchConnection};
-use log::{info, warn};
-use macaddr::MacAddr;
-use rbfrt::error::RBFRTError;
-use rbfrt::util::{AutoNegotiation, FEC, Loopback, Port, Speed};
-use rbfrt::util::FEC::BF_FEC_TYP_REED_SOLOMON;
-use rbfrt::util::PortManager;
 use tokio::sync::Mutex;
-use api::statistics::Statistics;
-use core::statistics::TimeStatistic;
 
-mod core;
 mod api;
+mod core;
 mod error;
 
-use crate::core::{Arp, Config, FrameTypeMonitor, RateMonitor, TrafficGen, DurationMonitorTask, HistogramMonitor, FrameSizeMonitor};
-use crate::core::traffic_gen_core::const_definitions::{PORT_CFG_TF2, DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2};
+use crate::core::traffic_gen_core::const_definitions::{
+    DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2, PORT_CFG_TF2,
+};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
+use crate::core::{
+    Arp, Config, DurationMonitorTask, FrameSizeMonitor, FrameTypeMonitor, HistogramMonitor,
+    RateMonitor, TrafficGen,
+};
 
 #[derive(Debug, Copy, Clone)]
 pub struct PortMapping {
     pub tx_recirculation: u32,
     pub rx_recirculation: u32,
-    pub mac: MacAddr
+    pub mac: MacAddr,
 }
 
 /// Stores the start time of the current experiment
@@ -58,7 +63,7 @@ pub struct Experiment {
 pub struct MultiTest {
     pub(crate) collected_statistics: Mutex<Vec<Statistics>>,
     pub(crate) collected_time_statistics: Mutex<Vec<TimeStatistic>>,
-    pub (crate) multiple_test_monitor_task: Mutex<DurationMonitorTask>,
+    pub(crate) multiple_test_monitor_task: Mutex<DurationMonitorTask>,
 }
 
 /// App state that is used between threads
@@ -77,13 +82,19 @@ pub struct AppState {
     pub(crate) arp_handler: Arp,
     pub(crate) tofino2: bool,
     pub(crate) loopback_mode: bool,
-    pub (crate) monitor_task: Mutex<DurationMonitorTask>,
-    pub (crate) multiple_tests: MultiTest
+    pub(crate) monitor_task: Mutex<DurationMonitorTask>,
+    pub(crate) multiple_tests: MultiTest,
 }
 
-async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config: &Config,
-                         recirculation_ports: &Vec<u32>, port_mapping: &mut HashMap<u32, PortMapping>,
-                         is_tofino2: bool, loopback_mode: bool) -> Result<(), RBFRTError> {
+async fn configure_ports(
+    switch: &mut SwitchConnection,
+    pm: &PortManager,
+    config: &Config,
+    recirculation_ports: &Vec<u32>,
+    port_mapping: &mut HashMap<u32, PortMapping>,
+    is_tofino2: bool,
+    loopback_mode: bool,
+) -> Result<(), RBFRTError> {
     // Delete previously configured ports
     switch.clear_table("$PORT").await?;
 
@@ -92,12 +103,21 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
 
     // TG_PORTS
     for tg in &config.tg_ports {
-        let mut pm_req = Port::new(tg.port , 0)
-            .speed(if is_tofino2 {Speed::BF_SPEED_400G} else {Speed::BF_SPEED_100G})
-            .fec(if is_tofino2 {BF_FEC_TYP_REED_SOLOMON} else {FEC::BF_FEC_TYP_NONE})
+        let mut pm_req = Port::new(tg.port, 0)
+            .speed(if is_tofino2 {
+                Speed::BF_SPEED_400G
+            } else {
+                Speed::BF_SPEED_100G
+            })
+            .fec(if is_tofino2 {
+                BF_FEC_TYP_REED_SOLOMON
+            } else {
+                FEC::BF_FEC_TYP_NONE
+            })
             .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT);
 
-        if loopback_mode { // loopback mode is used for testing if no cables are available
+        if loopback_mode {
+            // loopback mode is used for testing if no cables are available
             pm_req = pm_req.loopback(Loopback::BF_LPBK_MAC_NEAR);
         }
 
@@ -109,9 +129,17 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
 
     // Recirculation ports
     for port in recirculation_ports {
-        let pm_req = Port::new(*port , 0)
-            .speed(if is_tofino2 {Speed::BF_SPEED_400G} else {Speed::BF_SPEED_100G})
-            .fec(if is_tofino2 {BF_FEC_TYP_REED_SOLOMON} else {FEC::BF_FEC_TYP_NONE})
+        let pm_req = Port::new(*port, 0)
+            .speed(if is_tofino2 {
+                Speed::BF_SPEED_400G
+            } else {
+                Speed::BF_SPEED_100G
+            })
+            .fec(if is_tofino2 {
+                BF_FEC_TYP_REED_SOLOMON
+            } else {
+                FEC::BF_FEC_TYP_NONE
+            })
             .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
             .loopback(Loopback::BF_LPBK_MAC_NEAR);
 
@@ -126,10 +154,17 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
 
     for (offset, (index, (port, mac))) in tg_ports.iter().enumerate().enumerate() {
         let dev_port = pm.dev_port(*port, 0)?;
-        let tx_port = pm.dev_port(*recirculation_ports.get(index+offset).unwrap(), 0)?;
-        let rx_port = pm.dev_port(*recirculation_ports.get(index+offset+1).unwrap(), 0)?;
+        let tx_port = pm.dev_port(*recirculation_ports.get(index + offset).unwrap(), 0)?;
+        let rx_port = pm.dev_port(*recirculation_ports.get(index + offset + 1).unwrap(), 0)?;
 
-        port_mapping.insert(dev_port, PortMapping { tx_recirculation: tx_port, rx_recirculation: rx_port, mac: *mac });
+        port_mapping.insert(
+            dev_port,
+            PortMapping {
+                tx_recirculation: tx_port,
+                rx_recirculation: rx_port,
+                mac: *mac,
+            },
+        );
     }
 
     // Verify that all recirculation ports are unique
@@ -152,13 +187,22 @@ async fn configure_ports(switch: &mut SwitchConnection, pm: &PortManager, config
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     //console_subscriber::init();
 
-    let sample_mode = env::var("SAMPLE").unwrap_or("0".to_owned()).parse().unwrap_or(0);
+    let sample_mode = env::var("SAMPLE")
+        .unwrap_or("0".to_owned())
+        .parse()
+        .unwrap_or(0);
     let sample_mode = sample_mode == 1;
     let p4_name = env::var("P4_NAME").unwrap_or("traffic_gen".to_owned());
-    let loopback_mode = env::var("LOOPBACK").unwrap_or("0".to_owned()).parse().unwrap_or(false);
+    let loopback_mode = env::var("LOOPBACK")
+        .unwrap_or("0".to_owned())
+        .parse()
+        .unwrap_or(false);
 
     // Automatically set to true by GitHub CI/CD. Used to deploy gh-pages
-    let ci_docs = env::var("CI").unwrap_or("0".to_owned()).parse().unwrap_or(false);
+    let ci_docs = env::var("CI")
+        .unwrap_or("0".to_owned())
+        .parse()
+        .unwrap_or(false);
     if ci_docs {
         info!("Building OpenAPI json file.");
         api::server::generate_api_json();
@@ -180,19 +224,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let req = if is_tofino2 {
         info!("ASIC: Tofino2");
-        table::Request::new(DEVICE_CONFIGURATION_TF2)
-            .default(true)
+        table::Request::new(DEVICE_CONFIGURATION_TF2).default(true)
     } else {
         info!("ASIC: Tofino1");
-        table::Request::new(DEVICE_CONFIGURATION)
-            .default(true)
-
+        table::Request::new(DEVICE_CONFIGURATION).default(true)
     };
 
     let res = switch.get_table_entries(req).await.unwrap_or_default();
-    let num_pipes = res[0].get_action_data("num_pipes").unwrap_or(&ActionData::new("num_pipes", 2)).as_u32();
+    let num_pipes = res[0]
+        .get_action_data("num_pipes")
+        .unwrap_or(&ActionData::new("num_pipes", 2))
+        .as_u32();
     info!("#Pipes: {num_pipes:?}");
-
 
     if loopback_mode {
         info!("Loopback mode activated.");
@@ -219,7 +262,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             config
-
         }
         Err(_) => {
             warn!("No config file (/app/config.json) for controller found. Using default config.");
@@ -233,13 +275,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Front panel ports that are used for recirculation purposes
     // Recirculations are needed for measurement purposes
-    let recirculation_ports: Vec<u32> = all_ports.into_iter().filter(|p| !config.contains(*p)).collect();
+    let recirculation_ports: Vec<u32> = all_ports
+        .into_iter()
+        .filter(|p| !config.contains(*p))
+        .collect();
 
     let mut port_mapping: HashMap<u32, PortMapping> = HashMap::new();
 
     let pm = PortManager::new(&switch).await;
 
-    configure_ports(&mut switch, &pm, &config, &recirculation_ports, &mut port_mapping, is_tofino2, loopback_mode).await?;
+    configure_ports(
+        &mut switch,
+        &pm,
+        &config,
+        &recirculation_ports,
+        &mut port_mapping,
+        is_tofino2,
+        loopback_mode,
+    )
+    .await?;
 
     // configures frame size count tables
     let frame_size_monitor = FrameSizeMonitor::new(port_mapping.clone());
@@ -258,7 +312,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut traffic_generator = TrafficGen::new(is_tofino2, num_pipes);
     traffic_generator.stop(&switch).await?;
 
-    let index_mapping = traffic_generator.init_monitoring_packet(&switch, &port_mapping).await?;
+    let index_mapping = traffic_generator
+        .init_monitoring_packet(&switch, &port_mapping)
+        .await?;
 
     let arp_handler = Arp::new();
     arp_handler.init(&switch, &port_mapping).await?;
@@ -273,22 +329,45 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         switch,
         pm,
         sample_mode,
-        experiment: Mutex::new(Experiment { start: std::time::SystemTime::now(), running: false }),
+        experiment: Mutex::new(Experiment {
+            start: std::time::SystemTime::now(),
+            running: false,
+        }),
         config: Mutex::new(config),
         arp_handler,
         tofino2: is_tofino2,
         loopback_mode,
-        monitor_task: Mutex::new(DurationMonitorTask { handle: None, cancel_token: None }),
-        multiple_tests: MultiTest { collected_statistics: Default::default(), collected_time_statistics: Default::default(), multiple_test_monitor_task: Mutex::new(DurationMonitorTask { handle: None, cancel_token: None }) }
+        monitor_task: Mutex::new(DurationMonitorTask {
+            handle: None,
+            cancel_token: None,
+        }),
+        multiple_tests: MultiTest {
+            collected_statistics: Default::default(),
+            collected_time_statistics: Default::default(),
+            multiple_test_monitor_task: Mutex::new(DurationMonitorTask {
+                handle: None,
+                cancel_token: None,
+            }),
+        },
     });
 
-    state.frame_size_monitor.lock().await.configure(&state.switch).await?;
-    state.frame_type_monitor.lock().await.configure(&state.switch).await?;
+    state
+        .frame_size_monitor
+        .lock()
+        .await
+        .configure(&state.switch)
+        .await?;
+    state
+        .frame_type_monitor
+        .lock()
+        .await
+        .configure(&state.switch)
+        .await?;
 
     let monitoring_state = Arc::clone(&state);
 
     // start iat monitoring
-    tokio::spawn( async move {
+    tokio::spawn(async move {
         let local_state = monitoring_state;
 
         RateMonitor::monitor_iat(local_state).await;
@@ -334,7 +413,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
 
 #[tokio::main]
 async fn main() {

@@ -18,7 +18,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import {ASIC, DefaultStream, DefaultStreamSettings, MPLSHeader, PortInfo, Stream, StreamSettings} from "./Interfaces";
+import { ASIC, DefaultStream, DefaultStreamSettings, MPLSHeader, PortInfo, Stream, StreamSettings } from "./Interfaces";
 
 export const validateMAC = (mac: string) => {
     let regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
@@ -33,7 +33,7 @@ export const validateIP = (ip: string) => {
 }
 
 export const validateIPv6 = (ip: string) => {
-    let regex =  /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/gm;
+    let regex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/gm;
 
     return regex.test(ip)
 }
@@ -47,29 +47,29 @@ export const validateIPv6RandomMask = (ip: string, asic_version: ASIC) => {
         const right = sections[1]?.split(":") ?? [];
         const totalLength = 8; // IPv6 has 8 sections in its full form
         const missing = totalLength - (left.length + right.length);
-    
+
         const expandedLeft = left.map(s => s.padStart(4, "0"));
         const expandedRight = right.map(s => s.padStart(4, "0"));
         const expandedMiddle = Array(missing).fill("0000");
-    
-        const expandedIP =  [...expandedLeft, ...expandedMiddle, ...expandedRight];
+
+        const expandedIP = [...expandedLeft, ...expandedMiddle, ...expandedRight];
 
         if (asic_version == ASIC.Tofino1) {
             // All higher bits must be zero
-            return expandedIP.slice(0,6).every(ip => parseInt(ip, 16) === 0);            
+            return expandedIP.slice(0, 6).every(ip => parseInt(ip, 16) === 0);
         } else {
-            return expandedIP.slice(0,5).every(ip => parseInt(ip, 16) === 0) && parseInt(expandedIP[5], 16) <= 0xff
+            return expandedIP.slice(0, 5).every(ip => parseInt(ip, 16) === 0) && parseInt(expandedIP[5], 16) <= 0xff
         }
     }
 
     return false
 }
 
-export const validateTrafficClass= (traffic_class: number) => {
+export const validateTrafficClass = (traffic_class: number) => {
     return !isNaN(traffic_class) && (0 <= traffic_class) && traffic_class <= (2 ** 8 - 1)
 }
 
-export const validateFlowLabel= (flow_label: number) => {
+export const validateFlowLabel = (flow_label: number) => {
     return !isNaN(flow_label) && (0 <= flow_label) && flow_label <= (2 ** 20 - 1)
 }
 
@@ -123,14 +123,14 @@ export const validateStreams = (s: Stream[]) => {
     return s.every(s => Object.keys(defaultStream).every(key => Object.keys(s).includes(key)))
 }
 
-export const validatePorts = (port_tx_rx_mapping: { [name: number]: number}, available_ports: PortInfo[]) => {
+export const validatePorts = (port_tx_rx_mapping: { [name: number]: number }, available_ports: PortInfo[]) => {
     // Verify if all configured ports are acutally available on this device.
 
     const available_dev_ports: number[] = available_ports.slice(0, 10).map(p => p.pid);
     //@ts-ignore
     const configured_ports: number[] = Object.entries(port_tx_rx_mapping).flatMap(([key, value]) => [Number(key), value]);
 
-    return configured_ports.length == 0 || configured_ports.every(r=> available_dev_ports.includes(r))
+    return configured_ports.length == 0 || configured_ports.every(r => available_dev_ports.includes(r))
 }
 
 export const validateStreamSettings = (setting: StreamSettings[]) => {

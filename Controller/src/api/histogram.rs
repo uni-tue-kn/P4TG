@@ -1,16 +1,37 @@
-use std::{collections::HashMap, sync::Arc};
+/* Copyright 2024-present University of Tuebingen, Chair of Communication Networks
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
+ */
+
+use crate::api::server::Error;
+use crate::AppState;
+use crate::{
+    api::docs::histogram::EXAMPLE_GET_1, api::docs::histogram::EXAMPLE_POST_1_REQUEST,
+    api::docs::histogram::EXAMPLE_POST_1_RESPONSE, core::statistics::RttHistogramConfig,
+};
 use axum::debug_handler;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
-use crate::{api::docs::histogram::EXAMPLE_POST_1_RESPONSE, api::docs::histogram::EXAMPLE_POST_1_REQUEST, api::docs::histogram::EXAMPLE_GET_1, core::statistics::RttHistogramConfig};
-use crate::AppState;
-use axum::response::{Json, IntoResponse, Response};
-use crate::api::server::Error;
 
 use super::helper::validate::validate_histogram;
-
 
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct HistogramConfigRequest {
@@ -37,20 +58,25 @@ pub struct HistogramConfigRequest {
         body = HashMap<u32, &RttHistogramConfig>,
         examples(("Example 1" = (summary = "Range 1500-2000ns with 50 bins", value = json!(*EXAMPLE_POST_1_RESPONSE))),
         )),
-        )  
+        )
 )]
 pub async fn configure_histogram(
     State(state): State<Arc<AppState>>,
-    payload: Json<HistogramConfigRequest>
+    payload: Json<HistogramConfigRequest>,
 ) -> Response {
-    
     match validate_histogram(&payload) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response(),
     }
 
     if state.traffic_generator.lock().await.running {
-        return (StatusCode::BAD_REQUEST, Json(Error::new("Traffic generation is currently running. Stop it first."))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(
+                "Traffic generation is currently running. Stop it first.",
+            )),
+        )
+            .into_response();
     }
 
     let port = payload.port;
@@ -61,7 +87,11 @@ pub async fn configure_histogram(
         hist.config = new_config.clone();
         hist.data.data_bins.clear();
     } else {
-        return (StatusCode::BAD_REQUEST, Json(Error::new("Port is not available on this device."))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new("Port is not available on this device.")),
+        )
+            .into_response();
     }
 
     let mut result = HashMap::new();
@@ -81,12 +111,9 @@ pub async fn configure_histogram(
         description = "Returns the histogram configuration of all RX ports.",
         body = HashMap<u32, RttHistogramConfig>,
         example = json!(*EXAMPLE_GET_1)
-        ))    
+        ))
 )]
-pub async fn config(
-    State(state): State<Arc<AppState>>
-) -> Response {
-    
+pub async fn config(State(state): State<Arc<AppState>>) -> Response {
     let histogram_monitor = state.rtt_histogram_monitor.lock().await;
     let mut port_config_map: HashMap<u32, RttHistogramConfig> = HashMap::new();
 

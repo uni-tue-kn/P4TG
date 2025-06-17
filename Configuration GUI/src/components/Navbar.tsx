@@ -17,16 +17,16 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import {useEffect, useState} from 'react'
+import { useEffect, useState } from 'react'
 import styled from "styled-components";
-import {Link, useLocation} from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import ThemeBtn from "./ThemeToggle";
-import {get} from "../common/API";
-import {CNavItem, CSidebar, CSidebarBrand, CSidebarNav} from "@coreui/react";
-import {Row} from 'react-bootstrap'
+import { get } from "../common/API";
+import { CNavItem, CSidebar, CSidebarBrand, CSidebarNav } from "@coreui/react";
+import { Row } from 'react-bootstrap'
 
 import P4TGLogo from "../assets/p4tg_logo_white.png"
-import {P4TGInfos} from "../common/Interfaces";
+import { P4TGInfos } from "../common/Interfaces";
 styled(Link) <{ active?: boolean }>`
     text-decoration: none;
     margin-right: 15px;
@@ -50,18 +50,18 @@ interface Props {
     overlay?: boolean
 }
 
-export const NavLink = ({to, icon, text, overlay}: Props) => {
+export const NavLink = ({ to, icon, text, overlay }: Props) => {
     const location = useLocation()
 
     return <CNavItem>
         <Link to={to} className={`nav-link ${location.pathname === to ? 'active' : ''}`}>
-            <i className={icon}/> {text}
+            <i className={icon} /> {text}
         </Link>
     </CNavItem>
 }
 
 
-const Navbar = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
+const Navbar = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const [online, set_online] = useState(false)
 
     const setup = () => {
@@ -72,7 +72,7 @@ const Navbar = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
     useEffect(() => {
         const loadStatus = async () => {
-            let stats = await get({route: "/online"})
+            let stats = await get({ route: "/online" })
 
             if (stats !== undefined && stats.status !== 200) {
                 return
@@ -88,14 +88,14 @@ const Navbar = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
 
     return <CSidebar className={"h-100"}>
         <CSidebarNav className="h-100">
-            <CSidebarBrand className="mb-0"><StyledImg src={P4TGLogo} alt="P4TG log"/></CSidebarBrand>
-            <NavLink to={"/"} text={""} icon={"bi bi-speedometer"}/>
-            <NavLink to={"/ports"} text={""} icon={"bi bi-ethernet"}/>
-            <NavLink to={"/tables"} text={""} icon={"bi bi-table"}/>
-            <NavLink to={"/settings"} text={""} icon={"bi bi-gear-wide-connected"}/>
+            <CSidebarBrand className="mb-0"><StyledImg src={P4TGLogo} alt="P4TG log" /></CSidebarBrand>
+            <NavLink to={"/"} text={""} icon={"bi bi-speedometer"} />
+            <NavLink to={"/ports"} text={""} icon={"bi bi-ethernet"} />
+            <NavLink to={"/tables"} text={""} icon={"bi bi-table"} />
+            <NavLink to={"/settings"} text={""} icon={"bi bi-gear-wide-connected"} />
             <Row className="flex-grow-1">
             </Row>
-            <ThemeBtn/>
+            <ThemeBtn />
             <Row>
                 <CNavItem className="flex-grow-1 mb-2">
                     <span>v{p4tg_infos.version}</span>

@@ -17,6 +17,6 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
+pub mod serve_static_files;
 pub mod simple_stats;
 pub mod validate;
-pub mod serve_static_files;

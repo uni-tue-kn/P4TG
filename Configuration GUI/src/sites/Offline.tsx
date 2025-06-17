@@ -17,10 +17,10 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect} from 'react'
+import React, { useEffect } from 'react'
 import styled from 'styled-components'
-import {Row} from "react-bootstrap";
-import {get} from "../common/API";
+import { Row } from "react-bootstrap";
+import { get } from "../common/API";
 
 const StyledIcon = styled.i`
     font-size: 100px;
@@ -31,7 +31,7 @@ const StyledIcon = styled.i`
 const Offline = () => {
     useEffect(() => {
         const loadStatus = async () => {
-            let stats = await get({route: "/online"})
+            let stats = await get({ route: "/online" })
 
             if (stats != undefined && stats.status !== 200) {
                 return
@@ -49,7 +49,7 @@ const Offline = () => {
     }, [])
 
     return <Row className={"text-center"}>
-        <StyledIcon className="bi bi-wifi-off"/>
+        <StyledIcon className="bi bi-wifi-off" />
         <p>P4TG device not reachable</p>
     </Row>
 }

@@ -197,9 +197,8 @@ pub struct CommonTimeStatistic {
     pub(crate) rtt: BTreeMap<u32, BTreeMap<u32, u64>>,
     /// Name of the test those stats belong to
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) name: Option<String>,    
+    pub(crate) name: Option<String>,
 }
-
 
 /// Represents the time-based statistics
 /// for visualisation
@@ -208,22 +207,23 @@ pub struct TimeStatistic {
     #[serde(flatten)]
     pub(crate) inner: CommonTimeStatistic,
 
-    /// Save previous statistics, where the key is the test number of the statistics. 
+    /// Save previous statistics, where the key is the test number of the statistics.
     /// Skip serializing if there are no previous statistics.
     /// If this is `TimeStatistic` instead of `HistoryTimeStatistic`, we have a recursive stack overflow
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) previous_statistics: Option<BTreeMap<u32, HistoryTimeStatistic>>,       
+    pub(crate) previous_statistics: Option<BTreeMap<u32, HistoryTimeStatistic>>,
 }
 
 impl TimeStatistic {
     pub fn default() -> TimeStatistic {
-        TimeStatistic { inner: CommonTimeStatistic {
-            tx_rate_l1: Default::default(),
-            rx_rate_l1: Default::default(),
-            packet_loss: Default::default(),
-            out_of_order: Default::default(),
-            rtt: Default::default(),
-            name: None,
+        TimeStatistic {
+            inner: CommonTimeStatistic {
+                tx_rate_l1: Default::default(),
+                rx_rate_l1: Default::default(),
+                packet_loss: Default::default(),
+                out_of_order: Default::default(),
+                rtt: Default::default(),
+                name: None,
             },
             previous_statistics: None,
         }
@@ -238,16 +238,14 @@ pub struct HistoryTimeStatistic {
 
 impl From<TimeStatistic> for HistoryTimeStatistic {
     fn from(stat: TimeStatistic) -> Self {
-        HistoryTimeStatistic {
-            inner: stat.inner,
-        }
+        HistoryTimeStatistic { inner: stat.inner }
     }
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema, Deserialize)]
 pub struct RttHistogramConfig {
     // Number of bins for histogram.
-    pub num_bins: u32,    
+    pub num_bins: u32,
     /// Minimum range for histogram.
     pub min: u32,
     /// Maximum range for histogram.

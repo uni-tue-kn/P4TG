@@ -29,26 +29,26 @@ export type RttHistogramConfig = {
     min: number;
     max: number;
     num_bins: number;
-  };
-  
+};
+
 export type RttHistogramBinEntry = {
     count: bigint,
     probability: number,
 }
 
-  export type RttHistogramData = {
+export type RttHistogramData = {
     data_bins: Record<string, RttHistogramBinEntry>;
     percentiles: Record<string, number>;
     mean_rtt: number;
     std_dev_rtt: number;
     missed_bin_count: number;
     total_pkt_count: number;
-  };
-  
-  export type RttHistogram = {
+};
+
+export type RttHistogram = {
     config: RttHistogramConfig;
     data: RttHistogramData;
-  };
+};
 
 export interface Statistics {
     sample_mode: boolean,
@@ -75,7 +75,7 @@ export interface Statistics {
     },
     out_of_order: { [name: string]: number },
     elapsed_time: number,
-    rtt_histogram: { [port: string]: RttHistogram},
+    rtt_histogram: { [port: string]: RttHistogram },
     previous_statistics?: Record<number, Statistics>,
     name?: string,
 }
@@ -99,12 +99,16 @@ export const StatisticsObject: Statistics = {
 }
 
 export interface TimeStatistics {
-    tx_rate_l1: { [name: number]: {
-        [name: number]: number
-        } },
-    rx_rate_l1: { [name: number]: {
+    tx_rate_l1: {
+        [name: number]: {
             [name: number]: number
-        } },
+        }
+    },
+    rx_rate_l1: {
+        [name: number]: {
+            [name: number]: number
+        }
+    },
     previous_statistics?: Record<number, TimeStatistics>,
     name?: string,
 }
@@ -147,20 +151,20 @@ export interface StreamSettings {
 }
 
 export interface IPv4Header {
-        ip_src: string,
-        ip_dst: string,
-        ip_tos: number,
-        ip_src_mask: string,
-        ip_dst_mask: string,
+    ip_src: string,
+    ip_dst: string,
+    ip_tos: number,
+    ip_src_mask: string,
+    ip_dst_mask: string,
 }
 
 export interface IPv6Header {
-        ipv6_src: string,
-        ipv6_dst: string,
-        ipv6_traffic_class: number,
-        ipv6_src_mask: string,
-        ipv6_dst_mask: string,
-        ipv6_flow_label: number
+    ipv6_src: string,
+    ipv6_dst: string,
+    ipv6_traffic_class: number,
+    ipv6_src_mask: string,
+    ipv6_dst_mask: string,
+    ipv6_flow_label: number
 }
 
 export enum Encapsulation {
@@ -240,7 +244,7 @@ export const DefaultStreamSettings = (id: number, port: number) => {
             ipv6_traffic_class: 0,
             ipv6_src_mask: "::",
             ipv6_dst_mask: "::",
-            ipv6_flow_label: 0            
+            ipv6_flow_label: 0
         },
         sid_list: [],
         ethernet: {
@@ -317,9 +321,9 @@ export interface TrafficGenData {
     mode: GenerationMode,
     streams: Stream[],
     stream_settings: StreamSettings[],
-    port_tx_rx_mapping: { [name: number]: number},
+    port_tx_rx_mapping: { [name: number]: number },
     duration: number,
-    histogram_config: { [name: string]: RttHistogramConfig},
+    histogram_config: { [name: string]: RttHistogramConfig },
     name?: string,
 }
 
@@ -328,5 +332,5 @@ export interface PortInfo {
     port: number,
     channel: number,
     loopback: string,
-    status: boolean    
+    status: boolean
 }

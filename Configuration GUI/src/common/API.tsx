@@ -19,10 +19,10 @@
 
 
 import axios from "axios"
-import {AxiosResponse} from "axios"
+import { AxiosResponse } from "axios"
 import Config from "../config";
-import { ReactNode, useEffect} from "react";
-import {useNavigate} from "react-router-dom";
+import { ReactNode, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const instance = axios.create({
     baseURL: Config.API_URL
@@ -48,7 +48,7 @@ const getHeader = (token?: string) => {
 }
 
 
-const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError: (message: string) => void, onOffline: () => void, onOnline: () => void, children: JSX.Element}) => {
+const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError: (message: string) => void, onOffline: () => void, onOnline: () => void, children: JSX.Element }) => {
 
     useEffect(() => {
 
@@ -61,7 +61,7 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError:
             if (!("response" in error) || ("code" in error && error.code === "ERR_NETWORK")) {
                 onOffline()
             }
-            else if(error.response.status === 400) {
+            else if (error.response.status === 400) {
                 console.log(error.response)
                 onError(error.response.data.message)
             }
@@ -71,14 +71,14 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline } : {onError:
             else if (error.response.status === 422) {
                 onError(error.response.data)
             }
-            else if(error.response.status === 500) {
+            else if (error.response.status === 500) {
                 if ("data" in error.response && "message" in error.response.data) {
                     onError("Internal Server Error: " + error.response.data.message)
                 } else {
                     onError("Internal Server Error.")
                 }
             }
-            else if(error.response.status === 404) {
+            else if (error.response.status === 404) {
                 onError("Request endpoint not found.")
             }
 

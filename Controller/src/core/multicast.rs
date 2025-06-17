@@ -17,10 +17,9 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use rbfrt::{SwitchConnection, table};
 use rbfrt::error::RBFRTError;
 use rbfrt::table::MatchValue;
-
+use rbfrt::{table, SwitchConnection};
 
 /// Table for multicast groups
 const MULTICAST_TABLE: &str = "$pre.mgid";
@@ -36,9 +35,11 @@ const MULTICAST_NODE_TABLE: &str = "$pre.node";
 /// * `mid`: Multicast group identifier.
 ///   This is used as identifier in the data plane.
 /// * `ports`: List of dev ports for the multicast group
-pub async fn create_simple_multicast_group(switch: &SwitchConnection,
-                                     mid: u16,
-                                     ports: &[u32]) -> Result<(), RBFRTError> {
+pub async fn create_simple_multicast_group(
+    switch: &SwitchConnection,
+    mid: u16,
+    ports: &[u32],
+) -> Result<(), RBFRTError> {
     // create node id
     let req = table::Request::new("$pre.node")
         .match_key("$MULTICAST_NODE_ID", MatchValue::exact(mid))
@@ -66,10 +67,11 @@ pub async fn create_simple_multicast_group(switch: &SwitchConnection,
 /// * `switch`: Switch connection.
 /// * `mid`: Multicast group identifier.
 ///   This is used as identifier in the data plane.
-pub async fn delete_simple_multicast_group(switch: &SwitchConnection,
-                                           mid: u16) -> Result<(), RBFRTError> {
-    let req = table::Request::new(MULTICAST_TABLE)
-        .match_key("$MGID", MatchValue::exact(mid));
+pub async fn delete_simple_multicast_group(
+    switch: &SwitchConnection,
+    mid: u16,
+) -> Result<(), RBFRTError> {
+    let req = table::Request::new(MULTICAST_TABLE).match_key("$MGID", MatchValue::exact(mid));
 
     let _ = switch.delete_table_entry(req).await;
 

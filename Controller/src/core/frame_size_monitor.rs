@@ -17,17 +17,17 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
+use crate::{AppState, PortMapping};
+use async_trait::async_trait;
+use rbfrt::error::RBFRTError;
+use rbfrt::table::{MatchValue, ToBytes};
+use rbfrt::{table, SwitchConnection};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use async_trait::async_trait;
-use rbfrt::error::RBFRTError;
-use rbfrt::{SwitchConnection, table};
-use rbfrt::table::{MatchValue, ToBytes};
-use crate::{AppState, PortMapping};
 
-use log::{info, warn};
 use crate::core::traffic_gen_core::types::GenerationMode;
+use log::{info, warn};
 
 use crate::core::statistics::{FrameSizeStatistics, RangeCount, RangeCountValue};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
@@ -52,8 +52,21 @@ pub struct FrameSizeMonitor {
 impl FrameSizeMonitor {
     pub fn new(port_mapping: HashMap<u32, PortMapping>) -> FrameSizeMonitor {
         // entry (a, b) describes range (a, a+b)
-        let frame_ranges = vec![(0, 63), (64, 0), (65, 62), (128, 127), (256, 255), (512, 511), (1024, 494), (1519, 20000)];
-        FrameSizeMonitor {port_mapping, frame_ranges, statistics: FrameSizeStatistics::default()}
+        let frame_ranges = vec![
+            (0, 63),
+            (64, 0),
+            (65, 62),
+            (128, 127),
+            (256, 255),
+            (512, 511),
+            (1024, 494),
+            (1519, 20000),
+        ];
+        FrameSizeMonitor {
+            port_mapping,
+            frame_ranges,
+            statistics: FrameSizeStatistics::default(),
+        }
     }
 
     /// Configures the [frame size monitor table](FRAME_SIZE_MONITOR) in the egress pipeline.
@@ -70,7 +83,6 @@ impl FrameSizeMonitor {
         // we used batched execution
         for (port, mapping) in self.port_mapping.iter().by_ref() {
             for (lower, upper) in &self.frame_ranges {
-
                 // table entry for the TX path
                 let tx_add_request = table::Request::new(FRAME_SIZE_MONITOR)
                     .match_key("eg_intr_md.egress_port", MatchValue::exact(*port))
@@ -80,7 +92,10 @@ impl FrameSizeMonitor {
 
                 // table entry for the RX path
                 let rx_add_request = table::Request::new(FRAME_SIZE_MONITOR)
-                    .match_key("eg_intr_md.egress_port", MatchValue::exact(mapping.rx_recirculation))
+                    .match_key(
+                        "eg_intr_md.egress_port",
+                        MatchValue::exact(mapping.rx_recirculation),
+                    )
                     .match_key("pkt_len", MatchValue::range(*lower, *lower + *upper))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(1))
                     .action("egress.nop");
@@ -99,20 +114,20 @@ impl FrameSizeMonitor {
     /// Computes the statistics for the configuration GUI.
     ///
     /// - `state`: App state that holds the switch connection.
-    pub async fn monitor_statistics(state: Arc<AppState>)  {
+    pub async fn monitor_statistics(state: Arc<AppState>) {
         loop {
             let mut stats = FrameSizeStatistics::default();
 
             let request = table::Request::new(FRAME_SIZE_MONITOR);
-            let sync = table::Request::new(FRAME_SIZE_MONITOR).operation(table::TableOperation::SyncCounters);
+            let sync = table::Request::new(FRAME_SIZE_MONITOR)
+                .operation(table::TableOperation::SyncCounters);
 
             let entries = {
                 let switch = &state.switch;
 
                 // sync counters
                 if switch.execute_operation(sync).await.is_err() {
-                    warn! {"Encountered error while synchronizing {FRAME_SIZE_MONITOR}."}
-                    ;
+                    warn! {"Encountered error while synchronizing {FRAME_SIZE_MONITOR}."};
                 }
 
                 // read counters
@@ -121,7 +136,6 @@ impl FrameSizeMonitor {
                     vec![]
                 })
             };
-
 
             let mut tx_mapping: HashMap<u32, u32> = HashMap::new();
             let mut rx_mapping: HashMap<u32, u32> = HashMap::new();
@@ -137,13 +151,19 @@ impl FrameSizeMonitor {
                     continue;
                 }
 
-                let port = entry.match_keys.get("eg_intr_md.egress_port").unwrap().get_exact_value().to_u32();
+                let port = entry
+                    .match_keys
+                    .get("eg_intr_md.egress_port")
+                    .unwrap()
+                    .get_exact_value()
+                    .to_u32();
 
                 let (lower, upper) = match entry.match_keys.get("pkt_len").unwrap() {
-                    MatchValue::RangeValue { lower_bytes, higher_bytes } => {
-                        (lower_bytes.to_u32(), higher_bytes.to_u32())
-                    },
-                    _ => panic!("Wrong match type for {entry:#?}")
+                    MatchValue::RangeValue {
+                        lower_bytes,
+                        higher_bytes,
+                    } => (lower_bytes.to_u32(), higher_bytes.to_u32()),
+                    _ => panic!("Wrong match type for {entry:#?}"),
                 };
 
                 let count = 'get_count: {
@@ -157,10 +177,20 @@ impl FrameSizeMonitor {
                 };
 
                 if state.port_mapping.contains_key(&port) {
-                    stats.frame_size.get_mut(&port).unwrap().tx.push(RangeCountValue::new(lower, upper, count));
+                    stats
+                        .frame_size
+                        .get_mut(&port)
+                        .unwrap()
+                        .tx
+                        .push(RangeCountValue::new(lower, upper, count));
                 } else if rx_mapping.contains_key(&port) {
                     let port = rx_mapping.get(&port).unwrap();
-                    stats.frame_size.get_mut(port).unwrap().rx.push(RangeCountValue::new(lower, upper, count));
+                    stats
+                        .frame_size
+                        .get_mut(port)
+                        .unwrap()
+                        .rx
+                        .push(RangeCountValue::new(lower, upper, count));
                 }
             }
 
@@ -169,11 +199,9 @@ impl FrameSizeMonitor {
                 frame_size_state.statistics = stats;
             }
 
-
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
-
 
     /// Clear the [frame monitor table](FRAME_SIZE_MONITOR).
     pub async fn clear(&self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
@@ -185,7 +213,11 @@ impl FrameSizeMonitor {
 
 #[async_trait]
 impl TrafficGenEvent for FrameSizeMonitor {
-    async fn on_start(&mut self, switch: &SwitchConnection, _mode: &GenerationMode) -> Result<(), RBFRTError> {
+    async fn on_start(
+        &mut self,
+        switch: &SwitchConnection,
+        _mode: &GenerationMode,
+    ) -> Result<(), RBFRTError> {
         self.configure(switch).await?;
         Ok(())
     }

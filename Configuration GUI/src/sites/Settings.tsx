@@ -220,7 +220,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         const rxPorts = Object.values(port_tx_rx_mapping).map(String);
         Object.entries(histogram_settings).forEach(([rx_port, config]) => {
             if (rxPorts.includes(rx_port)) {
-            filteredHistogramSettings[rx_port] = config;
+                filteredHistogramSettings[rx_port] = config;
             }
         });
 

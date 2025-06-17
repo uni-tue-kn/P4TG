@@ -18,12 +18,12 @@
  */
 
 import React from "react"
-import {Button, Col, Form, Row} from "react-bootstrap";
+import { Button, Col, Form, Row } from "react-bootstrap";
 import { randomIP } from "../SettingsModal";
 
 import InfoBox from "../../InfoBox";
-import {StreamSettings} from "../../../common/Interfaces";
-import {StyledRow} from "../../../sites/Settings";
+import { StreamSettings } from "../../../common/Interfaces";
+import { StyledRow } from "../../../sites/Settings";
 
 interface Props {
     data: StreamSettings,
@@ -31,7 +31,7 @@ interface Props {
     running: boolean
 }
 
-const IPv4 = ({data, set_data, running}: Props) => {
+const IPv4 = ({ data, set_data, running }: Props) => {
     return <>
         <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
             <Form.Label className={"col-3 text-start"}>
@@ -40,12 +40,12 @@ const IPv4 = ({data, set_data, running}: Props) => {
             <Col className={"col-7 text-end"}>
                 <Row>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({ip: {...data.ip, ip_src: event.target.value}})}
-                                      disabled={running} type={"text"} value={data.ip.ip_src}/>
+                        <Form.Control onChange={(event: any) => set_data({ ip: { ...data.ip, ip_src: event.target.value } })}
+                            disabled={running} type={"text"} value={data.ip.ip_src} />
                     </Col>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({ip: {...data.ip, ip_src_mask: event.target.value}})}
-                                      disabled={running} type={"text"} value={data.ip.ip_src_mask}/>
+                        <Form.Control onChange={(event: any) => set_data({ ip: { ...data.ip, ip_src_mask: event.target.value } })}
+                            disabled={running} type={"text"} value={data.ip.ip_src_mask} />
                     </Col>
                     <Col className={"col-1"}>
                         <InfoBox>
@@ -64,7 +64,7 @@ const IPv4 = ({data, set_data, running}: Props) => {
                 </Row>
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({ip: {...data.ip, ip_src: randomIP()}})}><i className="bi bi-shuffle"/></Button>
+                <Button disabled={running} onClick={() => set_data({ ip: { ...data.ip, ip_src: randomIP() } })}><i className="bi bi-shuffle" /></Button>
             </Col>
         </Form.Group>
 
@@ -75,12 +75,12 @@ const IPv4 = ({data, set_data, running}: Props) => {
             <Col className={"col-7 text-end"}>
                 <Row>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({ip: {...data.ip, ip_dst: event.target.value}})}
-                                      disabled={running} type={"text"} value={data.ip.ip_dst}/>
+                        <Form.Control onChange={(event: any) => set_data({ ip: { ...data.ip, ip_dst: event.target.value } })}
+                            disabled={running} type={"text"} value={data.ip.ip_dst} />
                     </Col>
                     <Col>
-                        <Form.Control onChange={(event: any) => set_data({ip: {...data.ip, ip_dst_mask: event.target.value}})}
-                                      disabled={running} type={"text"} value={data.ip.ip_dst_mask}/>
+                        <Form.Control onChange={(event: any) => set_data({ ip: { ...data.ip, ip_dst_mask: event.target.value } })}
+                            disabled={running} type={"text"} value={data.ip.ip_dst_mask} />
                     </Col>
                     <Col className={"col-1"}>
                         <InfoBox>
@@ -100,8 +100,8 @@ const IPv4 = ({data, set_data, running}: Props) => {
 
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({ip: {...data.ip, ip_dst: randomIP()}})}>
-                    <i className="bi bi-shuffle"/>
+                <Button disabled={running} onClick={() => set_data({ ip: { ...data.ip, ip_dst: randomIP() } })}>
+                    <i className="bi bi-shuffle" />
                 </Button>
             </Col>
         </Form.Group>
@@ -111,8 +111,8 @@ const IPv4 = ({data, set_data, running}: Props) => {
                 ToS
             </Form.Label>
             <Col className={"col-7 text-end"}>
-                <Form.Control onChange={(event: any) => set_data({ip: {...data.ip, ip_tos: parseInt(event.target.value)}})}
-                              disabled={running} type={"number"} defaultValue={data.ip.ip_tos}/>
+                <Form.Control onChange={(event: any) => set_data({ ip: { ...data.ip, ip_tos: parseInt(event.target.value) } })}
+                    disabled={running} type={"number"} defaultValue={data.ip.ip_tos} />
             </Col>
         </Form.Group>
     </>

@@ -17,21 +17,24 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::sync::Arc;
-use std::time::SystemTime;
+use crate::api::helper::validate::{validate_multiple_test, validate_request};
 use axum::debug_handler;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
 use serde::{Deserialize, Serialize};
-use crate::api::helper::validate::{validate_multiple_test, validate_request};
+use std::sync::Arc;
+use std::time::SystemTime;
 
 use crate::api::server::Error;
 use crate::core::statistics::{RttHistogram, RttHistogramData};
 use crate::AppState;
 
-use crate::api::docs::traffic_gen::{EXAMPLE_GET_1, EXAMPLE_GET_2, EXAMPLE_POST_1_REQUEST, EXAMPLE_POST_1_RESPONSE, EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST};
+use crate::api::docs::traffic_gen::{
+    EXAMPLE_GET_1, EXAMPLE_GET_2, EXAMPLE_POST_1_REQUEST, EXAMPLE_POST_1_RESPONSE,
+    EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST,
+};
 use crate::core::traffic_gen_core::types::*;
 
 #[derive(Debug, Deserialize)]
@@ -59,9 +62,14 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     let tg = &state.traffic_generator.lock().await;
 
     if !tg.running {
-        (StatusCode::ACCEPTED, Json(EmptyResponse{message: "Not running.".to_string()})).into_response()
-    }
-    else {
+        (
+            StatusCode::ACCEPTED,
+            Json(EmptyResponse {
+                message: "Not running.".to_string(),
+            }),
+        )
+            .into_response()
+    } else {
         let tg_data = TrafficGenData {
             mode: tg.mode,
             stream_settings: tg.stream_settings.clone(),
@@ -69,14 +77,12 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             port_tx_rx_mapping: tg.port_mapping.clone(),
             duration: tg.duration,
             histogram_config: Some(tg.histogram_config.clone()),
-            name: tg.name.clone()
+            name: tg.name.clone(),
         };
 
         (StatusCode::OK, Json(tg_data)).into_response()
     }
 }
-
-
 
 /// Represents the result of a stream optimization.
 #[derive(Serialize)]
@@ -115,12 +121,22 @@ pub struct Result {
 )]
 pub async fn configure_traffic_gen(
     State(state): State<Arc<AppState>>,
-    payload: Json<TrafficGenTests>
+    payload: Json<TrafficGenTests>,
 ) -> Response {
-
     // Cancel any existing duration monitor task
-    state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
-    state.multiple_tests.multiple_test_monitor_task.lock().await.cancel_existing_monitoring_task().await;
+    state
+        .monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
+    state
+        .multiple_tests
+        .multiple_test_monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
 
     // Clear History statistics
     let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
@@ -132,39 +148,46 @@ pub async fn configure_traffic_gen(
         axum::Json(TrafficGenTests::SingleTest(traffic_gen_data)) => {
             // Just start a single test.
             start_single_test(&state, traffic_gen_data).await
-        },
+        }
         axum::Json(TrafficGenTests::MultipleTest(traffic_gen_datas)) => {
             // This starts an async task that sequentially runs all the tests.
-            let streams: Vec<Vec<Stream>> = traffic_gen_datas.clone().into_iter().map(|t: TrafficGenData| t.streams).collect();
+            let streams: Vec<Vec<Stream>> = traffic_gen_datas
+                .clone()
+                .into_iter()
+                .map(|t: TrafficGenData| t.streams)
+                .collect();
 
             // Request validation
             match validate_multiple_test(traffic_gen_datas.clone()) {
                 Ok(_) => {
-                    state.multiple_tests.multiple_test_monitor_task.lock().await.start_multiple_tests(&state, traffic_gen_datas).await;
+                    state
+                        .multiple_tests
+                        .multiple_test_monitor_task
+                        .lock()
+                        .await
+                        .start_multiple_tests(&state, traffic_gen_datas)
+                        .await;
                     (StatusCode::OK, Json(streams)).into_response()
                 }
-                Err(e) => {
-                    (StatusCode::BAD_REQUEST, Json(e)).into_response()
-                }
+                Err(e) => (StatusCode::BAD_REQUEST, Json(e)).into_response(),
             }
-
-
-        },
+        }
     }
 }
-
 
 pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -> Response {
     // contains the description of the stream, i.e., packet size and rate
     // only look at active stream settings
-    let active_stream_settings: Vec<StreamSetting> = payload.stream_settings
+    let active_stream_settings: Vec<StreamSetting> = payload
+        .stream_settings
         .clone()
         .into_iter()
         .filter(|s| s.active)
         .collect();
 
     let active_stream_ids: Vec<u8> = active_stream_settings.iter().map(|s| s.stream_id).collect();
-    let active_streams: Vec<Stream> = payload.streams
+    let active_streams: Vec<Stream> = payload
+        .streams
         .clone()
         .into_iter()
         .filter(|s| active_stream_ids.contains(&s.stream_id))
@@ -172,12 +195,22 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
 
     // Poisson traffic is only allowed to have a single stream
     if payload.mode == GenerationMode::Poisson && active_streams.len() != 1 {
-        return (StatusCode::BAD_REQUEST, Json(Error::new("Poisson generation mode only allows for one stream."))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(
+                "Poisson generation mode only allows for one stream.",
+            )),
+        )
+            .into_response();
     }
 
-    // no streams should be generated in monitor/analyze mode    
+    // no streams should be generated in monitor/analyze mode
     if payload.mode == GenerationMode::Analyze && !active_streams.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(Error::new("No stream definition in analyze mode allowed."))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new("No stream definition in analyze mode allowed.")),
+        )
+            .into_response();
     }
 
     // Clear histogram config state and release lock when out of scope
@@ -196,12 +229,21 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
         // Check if the port is available for histogram config, i.e., if it is in the port mapping
         if state.port_mapping.contains_key(&port_number) {
             // Create new histogram config with empty data from payload
-            histogram_monitor.histogram.insert(port_number, RttHistogram {
-                config,
-                data: RttHistogramData::default()
-            });
+            histogram_monitor.histogram.insert(
+                port_number,
+                RttHistogram {
+                    config,
+                    data: RttHistogramData::default(),
+                },
+            );
         } else {
-            return (StatusCode::BAD_REQUEST, Json(Error::new(format!("Port {port_number} is not available for histogram config on this device.")))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(Error::new(format!(
+                    "Port {port_number} is not available for histogram config on this device."
+                ))),
+            )
+                .into_response();
         }
     }
 
@@ -210,7 +252,9 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
         let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
         if histogram_monitor.histogram.get_mut(&rx).is_none() {
             info!("Adding default histogram config for rx port {rx}");
-            histogram_monitor.histogram.insert(rx, RttHistogram::default());
+            histogram_monitor
+                .histogram
+                .insert(rx, RttHistogram::default());
         }
     }
 
@@ -226,13 +270,22 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
         &payload.mode,
         tx_rx_port_mapping,
         state.port_mapping.clone(),
-        tg.is_tofino2
+        tg.is_tofino2,
     ) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response(),
     }
 
-    match tg.start_traffic_generation(state, active_streams, payload.mode, active_stream_settings, tx_rx_port_mapping).await {
+    match tg
+        .start_traffic_generation(
+            state,
+            active_streams,
+            payload.mode,
+            active_stream_settings,
+            tx_rx_port_mapping,
+        )
+        .await
+    {
         Ok(streams) => {
             // store the settings for synchronization between multiple
             // GUI clients
@@ -259,7 +312,11 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
             info!("Traffic generation started.");
             (StatusCode::OK, Json(streams)).into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Error::new(format!("{err:#?}"))),
+        )
+            .into_response(),
     }
 }
 
@@ -282,13 +339,24 @@ pub async fn stop_traffic_gen(
     let switch = &state.switch;
 
     // Cancel any existing duration monitor task
-    state.monitor_task.lock().await.cancel_existing_monitoring_task().await;
+    state
+        .monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
 
     let skip_current_test = params.skip.unwrap_or(false);
 
     if !skip_current_test {
         // Cancel the multiple test monitor task if skip is set to false
-        state.multiple_tests.multiple_test_monitor_task.lock().await.cancel_existing_monitoring_task().await;
+        state
+            .multiple_tests
+            .multiple_test_monitor_task
+            .lock()
+            .await
+            .cancel_existing_monitoring_task()
+            .await;
     }
 
     match tg.lock().await.stop(switch).await {
@@ -297,6 +365,10 @@ pub async fn stop_traffic_gen(
             state.experiment.lock().await.running = false;
             StatusCode::OK.into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Error::new(format!("{err:#?}")))).into_response()
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Error::new(format!("{err:#?}"))),
+        )
+            .into_response(),
     }
 }

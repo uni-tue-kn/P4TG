@@ -17,11 +17,11 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import {useEffect, useState} from 'react'
+import { useEffect, useState } from 'react'
 import Config from "./config"
-import {BrowserRouter as Router, Route, Routes} from "react-router-dom"
-import {Col, Container, Row} from "react-bootstrap"
-import {AxiosInterceptor, get} from "./common/API"
+import { BrowserRouter as Router, Route, Routes } from "react-router-dom"
+import { Col, Container, Row } from "react-bootstrap"
+import { AxiosInterceptor, get } from "./common/API"
 import styled from "styled-components"
 import ErrorView from "./components/ErrorView"
 import Navbar from "./components/Navbar"
@@ -31,10 +31,10 @@ import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
 import Offline from "./sites/Offline"
 import Tables from "./sites/Tables";
-import {ASIC, P4TGInfos, StreamSettings} from "./common/Interfaces";
-import {Stream} from "./common/Interfaces";
+import { ASIC, P4TGInfos, StreamSettings } from "./common/Interfaces";
+import { Stream } from "./common/Interfaces";
 import Loader from "./components/Loader";
-import {validateStreams, validateStreamSettings} from "./common/Validators";
+import { validateStreams, validateStreamSettings } from "./common/Validators";
 
 
 const App = () => {
@@ -43,7 +43,7 @@ const App = () => {
     const [time, set_time] = useState("00:00")
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
-    const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({status: "", version: "", asic: ASIC.Tofino1, loopback: false})
+    const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({ status: "", version: "", asic: ASIC.Tofino1, loopback: false })
 
     const setError = (msg: string) => {
         set_error(true)
@@ -65,14 +65,14 @@ const App = () => {
                 let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
                 let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
 
-                if(!validateStreams(stored_streams)) {
+                if (!validateStreams(stored_streams)) {
                     alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
                     localStorage.clear()
                     window.location.reload()
                     return
                 }
 
-                if(!validateStreamSettings(stored_settings)) {
+                if (!validateStreamSettings(stored_settings)) {
                     alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
                     localStorage.clear()
                     window.location.reload()
@@ -87,12 +87,12 @@ const App = () => {
         }
 
         const loadInfos = async () => {
-            let stats = await get({route: "/online"})
-    
+            let stats = await get({ route: "/online" })
+
             if (stats !== undefined && stats.status === 200) {
                 set_p4tg_infos(stats.data)
             }
-    
+
             set_loaded(true)
         }
 
@@ -118,26 +118,26 @@ const App = () => {
         <Router basename={Config.BASE_PATH}>
             <Row>
                 <Col className={'col-2 col-sm-2 col-xl-1 fixed-navbar'}>
-                    <Navbar p4tg_infos={p4tg_infos}/>
+                    <Navbar p4tg_infos={p4tg_infos} />
                 </Col>
                 <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-3"}>
-                    <ErrorView error={error} message={message} time={time} close={() => set_error(false)}/>
+                    <ErrorView error={error} message={message} time={time} close={() => set_error(false)} />
                     <AxiosInterceptor onError={setError} onOffline={() => set_online(false)}
-                                      onOnline={() => set_online(true)}>
+                        onOnline={() => set_online(true)}>
                         <Container fluid className={"pb-2"}>
                             <Wrapper>
                                 <ASICVersion>{p4tg_infos.asic}</ASICVersion>
                                 {online ?
                                     <Routes>
-                                        <Route path={""} element={<Home p4tg_infos={p4tg_infos}/>}/>
-                                        <Route path={"/"} element={<Home p4tg_infos={p4tg_infos}/>}/>
-                                        <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos}/>}/>
-                                        <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos}/>}/>
-                                        <Route path={"/tables"} element={<Tables/>}/>
-                                        <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos}/>}/>
+                                        <Route path={""} element={<Home p4tg_infos={p4tg_infos} />} />
+                                        <Route path={"/"} element={<Home p4tg_infos={p4tg_infos} />} />
+                                        <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} />} />
+                                        <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos} />} />
+                                        <Route path={"/tables"} element={<Tables />} />
+                                        <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} />} />
                                     </Routes>
                                     :
-                                    <Offline/>
+                                    <Offline />
                                 }
                             </Wrapper>
 

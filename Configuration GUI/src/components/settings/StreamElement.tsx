@@ -29,20 +29,20 @@ import {
     P4TGInfos,
     ASIC
 } from "../../common/Interfaces";
-import React, {useState} from "react";
-import {Button, Col, Form, InputGroup, Row} from "react-bootstrap";
+import React, { useState } from "react";
+import { Button, Col, Form, InputGroup, Row } from "react-bootstrap";
 import InfoBox from "../InfoBox";
-import {StyledCol, StyledRow} from "../../sites/Settings";
+import { StyledCol, StyledRow } from "../../sites/Settings";
 
 
 const StreamElement = ({
-                           running,
-                           data,
-                           remove,
-                           mode,
-                           stream_settings,
-                           p4tg_infos
-                       }: {
+    running,
+    data,
+    remove,
+    mode,
+    stream_settings,
+    p4tg_infos
+}: {
     running: boolean,
     data: Stream,
     remove: (id: number) => void,
@@ -86,7 +86,7 @@ const StreamElement = ({
             batches: !prevData.batches
         }))
         data.batches = !data.batches;
-    }    
+    }
 
     const handleEncapsulationChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         data.encapsulation = parseInt(event.target.value)
@@ -99,15 +99,15 @@ const StreamElement = ({
                     ...prevData,
                     vxlan: false,
                     encapsulation: Encapsulation.MPLS
-                }));            
-                data.vxlan = false;                
+                }));
+                data.vxlan = false;
             } else {
                 setFormData((prevData) => ({
                     ...prevData,
                     encapsulation: Encapsulation.MPLS
-                }));                 
+                }));
             }
-        } else if (data.encapsulation === Encapsulation.SRv6){
+        } else if (data.encapsulation === Encapsulation.SRv6) {
             set_show_sid_config(true);
             set_show(false);
             // Disable VxLAN
@@ -115,7 +115,7 @@ const StreamElement = ({
                 ...prevData,
                 vxlan: false,
                 encapsulation: Encapsulation.SRv6
-            }));            
+            }));
             data.vxlan = false;
         } else {
             set_show(false);
@@ -128,7 +128,7 @@ const StreamElement = ({
             setFormData((prevData) => ({
                 ...prevData,
                 encapsulation: data.encapsulation
-            }));             
+            }));
         }
     }
 
@@ -149,14 +149,14 @@ const StreamElement = ({
                     let new_mpls_stack: MPLSHeader[] = [];
                     let elements_to_add = data.number_of_lse - s.mpls_stack.length;
 
-                    Array.from({length: elements_to_add}, (_, index) => {
+                    Array.from({ length: elements_to_add }, (_, index) => {
                         new_mpls_stack.push(DefaultMPLSHeader());
                     })
-                    
+
                     s.mpls_stack = s.mpls_stack.concat(new_mpls_stack);
                 }
 
-                if (s.sid_list.length > data.number_of_srv6_sids){
+                if (s.sid_list.length > data.number_of_srv6_sids) {
                     // Newly set length is smaller than previous length. Remove the excess elements.
                     s.sid_list = s.sid_list.slice(0, data.number_of_srv6_sids)
                 } else if (s.sid_list.length < data.number_of_srv6_sids) {
@@ -164,7 +164,7 @@ const StreamElement = ({
                     let new_sid_list: string[] = [];
                     let elements_to_add = data.number_of_srv6_sids - s.sid_list.length;
 
-                    Array.from({length: elements_to_add}, (_, index) => {
+                    Array.from({ length: elements_to_add }, (_, index) => {
                         new_sid_list.push("fe80::");
                     })
 
@@ -184,7 +184,7 @@ const StreamElement = ({
         set_number_of_srv6_sids(parseInt(event.target.value));
         data.number_of_srv6_sids = parseInt(event.target.value);
         update_settings();
-    }    
+    }
 
     const handleSRv6TunnelingChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         setFormData((prevData) => ({
@@ -192,19 +192,19 @@ const StreamElement = ({
             srv6_ip_tunneling: !prevData.srv6_ip_tunneling  // Toggle VxLAN
         }))
         data.srv6_ip_tunneling = !data.srv6_ip_tunneling;
-    }       
+    }
 
     return <tr>
         <StyledCol>{data.app_id}</StyledCol>
         <StyledCol>
             <InputGroup>
                 <Form.Select disabled={running} required
-                             defaultValue={data.frame_size}
-                             onChange={(event: any) => data.frame_size = parseInt(event.target.value)}>
+                    defaultValue={data.frame_size}
+                    onChange={(event: any) => data.frame_size = parseInt(event.target.value)}>
                     <option value={""}>Frame size</option>
                     {[64, 128, 256, 512, 1024, 1280, 1518, 9000].map((v, i) => {
                         return <option selected={v === data.frame_size} key={i}
-                                       value={v}>{v == 9000 ? "Jumbo (9000)" : v}</option>
+                            value={v}>{v == 9000 ? "Jumbo (9000)" : v}</option>
                     })
                     }
                 </Form.Select>
@@ -229,9 +229,9 @@ const StreamElement = ({
         </StyledCol>
         <StyledCol>
             <tr>
-                <td className={show_batches_config ? "col-auto": "col-1"}>
+                <td className={show_batches_config ? "col-auto" : "col-1"}>
                     <Form.Select disabled={running} required
-                                 onChange={handleModeChange}>
+                        onChange={handleModeChange}>
                         <option selected={100 === data.burst} value="100">Rate Precision</option>
                         <option selected={1 === data.burst} value="1">IAT Precision</option>
                     </Form.Select>
@@ -240,13 +240,13 @@ const StreamElement = ({
                     <td className={"col-1"}>
                         Batches
                         <Form.Check disabled={running}
-                        type={"switch"}
-                        checked={formData.batches}
-                        onChange={handleBatchesToggle}>
-                        </Form.Check>                    
-                    </td>       
-                : 
-                null}
+                            type={"switch"}
+                            checked={formData.batches}
+                            onChange={handleBatchesToggle}>
+                        </Form.Check>
+                    </td>
+                    :
+                    null}
                 {show_batches_config ?
                     <td className={"col-auto"}>
                         <InfoBox>
@@ -255,9 +255,9 @@ const StreamElement = ({
                                 <p>Increases the burstiness to fit the configured traffic rate even more precisely. Only has an effect in rate mode.</p>
                             </>
                         </InfoBox>
-                    </td>       
-                : 
-                null}                
+                    </td>
+                    :
+                    null}
             </tr>
         </StyledCol>
         <StyledCol>
@@ -266,7 +266,7 @@ const StreamElement = ({
                 disabled={running || formData.ip_version === 6 || (p4tg_infos.asic === ASIC.Tofino1 && formData.encapsulation === Encapsulation.MPLS) || formData.encapsulation === Encapsulation.SRv6}
                 checked={formData.vxlan}
                 onChange={handleVxLANToggle}
-                >
+            >
             </Form.Check>
         </StyledCol>
         <StyledCol>
@@ -278,15 +278,15 @@ const StreamElement = ({
                         disabled={running || (data.encapsulation == Encapsulation.SRv6 && !data.srv6_ip_tunneling)}
                         checked={formData.ip_version === 6}
                         onChange={handleIPVersionChange}  // Toggle IP version and reset VxLAN
-                        >
+                    >
                     </Form.Check>
                 </Col>
                 <Col className={"text-start"}><span>v6</span></Col>
             </Row>
-        </StyledCol>        
+        </StyledCol>
         <StyledCol>
             <Form.Select disabled={running} required
-                         onChange={handleEncapsulationChange}
+                onChange={handleEncapsulationChange}
             >
                 <option selected={Encapsulation.None == data.encapsulation} value={Encapsulation.None}>None</option>
                 <option selected={Encapsulation.Q == data.encapsulation} value={Encapsulation.Q}>VLAN (+4 byte)</option>
@@ -296,21 +296,21 @@ const StreamElement = ({
                 <option selected={Encapsulation.MPLS == data.encapsulation} value={Encapsulation.MPLS}>MPLS (+4 byte /
                     LSE)
                 </option>
-                {p4tg_infos.asic == ASIC.Tofino2 ?  <option selected={Encapsulation.SRv6 == data.encapsulation} value={Encapsulation.SRv6}>SRv6 (+48 byte + 16 byte / SID)
-                </option> 
-                :
-                null}
+                {p4tg_infos.asic == ASIC.Tofino2 ? <option selected={Encapsulation.SRv6 == data.encapsulation} value={Encapsulation.SRv6}>SRv6 (+48 byte + 16 byte / SID)
+                </option>
+                    :
+                    null}
             </Form.Select>
         </StyledCol>
         <StyledRow>
             <StyledCol>
                 {show_mpls_dropdown ?
                     <Form.Select disabled={running}
-                                 onChange={handleNumberOfLSE}
-                                 defaultValue={number_of_lse}
+                        onChange={handleNumberOfLSE}
+                        defaultValue={number_of_lse}
                     >
                         <option selected={0 == number_of_lse} value="0">#LSE</option>
-                        {Array.from({length: 15}, (_, index) => (
+                        {Array.from({ length: 15 }, (_, index) => (
                             <option selected={index + 1 == number_of_lse} value={index + 1}>{index + 1}</option>
                         ))}
                     </Form.Select>
@@ -320,11 +320,11 @@ const StreamElement = ({
                 {show_sid_config ?
                     <Form.Group>
                         <Form.Select disabled={running}
-                                    onChange={handleNumberOfSids}
-                                    defaultValue={number_of_srv6_sids}
+                            onChange={handleNumberOfSids}
+                            defaultValue={number_of_srv6_sids}
                         >
                             <option selected={0 == number_of_srv6_sids} value="0">#SIDs</option>
-                            {Array.from({length: 3}, (_, index) => (
+                            {Array.from({ length: 3 }, (_, index) => (
                                 <option selected={index + 1 == number_of_srv6_sids} value={index + 1}>{index + 1}</option>
                             ))}
                         </Form.Select>
@@ -332,23 +332,23 @@ const StreamElement = ({
                             <td>IP Tunneling</td>
                             <td>
                                 <Form.Check
-                                type={"switch"}
-                                disabled={running}
-                                checked={data.srv6_ip_tunneling}
-                                onChange={handleSRv6TunnelingChange}
+                                    type={"switch"}
+                                    disabled={running}
+                                    checked={data.srv6_ip_tunneling}
+                                    onChange={handleSRv6TunnelingChange}
                                 >
                                 </Form.Check>
                             </td>
                             <td>
                                 <InfoBox>
                                     <>
-                                    <h5>IP Tunneling</h5>
+                                        <h5>IP Tunneling</h5>
 
-                                    <p>Adds an inner IPv4 or IPv6 header to the packet, if enabled. If disabled, the UDP header follows directly after the SRv6 header.</p>
+                                        <p>Adds an inner IPv4 or IPv6 header to the packet, if enabled. If disabled, the UDP header follows directly after the SRv6 header.</p>
 
                                     </>
                                 </InfoBox>
-                            </td>                            
+                            </td>
                         </tr>
                     </Form.Group>
                     :
@@ -357,8 +357,8 @@ const StreamElement = ({
             </StyledCol>
             <StyledCol className={"text-end"}>
                 <Button disabled={running} className={"btn-sm"} variant={"dark"}
-                        onClick={() => remove(data.stream_id)}>
-                    <i className="bi bi-trash2-fill"/></Button>
+                    onClick={() => remove(data.stream_id)}>
+                    <i className="bi bi-trash2-fill" /></Button>
             </StyledCol>
         </StyledRow>
     </tr>

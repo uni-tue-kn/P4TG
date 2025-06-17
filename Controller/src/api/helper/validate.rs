@@ -23,29 +23,48 @@ use std::collections::HashMap;
 use log::warn;
 
 use crate::api::histogram::HistogramConfigRequest;
-use crate::core::traffic_gen_core::types::*;
 use crate::api::server::Error;
-use crate::core::traffic_gen_core::const_definitions::{MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2};
+use crate::core::traffic_gen_core::const_definitions::{
+    MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2,
+    MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2,
+};
 use crate::core::traffic_gen_core::helper::calculate_overhead;
+use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 use crate::PortMapping;
 
 /// Validates an incoming traffic generation request.
 /// Checks if the MPLS/SRv6 configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
-pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &GenerationMode, tx_rx_port_mapping: &HashMap<String, u32>, available_ports: HashMap<u32, PortMapping>, is_tofino2: bool) -> Result<(), Error> {
-    for stream in streams.iter(){
+pub fn validate_request(
+    streams: &[Stream],
+    settings: &[StreamSetting],
+    mode: &GenerationMode,
+    tx_rx_port_mapping: &HashMap<String, u32>,
+    available_ports: HashMap<u32, PortMapping>,
+    is_tofino2: bool,
+) -> Result<(), Error> {
+    for stream in streams.iter() {
         // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::Mpls {
             if stream.number_of_lse.is_none() {
-                return Err(Error::new(format!("number_of_lse missing for stream #{}", stream.stream_id)))
+                return Err(Error::new(format!(
+                    "number_of_lse missing for stream #{}",
+                    stream.stream_id
+                )));
             }
 
             if stream.number_of_lse.unwrap() > MAX_NUM_MPLS_LABEL {
-                return Err(Error::new(format!("Configured number of LSEs in stream with ID #{} exceeded maximum of {}.", stream.stream_id, MAX_NUM_MPLS_LABEL)));
+                return Err(Error::new(format!(
+                    "Configured number of LSEs in stream with ID #{} exceeded maximum of {}.",
+                    stream.stream_id, MAX_NUM_MPLS_LABEL
+                )));
             }
 
             if stream.number_of_lse.unwrap() == 0 {
-                return Err(Error::new(format!("MPLS encapsulation selected for stream with ID #{} but #LSE is zero.", stream.stream_id)));
+                return Err(Error::new(format!(
+                    "MPLS encapsulation selected for stream with ID #{} but #LSE is zero.",
+                    stream.stream_id
+                )));
             }
         } else if stream.encapsulation == Encapsulation::SRv6 {
             if !is_tofino2 {
@@ -53,71 +72,115 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
             }
 
             if stream.number_of_srv6_sids.is_none() {
-                return Err(Error::new(format!("number_of_srv6_sids missing for stream #{}", stream.stream_id)))
+                return Err(Error::new(format!(
+                    "number_of_srv6_sids missing for stream #{}",
+                    stream.stream_id
+                )));
             }
 
             if stream.number_of_srv6_sids.unwrap() > MAX_NUM_SRV6_SIDS {
-                return Err(Error::new(format!("Configured number of SIDs in stream with ID #{} exceeded maximum of {}.", stream.stream_id, MAX_NUM_SRV6_SIDS)));
+                return Err(Error::new(format!(
+                    "Configured number of SIDs in stream with ID #{} exceeded maximum of {}.",
+                    stream.stream_id, MAX_NUM_SRV6_SIDS
+                )));
             }
 
             if stream.number_of_srv6_sids.unwrap() == 0 {
-                return Err(Error::new(format!("SRv6 encapsulation selected for stream with ID #{} but #SIDs is zero.", stream.stream_id)));
+                return Err(Error::new(format!(
+                    "SRv6 encapsulation selected for stream with ID #{} but #SIDs is zero.",
+                    stream.stream_id
+                )));
             }
         }
 
         for setting in settings.iter() {
             if setting.stream_id == stream.stream_id {
                 // check VLAN settings
-                if (stream.encapsulation == Encapsulation::Vlan || stream.encapsulation == Encapsulation::QinQ) && setting.vlan.is_none() {
-                    return Err(Error::new(format!("VLAN encapsulation selected for stream with iD #{}, but no VLAN settings provided for port {}.", stream.stream_id, setting.port)))
+                if (stream.encapsulation == Encapsulation::Vlan
+                    || stream.encapsulation == Encapsulation::QinQ)
+                    && setting.vlan.is_none()
+                {
+                    return Err(Error::new(format!("VLAN encapsulation selected for stream with iD #{}, but no VLAN settings provided for port {}.", stream.stream_id, setting.port)));
                 }
 
                 // check MPLS
                 // check that mpls stack is set
                 if stream.encapsulation == Encapsulation::Mpls && setting.mpls_stack.is_none() {
-                    return Err(Error::new(format!("No MPLS stack provided for stream with ID #{} on port {}.", stream.stream_id, setting.port)))
+                    return Err(Error::new(format!(
+                        "No MPLS stack provided for stream with ID #{} on port {}.",
+                        stream.stream_id, setting.port
+                    )));
                 }
 
                 // Validate if the configured number_of_lse per stream matches the MPLS stack size
-                if stream.encapsulation == Encapsulation::Mpls && setting.mpls_stack.as_ref().unwrap().len() != stream.number_of_lse.unwrap() as usize {
+                if stream.encapsulation == Encapsulation::Mpls
+                    && setting.mpls_stack.as_ref().unwrap().len()
+                        != stream.number_of_lse.unwrap() as usize
+                {
                     return Err(Error::new(format!("Number of LSEs in stream with ID #{} does not match length of the MPLS stack.", setting.stream_id)));
                 }
 
                 // check SRv6
                 // check that SID list is set
                 if stream.encapsulation == Encapsulation::SRv6 && setting.sid_list.is_none() {
-                    return Err(Error::new(format!("No SID list provided for stream with ID #{} on port {}.", stream.stream_id, setting.port)))
+                    return Err(Error::new(format!(
+                        "No SID list provided for stream with ID #{} on port {}.",
+                        stream.stream_id, setting.port
+                    )));
                 }
 
                 // Validate if the configured number_of_srv6_sids per stream matches the SID list length
-                if stream.encapsulation == Encapsulation::SRv6 && setting.sid_list.as_ref().unwrap().len() != stream.number_of_srv6_sids.unwrap() as usize {
+                if stream.encapsulation == Encapsulation::SRv6
+                    && setting.sid_list.as_ref().unwrap().len()
+                        != stream.number_of_srv6_sids.unwrap() as usize
+                {
                     return Err(Error::new(format!("Number of SIDs in stream with ID #{} does not match length of the SID list.", setting.stream_id)));
                 }
 
                 // Validate IP settings, but not if no inner IP header is used in SRv6
-                if (stream.encapsulation == Encapsulation::SRv6 && stream.srv6_ip_tunneling.unwrap_or(true)) || stream.encapsulation != Encapsulation::SRv6 {
-                    if stream.ip_version != Some(6) && stream.ip_version != Some(4) && stream.ip_version.is_some() {
-                        return Err(Error::new(format!("Unsupported IP version for stream with ID #{} on port {}.", stream.stream_id, setting.port)));
+                if (stream.encapsulation == Encapsulation::SRv6
+                    && stream.srv6_ip_tunneling.unwrap_or(true))
+                    || stream.encapsulation != Encapsulation::SRv6
+                {
+                    if stream.ip_version != Some(6)
+                        && stream.ip_version != Some(4)
+                        && stream.ip_version.is_some()
+                    {
+                        return Err(Error::new(format!(
+                            "Unsupported IP version for stream with ID #{} on port {}.",
+                            stream.stream_id, setting.port
+                        )));
                     }
 
                     if stream.ip_version == Some(4) && setting.ip.is_none() {
-                        return Err(Error::new(format!("Missing IPv4 settings for stream with ID #{} on port {}.", stream.stream_id, setting.port)));
-
+                        return Err(Error::new(format!(
+                            "Missing IPv4 settings for stream with ID #{} on port {}.",
+                            stream.stream_id, setting.port
+                        )));
                     } else if stream.ip_version == Some(6) && setting.ipv6.is_none() {
-                        return Err(Error::new(format!("Missing IPv6 settings for stream with ID #{} on port {}.", stream.stream_id, setting.port)));
-                    } 
+                        return Err(Error::new(format!(
+                            "Missing IPv6 settings for stream with ID #{} on port {}.",
+                            stream.stream_id, setting.port
+                        )));
+                    }
                     // Validate IPv6 Address Randomization Mask size
                     if stream.ip_version == Some(6) && setting.ipv6.is_some() {
-                        let ipv6_src_mask_int: u128 = setting.ipv6.as_ref().unwrap().ipv6_src_mask.into();
-                        let ipv6_dst_mask_int: u128 = setting.ipv6.as_ref().unwrap().ipv6_dst_mask.into();
+                        let ipv6_src_mask_int: u128 =
+                            setting.ipv6.as_ref().unwrap().ipv6_src_mask.into();
+                        let ipv6_dst_mask_int: u128 =
+                            setting.ipv6.as_ref().unwrap().ipv6_dst_mask.into();
 
                         // For tofino2 at most ::ff:ffff:ffff, for tofino1 ::ffff:ffff
-                        let randomization_max = if is_tofino2 {MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2} else {MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1};
+                        let randomization_max = if is_tofino2 {
+                            MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2
+                        } else {
+                            MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1
+                        };
 
                         if ipv6_src_mask_int > randomization_max.into() {
                             return Err(Error::new(format!("Source address randomization mask exceeds maximum size of {} for stream with ID #{}.", randomization_max, stream.stream_id)));
                         }
-                            if ipv6_dst_mask_int > randomization_max.into() {
+                        if ipv6_dst_mask_int > randomization_max.into() {
                             return Err(Error::new(format!("Destination address randomization mask exceeds maximum size of {} for stream with ID #{}.", randomization_max, stream.stream_id)));
                         }
                     }
@@ -125,28 +188,46 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
 
                 // Check VxLAN
                 if stream.vxlan && setting.vxlan.is_none() {
-                    return Err(Error::new(format!("Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.", stream.stream_id)));
+                    return Err(Error::new(format!(
+                        "Stream with ID #{} is a VxLAN stream but no VxLAN settings provided.",
+                        stream.stream_id
+                    )));
                 }
 
                 if stream.vxlan && stream.ip_version == Some(6) {
-                    return Err(Error::new(format!("VxLAN with IPv6 is not supported! (Stream with ID #{})", stream.stream_id)));
+                    return Err(Error::new(format!(
+                        "VxLAN with IPv6 is not supported! (Stream with ID #{})",
+                        stream.stream_id
+                    )));
                 }
 
                 // VxLAN with MPLS on Tofino 1 not supported
                 if stream.vxlan && stream.encapsulation == Encapsulation::Mpls && !is_tofino2 {
                     return Err(Error::new(format!("Combination of VxLAN and MPLS is not supported on Tofino1 (Stream with ID #{})", stream.stream_id)));
-                }  
+                }
 
                 // Check VxLAN is disabled for SRv6
                 if stream.vxlan && stream.encapsulation == Encapsulation::SRv6 {
-                    return Err(Error::new(format!("Combination of VxLAN and SRv6 is not supported (Stream with ID #{})", stream.stream_id)));
-                }  
+                    return Err(Error::new(format!(
+                        "Combination of VxLAN and SRv6 is not supported (Stream with ID #{})",
+                        stream.stream_id
+                    )));
+                }
             }
         }
     }
 
-    if streams.iter().map(|s| s.frame_size).collect::<Vec<u32>>().iter().sum::<u32>() > MAX_BUFFER_SIZE {
-        return Err(Error::new(format!("Sum of packet size too large. Maximal sum of packets size: {MAX_BUFFER_SIZE}B")));
+    if streams
+        .iter()
+        .map(|s| s.frame_size)
+        .collect::<Vec<u32>>()
+        .iter()
+        .sum::<u32>()
+        > MAX_BUFFER_SIZE
+    {
+        return Err(Error::new(format!(
+            "Sum of packet size too large. Maximal sum of packets size: {MAX_BUFFER_SIZE}B"
+        )));
     }
 
     if settings.is_empty() && *mode != GenerationMode::Analyze {
@@ -160,44 +241,58 @@ pub fn validate_request(streams: &[Stream], settings: &[StreamSetting], mode: &G
     // Validate max sending rate
     // at most 100 or 400 Gbps are supported
     let rate: f32 = if *mode == GenerationMode::Mpps {
-        streams.iter().map(|x| (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32).sum()
-    }
-    else {
+        streams
+            .iter()
+            .map(|x| {
+                (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
+            })
+            .sum()
+    } else {
         streams.iter().map(|x| x.traffic_rate).sum()
     };
 
-    if *mode != GenerationMode::Analyze && rate > if is_tofino2 {TG_MAX_RATE_TF2} else {TG_MAX_RATE} {
-        return Err(Error::new("Traffic rate in sum larger than maximal supported rate."))
+    if *mode != GenerationMode::Analyze
+        && rate
+            > if is_tofino2 {
+                TG_MAX_RATE_TF2
+            } else {
+                TG_MAX_RATE
+            }
+    {
+        return Err(Error::new(
+            "Traffic rate in sum larger than maximal supported rate.",
+        ));
     }
 
     // Verify that port is actually available on this device. This might happen if a configuration from another device is imported.
-    for (tx_port, rx_port) in tx_rx_port_mapping.iter(){
-        if !available_ports.contains_key(&tx_port.parse::<u32>().unwrap_or(0u32)){
-            return Err(Error::new(format!("Configuration error: TX port {tx_port} is not available on this device.")));
+    for (tx_port, rx_port) in tx_rx_port_mapping.iter() {
+        if !available_ports.contains_key(&tx_port.parse::<u32>().unwrap_or(0u32)) {
+            return Err(Error::new(format!(
+                "Configuration error: TX port {tx_port} is not available on this device."
+            )));
         }
-        if !available_ports.contains_key(rx_port){
-            return Err(Error::new(format!("Configuration error: RX port {rx_port} is not available on this device.")));
-        }        
+        if !available_ports.contains_key(rx_port) {
+            return Err(Error::new(format!(
+                "Configuration error: RX port {rx_port} is not available on this device."
+            )));
+        }
     }
 
     Ok(())
-
 }
 
-pub fn validate_histogram(request: &HistogramConfigRequest) -> Result<(), Error>  {
-
+pub fn validate_histogram(request: &HistogramConfigRequest) -> Result<(), Error> {
     let port = request.port;
 
     if request.config.min >= request.config.max {
-        return Err(Error::new(format!("Histogram config error port {port}: Minimum value must be less than maximum value of range.")));        
+        return Err(Error::new(format!("Histogram config error port {port}: Minimum value must be less than maximum value of range.")));
     }
     if request.config.num_bins > 500 {
-        return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 500 bins per port are supported at maximum.")));        
-
+        return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 500 bins per port are supported at maximum.")));
     }
     if request.config.num_bins > (request.config.max - request.config.min) {
-        return Err(Error::new(format!("Histogram config error port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));        
-    }    
+        return Err(Error::new(format!("Histogram config error port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
+    }
 
     Ok(())
 }
@@ -207,8 +302,7 @@ pub fn validate_multiple_test(tests: Vec<TrafficGenData>) -> Result<(), Error> {
         return Err(Error::new("No tests provided."));
     }
 
-    for (idx,test) in tests.iter().enumerate() {
-
+    for (idx, test) in tests.iter().enumerate() {
         // Validate that each test has a name
         if test.name.is_none() {
             warn!("Test with ID #{idx} has no name.");
@@ -223,7 +317,10 @@ pub fn validate_multiple_test(tests: Vec<TrafficGenData>) -> Result<(), Error> {
 
         // Validate that each test has a duration
         if test.duration.is_none() || test.duration.is_some_and(|d| d == 0) {
-            warn!("Test with ID #{} has no duration. It will run infinitely.", test.name.clone().unwrap());
+            warn!(
+                "Test with ID #{} has no duration. It will run infinitely.",
+                test.name.clone().unwrap()
+            );
         }
     }
 

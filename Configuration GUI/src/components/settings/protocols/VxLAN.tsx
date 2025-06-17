@@ -18,10 +18,10 @@
  */
 
 import React from "react"
-import {Button, Col, Form } from "react-bootstrap";
-import {StyledRow} from "../../../sites/Settings";
-import {StreamSettings} from "../../../common/Interfaces";
-import {randomMAC, randomIP} from "../SettingsModal";
+import { Button, Col, Form } from "react-bootstrap";
+import { StyledRow } from "../../../sites/Settings";
+import { StreamSettings } from "../../../common/Interfaces";
+import { randomMAC, randomIP } from "../SettingsModal";
 
 interface Props {
     data: StreamSettings,
@@ -29,7 +29,7 @@ interface Props {
     running: boolean
 }
 
-const VxLAN = ({data, set_data, running}: Props) => {
+const VxLAN = ({ data, set_data, running }: Props) => {
     return <>
         <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
             <Form.Label className={"col-3 text-start"}>
@@ -37,13 +37,13 @@ const VxLAN = ({data, set_data, running}: Props) => {
             </Form.Label>
             <Col className={"col-7 text-end"}>
                 <Form.Control disabled={running} type={"text"}
-                              onChange={(event: any) => set_data({vxlan: {...data.vxlan, eth_src: event.target.value}})}
-                              value={data.vxlan.eth_src}
+                    onChange={(event: any) => set_data({ vxlan: { ...data.vxlan, eth_src: event.target.value } })}
+                    value={data.vxlan.eth_src}
                 />
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({vxlan: {...data.vxlan, eth_src: randomMAC(false)}})}><i
-                    className="bi bi-shuffle"/></Button>
+                <Button disabled={running} onClick={() => set_data({ vxlan: { ...data.vxlan, eth_src: randomMAC(false) } })}><i
+                    className="bi bi-shuffle" /></Button>
             </Col>
         </Form.Group>
 
@@ -52,13 +52,13 @@ const VxLAN = ({data, set_data, running}: Props) => {
                 Ethernet Destination
             </Form.Label>
             <Col className={"col-7 text-end"}>
-                <Form.Control disabled={running} onChange={(event: any) => set_data({vxlan: {...data.vxlan, eth_dst: event.target.value}})}
-                              type={"text"}
-                              value={data.vxlan.eth_dst}/>
+                <Form.Control disabled={running} onChange={(event: any) => set_data({ vxlan: { ...data.vxlan, eth_dst: event.target.value } })}
+                    type={"text"}
+                    value={data.vxlan.eth_dst} />
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({vxlan: {...data.vxlan, eth_dst: randomMAC()}})}>
-                    <i className="bi bi-shuffle"/></Button>
+                <Button disabled={running} onClick={() => set_data({ vxlan: { ...data.vxlan, eth_dst: randomMAC() } })}>
+                    <i className="bi bi-shuffle" /></Button>
             </Col>
         </Form.Group>
 
@@ -68,13 +68,13 @@ const VxLAN = ({data, set_data, running}: Props) => {
             </Form.Label>
             <Col className={"col-7 text-end"}>
                 <Form.Control disabled={running} type={"text"}
-                              onChange={(event: any) => set_data({vxlan: {...data.vxlan, ip_src: event.target.value}})}
-                              value={data.vxlan.ip_src}
+                    onChange={(event: any) => set_data({ vxlan: { ...data.vxlan, ip_src: event.target.value } })}
+                    value={data.vxlan.ip_src}
                 />
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({vxlan: {...data.vxlan, ip_src: randomIP()}})}>
-                    <i className="bi bi-shuffle"/></Button>
+                <Button disabled={running} onClick={() => set_data({ vxlan: { ...data.vxlan, ip_src: randomIP() } })}>
+                    <i className="bi bi-shuffle" /></Button>
             </Col>
         </Form.Group>
 
@@ -83,13 +83,13 @@ const VxLAN = ({data, set_data, running}: Props) => {
                 IPv4 Destination
             </Form.Label>
             <Col className={"col-7 text-end"}>
-                <Form.Control disabled={running} onChange={(event: any) => set_data({vxlan: {...data.vxlan, ip_dst: event.target.value}})}
-                              type={"text"}
-                              value={data.vxlan.ip_dst}/>
+                <Form.Control disabled={running} onChange={(event: any) => set_data({ vxlan: { ...data.vxlan, ip_dst: event.target.value } })}
+                    type={"text"}
+                    value={data.vxlan.ip_dst} />
             </Col>
             <Col className={"col-1 text-end"}>
-                <Button disabled={running} onClick={() => set_data({vxlan: {...data.vxlan, ip_dst: randomIP()}})}>
-                    <i className="bi bi-shuffle"/></Button>
+                <Button disabled={running} onClick={() => set_data({ vxlan: { ...data.vxlan, ip_dst: randomIP() } })}>
+                    <i className="bi bi-shuffle" /></Button>
             </Col>
         </Form.Group>
 
@@ -98,8 +98,8 @@ const VxLAN = ({data, set_data, running}: Props) => {
                 IPv4 ToS
             </Form.Label>
             <Col className={"col-9 text-end"}>
-                <Form.Control onChange={(event: any) => set_data({vxlan: {...data.vxlan, ip_tos: parseInt(event.target.value)}})}
-                              disabled={running} type={"number"} defaultValue={data.vxlan.ip_tos}/>
+                <Form.Control onChange={(event: any) => set_data({ vxlan: { ...data.vxlan, ip_tos: parseInt(event.target.value) } })}
+                    disabled={running} type={"number"} defaultValue={data.vxlan.ip_tos} />
             </Col>
         </Form.Group>
 
@@ -108,8 +108,8 @@ const VxLAN = ({data, set_data, running}: Props) => {
                 UDP Source
             </Form.Label>
             <Col className={"col-9 text-end"}>
-                <Form.Control onChange={(event: any) => set_data({vxlan: {...data.vxlan, udp_source: parseInt(event.target.value)}})}
-                              disabled={running} type={"number"} defaultValue={data.vxlan.udp_source}/>
+                <Form.Control onChange={(event: any) => set_data({ vxlan: { ...data.vxlan, udp_source: parseInt(event.target.value) } })}
+                    disabled={running} type={"number"} defaultValue={data.vxlan.udp_source} />
             </Col>
         </Form.Group>
 
@@ -118,11 +118,11 @@ const VxLAN = ({data, set_data, running}: Props) => {
                 VNI
             </Form.Label>
             <Col className={"col-9 text-end"}>
-                <Form.Control onChange={(event: any) => set_data({vxlan: {...data.vxlan, vni: parseInt(event.target.value)}})}
-                              disabled={running} type={"number"} min={0} defaultValue={data.vxlan.vni}/>
+                <Form.Control onChange={(event: any) => set_data({ vxlan: { ...data.vxlan, vni: parseInt(event.target.value) } })}
+                    disabled={running} type={"number"} min={0} defaultValue={data.vxlan.vni} />
             </Col>
         </Form.Group>
-        </>
+    </>
 }
 
 export default VxLAN

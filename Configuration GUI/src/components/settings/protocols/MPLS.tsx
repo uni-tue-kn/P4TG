@@ -18,9 +18,9 @@
  */
 
 import React from "react"
-import {Col, Form, Row} from "react-bootstrap";
-import {StyledRow} from "../../../sites/Settings";
-import {DefaultMPLSHeader, Stream, StreamSettings} from "../../../common/Interfaces";
+import { Col, Form, Row } from "react-bootstrap";
+import { StyledRow } from "../../../sites/Settings";
+import { DefaultMPLSHeader, Stream, StreamSettings } from "../../../common/Interfaces";
 
 interface Props {
     stream: Stream,
@@ -31,7 +31,7 @@ interface Props {
 
 
 
-const MPLS = ({stream, data, set_data, running}: Props) => {
+const MPLS = ({ stream, data, set_data, running }: Props) => {
     const set_label = (label: number, i: number) => {
         data.mpls_stack[i].label = label;
     }
@@ -71,7 +71,7 @@ const MPLS = ({stream, data, set_data, running}: Props) => {
             </Col>
         </Form.Group>
 
-        {Array.from({length: stream.number_of_lse}, (_, i) => {
+        {Array.from({ length: stream.number_of_lse }, (_, i) => {
 
             if (data.mpls_stack[i] === undefined) {
                 // Settings were never saved before, initialize with default header
@@ -87,37 +87,37 @@ const MPLS = ({stream, data, set_data, running}: Props) => {
                     <Row>
                         <Col className={"text-end"}>
                             <Form.Control className={"col-3 text-start"}
-                                          onChange={(event: any) => set_label(parseInt(event.target.value), i)}
-                                          min={0}
-                                          max={2 ** 20 - 1}
-                                          step={1}
-                                          placeholder={data.mpls_stack[i].label.toString()}
-                                          disabled={running} type={"number"}/>
+                                onChange={(event: any) => set_label(parseInt(event.target.value), i)}
+                                min={0}
+                                max={2 ** 20 - 1}
+                                step={1}
+                                placeholder={data.mpls_stack[i].label.toString()}
+                                disabled={running} type={"number"} />
                         </Col>
                         <Col className={"text-end"}>
                             <Form.Control className={"col-3 text-start"}
-                                          onChange={(event: any) => set_tc(parseInt(event.target.value), i)}
-                                          min={0}
-                                          max={7}
-                                          step={1}
-                                          placeholder={data.mpls_stack[i].tc.toString()}
-                                          disabled={running} type={"number"}/>
+                                onChange={(event: any) => set_tc(parseInt(event.target.value), i)}
+                                min={0}
+                                max={7}
+                                step={1}
+                                placeholder={data.mpls_stack[i].tc.toString()}
+                                disabled={running} type={"number"} />
                         </Col>
                         <Col className={"text-end"}>
                             <Form.Control className={"col-3 text-start"}
-                                          onChange={(event: any) => set_ttl(parseInt(event.target.value), i)}
-                                          min={0}
-                                          max={255}
-                                          step={1}
-                                          placeholder={data.mpls_stack[i].ttl.toString()}
-                                          disabled={running} type={"number"}/>
+                                onChange={(event: any) => set_ttl(parseInt(event.target.value), i)}
+                                min={0}
+                                max={255}
+                                step={1}
+                                placeholder={data.mpls_stack[i].ttl.toString()}
+                                disabled={running} type={"number"} />
                         </Col>
                     </Row>
                 </Col>
             </Form.Group>
         })
         }
-        </>
+    </>
 }
 
 export default MPLS

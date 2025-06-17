@@ -18,11 +18,11 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
-use serde::{Deserialize, Serialize};
-use serde_repr::{Deserialize_repr, Serialize_repr};
 use utoipa::ToSchema;
 
 use crate::core::statistics::RttHistogramConfig;
@@ -38,7 +38,7 @@ pub enum Encapsulation {
     Vlan = 1,
     QinQ = 2,
     Mpls = 3,
-    SRv6 = 4
+    SRv6 = 4,
 }
 
 /// Describes the used generation mode
@@ -53,7 +53,7 @@ pub enum GenerationMode {
     /// This is traffic with random inter arrival times and models random traffic
     Poisson = 3,
     /// Analyze mode. In this mode, traffic is not generated and external traffic is forwarded and analyzed.
-    Analyze = 4
+    Analyze = 4,
 }
 
 /// Byte representation of a packet for traffic gen application
@@ -69,7 +69,7 @@ pub struct StreamPacket {
     /// Timeout for the packet generation
     pub timer: u32,
     /// Increases the burstiness resulting in a more accurate rate. Has no effect if in IAT mode.
-    pub batches: bool
+    pub batches: bool,
 }
 
 /// Represents a Monitoring mapping
@@ -83,7 +83,7 @@ pub struct MonitoringMapping {
     /// port that the index corresponds to
     pub port: u32,
     /// app_id that the index corresponds to
-    pub app_id: u8
+    pub app_id: u8,
 }
 
 /// Defines an VxLAN Tunnel
@@ -108,7 +108,7 @@ pub struct VxLAN {
     /// Outer UDP source
     pub udp_source: u16,
     /// VxLAN VNI
-    pub vni: u32
+    pub vni: u32,
 }
 
 /// Defines an MPLS LSE
@@ -119,14 +119,14 @@ pub struct MPLSHeader {
     /// Traffic class field of this MPLS LSE
     pub tc: u32,
     /// Time-to-live of this MPLS LSE
-    pub ttl: u32
+    pub ttl: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 #[serde(untagged)]
 pub enum TrafficGenTests {
-    SingleTest( TrafficGenData),
-    MultipleTest(Vec<TrafficGenData>)
+    SingleTest(TrafficGenData),
+    MultipleTest(Vec<TrafficGenData>),
 }
 
 /// Represents the body of the GET / POST endpoints of /trafficgen
@@ -214,7 +214,7 @@ pub struct IPv6 {
     #[schema(example = "::ff")]
     #[schema(value_type = String)]
     pub ipv6_dst_mask: Ipv6Addr,
-    pub ipv6_flow_label: u32
+    pub ipv6_flow_label: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -242,7 +242,7 @@ pub struct StreamSetting {
     pub active: bool,
     /// VxLAN tunnel settings
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub vxlan: Option<VxLAN>
+    pub vxlan: Option<VxLAN>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -272,7 +272,7 @@ pub struct Stream {
     /// Sends more bursty traffic resulting in a more accurate rate
     #[schema(example = true)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) batches: Option<bool>,    
+    pub(crate) batches: Option<bool>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
     #[schema(example = 11)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -308,10 +308,10 @@ pub struct Stream {
 #[derive(Serialize, ToSchema)]
 pub struct EmptyResponse {
     #[schema(example = "Not running.")]
-    pub(crate) message: String
+    pub(crate) message: String,
 }
 
 #[derive(Serialize, ToSchema)]
 pub struct Reset {
-    pub(crate) message: String
+    pub(crate) message: String,
 }

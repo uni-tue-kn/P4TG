@@ -17,16 +17,13 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::sync::Arc;
-use axum::extract::State;
-use axum::Json;
-use axum::response::{IntoResponse, Response};
 use crate::AppState;
+use axum::extract::State;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+use std::sync::Arc;
 
 /// Config endpoint
 pub async fn config(State(state): State<Arc<AppState>>) -> Response {
     Json(state.config.lock().await.clone()).into_response()
 }
-
-
-

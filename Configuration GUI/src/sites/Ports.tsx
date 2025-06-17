@@ -17,15 +17,15 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import React, {useEffect, useState} from 'react'
+import React, { useEffect, useState } from 'react'
 import Loader from "../components/Loader";
-import {get, post} from '../common/API'
-import {Button, Col, Form, Row, Table} from "react-bootstrap";
+import { get, post } from '../common/API'
+import { Button, Col, Form, Row, Table } from "react-bootstrap";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
-import {ASIC, FEC, P4TGConfig, P4TGInfos, SPEED} from "../common/Interfaces";
-import {auto_neg_mapping, fec_mapping, loopback_mapping, speed_mapping} from "../common/Definitions";
-import {GitHub} from "./Home";
+import { ASIC, FEC, P4TGConfig, P4TGInfos, SPEED } from "../common/Interfaces";
+import { auto_neg_mapping, fec_mapping, loopback_mapping, speed_mapping } from "../common/Definitions";
+import { GitHub } from "./Home";
 
 const StyledCol = styled.td`
     vertical-align: middle;
@@ -37,25 +37,25 @@ export const PortStat = styled.span<{ active: boolean }>`
     color: ${props => (props.active ? 'var(--color-okay)' : 'var(--color-primary)')};
 `
 
-export const PortStatus = ({active}: { active: boolean }) => {
+export const PortStatus = ({ active }: { active: boolean }) => {
     return <PortStat active={active}>
         {active ?
-            <i className="bi bi-arrow-up-circle-fill"/>
+            <i className="bi bi-arrow-up-circle-fill" />
             :
-            <i className="bi bi-arrow-down-circle-fill"/>
+            <i className="bi bi-arrow-down-circle-fill" />
         }
     </PortStat>
 }
 
-const Ports = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
+const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const [loaded, set_loaded] = useState(false)
     const [ports, set_ports] = useState([])
-    const [config, set_config] = useState<P4TGConfig>({tg_ports: []})
+    const [config, set_config] = useState<P4TGConfig>({ tg_ports: [] })
 
 
     const loadPorts = async () => {
-        let stats = await get({route: "/ports"})
-        let config = await get({route: "/config"})
+        let stats = await get({ route: "/ports" })
+        let config = await get({ route: "/config" })
 
         if (stats.status === 200) {
             set_ports(stats.data)
@@ -97,7 +97,7 @@ const Ports = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         let mac = "Unknown"
 
         config.tg_ports.forEach(p => {
-            if(p.port == port) {
+            if (p.port == port) {
                 mac = p.mac
             }
         })
@@ -109,7 +109,7 @@ const Ports = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
         let reply = false
 
         config.tg_ports.forEach(p => {
-            if(p.port == port) {
+            if (p.port == port) {
                 reply = p.arp_reply ?? false
             }
         })
@@ -131,113 +131,113 @@ const Ports = ({p4tg_infos}: {p4tg_infos: P4TGInfos}) => {
     return <Loader loaded={loaded}>
         <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
             <thead className={"table-dark"}>
-            <tr>
-                <th>PID</th>
-                <th>Port</th>
-                <th>MAC &nbsp; <InfoBox>
-                    <p>MAC address that is used to answer ARP requests (if enabled). The address can be changed in the config.json file of the controller.</p>
-                </InfoBox>
-                </th>
-                <th>Speed</th>
-                <th>Auto Negotiation</th>
-                <th>FEC</th>
-                <th>ARP Reply &nbsp;
-                <InfoBox>
-                    <p>If enabled, the port will answer all received ARP requests.</p></InfoBox>
-                </th>
-                <th>Status</th>
-            </tr>
+                <tr>
+                    <th>PID</th>
+                    <th>Port</th>
+                    <th>MAC &nbsp; <InfoBox>
+                        <p>MAC address that is used to answer ARP requests (if enabled). The address can be changed in the config.json file of the controller.</p>
+                    </InfoBox>
+                    </th>
+                    <th>Speed</th>
+                    <th>Auto Negotiation</th>
+                    <th>FEC</th>
+                    <th>ARP Reply &nbsp;
+                        <InfoBox>
+                            <p>If enabled, the port will answer all received ARP requests.</p></InfoBox>
+                    </th>
+                    <th>Status</th>
+                </tr>
             </thead>
             <tbody>
-            {ports.map((v: any, i: number) => {
-                if (loopback_mapping[v["loopback"]] != "On" || p4tg_infos.loopback) {
-                    return <tr key={i}>
-                        <StyledCol className={"col-1"}>{v["pid"]}</StyledCol>
-                        <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>
-                        <StyledCol className={"col-2"}>{getMac(v['port'])}</StyledCol>
-                        <StyledCol className={"col-2"}>
-                            <Form.Select onChange={async (event: any) => {
-                                let fec = v.fec
+                {ports.map((v: any, i: number) => {
+                    if (loopback_mapping[v["loopback"]] != "On" || p4tg_infos.loopback) {
+                        return <tr key={i}>
+                            <StyledCol className={"col-1"}>{v["pid"]}</StyledCol>
+                            <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>
+                            <StyledCol className={"col-2"}>{getMac(v['port'])}</StyledCol>
+                            <StyledCol className={"col-2"}>
+                                <Form.Select onChange={async (event: any) => {
+                                    let fec = v.fec
 
-                                // 400G requires RS
-                                if(event.target.value == SPEED.BF_SPEED_400G) {
-                                    fec = FEC.BF_FEC_TYP_REED_SOLOMON
-                                }
+                                    // 400G requires RS
+                                    if (event.target.value == SPEED.BF_SPEED_400G) {
+                                        fec = FEC.BF_FEC_TYP_REED_SOLOMON
+                                    }
 
-                                // 10G & 40G does not allow RS
-                                if((event.target.value == SPEED.BF_SPEED_10G || event.target.value == SPEED.BF_SPEED_40G) && v.fec == FEC.BF_FEC_TYP_REED_SOLOMON) {
-                                    fec = FEC.BF_FEC_TYP_NONE
-                                }
+                                    // 10G & 40G does not allow RS
+                                    if ((event.target.value == SPEED.BF_SPEED_10G || event.target.value == SPEED.BF_SPEED_40G) && v.fec == FEC.BF_FEC_TYP_REED_SOLOMON) {
+                                        fec = FEC.BF_FEC_TYP_NONE
+                                    }
 
-                                // 100G does not allow FC
-                                if(event.target.value == SPEED.BF_SPEED_100G && v.fec == FEC.BF_FEC_TYP_FC) {
-                                    fec = FEC.BF_FEC_TYP_NONE
-                                }
+                                    // 100G does not allow FC
+                                    if (event.target.value == SPEED.BF_SPEED_100G && v.fec == FEC.BF_FEC_TYP_FC) {
+                                        fec = FEC.BF_FEC_TYP_NONE
+                                    }
 
-                                await updatePort(v.pid, event.target.value, fec, v.auto_neg)
+                                    await updatePort(v.pid, event.target.value, fec, v.auto_neg)
+                                }}>
+                                    {Object.keys(speed_mapping).map(f => {
+                                        if (f == SPEED.BF_SPEED_400G && p4tg_infos.asic != ASIC.Tofino2) {
+                                            return
+                                        }
+
+                                        return <option selected={f == v.speed}
+                                            value={f}>{speed_mapping[f]}</option>
+                                    })}
+                                </Form.Select>
+                            </StyledCol>
+                            <StyledCol className={"col-2"}>
+                                <Form.Select onChange={async (event: any) => {
+                                    await updatePort(v["pid"], v["speed"], v["fec"], event.target.value)
+                                }}>
+                                    {Object.keys(auto_neg_mapping).map(f => {
+                                        return <option selected={f == v["auto_neg"]}
+                                            value={f}>{auto_neg_mapping[f]}</option>
+                                    })}
+                                </Form.Select></StyledCol>
+                            <StyledCol className={"col-2"}><Form.Select onChange={async (event: any) => {
+                                await updatePort(v["pid"], v["speed"], event.target.value, v["auto_neg"])
                             }}>
-                                {Object.keys(speed_mapping).map(f => {
-                                    if(f == SPEED.BF_SPEED_400G && p4tg_infos.asic != ASIC.Tofino2) {
+                                {Object.keys(fec_mapping).map(f => {
+                                    if (f != FEC.BF_FEC_TYP_REED_SOLOMON && v.speed == SPEED.BF_SPEED_400G) {
                                         return
                                     }
 
-                                    return <option selected={f == v.speed}
-                                                   value={f}>{speed_mapping[f]}</option>
+                                    if (f == FEC.BF_FEC_TYP_REED_SOLOMON && (v.speed == SPEED.BF_SPEED_10G || v.speed == SPEED.BF_SPEED_40G)) {
+                                        return
+                                    }
+
+                                    if (f != FEC.BF_FEC_TYP_FC || v.speed != SPEED.BF_SPEED_100G) {
+                                        return <option selected={f == v["fec"]} value={f}>{fec_mapping[f]}</option>
+                                    }
                                 })}
                             </Form.Select>
-                        </StyledCol>
-                        <StyledCol className={"col-2"}>
-                            <Form.Select onChange={async (event: any) => {
-                                await updatePort(v["pid"], v["speed"], v["fec"], event.target.value)
-                            }}>
-                                {Object.keys(auto_neg_mapping).map(f => {
-                                    return <option selected={f == v["auto_neg"]}
-                                                   value={f}>{auto_neg_mapping[f]}</option>
-                                })}
-                            </Form.Select></StyledCol>
-                        <StyledCol className={"col-2"}><Form.Select onChange={async (event: any) => {
-                            await updatePort(v["pid"], v["speed"], event.target.value, v["auto_neg"])
-                        }}>
-                            {Object.keys(fec_mapping).map(f => {
-                                if(f != FEC.BF_FEC_TYP_REED_SOLOMON && v.speed == SPEED.BF_SPEED_400G) {
-                                    return
-                                }
-
-                                if(f == FEC.BF_FEC_TYP_REED_SOLOMON && (v.speed == SPEED.BF_SPEED_10G ||v.speed == SPEED.BF_SPEED_40G)) {
-                                    return
-                                }
-
-                                if (f != FEC.BF_FEC_TYP_FC || v.speed!= SPEED.BF_SPEED_100G) {
-                                    return <option selected={f == v["fec"]} value={f}>{fec_mapping[f]}</option>
-                                }
-                            })}
-                        </Form.Select>
-                        </StyledCol>
-                        <StyledCol className={"col-1"}>
-                            <Form.Check
-                                defaultChecked={getArpReply(v['port'])}
-                                onChange={async (event: any) => {
-                                    await updateArp(v["pid"], event.target.checked)
-                                }}
-                                type={"switch"}
+                            </StyledCol>
+                            <StyledCol className={"col-1"}>
+                                <Form.Check
+                                    defaultChecked={getArpReply(v['port'])}
+                                    onChange={async (event: any) => {
+                                        await updateArp(v["pid"], event.target.checked)
+                                    }}
+                                    type={"switch"}
                                 >
-                            </Form.Check>
-                        </StyledCol>
-                        <StyledCol className={"col-1"}><PortStatus active={v['status']}/></StyledCol>
-                    </tr>
+                                </Form.Check>
+                            </StyledCol>
+                            <StyledCol className={"col-1"}><PortStatus active={v['status']} /></StyledCol>
+                        </tr>
+                    }
+                })
                 }
-            })
-            }
             </tbody>
         </Table>
 
         <Row>
             <Col>
-                <Button onClick={refresh} className={"ml-3"}><i className="bi bi-arrow-clockwise"/> Refresh</Button>
+                <Button onClick={refresh} className={"ml-3"}><i className="bi bi-arrow-clockwise" /> Refresh</Button>
             </Col>
         </Row>
 
-        <GitHub/>
+        <GitHub />
 
     </Loader>
 }

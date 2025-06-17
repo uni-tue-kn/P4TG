@@ -48,9 +48,8 @@ const ThemeBtn = () => {
     <Row className="mb-3">
       <Col className="text-center col-12 mt-1">
         <i
-          className={`theme-icon ${
-            theme === "light" ? "bi bi-moon-fill" : "bi bi-brightness-high-fill"
-          }`}
+          className={`theme-icon ${theme === "light" ? "bi bi-moon-fill" : "bi bi-brightness-high-fill"
+            }`}
           style={{
             color: theme === "dark" ? "white" : "black",
             fontSize: "1.1rem",

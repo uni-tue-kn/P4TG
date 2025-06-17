@@ -17,20 +17,20 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use std::sync::Arc;
+use crate::api::docs;
+use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::Serialize;
+use std::sync::Arc;
 use utoipa::ToSchema;
-use crate::api::docs;
-use crate::AppState;
 
 #[derive(Serialize, JsonSchema, ToSchema)]
 pub enum Asic {
     Tofino1,
-    Tofino2
+    Tofino2,
 }
 
 #[derive(Serialize, JsonSchema, ToSchema)]
@@ -38,7 +38,7 @@ pub struct Online {
     pub(crate) status: String,
     pub(crate) version: String,
     pub(crate) asic: Asic,
-    pub(crate) loopback: bool
+    pub(crate) loopback: bool,
 }
 
 /// Online endpoint
@@ -54,11 +54,17 @@ pub struct Online {
     ))
 )]
 pub async fn online(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Online>) {
-    (StatusCode::OK, Json(Online {status: "online".to_owned(),
-        version: env!("CARGO_PKG_VERSION").parse().unwrap(),
-        asic: if state.tofino2 {Asic::Tofino2} else {Asic::Tofino1},
-        loopback: state.loopback_mode
-    }
-    ))
+    (
+        StatusCode::OK,
+        Json(Online {
+            status: "online".to_owned(),
+            version: env!("CARGO_PKG_VERSION").parse().unwrap(),
+            asic: if state.tofino2 {
+                Asic::Tofino2
+            } else {
+                Asic::Tofino1
+            },
+            loopback: state.loopback_mode,
+        }),
+    )
 }
-
