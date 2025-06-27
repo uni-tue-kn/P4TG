@@ -35,6 +35,45 @@ pub struct PortConfiguration {
     auto_neg: AutoNegotiation,
 }
 
+impl utoipa::ToSchema for PortConfiguration {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Pet")
+    }
+}
+impl utoipa::PartialSchema for PortConfiguration {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::ObjectBuilder::new()
+            .property(
+                "pid",
+                utoipa::openapi::ObjectBuilder::new()
+                    .schema_type(utoipa::openapi::schema::Type::Integer)
+                    .format(Some(utoipa::openapi::SchemaFormat::KnownFormat(
+                        utoipa::openapi::KnownFormat::Int32,
+                    ))),
+            )
+            .required("id")
+            .property(
+                "speed",
+                utoipa::openapi::ObjectBuilder::new()
+                    .schema_type(utoipa::openapi::schema::Type::String),
+            )
+            .required("speed")
+            .property(
+                "fec",
+                utoipa::openapi::ObjectBuilder::new()
+                    .schema_type(utoipa::openapi::schema::Type::String),
+            )
+            .required("fec")
+            .property(
+                "auto_neg",
+                utoipa::openapi::ObjectBuilder::new()
+                    .schema_type(utoipa::openapi::schema::Type::String),
+            )
+            .required("auto_neg")
+            .into()
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PortStats {
     pid: u32,
@@ -71,6 +110,18 @@ pub async fn ports(State(state): State<Arc<AppState>>) -> Response {
     }
 }
 
+/// Configures a port
+#[utoipa::path(
+    post,
+    path = "/api/ports",
+    request_body(
+        content = PortConfiguration,
+        examples(("Example 1" = (summary = "Configure dev port 136 with 100G, no FEC, and auto negotiation.", value = json!(*docs::ports::EXAMPLE_POST_1_REQUEST))),
+        )
+    ),
+    responses(
+    (status = 200))
+)]
 pub async fn add_port(
     State(state): State<Arc<AppState>>,
     payload: Json<PortConfiguration>,

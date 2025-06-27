@@ -41,7 +41,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::api::helper::serve_static_files::{serve_index, static_path};
 use crate::api::histogram;
-use crate::api::ports::arp_reply;
+use crate::api::ports::{arp_reply, PortConfiguration};
 use crate::api::statistics::time_statistics;
 use crate::api::tables;
 use crate::api::tables::tables;
@@ -61,12 +61,14 @@ use crate::core::traffic_gen_core::types::*;
         restart::restart,
         reset::reset,
         ports::ports,
+        ports::add_port,
         histogram::configure_histogram,
         histogram::config,
         online::online
     ),
     components(
         schemas(TrafficGenData,
+        PortConfiguration,
         GenerationMode,
         Encapsulation,
         StreamSetting,
