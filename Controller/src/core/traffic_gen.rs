@@ -514,7 +514,11 @@ impl TrafficGen {
     ) -> Result<(), RBFRTError> {
         // app id 0 is monitoring packet
         // keep monitoring running
-        let app_ids: Vec<u8> = (1..8).collect();
+        let app_ids: Vec<u8> = if self.is_tofino2 {
+            (1..16).collect()
+        } else {
+            (1..8).collect()
+        };
 
         let update_requests: Vec<Request> = app_ids
             .iter()
