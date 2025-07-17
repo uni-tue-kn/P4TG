@@ -283,7 +283,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const addStream = () => {
         if (p4tg_infos.asic == ASIC.Tofino1 && streams.length > 6) {
             alert("Only 7 different streams allowed.")
-        } else if ((p4tg_infos.asic == ASIC.Tofino2 && streams.length > 14)) {
+        } else if (p4tg_infos.asic == ASIC.Tofino2 && streams.length > 14) {
             alert("Only 15 different streams allowed.")
         } else {
             let id = 0
