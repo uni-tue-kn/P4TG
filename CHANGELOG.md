@@ -1,5 +1,14 @@
 # Changelog 
 
+## v2.4.1
+### New features
+- Increase the number of supported streams to 15 on Tofino 2
+
+### Bug fixes
+- Add missing API doc for `POST:/api/ports/` endpoint
+- Removed `POST:/api/histogram` endpoint. This feature is included in `POST:api/trafficgen`.
+- Added example for histogram configuration to `POST:api/trafficgen` API doc.
+
 ## v2.4.0
 ### New features
 - Live RTT histogram generation (#16)
