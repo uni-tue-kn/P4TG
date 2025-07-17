@@ -310,6 +310,16 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         set_overlay(false)
     }
 
+    const export_json = async () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(time_statistics, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "p4tg_time_statistics.json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
+
     return <Loader loaded={loaded} overlay={overlay}>
         <form onSubmit={onSubmit}>
             <Row className={"mb-3"}>
@@ -336,6 +346,11 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                         </>
                         :
                         <>
+                            {time_statistics && time_statistics.tx_rate_l1 && Object.keys(time_statistics.tx_rate_l1).length > 0 ?
+                                <Button onClick={export_json} className="mb-1" variant="dark"><i
+                                    className="bi bi-file-earmark-arrow-down-fill" /> Export </Button>
+                                : null}
+                            {" "}
                             <Button type={"submit"} className="mb-1" variant="primary"><i
                                 className="bi bi-play-circle-fill" /> Start </Button>
                             {" "}
