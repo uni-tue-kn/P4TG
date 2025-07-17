@@ -10,6 +10,7 @@
 - Removed `POST:/api/histogram` endpoint. This feature is included in `POST:api/trafficgen`.
 - Added example for histogram configuration to `POST:api/trafficgen` API doc.
 - Fix crash if no TX RX mapping is configured.
+- Fix disabling of streams whose TX port is down in frontend (again).
 
 ## v2.4.0
 ### New features
