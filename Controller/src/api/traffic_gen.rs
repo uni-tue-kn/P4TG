@@ -262,6 +262,8 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
     // required for analyze mode
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
+    let histogram_config = &payload.histogram_config;
+
     let tg = &mut state.traffic_generator.lock().await;
 
     match validate_request(
@@ -270,6 +272,7 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
         &payload.mode,
         tx_rx_port_mapping,
         state.port_mapping.clone(),
+        histogram_config,
         tg.is_tofino2,
     ) {
         Ok(_) => {}

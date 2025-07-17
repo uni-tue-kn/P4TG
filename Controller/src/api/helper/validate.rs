@@ -22,8 +22,8 @@ use std::collections::HashMap;
 
 use log::warn;
 
-use crate::api::histogram::HistogramConfigRequest;
 use crate::api::server::Error;
+use crate::core::statistics::RttHistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
     MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2,
     MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2,
@@ -41,6 +41,7 @@ pub fn validate_request(
     mode: &GenerationMode,
     tx_rx_port_mapping: &HashMap<String, u32>,
     available_ports: HashMap<u32, PortMapping>,
+    histogram_config: &Option<HashMap<String, RttHistogramConfig>>,
     is_tofino2: bool,
 ) -> Result<(), Error> {
     for stream in streams.iter() {
@@ -278,20 +279,29 @@ pub fn validate_request(
         }
     }
 
+    if let Some(histogram_config) = histogram_config {
+        // Validate histogram configuration
+        validate_histogram(histogram_config)?;
+    }
+
     Ok(())
 }
 
-pub fn validate_histogram(request: &HistogramConfigRequest) -> Result<(), Error> {
-    let port = request.port;
-
-    if request.config.min >= request.config.max {
-        return Err(Error::new(format!("Histogram config error port {port}: Minimum value must be less than maximum value of range.")));
-    }
-    if request.config.num_bins > 500 {
-        return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 500 bins per port are supported at maximum.")));
-    }
-    if request.config.num_bins > (request.config.max - request.config.min) {
-        return Err(Error::new(format!("Histogram config error port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
+pub fn validate_histogram(request: &HashMap<String, RttHistogramConfig>) -> Result<(), Error> {
+    for (port, config) in request.iter() {
+        let port: u32 = match port.parse() {
+            Ok(p) => p,
+            Err(_) => return Err(Error::new(format!("Invalid port number: {port}"))),
+        };
+        if config.min >= config.max {
+            return Err(Error::new(format!("Histogram config error port {port}: Minimum value must be less than maximum value of range.")));
+        }
+        if config.num_bins > 500 {
+            return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 500 bins per port are supported at maximum.")));
+        }
+        if config.num_bins > (config.max - config.min) {
+            return Err(Error::new(format!("Histogram config error port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
+        }
     }
 
     Ok(())

@@ -32,7 +32,6 @@ mod config;
 mod docs;
 
 pub use config::config;
-pub use histogram::configure_histogram;
 pub use online::online;
 pub use ports::add_port;
 pub use ports::ports;
