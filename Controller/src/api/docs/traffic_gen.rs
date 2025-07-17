@@ -58,7 +58,14 @@ lazy_static! {
         }],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: Some(10),
-        histogram_config: None,
+        histogram_config: Some(HashMap::from([(
+            "136".to_string(),
+            RttHistogramConfig {
+                min: 1000,
+                max: 2000,
+                num_bins: 100,
+            }
+        )])),
     };
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
@@ -113,7 +120,14 @@ lazy_static! {
         }],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
-        histogram_config: None,
+        histogram_config: Some(HashMap::from([(
+            "136".to_string(),
+            RttHistogramConfig {
+                min: 1000,
+                max: 2000,
+                num_bins: 100,
+            }
+        )])),
     };
     pub static ref EXAMPLE_POST_1_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -186,7 +200,14 @@ lazy_static! {
         }],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
-        histogram_config: None,
+        histogram_config: Some(HashMap::from([(
+            "136".to_string(),
+            RttHistogramConfig {
+                min: 1000,
+                max: 2000,
+                num_bins: 100,
+            }
+        )])),
     };
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
@@ -240,7 +261,14 @@ lazy_static! {
         }],
         port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
         duration: None,
-        histogram_config: None,
+        histogram_config: Some(HashMap::from([(
+            "136".to_string(),
+            RttHistogramConfig {
+                min: 1000,
+                max: 2000,
+                num_bins: 100,
+            }
+        )])),
     };
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
