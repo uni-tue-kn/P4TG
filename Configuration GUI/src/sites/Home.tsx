@@ -412,10 +412,10 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                 /// Find the statistics for the current test identified by the name field
                                 const statData = Object.values(statistics.previous_statistics || {}).find(
                                     (stat: any) => stat.name === name
-                                ) ?? StatisticsObject;
+                                ) ?? (statistics.name === name ? statistics : StatisticsObject);
                                 const timeStatsData = Object.values(time_statistics.previous_statistics || {}).find(
                                     (stat: any) => stat.name === name
-                                ) ?? TimeStatisticsObject;
+                                ) ?? (time_statistics.name === name ? time_statistics : TimeStatisticsObject);
                                 const config = savedConfigs[name];
 
                                 return (
