@@ -64,6 +64,7 @@ lazy_static! {
                 min: 1000,
                 max: 2000,
                 num_bins: 100,
+                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
             }
         )])),
     };
@@ -126,6 +127,7 @@ lazy_static! {
                 min: 1000,
                 max: 2000,
                 num_bins: 100,
+                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
             }
         )])),
     };
@@ -206,6 +208,7 @@ lazy_static! {
                 min: 1000,
                 max: 2000,
                 num_bins: 100,
+                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
             }
         )])),
     };
@@ -267,6 +270,7 @@ lazy_static! {
                 min: 1000,
                 max: 2000,
                 num_bins: 100,
+                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
             }
         )])),
     };
@@ -481,6 +485,7 @@ lazy_static! {
                 min: 1000,
                 max: 2000,
                 num_bins: 100,
+                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
             }
         )])),
     };

@@ -302,6 +302,21 @@ pub fn validate_histogram(request: &HashMap<String, RttHistogramConfig>) -> Resu
         if config.num_bins > (config.max - config.min) {
             return Err(Error::new(format!("Histogram config error port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
         }
+
+        if let Some(percentiles) = &config.percentiles {
+            for p in percentiles.iter() {
+                if *p < 0.0 || *p > 1.0 {
+                    return Err(Error::new(format!(
+                        "Histogram config error port {port}: Percentile {p} is not in range (0.0, 1.0)."
+                    )));
+                }
+            }
+            if percentiles.len() > 10 {
+                return Err(Error::new(format!(
+                    "Histogram config error port {port}: Too many percentiles. At most 10 percentiles are supported."
+                )));
+            }
+        }
     }
 
     Ok(())

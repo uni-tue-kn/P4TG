@@ -250,6 +250,8 @@ pub struct RttHistogramConfig {
     pub min: u32,
     /// Maximum range for histogram.
     pub max: u32,
+    /// Percentiles to calculate from histogram data. Float values between 0 and 1.0
+    pub percentiles: Option<Vec<f64>>,
 }
 
 impl RttHistogramConfig {
@@ -264,6 +266,7 @@ impl Default for RttHistogramConfig {
             min: 1500,
             max: 2500,
             num_bins: 10,
+            percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
         }
     }
 }

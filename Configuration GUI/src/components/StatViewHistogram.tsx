@@ -37,7 +37,7 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
     const [stdRtt, set_std_rtt] = useState(0);
     const [missedBinCount, set_missed_bin_count] = useState(0);
     const [totalPacketCount, set_total_packet_count] = useState(0);
-    const [percentileData, setPercentileData] = useState({ "25": 0, "50": 0, "75": 0, "90": 0 });
+    const [percentileData, setPercentileData] = useState<Record<string, number>>({});
 
     const renderTooltip = (props: any, message: string) => (
         <Tooltip id="tooltip-disabled" {...props}>
@@ -59,9 +59,15 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
             set_bin_width(calculateBinWidth(rttHistogram.config.min, rttHistogram.config.max, rttHistogram.config.num_bins));
             set_total_packet_count(rttHistogram.data.total_pkt_count);
             set_missed_bin_count(rttHistogram.data.missed_bin_count);
-            if (rttHistogram.data.percentiles && Object.keys(rttHistogram.data.percentiles).includes("25")) {
+            if (rttHistogram.data.percentiles) {
                 const p_data = rttHistogram.data.percentiles;
-                setPercentileData({ "25": p_data["25"], "50": p_data["50"], "75": p_data["75"], "90": p_data["90"] });
+                Object.entries(p_data).forEach(([key, value]) => {
+                    setPercentileData(prev => ({
+                        ...prev,
+                        [key]: value
+                    }));
+                }
+                );
             }
         }
 
@@ -123,19 +129,17 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
                     <thead className="table-dark">
                         <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, "Percentiles")}>
                             <tr>
-                                <th>p25</th>
-                                <th>p50</th>
-                                <th>p75</th>
-                                <th>p90</th>
+                                {Object.keys(percentileData).map((key) => (
+                                    <th key={key}>{`p${key}`}</th>
+                                ))}
                             </tr>
                         </OverlayTrigger>
                     </thead>
                     <tbody>
                         <tr>
-                            <td>{formatNanoSeconds(percentileData["25"])}</td>
-                            <td>{formatNanoSeconds(percentileData["50"])}</td>
-                            <td>{formatNanoSeconds(percentileData["75"])}</td>
-                            <td>{formatNanoSeconds(percentileData["90"])}</td>
+                            {Object.keys(percentileData).map((key) => (
+                                <td key={key}>{formatNanoSeconds(percentileData[key])}</td>
+                            ))}
                         </tr>
                     </tbody>
                 </Table>

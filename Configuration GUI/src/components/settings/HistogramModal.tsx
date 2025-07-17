@@ -20,7 +20,6 @@
 import { RttHistogramConfig } from "../../common/Interfaces";
 import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
-import { post } from "../../common/API";
 
 const units = [
     { label: "ns", multiplier: 1 },
@@ -53,11 +52,14 @@ const HistogramModal = ({
     // useEffect to reset tmp_data when data changes
     useEffect(() => {
         if (show) {
+            const percentiles = data?.percentiles ?? [0.25, 0.5, 0.75, 0.9];
             set_tmp_data({
                 min: data?.min ?? 1500,
                 max: data?.max ?? 2500,
                 num_bins: data?.num_bins ?? 10,
+                percentiles: data?.percentiles ?? percentiles,
             });
+            setPercentileInput(percentiles.join(", "));
             setUnit("ns");
             setAlertMessage(null);
         }
@@ -70,6 +72,9 @@ const HistogramModal = ({
         hide();
     };
 
+    const [percentileInput, setPercentileInput] = useState(
+        tmp_data.percentiles?.join(", ") || ""
+    );
 
     const handleUnit = (newUnit: string) => {
         // Changes the displayed value for min and max if the unit is changed in the dropdown, e.g., 2500 ns -> 2.5 us
@@ -108,13 +113,31 @@ const HistogramModal = ({
             setAlertMessage("Maximum range exceeds range of 32-bit.");
             return;
         }
+        let percentiles: number[];
+        if (tmp_data.percentiles) {
+            const invalid = tmp_data.percentiles.some(
+                (p: number) => typeof p !== "number" || p <= 0.0 || p >= 1.0
+            );
+            if (invalid) {
+                setAlertMessage("All percentiles must be numbers between 0.0 and 1.0.");
+                return;
+            }
+            if (tmp_data.percentiles.length > 10) {
+                setAlertMessage("Too many percentiles. At most 10 percentiles are supported.");
+                return;
+            }
+            percentiles = tmp_data.percentiles;
+        } else {
+            percentiles = [0.25, 0.5, 0.75, 0.9];
+        }
 
         setAlertMessage(null);
 
         set_data(pid, {
             num_bins: tmp_data.num_bins,
             min,
-            max
+            max,
+            percentiles: percentiles,
         });
 
         hide();
@@ -189,6 +212,37 @@ const HistogramModal = ({
                             required
                             disabled={disabled}
                         />
+                    </Col>
+                </Form.Group>
+
+                <Form.Group as={Row} className="mb-3">
+                    <Form.Label column sm={2}>Percentiles</Form.Label>
+                    <Col sm={8}>
+                        <Form.Control
+                            type="text"
+                            value={percentileInput}
+                            onChange={e => {
+                                const input = e.target.value;
+                                setPercentileInput(input);
+
+                                const values = input
+                                    .split(",")
+                                    .map(v => v.trim())
+                                    .filter(v => v.length > 0)
+                                    .map(Number)
+                                    .filter(v => !isNaN(v));
+
+                                set_tmp_data(prev => ({
+                                    ...prev,
+                                    percentiles: values
+                                }));
+                            }}
+                            placeholder="e.g. 0.25, 0.5, 0.9"
+                            disabled={disabled}
+                        />
+                        <Form.Text className="text-muted">
+                            Enter percentiles as comma-separated values between 0.0 and 1.0.
+                        </Form.Text>
                     </Col>
                 </Form.Group>
             </Modal.Body>

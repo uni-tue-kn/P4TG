@@ -206,7 +206,11 @@ impl HistogramMonitor {
                                 }
 
                                 // Calculate percentiles
-                                let percentiles: Vec<f64> = vec![0.25, 0.5, 0.75, 0.9];
+                                let percentiles = hist_config
+                                    .percentiles
+                                    .clone()
+                                    .unwrap_or(vec![0.25, 0.5, 0.75, 0.9]);
+
                                 let percentile_results = Self::estimate_percentiles_from_bins(
                                     &bins_data,
                                     percentiles,

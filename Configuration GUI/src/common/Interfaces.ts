@@ -29,6 +29,7 @@ export type RttHistogramConfig = {
     min: number;
     max: number;
     num_bins: number;
+    percentiles?: Array<number>;
 };
 
 export type RttHistogramBinEntry = {

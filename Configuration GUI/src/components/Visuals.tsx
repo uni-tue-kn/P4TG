@@ -302,12 +302,12 @@ const getPercentileAnnotations = (
 
     const histogram = data["rtt_histogram"];
 
-    const percentileColors: Record<string, string> = {
-        '25': '#3c82e7',
-        '50': '#e74c3c',
-        '75': '#e7a23c',
-        '90': '#a23ce7',
-    };
+    const percentileColors: Array<string> = [
+        '#3c82e7',
+        '#e74c3c',
+        '#e7a23c',
+        '#a23ce7'
+    ];
 
     if (histogram) {
         const ports = Object.values(port_mapping).map(String);
@@ -331,7 +331,7 @@ const getPercentileAnnotations = (
                     const offsetFactor = 0.065;
                     const yOffset = maxYValue * 0.95 * (1 - offsetFactor * percentileIndex);
 
-                    const color = percentileColors[key] || 'gray';
+                    const color = percentileColors[(percentileIndex % 4)] || 'gray';
 
                     if (value != null) {
                         annotations[`p${key}`] = {

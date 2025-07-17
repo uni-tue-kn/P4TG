@@ -3,6 +3,7 @@
 ## v2.4.1
 ### New features
 - Increase the number of supported streams to 15 on Tofino 2
+- Percentiles to calculate from RTT histogram data are now configurable via the histogram_config struct in `POST:api/trafficgen`. Defaults to [0.25, 0.5, 0.75, 0.9]
 
 ### Bug fixes
 - Add missing API doc for `POST:/api/ports/` endpoint
