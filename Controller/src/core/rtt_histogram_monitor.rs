@@ -88,9 +88,10 @@ impl HistogramMonitor {
             return Err(RBFRTError::GenericError { message: (format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")) });
         }
 
-        switch.write_table_entries(requests).await?;
-
-        info!("Configured table {RTT_HISTOGRAM_TABLE} with {number_requests} entries.");
+        if !requests.is_empty() {
+            switch.write_table_entries(requests).await?;
+            info!("Configured table {RTT_HISTOGRAM_TABLE} with {number_requests} entries.");
+        }
 
         Ok(())
     }
