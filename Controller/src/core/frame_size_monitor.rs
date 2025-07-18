@@ -218,7 +218,7 @@ impl TrafficGenEvent for FrameSizeMonitor {
         switch: &SwitchConnection,
         _mode: &GenerationMode,
     ) -> Result<(), RBFRTError> {
-        self.configure(switch).await?;
+        self.on_reset(switch).await?;
         Ok(())
     }
 

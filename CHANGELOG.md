@@ -13,6 +13,7 @@
 - Fix crash if no TX RX mapping is configured.
 - Fix disabling of streams whose TX port is down in frontend (again).
 - Fix stats not being shown in frontend for the most recent test if multiple tests were conducted and the last test was aborted.
+- Fix duplicate table clearing and reconfiguration on start.
 
 ## v2.4.0
 ### New features

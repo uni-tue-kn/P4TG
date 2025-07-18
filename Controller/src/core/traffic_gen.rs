@@ -608,28 +608,8 @@ impl TrafficGen {
         self.stop(switch).await?;
         self.reset_tables(switch).await?;
 
-        // first reset all stats
-        state
-            .frame_size_monitor
-            .lock()
-            .await
-            .on_reset(switch)
-            .await?;
-        state
-            .frame_type_monitor
-            .lock()
-            .await
-            .on_reset(switch)
-            .await?;
-        state.rate_monitor.lock().await.on_reset(switch).await?;
-        state
-            .rtt_histogram_monitor
-            .lock()
-            .await
-            .on_reset(switch)
-            .await?;
-
         // call the on_start routine on all relevant parts
+        // The on_reset routine to reset stats is included in on_start
         state
             .frame_size_monitor
             .lock()
