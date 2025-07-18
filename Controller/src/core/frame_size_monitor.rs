@@ -199,7 +199,7 @@ impl FrameSizeMonitor {
                 frame_size_state.statistics = stats;
             }
 
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 
