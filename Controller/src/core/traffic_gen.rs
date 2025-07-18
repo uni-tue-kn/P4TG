@@ -615,7 +615,6 @@ impl TrafficGen {
             .await
             .on_reset(switch)
             .await?;
-
         state
             .frame_type_monitor
             .lock()
