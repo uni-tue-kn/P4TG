@@ -2,7 +2,7 @@ name: Controller build
 
 on:
   push:
-    branches: [ "main", "nightly" ]
+    branches: [ "main", "nightly", "flatten_stats" ]
   pull_request:
     branches: [ "main", "nightly" ]
 
@@ -20,6 +20,8 @@ jobs:
           echo "tag=latest" >> $GITHUB_OUTPUT
         elif [ "${{ github.ref_name }}" = "nightly" ]; then
           echo "tag=nightly" >> $GITHUB_OUTPUT
+        elif [ "${{ github.ref_name }}" = "flatten_stats" ]; then
+          echo "tag=testing" >> $GITHUB_OUTPUT
         else
           echo "tag=dev" >> $GITHUB_OUTPUT
         fi
