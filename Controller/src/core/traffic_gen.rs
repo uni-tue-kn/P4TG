@@ -610,6 +610,8 @@ impl TrafficGen {
 
         // call the on_start routine on all relevant parts
         // The on_reset routine to reset stats is included in on_start
+        state.rate_monitor.lock().await.on_reset(switch).await?;
+
         state
             .frame_size_monitor
             .lock()

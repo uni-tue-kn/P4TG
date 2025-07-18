@@ -871,7 +871,12 @@ impl TrafficGenEvent for RateMonitor {
         switch: &SwitchConnection,
         mode: &GenerationMode,
     ) -> Result<(), RBFRTError> {
-        self.on_reset(switch).await?;
+        switch
+            .clear_tables(vec![MONITOR_IAT_TABLE, IS_INGRESS_TABLE])
+            .await?;
+
+        self.time_statistics.tx_rate_l1.clear();
+        self.time_statistics.rx_rate_l1.clear();
 
         // allow iat generation
         let req = table::Request::new(MONITOR_IAT_TABLE)
@@ -900,10 +905,6 @@ impl TrafficGenEvent for RateMonitor {
 
     /// Reset the state.
     async fn on_reset(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        switch
-            .clear_tables(vec![MONITOR_IAT_TABLE, IS_INGRESS_TABLE])
-            .await?;
-
         self.rtt_storage.clear();
         self.tx_iat_storage.clear();
         self.rx_iat_storage.clear();
