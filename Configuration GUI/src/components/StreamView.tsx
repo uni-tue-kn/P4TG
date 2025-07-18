@@ -19,11 +19,11 @@
 
 import React, { useEffect, useState } from 'react'
 import { Col, Row, Table } from "react-bootstrap";
-import { Statistics } from "../common/Interfaces";
+import { StatisticsEntry } from "../common/Interfaces";
 import { formatBits } from "./SendReceiveMonitor";
 
 const StreamView = ({ stats, port_mapping, stream_id, frame_size }: {
-    stats: Statistics,
+    stats: StatisticsEntry,
     port_mapping: { [name: number]: number },
     stream_id: number,
     frame_size: number

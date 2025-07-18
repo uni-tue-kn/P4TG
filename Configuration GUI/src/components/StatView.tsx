@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
-import { GenerationMode, Statistics, TimeStatistics } from "../common/Interfaces";
+import { GenerationMode, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
 import { formatBits } from "./SendReceiveMonitor";
 
 import styled from 'styled-components'
@@ -30,7 +30,7 @@ const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port }: { stats: Statistics, time_stats: TimeStatistics, port_mapping: { [name: number]: number }, mode: GenerationMode, visual: boolean, is_summary: boolean, rx_port: number }) => {
+const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port }: { stats: StatisticsEntry, time_stats: TimeStatisticsEntry, port_mapping: { [name: number]: number }, mode: GenerationMode, visual: boolean, is_summary: boolean, rx_port: number }) => {
     const [total_tx, set_total_tx] = useState(0);
     const [total_rx, set_total_rx] = useState(0);
     const [iat_tx, set_iat_tx] = useState({ "mean": 0, "std": 0, "n": 0, "mae": 0 });
@@ -160,7 +160,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         set_out_of_order_packets(get_out_of_order_packets())
     }, [stats])
 
-    const calculateWeightedRTTs = (stats: Statistics) => {
+    const calculateWeightedRTTs = (stats: StatisticsEntry) => {
         let all_mean = 0
         let all_std = 0
         let all_current = 0
@@ -194,7 +194,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         }
     }
 
-    const calculateWeightedIATs = (type: string, stats: Statistics) => {
+    const calculateWeightedIATs = (type: string, stats: StatisticsEntry) => {
         let all_mean = 0
         let all_std = 0
         let all_n = 0

@@ -20,7 +20,7 @@
 import React from 'react'
 import { Col } from "react-bootstrap";
 import styled from "styled-components";
-import { Statistics } from "../common/Interfaces";
+import { StatisticsEntry } from "../common/Interfaces";
 import Status from "../components/Status";
 
 const Stat = styled.span<{ active: boolean }>`
@@ -102,7 +102,7 @@ export const secondsToTime = (s: number) => {
 }
 
 const SendReceiveMonitor = ({ stats, running }: {
-    stats: Statistics,
+    stats: StatisticsEntry,
     running: boolean
 }) => {
     const tx_rate_l1 = Object.values(stats.tx_rate_l1).reduce((a, b) => a + b, 0)

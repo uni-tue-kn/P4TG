@@ -184,7 +184,7 @@ impl IATValues {
 
 /// Common fields for time-based statistics
 #[derive(Serialize, Debug, Clone, ToSchema)]
-pub struct CommonTimeStatistic {
+pub struct TimeStatistics {
     /// L1 send rates per test and port
     pub(crate) tx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
     /// L1 receive rates per test and port
@@ -200,45 +200,16 @@ pub struct CommonTimeStatistic {
     pub(crate) name: Option<String>,
 }
 
-/// Represents the time-based statistics
-/// for visualisation
-#[derive(Serialize, Debug, Clone, ToSchema)]
-pub struct TimeStatistic {
-    #[serde(flatten)]
-    pub(crate) inner: CommonTimeStatistic,
-
-    /// Save previous statistics, where the key is the test number of the statistics.
-    /// Skip serializing if there are no previous statistics.
-    /// If this is `TimeStatistic` instead of `HistoryTimeStatistic`, we have a recursive stack overflow
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) previous_statistics: Option<BTreeMap<u32, HistoryTimeStatistic>>,
-}
-
-impl TimeStatistic {
-    pub fn default() -> TimeStatistic {
-        TimeStatistic {
-            inner: CommonTimeStatistic {
-                tx_rate_l1: Default::default(),
-                rx_rate_l1: Default::default(),
-                packet_loss: Default::default(),
-                out_of_order: Default::default(),
-                rtt: Default::default(),
-                name: None,
-            },
-            previous_statistics: None,
+impl TimeStatistics {
+    pub fn default() -> TimeStatistics {
+        TimeStatistics {
+            tx_rate_l1: Default::default(),
+            rx_rate_l1: Default::default(),
+            packet_loss: Default::default(),
+            out_of_order: Default::default(),
+            rtt: Default::default(),
+            name: None,
         }
-    }
-}
-
-#[derive(Serialize, Debug, Clone, ToSchema)]
-pub struct HistoryTimeStatistic {
-    #[serde(flatten)]
-    pub(crate) inner: CommonTimeStatistic,
-}
-
-impl From<TimeStatistic> for HistoryTimeStatistic {
-    fn from(stat: TimeStatistic) -> Self {
-        HistoryTimeStatistic { inner: stat.inner }
     }
 }
 
@@ -308,4 +279,45 @@ impl RttHistogram {
             config: Default::default(),
         }
     }
+}
+
+#[derive(Serialize, ToSchema, Clone)]
+pub struct Statistics {
+    /// Indicates whether the sample mode is used or not.
+    /// In sampling mode, IATs are sampled and not calculated in the data plane.
+    /// It is recommended to don't use the sample mode to get more precise values
+    pub(crate) sample_mode: bool,
+    /// Frame size statistics that are divided in (lower, upper) sections.
+    pub(crate) frame_size: HashMap<u32, RangeCount>,
+    /// L1 send rates per port.
+    pub(crate) tx_rate_l1: HashMap<u32, f64>,
+    /// L2 send rates per port.
+    pub(crate) tx_rate_l2: HashMap<u32, f64>,
+    /// L1 receive rates per port.
+    pub(crate) rx_rate_l1: HashMap<u32, f64>,
+    /// L2 receive rates per port.
+    pub(crate) rx_rate_l2: HashMap<u32, f64>,
+    /// L2 send rate per stream and port.
+    /// The number corresponds to the app_id in the Stream description.
+    pub(crate) app_tx_l2: HashMap<u32, HashMap<u32, f64>>,
+    /// L2 receive rate per stream and port.
+    /// The number corresponds to the app_id in the Stream description.
+    pub(crate) app_rx_l2: HashMap<u32, HashMap<u32, f64>>,
+    /// Statistics what kind of packets have been received per port
+    pub(crate) frame_type_data: HashMap<u32, TypeCount>,
+    /// Statistics of the inter arrival times per port.
+    pub(crate) iats: HashMap<u32, IATStatistics>,
+    /// Statistics of the round trip times per port.
+    pub(crate) rtts: HashMap<u32, RTTStatistics>,
+    /// Number of lost packets per port.
+    pub(crate) packet_loss: HashMap<u32, u64>,
+    /// Number of out of order packets per port.
+    pub(crate) out_of_order: HashMap<u32, u64>,
+    /// Elapsed time since the traffic generation has started in seconds.
+    pub(crate) elapsed_time: u32,
+    /// RTT histogram data per port and per bin.
+    pub(crate) rtt_histogram: HashMap<u32, RttHistogram>,
+    // Name of the test for the statistics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) name: Option<String>,
 }

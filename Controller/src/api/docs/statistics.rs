@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use serde_json::json;
 
 lazy_static! {
-    pub static ref EXAMPLE_GET_1: String = json!({
+    pub static ref EXAMPLE_GET_1: String = json!([{
         "sample_mode": false,
         "frame_size": {
             "144": {
@@ -1537,12 +1537,12 @@ lazy_static! {
             "60": 0
         },
         "elapsed_time": 0
-    })
+    }])
     .to_string();
 }
 
 lazy_static! {
-    pub static ref EXAMPLE_GET_2: String = json!({
+    pub static ref EXAMPLE_GET_2: String = json!([{
             "tx_rate_l1": {
               "136": {
                 "0": 100137345491.58797,
@@ -1882,6 +1882,6 @@ lazy_static! {
               }
             }
 
-    })
+    }])
     .to_string();
 }

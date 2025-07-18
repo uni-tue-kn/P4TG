@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
-import { Statistics } from "../common/Interfaces";
+import { StatisticsEntry } from "../common/Interfaces";
 
 import styled from 'styled-components'
 import { formatNanoSeconds, formatFrameCount } from '../common/Helper';
@@ -28,7 +28,7 @@ const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics, port_mapping: { [name: number]: number }, rx_port: number }) => {
+const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: StatisticsEntry, port_mapping: { [name: number]: number }, rx_port: number }) => {
     const [minValue, set_min_value] = useState(0);
     const [maxValue, set_max_value] = useState(0);
     const [numBins, set_num_bins] = useState(0);

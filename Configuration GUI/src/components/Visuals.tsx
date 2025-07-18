@@ -34,7 +34,7 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { secondsToTime } from "./SendReceiveMonitor";
-import { Statistics, TimeStatistics } from "../common/Interfaces";
+import { StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
 import React, { useState } from "react";
 import { Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import StatViewHistogram from './StatViewHistogram';
@@ -185,7 +185,7 @@ function getTimeUnit(value: number): [value: number, unit: string] {
     return [value, unit];
 }
 
-const generateLineData = (data_key: string, use_key: boolean, data: TimeStatistics, port_mapping: { [name: number]: number }): [string[], number[]] => {
+const generateLineData = (data_key: string, use_key: boolean, data: TimeStatisticsEntry, port_mapping: { [name: number]: number }): [string[], number[]] => {
     let cum_data: { [name: number]: number }[] = []
 
     if (data_key in data) {
@@ -237,7 +237,7 @@ const renderTooltip = (props: any) => (
 );
 
 const generateHistogram = (
-    data: Statistics,
+    data: StatisticsEntry,
     port_mapping: { [name: number]: number }
 ): [string[], number[]] => {
     const histogram_data = data["rtt_histogram"];
@@ -295,7 +295,7 @@ const generateHistogram = (
 };
 
 const getPercentileAnnotations = (
-    data: Statistics,
+    data: StatisticsEntry,
     port_mapping: { [name: number]: number }
 ): Record<string, any> => {
     const annotations: Record<string, any> = {};
@@ -371,7 +371,7 @@ const getPercentileAnnotations = (
     return annotations;
 };
 
-const get_frame_types = (stats: Statistics, port_mapping: { [name: number]: number }, type: string): { tx: number, rx: number } => {
+const get_frame_types = (stats: StatisticsEntry, port_mapping: { [name: number]: number }, type: string): { tx: number, rx: number } => {
     let ret = { "tx": 0, "rx": 0 }
 
     if (stats.frame_type_data == undefined) {
@@ -405,7 +405,7 @@ const get_frame_types = (stats: Statistics, port_mapping: { [name: number]: numb
     return ret
 }
 
-const get_frame_stats = (stats: Statistics, port_mapping: { [name: number]: number }, type: string, low: number, high: number) => {
+const get_frame_stats = (stats: StatisticsEntry, port_mapping: { [name: number]: number }, type: string, low: number, high: number) => {
     let ret = 0
 
     if (stats.frame_size == undefined || port_mapping == undefined) {
@@ -427,7 +427,7 @@ const get_frame_stats = (stats: Statistics, port_mapping: { [name: number]: numb
     return ret
 }
 
-const get_rtt = (data: TimeStatistics, port_mapping: { [name: number]: number }): [string[], number[]] => {
+const get_rtt = (data: TimeStatisticsEntry, port_mapping: { [name: number]: number }): [string[], number[]] => {
     let cum_data: { [name: number]: number }[] = []
 
     if ("rtt" in data) {
@@ -469,7 +469,7 @@ const get_rtt = (data: TimeStatistics, port_mapping: { [name: number]: number })
     return [Object.keys(ret_data[0]).map(v => secondsToTime(parseInt(v))), Object.values(ret_data[0])]
 }
 
-const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: TimeStatistics, stats: Statistics, port_mapping: { [name: number]: number }, is_summary: boolean, rx_port: number }) => {
+const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: TimeStatisticsEntry, stats: StatisticsEntry, port_mapping: { [name: number]: number }, is_summary: boolean, rx_port: number }) => {
     const [labels_tx, line_data_tx] = generateLineData("tx_rate_l1", true, data, port_mapping)
     const [labels_rx, line_data_rx] = generateLineData("rx_rate_l1", false, data, port_mapping)
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)

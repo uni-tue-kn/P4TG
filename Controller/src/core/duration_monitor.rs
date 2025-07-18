@@ -147,7 +147,7 @@ impl DurationMonitorTask {
                             };
 
                             if !running {
-                                // This condition is true if the other DurationMonitor stops the traffic generation.
+                                // This condition is true if the other DurationMonitor stops the traffic generation, i.e. time has elapsed
                                 info!("Test {idx} of {num_tests} done.");
                                 break;
                             }
@@ -160,7 +160,10 @@ impl DurationMonitorTask {
                     }
                 }
 
-                Self::copy_stats_to_history(&state_clone).await;
+                if idx != payloads.len() {
+                    // Do not copy the last test to history, otherwise it is duplicate
+                    Self::copy_stats_to_history(&state_clone).await;
+                }
 
                 // Wait 2s between tests
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -173,10 +176,10 @@ impl DurationMonitorTask {
 
     pub async fn copy_stats_to_history(state: &Arc<AppState>) {
         // Move stats into state where it is then moved into the history by the API later
-        let stats = get_statistics(state).await;
+        let stats = get_statistics(state).await[0].clone();
         let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
         stats_lock.push(stats);
-        let time_stats = get_time_statistics(state, Params { limit: None }).await;
+        let time_stats = get_time_statistics(state, Params { limit: None }).await[0].clone();
         let mut time_stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
         time_stats_lock.push(time_stats);
     }

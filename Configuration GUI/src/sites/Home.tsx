@@ -27,7 +27,7 @@ import {
     ASIC,
     GenerationMode,
     P4TGInfos,
-    Statistics as StatInterface,
+    Statistics,
     StatisticsObject,
     Stream,
     StreamSettings,
@@ -101,12 +101,12 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
-    const [statistics, set_statistics] = useState<StatInterface>(StatisticsObject)
-    const [time_statistics, set_time_statistics] = useState<TimeStatistics>(TimeStatisticsObject)
+    const [statistics, set_statistics] = useState<Statistics>([StatisticsObject])
+    const [time_statistics, set_time_statistics] = useState<TimeStatistics>([TimeStatisticsObject])
 
     const NumTests = ({ running }: { running: boolean }) => {
         const total_tests = Object.keys(savedConfigs).length;
-        let num_avail_stats = Object.keys(statistics.previous_statistics || {}).length;
+        let num_avail_stats = Object.keys(statistics || {}).length;
         let last_test = false
 
         if (num_avail_stats !== total_tests) {
@@ -229,8 +229,8 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             }
 
             // Delete all previous statistics in local state
-            set_statistics(StatisticsObject)
-            set_time_statistics(TimeStatisticsObject)
+            set_statistics([StatisticsObject])
+            set_time_statistics([TimeStatisticsObject])
             // Reset the mode to 0 to detect when traffic generation actually starts
             set_mode(0)
 
@@ -323,7 +323,7 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     return <Loader loaded={loaded} overlay={overlay}>
         <form onSubmit={onSubmit}>
             <Row className={"mb-3"}>
-                <SendReceiveMonitor stats={statistics} running={running} />
+                <SendReceiveMonitor stats={statistics[0]} running={running} />
                 <Col className={"text-end col-4"}>
                     {savedConfigs && Object.keys(savedConfigs).length > 1 &&
                         <>
@@ -346,7 +346,7 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                         </>
                         :
                         <>
-                            {time_statistics && time_statistics.tx_rate_l1 && Object.keys(time_statistics.tx_rate_l1).length > 0 ?
+                            {time_statistics && time_statistics[0].tx_rate_l1 && Object.keys(time_statistics[0].tx_rate_l1).length > 0 ?
                                 <Button onClick={export_json} className="mb-1" variant="dark"><i
                                     className="bi bi-file-earmark-arrow-down-fill" /> Export </Button>
                                 : null}
@@ -373,7 +373,7 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             />
         </Form>
 
-        {statistics.previous_statistics && Object.keys(statistics.previous_statistics).length > 0 ? (
+        {statistics && Object.keys(statistics).length > 1 ? (
             (() => {
                 const savedConfigKeys = Object.keys(savedConfigs);
 
@@ -397,8 +397,8 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             {running &&
                                 <Tab.Pane eventKey="current" key="current">
                                     <SummaryView
-                                        statistics={statistics}
-                                        time_statistics={time_statistics}
+                                        statistics={statistics[0]}
+                                        time_statistics={time_statistics[0]}
                                         port_tx_rx_mapping={port_tx_rx_mapping}
                                         visual={visual}
                                         mode={mode}
@@ -410,12 +410,12 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                             {savedConfigKeys.map((name) => {
                                 /// Find the statistics for the current test identified by the name field
-                                const statData = Object.values(statistics.previous_statistics || {}).find(
+                                const statData = Object.values(statistics || {}).find(
                                     (stat: any) => stat.name === name
-                                ) ?? (statistics.name === name ? statistics : StatisticsObject);
-                                const timeStatsData = Object.values(time_statistics.previous_statistics || {}).find(
+                                ) ?? StatisticsObject;
+                                const timeStatsData = Object.values(time_statistics || {}).find(
                                     (stat: any) => stat.name === name
-                                ) ?? (time_statistics.name === name ? time_statistics : TimeStatisticsObject);
+                                ) ?? TimeStatisticsObject;
                                 const config = savedConfigs[name];
 
                                 return (
@@ -442,8 +442,8 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             // OLD VIEW here — no previous_statistics present. Rendered when only a single test is applied.
             <>
                 <SummaryView
-                    statistics={statistics}
-                    time_statistics={time_statistics}
+                    statistics={statistics[0]}
+                    time_statistics={time_statistics[0]}
                     port_tx_rx_mapping={port_tx_rx_mapping}
                     visual={visual}
                     mode={mode}

@@ -51,7 +51,8 @@ export type RttHistogram = {
     data: RttHistogramData;
 };
 
-export interface Statistics {
+export type Statistics = Array<StatisticsEntry>;
+export type StatisticsEntry = {
     sample_mode: boolean,
     tx_rate_l1: { [name: string]: number },
     tx_rate_l2: { [name: string]: number },
@@ -77,11 +78,10 @@ export interface Statistics {
     out_of_order: { [name: string]: number },
     elapsed_time: number,
     rtt_histogram: { [port: string]: RttHistogram },
-    previous_statistics?: Record<number, Statistics>,
     name?: string,
-}
+};
 
-export const StatisticsObject: Statistics = {
+export const StatisticsObject: StatisticsEntry = {
     sample_mode: false,
     frame_size: {},
     frame_type_data: {},
@@ -99,7 +99,9 @@ export const StatisticsObject: Statistics = {
     rtt_histogram: {},
 }
 
-export interface TimeStatistics {
+export type TimeStatistics = Array<TimeStatisticsEntry>;
+
+export type TimeStatisticsEntry = {
     tx_rate_l1: {
         [name: number]: {
             [name: number]: number
@@ -110,11 +112,10 @@ export interface TimeStatistics {
             [name: number]: number
         }
     },
-    previous_statistics?: Record<number, TimeStatistics>,
     name?: string,
 }
 
-export const TimeStatisticsObject: TimeStatistics = {
+export const TimeStatisticsObject: TimeStatisticsEntry = {
     tx_rate_l1: {},
     rx_rate_l1: {}
 }
