@@ -14,8 +14,6 @@ WORKDIR /app
 COPY ${path}/src ./src
 COPY ${path}/Cargo.toml .
 COPY --from=gui-builder /app/build ./gui_build
-RUN apt update
-RUN apt install -y libstdc++6 libgomp1 cmake libclang-dev
 RUN cargo build --release
 
 FROM debian:bookworm
