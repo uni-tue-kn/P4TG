@@ -859,6 +859,7 @@ impl RateMonitor {
                     sleep(Duration::from_millis(400)).await; // Sleep for 400ms before trying again
                 }
             }
+            sleep(Duration::from_millis(200)).await;
             tokio::task::yield_now().await;
         }
     }
