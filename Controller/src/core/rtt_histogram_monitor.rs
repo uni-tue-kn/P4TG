@@ -371,8 +371,7 @@ impl TrafficGenEvent for HistogramMonitor {
         // Reconfigures the histogram table and deletes all statistics.
         // Histogram config is deleted in start_single_test
         self.init_rtt_histogram_table(switch).await?;
-        self.on_reset(switch).await?;
-
+        self.clear_data();
         Ok(())
     }
 
