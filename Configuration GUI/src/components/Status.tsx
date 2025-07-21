@@ -38,7 +38,12 @@ const hasError = (stats: StatisticsEntry) => {
         loss = Object.values(stats.packet_loss).reduce((a, b) => a + b, 0)
     }
 
-    return loss > 0
+    return (
+        loss > 0 ||
+        Object.values(stats.rtt_histogram).some(
+            (hist: { data: { missed_bin_count: number } }) => hist.data.missed_bin_count > 0
+        )
+    )
 }
 const Status = ({ stats, running }: { stats: StatisticsEntry, running: boolean }) => {
 
