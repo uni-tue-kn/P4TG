@@ -20,7 +20,7 @@
 import { useEffect, useState } from 'react'
 import styled from "styled-components";
 import { Link, useLocation } from "react-router-dom";
-import ThemeBtn from "./ThemeToggle";
+import FooterButtons from "./FooterButtons";
 import { get } from "../common/API";
 import { CNavItem, CSidebar, CSidebarBrand, CSidebarNav } from "@coreui/react";
 import { Row } from 'react-bootstrap'
@@ -95,7 +95,9 @@ const Navbar = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             <NavLink to={"/settings"} text={""} icon={"bi bi-gear-wide-connected"} />
             <Row className="flex-grow-1">
             </Row>
-            <ThemeBtn />
+            <Row className="mb-3">
+                <FooterButtons />
+            </Row>
             <Row>
                 <CNavItem className="flex-grow-1 mb-2">
                     <span>v{p4tg_infos.version}</span>
