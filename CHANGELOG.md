@@ -7,6 +7,7 @@
 - Added JSON export feature of collected statistics over time after a test.
 - ⚠ Schema change: `GET:/api/statistics` and `GET:/api/time_statistics` now returns an array of all test results. This facilitates data analysis.
 - Display 'Status: Error' on dashboard if a histogram measurement has outliers.
+- Replaced alert() popups with Bootstrap ToastMessages.
 
 ### Bug fixes
 - Add missing API doc for `POST:/api/ports/` endpoint.
