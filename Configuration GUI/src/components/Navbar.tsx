@@ -17,11 +17,9 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import { useEffect, useState } from 'react'
 import styled from "styled-components";
 import { Link, useLocation } from "react-router-dom";
 import FooterButtons from "./FooterButtons";
-import { get } from "../common/API";
 import { CNavItem, CSidebar, CSidebarBrand, CSidebarNav } from "@coreui/react";
 import { Row } from 'react-bootstrap'
 
@@ -62,29 +60,11 @@ export const NavLink = ({ to, icon, text, overlay }: Props) => {
 
 
 const Navbar = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
-    const [online, set_online] = useState(false)
 
     const setup = () => {
         localStorage.clear()
         window.location.reload()
     }
-
-
-    useEffect(() => {
-        const loadStatus = async () => {
-            let stats = await get({ route: "/online" })
-
-            if (stats !== undefined && stats.status !== 200) {
-                return
-            }
-
-            set_online(true)
-        }
-
-        loadStatus()
-
-
-    }, [])
 
     return <CSidebar className={"h-100"}>
         <CSidebarNav className="h-100">
@@ -100,7 +80,7 @@ const Navbar = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             </Row>
             <Row>
                 <CNavItem className="flex-grow-1 mb-2">
-                    <span>v{p4tg_infos.version}</span>
+                    <span>{p4tg_infos.version === "" ? "Offline" : "v" + p4tg_infos.version}</span>
                 </CNavItem>
             </Row>
         </CSidebarNav>

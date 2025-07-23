@@ -59,7 +59,7 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError:
 
         const errInterceptor = (error: any) => {
             if (!("response" in error) || ("code" in error && error.code === "ERR_NETWORK")) {
-                onOffline()
+                onOffline();
             }
             else if (error.response.status === 400) {
                 console.log(error.response)
@@ -96,9 +96,15 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError:
     return children;
 };
 
-const get = async (request: Request) => {
-    return await instance.get(request.route, getHeader(request.token))
-}
+const get = async (request: Request): Promise<AxiosResponse | undefined> => {
+    try {
+        return await instance.get(request.route, getHeader(request.token));
+    } catch (error) {
+        // Let interceptor handle it
+        return undefined;
+    }
+};
+
 
 const post = async (request: Request) => {
     return await instance.post(request.route, request.body, getHeader(request.token))

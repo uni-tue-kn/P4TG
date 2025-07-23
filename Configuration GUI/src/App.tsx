@@ -137,7 +137,7 @@ const App = () => {
                                         <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} />} />
                                     </Routes>
                                     :
-                                    <Offline />
+                                    <Offline setP4TGInfos={set_p4tg_infos} />
                                 }
                             </Wrapper>
 

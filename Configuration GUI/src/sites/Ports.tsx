@@ -57,9 +57,9 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         let stats = await get({ route: "/ports" })
         let config = await get({ route: "/config" })
 
-        if (stats.status === 200) {
+        if (stats?.status === 200) {
             set_ports(stats.data)
-            set_config(config.data)
+            set_config(config?.data)
             set_loaded(true)
         }
     }
