@@ -32,7 +32,7 @@ import {
     PortInfo,
     RttHistogramConfig,
     Stream,
-    StreamSettings, TrafficGenData,
+    StreamSettings, ToastVariant, TrafficGenData,
 } from "../common/Interfaces";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
@@ -58,7 +58,7 @@ const CONFIG_STORAGE_KEY = "saved_configs";
 const DEFAULT_CONFIG_NAME = "Test 1";
 
 
-const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
+const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (msg: string, bg: ToastVariant) => void }) => {
     const [ports, set_ports] = useState<PortInfo[]>([])
     const [running, set_running] = useState(false)
     // @ts-ignore
@@ -252,7 +252,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedSavedConfigs));
 
         if (do_alert) {
-            alert("Settings saved.")
+            showToast("Settings saved successfully.", "success");
         }
     }
 
@@ -277,14 +277,14 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         setSavedConfigs({ [DEFAULT_CONFIG_NAME]: defaultConfig })
         setActiveConfigName(DEFAULT_CONFIG_NAME)
 
-        alert("Reset complete.")
+        showToast("Settings reset successfully.", "success")
     }
 
     const addStream = () => {
         if (p4tg_infos.asic == ASIC.Tofino1 && streams.length > 6) {
-            alert("Only 7 different streams allowed.")
+            showToast("Only 7 different streams allowed.", "warning")
         } else if (p4tg_infos.asic == ASIC.Tofino2 && streams.length > 14) {
-            alert("Only 15 different streams allowed.")
+            showToast("Only 15 different streams allowed.", "warning")
         } else {
             let id = 0
 
@@ -390,7 +390,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                     // It's a single TrafficGenData
                     new_config = { [DEFAULT_CONFIG_NAME]: data }
                 } else {
-                    alert("Could not serialize file content. Please check the file.")
+                    showToast("Could not serialize file content. Please check the file.", "danger")
                     return;
                 }
             }
@@ -398,11 +398,11 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             Object.entries(new_config).forEach(([name, config]) => {
                 console.log(config)
                 if (!validateStreams(config.streams) || !validateStreamSettings(config.stream_settings)) {
-                    alert("Settings not valid for config " + name + ".")
+                    showToast("Settings not valid for config " + name + ". Please check the file.", "danger")
                     // @ts-ignore
                     ref.current.value = ""
                 } else if (!validatePorts(config.port_tx_rx_mapping, ports)) {
-                    alert("Settings not valid for config " + name + ". Configured dev_port IDs are not available on this device.")
+                    showToast("Settings not valid for config " + name + ". Configured dev_port IDs are not available on this device.", "danger")
                 } else {
                 }
             });
@@ -418,7 +418,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(first_test.port_tx_rx_mapping))
             localStorage.setItem("histogram_config", first_test.histogram_config ? JSON.stringify(first_test.histogram_config) : "{}")
 
-            alert("Import successfull. Reloading...")
+            showToast("Settings imported successfully.", "success")
 
             window.location.reload()
         }
@@ -431,6 +431,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             // Invalid name or name already exists
             setRenamingTab(null);
             setRenameValue("");
+            showToast("Name already exists or is invalid.", "warning");
             return;
         }
         // Rename in savedConfigs
@@ -477,7 +478,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                     onSubmit={e => {
                                         e.preventDefault();
                                         if (renameValue.length > 20) {
-                                            alert("Name too long (max 20 characters).");
+                                            showToast("Name too long (max 20 characters).", "warning");
                                             return;
                                         }
                                         handleRenameTab(name, renameValue);
@@ -559,7 +560,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                 setActiveConfigName(newName);
                             } else {
                                 // Should actually never happen
-                                alert("Name already exists.");
+                                showToast("Name already exists.", "warning");
                             }
                         }}
                         variant="outline-secondary"

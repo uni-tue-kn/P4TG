@@ -33,6 +33,7 @@ import {
     StreamSettings,
     TimeStatistics,
     TimeStatisticsObject,
+    ToastVariant,
     TrafficGenData
 } from '../common/Interfaces'
 import styled from "styled-components";
@@ -78,7 +79,7 @@ export const GitHub = () => {
     </Row>
 }
 
-const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
+const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (msg: string, bg: ToastVariant) => void }) => {
     const [loaded, set_loaded] = useState(false)
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
@@ -212,17 +213,17 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                     }
                 })
                 if (config.mode !== GenerationMode.MPPS && overall_rate > max_rate) {
-                    alert("Sum of stream rates > " + max_rate + " Gbps for test " + name + "!")
+                    showToast("Sum of stream rates > " + max_rate + " Gbps for test " + name + "!", "danger")
                     set_overlay(false)
                     return;
                 }
                 if (config.streams.length === 0 && config.mode !== GenerationMode.ANALYZE) {
-                    alert("You need to define at least one traffic configuration for " + name + ".");
+                    showToast("You need to define at least one traffic configuration for " + name + ".", "danger")
                     set_overlay(false)
                     return;
                 }
                 if (!config.stream_settings.some(s => s.active) && config.mode !== GenerationMode.ANALYZE) {
-                    alert("You need to have at least one active stream setting for " + name + ".");
+                    showToast("You need to have at least one active stream setting for " + name + ".", "danger")
                     set_overlay(false);
                     return;
                 }

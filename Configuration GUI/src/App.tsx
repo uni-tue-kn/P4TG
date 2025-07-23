@@ -25,13 +25,14 @@ import { AxiosInterceptor, get } from "./common/API"
 import styled from "styled-components"
 import ErrorView from "./components/ErrorView"
 import Navbar from "./components/Navbar"
+import ToastMessage from "./components/ToastMessage"
 
 import Home from "./sites/Home"
 import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
 import Offline from "./sites/Offline"
 import Tables from "./sites/Tables";
-import { ASIC, P4TGInfos, StreamSettings } from "./common/Interfaces";
+import { ASIC, P4TGInfos, StreamSettings, ToastVariant } from "./common/Interfaces";
 import { Stream } from "./common/Interfaces";
 import Loader from "./components/Loader";
 import { validateStreams, validateStreamSettings } from "./common/Validators";
@@ -44,6 +45,7 @@ const App = () => {
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
     const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({ status: "", version: "", asic: ASIC.Tofino1, loopback: false })
+    const [toast, setToast] = useState({ show: false, message: "", bg: "success" })
 
     const setError = (msg: string) => {
         set_error(true)
@@ -65,22 +67,15 @@ const App = () => {
                 let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
                 let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
 
-                if (!validateStreams(stored_streams)) {
-                    alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
-                    localStorage.clear()
-                    window.location.reload()
-                    return
-                }
-
-                if (!validateStreamSettings(stored_settings)) {
-                    alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
+                if (!validateStreams(stored_streams) || !validateStreamSettings(stored_settings)) {
+                    showToast("Incompatible stream description found. This may be due to an update. Resetting local storage.", "danger")
                     localStorage.clear()
                     window.location.reload()
                     return
                 }
             }
             catch {
-                alert("Error in reading local storage. Resetting local storage.")
+                showToast("Error in reading local storage. Resetting local storage.", "danger")
                 localStorage.clear()
                 window.location.reload()
             }
@@ -100,6 +95,11 @@ const App = () => {
         loadInfos()
 
     }, [])
+
+
+    const showToast = (message: string, bg: ToastVariant) => {
+        setToast({ show: true, message, bg })
+    }
 
     const Wrapper = styled.div``
 
@@ -129,12 +129,12 @@ const App = () => {
                                 <ASICVersion>{p4tg_infos.asic}</ASICVersion>
                                 {online ?
                                     <Routes>
-                                        <Route path={""} element={<Home p4tg_infos={p4tg_infos} />} />
-                                        <Route path={"/"} element={<Home p4tg_infos={p4tg_infos} />} />
-                                        <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} />} />
+                                        <Route path={""} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                        <Route path={"/"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                        <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
                                         <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos} />} />
                                         <Route path={"/tables"} element={<Tables />} />
-                                        <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} />} />
+                                        <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} />} />
                                     </Routes>
                                     :
                                     <Offline setP4TGInfos={set_p4tg_infos} />
@@ -147,6 +147,12 @@ const App = () => {
             </Row>
         </Router>
 
+        <ToastMessage
+            show={toast.show}
+            onClose={() => setToast({ ...toast, show: false })}
+            message={toast.message}
+            bg={toast.bg as ToastVariant}
+        />
 
     </Loader>
 

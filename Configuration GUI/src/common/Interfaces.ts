@@ -336,3 +336,5 @@ export interface PortInfo {
     loopback: string,
     status: boolean
 }
+
+export type ToastVariant = "success" | "danger" | "info" | "warning"
