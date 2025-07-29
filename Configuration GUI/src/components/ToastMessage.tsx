@@ -5,12 +5,11 @@ import { ToastVariant } from "../common/Interfaces"
 interface Props {
     message: string
     show: boolean
-    onClose: () => void
     delay?: number
     bg: ToastVariant
 }
 
-const ToastMessage = ({ message, show, onClose, delay = 3000, bg }: Props) => {
+const ToastMessage = ({ message, show, delay = 3000, bg }: Props) => {
     const [visible, setVisible] = useState(show)
 
     useEffect(() => {
@@ -22,7 +21,6 @@ const ToastMessage = ({ message, show, onClose, delay = 3000, bg }: Props) => {
             <Toast
                 onClose={() => {
                     setVisible(false)
-                    onClose()
                 }}
                 show={visible}
                 delay={delay}

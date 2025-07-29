@@ -61,11 +61,6 @@ export const NavLink = ({ to, icon, text, overlay }: Props) => {
 
 const Navbar = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
-    const setup = () => {
-        localStorage.clear()
-        window.location.reload()
-    }
-
     return <CSidebar className={"h-100"}>
         <CSidebarNav className="h-100">
             <CSidebarBrand className="mb-0"><StyledImg src={P4TGLogo} alt="P4TG log" /></CSidebarBrand>
