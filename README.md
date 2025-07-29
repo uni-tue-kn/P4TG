@@ -2,7 +2,7 @@
  <img src="./logo.png" />
  <h2>P4TG: Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.4.0-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.4.1-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
 
 </div>
 
@@ -33,6 +33,7 @@ In analysis mode, P4TG measures rates on the input ports, measures IATs, and for
 - P4TG (v2.3.2) supports IPv6, SRv6 (Tofino 2 only), many bug fixes, and a dark mode
 - P4TG (v2.3.3) bug fixes and dependency updates
 - P4TG (v2.4.0) Automated testing, live RTT histogram and percentile support
+- P4TG (v2.4.1) Statistics export, configurable percentiles, and bug fixes
 
 See [Changelog](./CHANGELOG.md) for a full changelog.
 
@@ -44,30 +45,30 @@ P4TG consists of:
 
 ### Features
 
-| **Feature**       | **Status**                           |
-|-------------------|--------------------------------------|
-| Statistics        | ✅ Available            |
-| Tofino 1 support  | ✅ Available            |
-| Tofino 2 support  | ✅ Available            |
-| Web frontend      | ✅ Available            |
-| Rust backend      | ✅ Available            |
-| Ethernet          | ✅ Available            |
-| IPv4              | ✅ Available            |
-| IPv6              | ✅ Available            |
-| QinQ              | ✅ Available            |
-| MPLS              | ✅ Available            |
-| VLAN              | ✅ Available            |
-| VxLAN             | ✅ Available            |
-| SRv6              | ✅ Available            |
-| ARP replies       | ✅ Available            |
-| Dark mode         | ✅ Available            |
-| RTT histogram and percentile reporting | ✅ Available     |
-| Auto. testing     | ✅ Available           |
-| Test profiles     | ⚠️ Experimental (Unstable)           |
-| File reporting    | ⚠️ Experimental (Unstable)           |
-| Localization      | ⚠️ Experimental (Unstable)           |
-| NDP               | ⏳ Planned (Not yet implemented)     |
-| NETCONF           | ⏳ Planned (Not yet implemented)     |
+| **Feature**                            | **Status**                      |
+| -------------------------------------- | ------------------------------- |
+| Statistics                             | ✅ Available                     |
+| Tofino 1 support                       | ✅ Available                     |
+| Tofino 2 support                       | ✅ Available                     |
+| Web frontend                           | ✅ Available                     |
+| Rust backend                           | ✅ Available                     |
+| Ethernet                               | ✅ Available                     |
+| IPv4                                   | ✅ Available                     |
+| IPv6                                   | ✅ Available                     |
+| QinQ                                   | ✅ Available                     |
+| MPLS                                   | ✅ Available                     |
+| VLAN                                   | ✅ Available                     |
+| VxLAN                                  | ✅ Available                     |
+| SRv6                                   | ✅ Available                     |
+| ARP replies                            | ✅ Available                     |
+| Dark mode                              | ✅ Available                     |
+| RTT histogram and percentile reporting | ✅ Available                     |
+| Auto. testing                          | ✅ Available                     |
+| File reporting                         | ✅ Available                     |
+| Test profiles                          | ⚠️ Experimental (Unstable)       |
+| Localization                           | ⚠️ Experimental (Unstable)       |
+| NDP                                    | ⏳ Planned (Not yet implemented) |
+| NETCONF                                | ⏳ Planned (Not yet implemented) |
 
 
 ## Installation & Start Instructions
@@ -148,6 +149,7 @@ The documentation of the REST-API can be found [here](https://uni-tue-kn.github.
 If you use P4TG in any of your publications, please cite the following papers:
 1. S. Lindner, Marco Häberle, and M. Menth: [P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks](https://ieeexplore.ieee.org/abstract/document/10048513), in IEEE Access, vol. 11, p. 17525 – 17535, Feb. 2023, IEEE
 2. F. Ihle, E. Zink, S. Lindner, and M. Menth: [Enhancements to P4TG: Protocols, Performance, and Automation](https://publikationen.uni-tuebingen.de/xmlui/bitstream/handle/10900/163776/4th_kuvs_fg_netsoft_11.pdf), in KuVS Workshop on Network Softwarization (KuVS NetSoft), online, Apr. 2025
+3. F. Ihle, E. Zink, M. Menth: Enhancements to P4TG: Histogram-Based RTT Monitoring in the Data Plane ([preprint](https://arxiv.org/abs/2507.15382)), in Workshop on Resilient Networks and Systems (ReNeSys), Jul. 2025, Ilmenau, Germany
 
 ```tex
 @article{LiHae23,
@@ -166,5 +168,13 @@ If you use P4TG in any of your publications, please cite the following papers:
   journal = {{KuVS Workshop on Network Softwarization (KuVS NetSoft)}}
   year   = 2025,
   month  = apr
+}
+
+@article{IhZi25_2,
+  title  = {{Enhancements to P4TG: Histogram-Based RTT Monitoring in the Data Plane}},
+  author = {Fabian Ihle and Etienne Zink and Michael Menth},
+  journal = {{Workshop on Resilient Networks and Systems (ReNeSys)}}
+  year   = 2025,
+  month  = sep
 }
 ```

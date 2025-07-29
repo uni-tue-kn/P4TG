@@ -2,12 +2,13 @@
 
 ## v2.4.1
 ### New features
-- Increase the number of supported streams to 15 on Tofino 2
-- Percentiles to calculate from RTT histogram data are now configurable via the histogram_config struct in `POST:api/trafficgen`. Defaults to [0.25, 0.5, 0.75, 0.9]
+- Increase the number of supported streams to 15 on Tofino 2.
+- Percentiles to calculate from RTT histogram data are now configurable via the histogram_config struct in `POST:api/trafficgen`. Defaults to [0.25, 0.5, 0.75, 0.9].
 - Added JSON export feature of collected statistics over time after a test.
 - ⚠ Schema change: `GET:/api/statistics` and `GET:/api/time_statistics` now returns an array of all test results. This facilitates data analysis.
 - Display 'Status: Error' on dashboard if a histogram measurement has outliers.
 - Replaced alert() popups with Bootstrap ToastMessages.
+- Added button to clone test configuration in frontend settings.
 
 ### Bug fixes
 - Add missing API doc for `POST:/api/ports/` endpoint.
@@ -16,7 +17,6 @@
 - Fix crash if no TX RX mapping is configured.
 - Fix disabling of streams whose TX port is down in frontend (again).
 - Fix stats not being shown in frontend for the most recent test if multiple tests were conducted and the last test was aborted.
-- Fix duplicate table clearing and reconfiguration on start.
 - Fix frontend crash if the backend controller is not reachable.
 
 ## v2.4.0

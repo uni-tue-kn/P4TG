@@ -180,17 +180,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_histogram_settings(config.histogram_config || {});
     };
 
-    const saveCurrentAsNamedConfig = (name: string) => {
-        const newConfig: TrafficGenData = {
-            mode, duration, streams, stream_settings, port_tx_rx_mapping: port_tx_rx_mapping, histogram_config: histogram_settings,
-        };
-
-        const updated = { ...savedConfigs, [name]: newConfig };
-        setSavedConfigs(updated);
-        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updated));
-        setActiveConfigName(name);
-    };
-
     const deleteConfig = (name: string) => {
         const updated = { ...savedConfigs };
         delete updated[name];
@@ -301,6 +290,39 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             })
         }
     }
+
+    const getCloneName = (baseName: string): string => {
+        let copyName = `${baseName}_copy`;
+        let counter = 2;
+
+        while (savedConfigs[copyName]) {
+            copyName = `${baseName}_copy${counter}`;
+            counter++;
+        }
+        return copyName;
+    };
+
+
+    const cloneConfig = (name: string) => {
+        const original = savedConfigs[name];
+        if (!original) return;
+
+        const clonedName = getCloneName(name);
+
+        const newConfig = {
+            ...original,
+            name: clonedName,
+        };
+
+        const updatedConfigs = {
+            ...savedConfigs,
+            [clonedName]: newConfig,
+        };
+
+        setSavedConfigs(updatedConfigs);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+        showToast(`Cloned "${name}" to "${clonedName}"`, "success");
+    };
 
     const updateHistogramSettings = (pid: number, updated: RttHistogramConfig) => {
         const updatedData = {
@@ -500,9 +522,32 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                             ) : (
                                 <>
                                     {name}
-                                    {name !== Object.keys(savedConfigs)[0] && (
-                                        // Add delete button only if it's not the first tab
-                                        <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "5px" }}>
+                                    <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "5px", gap: "4px" }}>
+                                        {/* Clone Button */}
+                                        <Button
+                                            size="sm"
+                                            disabled={running}
+                                            variant="outline-secondary"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                cloneConfig(name);
+                                            }}
+                                            style={{
+                                                padding: "0px",
+                                                borderWidth: "1px",
+                                                width: "20px",
+                                                height: "20px",
+                                                display: "flex",
+                                                justifyContent: "center",
+                                                alignItems: "center",
+                                            }}
+                                            title="Clone Test"
+                                        >
+                                            <i className="bi bi-files" />
+                                        </Button>
+
+                                        {/* Delete Button */}
+                                        {name !== Object.keys(savedConfigs)[0] && (
                                             <Button
                                                 size="sm"
                                                 disabled={running}
@@ -520,11 +565,12 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                     justifyContent: "center",
                                                     alignItems: "center",
                                                 }}
+                                                title="Delete Test"
                                             >
                                                 <i className="bi bi-x" />
                                             </Button>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </>
                             )}
                         </Nav.Link>
