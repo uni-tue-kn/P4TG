@@ -108,12 +108,6 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const NumTests = ({ running }: { running: boolean }) => {
         const total_tests = Object.keys(savedConfigs).length;
         let num_avail_stats = Object.keys(statistics || {}).length;
-        let last_test = false
-
-        if (num_avail_stats !== total_tests) {
-            num_avail_stats += 1
-            last_test = num_avail_stats === total_tests
-        }
 
         return (
             <TestNumber>
@@ -127,7 +121,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                             animationDuration: '0.5s'
                         }}
                     />
-                ) : !running && (num_avail_stats !== total_tests) || last_test ? (
+                ) : !running && (num_avail_stats !== total_tests) ? (
                     <i className="bi bi-pause-circle-fill" />
                 ) : !running && num_avail_stats === total_tests ? (
                     <i className="bi bi-check-circle-fill" />
