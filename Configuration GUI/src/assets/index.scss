@@ -40,6 +40,7 @@
     --color-sidebar-selected-icon: #ffffff;
     --bs-link-color: #000000;
     --bs-link-hover-color: #e74c3c;
+    --bs-btn-close-color: #000000;
 
     /* Selector Colors */
     --color-selector: #ffffff;
@@ -72,7 +73,7 @@
     --color-sidebar-selected-icon: #ffffff;
     --bs-link-color: #ffffff;
     --bs-link-hover-color: #e74c3c;
-
+    --bs-btn-close-color: #ffffff;
 
     /* Selector Colors */
     --color-selector: var(--color-light-grey);
@@ -384,10 +385,12 @@ table {
     color: var(--color-text);
 }
 
-.btn-close {
-    [data-theme="dark"] & {
-        filter: invert(1);
-    }
+[data-theme="dark"] .btn-close {
+    filter: invert(1);
+}
+
+.toast-header .btn-close {
+    filter: none;
 }
 
 .input-group-text {
