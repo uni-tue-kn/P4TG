@@ -41,17 +41,6 @@ impl HistogramMonitor {
         for (port, hist) in self.histogram.iter() {
             let hist_config = &hist.config;
 
-            if hist_config.max <= hist_config.min {
-                return Err(RBFRTError::GenericError {
-                    message: ("Maximum must be greater than minimum for histogram config"
-                        .to_string()),
-                });
-            } else if hist_config.num_bins == 0 {
-                return Err(RBFRTError::GenericError {
-                    message: ("num_bins must be positive for histogram config".to_string()),
-                });
-            }
-
             // Calculate bin width based on config params
             let bin_width = hist_config.get_bin_width();
 
@@ -84,9 +73,6 @@ impl HistogramMonitor {
         }
 
         let number_requests = requests.len();
-        if number_requests > 8196 {
-            return Err(RBFRTError::GenericError { message: (format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")) });
-        }
 
         if !requests.is_empty() {
             switch.write_table_entries(requests).await?;

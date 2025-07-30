@@ -26,7 +26,8 @@ use crate::api::server::Error;
 use crate::core::statistics::RttHistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
     MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2,
-    MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, TG_MAX_RATE, TG_MAX_RATE_TF2,
+    MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, RTT_HISTOGRAM_TABLE,
+    RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
 use crate::core::traffic_gen_core::helper::calculate_overhead;
 use crate::core::traffic_gen_core::types::*;
@@ -36,15 +37,41 @@ use crate::PortMapping;
 /// Validates an incoming traffic generation request.
 /// Checks if the MPLS/SRv6 configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
 pub fn validate_request(
-    streams: &[Stream],
-    settings: &[StreamSetting],
-    mode: &GenerationMode,
-    tx_rx_port_mapping: &HashMap<String, u32>,
-    available_ports: HashMap<u32, PortMapping>,
-    histogram_config: &Option<HashMap<String, RttHistogramConfig>>,
+    payload: &TrafficGenData,
+    available_ports: &HashMap<u32, PortMapping>,
     is_tofino2: bool,
-) -> Result<(), Error> {
-    for stream in streams.iter() {
+) -> Result<Vec<Stream>, Error> {
+    let active_stream_settings: Vec<StreamSetting> = payload
+        .stream_settings
+        .clone()
+        .into_iter()
+        .filter(|s| s.active)
+        .collect();
+
+    let active_stream_ids: Vec<u8> = active_stream_settings.iter().map(|s| s.stream_id).collect();
+    let active_streams: Vec<Stream> = payload
+        .streams
+        .clone()
+        .into_iter()
+        .filter(|s| active_stream_ids.contains(&s.stream_id))
+        .collect();
+
+    let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
+    let histogram_config = &payload.histogram_config;
+
+    // Poisson traffic is only allowed to have a single stream
+    if payload.mode == GenerationMode::Poisson && active_streams.len() != 1 {
+        return Err(Error::new(
+            "Poisson generation mode only allows for one stream.",
+        ));
+    }
+
+    // no streams should be generated in monitor/analyze mode
+    if payload.mode == GenerationMode::Analyze && !active_streams.is_empty() {
+        return Err(Error::new("No stream definition in analyze mode allowed."));
+    }
+
+    for stream in active_streams.iter() {
         // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::Mpls {
             if stream.number_of_lse.is_none() {
@@ -94,7 +121,7 @@ pub fn validate_request(
             }
         }
 
-        for setting in settings.iter() {
+        for setting in active_stream_settings.iter() {
             if setting.stream_id == stream.stream_id {
                 // check VLAN settings
                 if (stream.encapsulation == Encapsulation::Vlan
@@ -218,7 +245,7 @@ pub fn validate_request(
         }
     }
 
-    if streams
+    if active_streams
         .iter()
         .map(|s| s.frame_size)
         .collect::<Vec<u32>>()
@@ -231,28 +258,28 @@ pub fn validate_request(
         )));
     }
 
-    if settings.is_empty() && *mode != GenerationMode::Analyze {
+    if active_stream_settings.is_empty() && payload.mode != GenerationMode::Analyze {
         return Err(Error::new("No active streams provided."));
     }
 
-    if streams.is_empty() && *mode != GenerationMode::Analyze {
+    if active_stream_settings.is_empty() && payload.mode != GenerationMode::Analyze {
         return Err(Error::new("No stream provided."));
     }
 
     // Validate max sending rate
     // at most 100 or 400 Gbps are supported
-    let rate: f32 = if *mode == GenerationMode::Mpps {
-        streams
+    let rate: f32 = if payload.mode == GenerationMode::Mpps {
+        active_streams
             .iter()
             .map(|x| {
                 (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
             })
             .sum()
     } else {
-        streams.iter().map(|x| x.traffic_rate).sum()
+        active_streams.iter().map(|x| x.traffic_rate).sum()
     };
 
-    if *mode != GenerationMode::Analyze
+    if payload.mode != GenerationMode::Analyze
         && rate
             > if is_tofino2 {
                 TG_MAX_RATE_TF2
@@ -281,40 +308,70 @@ pub fn validate_request(
 
     if let Some(histogram_config) = histogram_config {
         // Validate histogram configuration
-        validate_histogram(histogram_config)?;
+        validate_histogram(histogram_config, payload.name.clone())?;
     }
 
-    Ok(())
+    Ok(active_streams)
 }
 
-pub fn validate_histogram(request: &HashMap<String, RttHistogramConfig>) -> Result<(), Error> {
+pub fn validate_histogram(
+    request: &HashMap<String, RttHistogramConfig>,
+    test_name: Option<String>,
+) -> Result<(), Error> {
+    let mut num_requests = 0;
+
+    let mut t_name = "".to_string();
+    if let Some(name) = test_name {
+        t_name = format!(", Test: {name:?},");
+    }
+
     for (port, config) in request.iter() {
         let port: u32 = match port.parse() {
             Ok(p) => p,
             Err(_) => return Err(Error::new(format!("Invalid port number: {port}"))),
         };
         if config.min >= config.max {
-            return Err(Error::new(format!("Histogram config error port {port}: Minimum value must be less than maximum value of range.")));
+            return Err(Error::new(format!("Histogram config error {t_name} port {port}: Minimum value must be less than maximum value of range.")));
         }
         if config.num_bins > 500 {
-            return Err(Error::new(format!("Histogram config error port {port}: Too many bins. 500 bins per port are supported at maximum.")));
+            return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins. 500 bins per port are supported at maximum.")));
         }
         if config.num_bins > (config.max - config.min) {
-            return Err(Error::new(format!("Histogram config error port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
+            return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
+        }
+        if config.num_bins == 0 {
+            return Err(Error::new(format!("Histogram config error {t_name} port {port}: num_bins must be positive for histogram config.")));
         }
 
         if let Some(percentiles) = &config.percentiles {
             for p in percentiles.iter() {
                 if *p < 0.0 || *p > 1.0 {
                     return Err(Error::new(format!(
-                        "Histogram config error port {port}: Percentile {p} is not in range (0.0, 1.0)."
+                        "Histogram config error {t_name} port {port}: Percentile {p} is not in range (0.0, 1.0)."
                     )));
                 }
             }
             if percentiles.len() > 10 {
                 return Err(Error::new(format!(
-                    "Histogram config error port {port}: Too many percentiles. At most 10 percentiles are supported."
+                    "Histogram config error {t_name} port {port}: Too many percentiles. At most 10 percentiles are supported."
                 )));
+            }
+        }
+
+        // Calculate bin width based on config params
+        let bin_width = config.get_bin_width();
+
+        for bin_index in 0..config.num_bins {
+            // For each bin, write table entries
+            let start = config.min + bin_index * bin_width;
+            let mut end = start + bin_width - 1;
+            if end > config.max {
+                end = config.max;
+            }
+
+            num_requests += count_range_to_ternary_entries(start, end);
+            if num_requests > RTT_HISTOGRAM_TABLE_SIZE {
+                return Err(Error::new(format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")));
             }
         }
     }
@@ -322,7 +379,35 @@ pub fn validate_histogram(request: &HashMap<String, RttHistogramConfig>) -> Resu
     Ok(())
 }
 
-pub fn validate_multiple_test(tests: Vec<TrafficGenData>) -> Result<(), Error> {
+/// Applies a ligher version of the range to ternary conversion algorithm.
+/// This version only counts the number of required entries for validation.
+fn count_range_to_ternary_entries(start: u32, end: u32) -> u32 {
+    let mut num_requests = 0;
+    let mut cur = start;
+
+    while cur <= end {
+        let remaining = end - cur;
+        if remaining == 0 {
+            // Handle a single value case explicitly
+            num_requests += 1;
+            break;
+        }
+
+        let max_block_size = 1 << (31 - remaining.leading_zeros()); // largest power of two ≤ remaining
+        let align_size = 1 << cur.trailing_zeros(); // alignment constraint
+        let size = max_block_size.min(align_size);
+
+        num_requests += 1;
+        cur += size;
+    }
+    num_requests
+}
+
+pub fn validate_multiple_test(
+    tests: Vec<TrafficGenData>,
+    available_ports: &HashMap<u32, PortMapping>,
+    is_tofino2: bool,
+) -> Result<(), Error> {
     if tests.is_empty() {
         return Err(Error::new("No tests provided."));
     }
@@ -330,22 +415,36 @@ pub fn validate_multiple_test(tests: Vec<TrafficGenData>) -> Result<(), Error> {
     for (idx, test) in tests.iter().enumerate() {
         // Validate that each test has a name
         if test.name.is_none() {
-            warn!("Test with ID #{idx} has no name.");
             return Err(Error::new(format!("Test #{idx} has no name.")));
         }
 
         // Validate that names are unique
         if tests.iter().filter(|t| t.name == test.name).count() > 1 {
-            warn!("Test with ID #{idx} has a duplicate name.");
-            return Err(Error::new(format!("Test #{idx} has a duplicate name.")));
+            if let Some(name) = &test.name {
+                return Err(Error::new(format!("Test {name} has a duplicate name.")));
+            } else {
+                return Err(Error::new(format!("Test #{idx} has a duplicate name.")));
+            }
         }
 
         // Validate that each test has a duration
         if test.duration.is_none() || test.duration.is_some_and(|d| d == 0) {
             warn!(
-                "Test with ID #{} has no duration. It will run infinitely.",
+                "Test {} has no duration. It will run infinitely.",
                 test.name.clone().unwrap()
             );
+        }
+
+        match validate_request(test, available_ports, is_tofino2) {
+            Ok(_) => {}
+            Err(e) => {
+                if let Some(name) = &test.name {
+                    let m = e.message;
+                    return Err(Error::new(format!("Error in test {name}: {m:?}")));
+                } else {
+                    return Err(e);
+                }
+            }
         }
     }
 

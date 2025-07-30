@@ -23,7 +23,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -84,19 +84,6 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     }
 }
 
-/// Represents the result of a stream optimization.
-#[derive(Serialize)]
-pub struct Result {
-    /// Number of packets that are sent per `timeout`
-    n_packets: u16,
-    /// Timeout in ns until `n_packets` are generated
-    timeout: u32,
-    /// Target rate that should be generated.
-    rate: f64,
-    /// Rate accuracy according to `n_packets` and `timeout`
-    rate_accuracy: f32,
-}
-
 /// Method called on POST /trafficgen
 /// Starts the traffic generation with the specified settings in the POST body
 #[debug_handler]
@@ -147,7 +134,15 @@ pub async fn configure_traffic_gen(
     match payload {
         axum::Json(TrafficGenTests::SingleTest(traffic_gen_data)) => {
             // Just start a single test.
-            start_single_test(&state, traffic_gen_data).await
+            let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
+            match validate_request(&traffic_gen_data, &state.port_mapping, is_tofino2) {
+                Ok(r) => {
+                    info!("Test validation successful.");
+                    start_single_test(&state, traffic_gen_data).await;
+                    (StatusCode::OK, Json(r)).into_response()
+                }
+                Err(e) => (StatusCode::BAD_REQUEST, Json(e)).into_response(),
+            }
         }
         axum::Json(TrafficGenTests::MultipleTest(traffic_gen_datas)) => {
             // This starts an async task that sequentially runs all the tests.
@@ -156,9 +151,11 @@ pub async fn configure_traffic_gen(
                 .into_iter()
                 .map(|t: TrafficGenData| t.streams)
                 .collect();
+            let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
 
             // Request validation
-            match validate_multiple_test(traffic_gen_datas.clone()) {
+            match validate_multiple_test(traffic_gen_datas.clone(), &state.port_mapping, is_tofino2)
+            {
                 Ok(_) => {
                     state
                         .multiple_tests
@@ -192,26 +189,6 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
         .into_iter()
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
-
-    // Poisson traffic is only allowed to have a single stream
-    if payload.mode == GenerationMode::Poisson && active_streams.len() != 1 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(Error::new(
-                "Poisson generation mode only allows for one stream.",
-            )),
-        )
-            .into_response();
-    }
-
-    // no streams should be generated in monitor/analyze mode
-    if payload.mode == GenerationMode::Analyze && !active_streams.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(Error::new("No stream definition in analyze mode allowed.")),
-        )
-            .into_response();
-    }
 
     // Clear histogram config state and release lock when out of scope
     {
@@ -262,22 +239,7 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
     // required for analyze mode
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
-    let histogram_config = &payload.histogram_config;
-
     let tg = &mut state.traffic_generator.lock().await;
-
-    match validate_request(
-        &active_streams,
-        &active_stream_settings,
-        &payload.mode,
-        tx_rx_port_mapping,
-        state.port_mapping.clone(),
-        histogram_config,
-        tg.is_tofino2,
-    ) {
-        Ok(_) => {}
-        Err(e) => return (StatusCode::BAD_REQUEST, Json(e)).into_response(),
-    }
 
     match tg
         .start_traffic_generation(
