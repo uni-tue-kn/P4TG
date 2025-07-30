@@ -341,10 +341,23 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const exportSettings = () => {
         const settings = savedConfigs
 
-        console.log(savedConfigs)
+
+        const flattened_settings = Object.entries(settings).map(([key, value]) => {
+            // Filter stream_settings to only include active ones
+            const filteredStreamSettings = value.stream_settings.filter(
+                (setting) => setting.active
+            );
+
+            return {
+                ...value,
+                name: key,
+                stream_settings: filteredStreamSettings,
+            };
+        });
+
 
         const json = `data:text/json;charset=utf-8,${encodeURIComponent(
-            JSON.stringify(settings, null, "\t")
+            JSON.stringify(flattened_settings, null, "\t")
         )}`
 
         const link = document.createElement("a");
@@ -390,7 +403,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         return typeof val === 'object' && val !== null
             && 'streams' in val
             && 'stream_settings' in val
-        // you can add more checks if needed for safety
     }
 
     const loadSettings = (e: any) => {
@@ -405,8 +417,22 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
             if (typeof data === 'object' && data !== null) {
                 if (Object.values(data).every(isSingleTrafficGenData)) {
-                    // It's Record<string, TrafficGenData>
-                    new_config = data;
+                    // It's Record<string, TrafficGenData>, old format
+                    const typedData = data as Record<string, TrafficGenData>;
+                    for (let [key, value] of Object.entries(typedData)) {
+                        // Use the name in the test object as a key.
+                        // This deflates the POST:/api/trafficgen format back to the savedConfig format.
+                        if (value.name && typeof value.name === "string") {
+                            if (key !== value.name) {
+                                new_config[value.name] = value;
+                            } else {
+                                new_config[key] = value;
+                            }
+                        } else {
+                            // fallback if no name property
+                            new_config[key] = value;
+                        }
+                    }
 
                 } else if (isSingleTrafficGenData(data)) {
                     // It's a single TrafficGenData
