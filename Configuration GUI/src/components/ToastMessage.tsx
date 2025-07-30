@@ -7,9 +7,10 @@ interface Props {
     show: boolean
     delay?: number
     bg: ToastVariant
+    time: string,
 }
 
-const ToastMessage = ({ message, show, delay = 3000, bg }: Props) => {
+const ToastMessage = ({ message, show, delay = 3000, bg, time }: Props) => {
     const [visible, setVisible] = useState(show)
 
     useEffect(() => {
@@ -28,6 +29,15 @@ const ToastMessage = ({ message, show, delay = 3000, bg }: Props) => {
                 autohide
                 bg={bg}
             >
+                <Toast.Header>
+                    <strong className="me-auto">{{
+                        success: "Success",
+                        danger: "Error",
+                        info: "Info",
+                        warning: "Warning"
+                    }[bg]}</strong>
+                    <small>{time}</small>
+                </Toast.Header>
                 <Toast.Body className="text-white">{message}</Toast.Body>
             </Toast>
         </ToastContainer>
