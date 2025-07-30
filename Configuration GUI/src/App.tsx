@@ -128,14 +128,21 @@ const App = () => {
                             <Wrapper>
                                 <ASICVersion>{p4tg_infos.asic}</ASICVersion>
                                 {online ?
-                                    <Routes>
-                                        <Route path={""} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
-                                        <Route path={"/"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
-                                        <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
-                                        <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos} />} />
-                                        <Route path={"/tables"} element={<Tables />} />
-                                        <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} />} />
-                                    </Routes>
+                                    <>
+                                        <Routes>
+                                            <Route path={""} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                            <Route path={"/"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                            <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                            <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos} />} />
+                                            <Route path={"/tables"} element={<Tables />} />
+                                            <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                        </Routes>
+                                        <ToastMessage
+                                            show={toast.show}
+                                            message={toast.message}
+                                            bg={toast.bg as ToastVariant}
+                                        />
+                                    </>
                                     :
                                     <Offline setP4TGInfos={set_p4tg_infos} />
                                 }
@@ -145,13 +152,10 @@ const App = () => {
                     </AxiosInterceptor>
                 </Col>
             </Row>
+
         </Router>
 
-        <ToastMessage
-            show={toast.show}
-            message={toast.message}
-            bg={toast.bg as ToastVariant}
-        />
+
 
     </Loader>
 

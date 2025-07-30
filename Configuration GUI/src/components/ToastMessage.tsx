@@ -21,6 +21,7 @@ const ToastMessage = ({ message, show, delay = 3000, bg }: Props) => {
             <Toast
                 onClose={() => {
                     setVisible(false)
+                    message = ""
                 }}
                 show={visible}
                 delay={delay}
