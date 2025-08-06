@@ -573,7 +573,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         </Button>
 
                                         {/* Delete Button */}
-                                        {name !== Object.keys(savedConfigs)[0] && (
+                                        {Object.keys(savedConfigs).length > 1 && (
                                             <Button
                                                 size="sm"
                                                 disabled={running}
