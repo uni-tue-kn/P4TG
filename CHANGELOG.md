@@ -10,6 +10,7 @@
 - Replaced alert() popups with Bootstrap ToastMessages.
 - Added button to clone test configuration in frontend settings.
 - Only export active stream settings on settings export, reducing the size of the exported settings file by up to 90%.
+- Add API doc for POST:/api/traffic_gen with multiple test definitions.
 
 ### Bug fixes
 - Add missing API doc for `POST:/api/ports/` endpoint.

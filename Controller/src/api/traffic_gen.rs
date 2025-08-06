@@ -33,7 +33,8 @@ use crate::AppState;
 
 use crate::api::docs::traffic_gen::{
     EXAMPLE_GET_1, EXAMPLE_GET_2, EXAMPLE_POST_1_REQUEST, EXAMPLE_POST_1_RESPONSE,
-    EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST,
+    EXAMPLE_POST_2_REQUEST, EXAMPLE_POST_3_REQUEST, EXAMPLE_POST_3_RESPONSE,
+    EXAMPLE_POST_4_REQUEST, EXAMPLE_POST_4_RESPONSE,
 };
 use crate::core::traffic_gen_core::types::*;
 
@@ -94,7 +95,8 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
         content = TrafficGenData,
         examples(("Example 1" = (summary = "VxLAN 1024 (+50) byte @ 100 Gbps", value = json!(*EXAMPLE_POST_1_REQUEST))),
                  ("Example 2" = (summary = "VLAN 64 (+4) byte @ 80 Gbps", value = json!(*EXAMPLE_POST_2_REQUEST))),
-                 ("Example 3" = (summary = "Poisson @ 30 Gbps", value = json!(*EXAMPLE_POST_3_REQUEST)))
+                 ("Example 3" = (summary = "Poisson @ 30 Gbps", value = json!(*EXAMPLE_POST_3_REQUEST))),
+                 ("Example 4" = (summary = "Multiple tests", value = json!(*EXAMPLE_POST_4_REQUEST)))
         )
     ),
     responses(
@@ -102,7 +104,10 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
     description = "Returns the configured traffic generation.",
     body = [Stream],
     examples(("Example 1" = (summary = "VxLAN 1024 (+50) byte @ 100 Gbps", value = json!(*EXAMPLE_POST_1_RESPONSE))),
-             ("Example 2" = (summary = "VLAN 64 (+4) byte @ 80 Gbps", value = json!(*EXAMPLE_POST_1_RESPONSE)))
+             ("Example 2" = (summary = "VLAN 64 (+4) byte @ 80 Gbps", value = json!(*EXAMPLE_POST_1_RESPONSE))),
+             ("Example 3" = (summary = "Poisson @ 30 Gbps", value = json!(*EXAMPLE_POST_3_RESPONSE))),
+             ("Example 4" = (summary = "Multiple tests", value = json!(*EXAMPLE_POST_4_RESPONSE)))
+
     )),
     )
 )]
