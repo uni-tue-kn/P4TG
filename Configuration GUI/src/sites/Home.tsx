@@ -280,6 +280,20 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
             localStorage.setItem("histogram_config", JSON.stringify(stats.data.histogram_config))
 
+            // This copies TrafficGenData from the GET response into localStorage and config.
+            // It's needed to keep the state consistent if multiple tests were started directly via the REST API
+            if (stats.data.name) {
+                setSavedConfigs(prev => {
+                    const updatedConfigs = {
+                        ...prev,
+                        // @ts-ignore
+                        [stats.data.name]: stats.data,
+                    };
+                    localStorage.setItem("saved_configs", JSON.stringify(updatedConfigs));
+                    return updatedConfigs;
+                });
+            }
+
             set_running(true)
         } else {
             set_running(false)

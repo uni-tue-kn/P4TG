@@ -21,7 +21,8 @@
 - Fix stats not being shown in frontend for the most recent test if multiple tests were conducted and the last test was aborted.
 - Fix frontend crash if the backend controller is not reachable.
 - Fix displayed number of tests on dashboard.
-- Fixed a crash if histogram settings in one of multiple tests where invalid.
+- Fix a crash if histogram settings in one of multiple tests where invalid.
+- Fix results not being rendered for multiple tests in frontend, if tests were triggered via direct REST API calls.
 - Streamlined settings validation in backend. Validation errors are now properly propagated, even for multiple tests.
 
 ## v2.4.0
