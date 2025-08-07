@@ -1,6 +1,6 @@
 # Changelog 
 
-## v2.4.1
+## v2.5.0
 ### New features
 - Increase the number of supported streams to 15 on Tofino 2.
 - Percentiles to calculate from RTT histogram data are now configurable via the histogram_config struct in `POST:api/trafficgen`. Defaults to [0.25, 0.5, 0.75, 0.9].
@@ -11,6 +11,7 @@
 - Added button to clone test configuration in frontend settings.
 - Only export active stream settings on settings export, reducing the size of the exported settings file by up to 90%.
 - Add API doc for POST:/api/traffic_gen with multiple test definitions.
+- ⚠ Breaking change: Port configuration for StreamSettings, TX/RX port mapping, histograms, port config, ARP config, statistics and time_statistics now use the front panel numbers (e.g., 1-10) instead of dev_port numbers. This makes exported configurations portable across different Tofino devices.
 
 ### Bug fixes
 - Add missing API doc for `POST:/api/ports/` endpoint.

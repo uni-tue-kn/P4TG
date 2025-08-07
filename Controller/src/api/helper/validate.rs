@@ -18,9 +18,8 @@
 * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
 */
 
-use std::collections::HashMap;
-
 use log::warn;
+use std::collections::HashMap;
 
 use crate::api::server::Error;
 use crate::core::statistics::RttHistogramConfig;
@@ -29,7 +28,9 @@ use crate::core::traffic_gen_core::const_definitions::{
     MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, RTT_HISTOGRAM_TABLE,
     RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
-use crate::core::traffic_gen_core::helper::calculate_overhead;
+use crate::core::traffic_gen_core::helper::{
+    calculate_overhead, generate_front_panel_to_dev_port_mappings,
+};
 use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 use crate::PortMapping;
@@ -41,12 +42,24 @@ pub fn validate_request(
     available_ports: &HashMap<u32, PortMapping>,
     is_tofino2: bool,
 ) -> Result<Vec<Stream>, Error> {
+    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(available_ports);
+
     let active_stream_settings: Vec<StreamSetting> = payload
         .stream_settings
         .clone()
         .into_iter()
         .filter(|s| s.active)
         .collect();
+
+    // Validate that front panel port is available
+    for setting in active_stream_settings.iter() {
+        if !front_panel_dev_port_mappings.contains_key(&setting.port) {
+            return Err(Error::new(format!(
+                "No mapping for front panel port {:?} in StreamSettings. If you upgraded from version 2.4.0, the front panel port is now required as configuration index.",
+                setting.port
+            )));
+        }
+    }
 
     let active_stream_ids: Vec<u8> = active_stream_settings.iter().map(|s| s.stream_id).collect();
     let active_streams: Vec<Stream> = payload
@@ -57,7 +70,32 @@ pub fn validate_request(
         .collect();
 
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
+
+    // Validate that front panel port is available
+    for (tx, rx) in tx_rx_port_mapping.iter() {
+        if !front_panel_dev_port_mappings.contains_key(rx) {
+            return Err(Error::new(format!(
+                "No mapping for front panel port {rx:?} in TX-RX mapping. If you upgraded from version 2.4.0, the front panel port is now required as configuration index."
+            )));
+        }
+        if !front_panel_dev_port_mappings.contains_key(&tx.parse().unwrap_or(u32::MAX)) {
+            return Err(Error::new(format!(
+                "No mapping for front panel port {tx:?} in TX-RX mapping. If you upgraded from version 2.4.0, the front panel port is now required as configuration index."
+            )));
+        }
+    }
+
     let histogram_config = &payload.histogram_config;
+    // Validate that front panel port is available
+    if let Some(h_cfg) = histogram_config {
+        for (rx, _) in h_cfg.iter() {
+            if !front_panel_dev_port_mappings.contains_key(&rx.parse().unwrap_or(u32::MAX)) {
+                return Err(Error::new(format!(
+                "No mapping for front panel port {rx:?} in histogram config. If you upgraded from version 2.4.0, the front panel port is now required as configuration index."
+            )));
+            }
+        }
+    }
 
     // Poisson traffic is only allowed to have a single stream
     if payload.mode == GenerationMode::Poisson && active_streams.len() != 1 {
@@ -290,20 +328,6 @@ pub fn validate_request(
         return Err(Error::new(
             "Traffic rate in sum larger than maximal supported rate.",
         ));
-    }
-
-    // Verify that port is actually available on this device. This might happen if a configuration from another device is imported.
-    for (tx_port, rx_port) in tx_rx_port_mapping.iter() {
-        if !available_ports.contains_key(&tx_port.parse::<u32>().unwrap_or(0u32)) {
-            return Err(Error::new(format!(
-                "Configuration error: TX port {tx_port} is not available on this device."
-            )));
-        }
-        if !available_ports.contains_key(rx_port) {
-            return Err(Error::new(format!(
-                "Configuration error: RX port {rx_port} is not available on this device."
-            )));
-        }
     }
 
     if let Some(histogram_config) = histogram_config {

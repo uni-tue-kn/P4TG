@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 
+// TODO Adapt examples to new port description
+
 lazy_static! {
     pub static ref EXAMPLE_GET_1: TrafficGenData = TrafficGenData {
         name: None,
@@ -357,72 +359,140 @@ lazy_static! {
         number_of_srv6_sids: None,
         srv6_ip_tunneling: None,
     }];
-    pub static ref EXAMPLE_POST_4_REQUEST: TrafficGenData = TrafficGenData {
-        mode: GenerationMode::Cbr,
-        name: None,
-        stream_settings: vec![StreamSetting {
-            port: 128,
-            stream_id: 1,
-            ethernet: Ethernet {
-                eth_src: "32:D5:42:2A:F6:92".to_string(),
-                eth_dst: "81:E7:9D:E3:AD:47".to_string()
-            },
-            ip: None,
-            ipv6: Some(IPv6 {
-                ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
-                ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),
-                ipv6_traffic_class: 5,
-                ipv6_src_mask: Ipv6Addr::from_str("::").unwrap(),
-                ipv6_dst_mask: Ipv6Addr::from_str("::ff:ffff:ffff").unwrap(),
-                ipv6_flow_label: 3
-            }),
-            active: true,
-            vxlan: None,
-            mpls_stack: None,
-            srv6_base_header: Some(IPv6 {
-                ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
-                ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),
-                ipv6_traffic_class: 5,
-                ipv6_src_mask: Ipv6Addr::from_str("::").unwrap(),
-                ipv6_dst_mask: Ipv6Addr::from_str("::ff:ffff:ffff").unwrap(),
-                ipv6_flow_label: 3
-            }),
-            sid_list: Some(vec![
-                Ipv6Addr::from_str("ff80::").unwrap(),
-                Ipv6Addr::from_str("abc::").unwrap()
-            ]),
-            vlan: None
-        }],
-        streams: vec![Stream {
-            stream_id: 1,
-            app_id: 1,
-            frame_size: 1024,
-            encapsulation: Encapsulation::None,
-            traffic_rate: 100f32,
-            burst: 100,
-            batches: Some(true),
-            vxlan: false,
-            generation_accuracy: None,
-            n_packets: None,
-            n_pipes: None,
-            timeout: None,
-            number_of_lse: None,
-            ip_version: Some(6),
-            number_of_srv6_sids: Some(2),
-            srv6_ip_tunneling: Some(true),
-        }],
-        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
-        duration: None,
-        histogram_config: Some(HashMap::from([(
-            "136".to_string(),
-            RttHistogramConfig {
-                min: 1000,
-                max: 2000,
-                num_bins: 100,
-                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
-            }
-        )])),
-    };
+    pub static ref EXAMPLE_POST_4_REQUEST: Vec<TrafficGenData> = vec![
+        TrafficGenData {
+            mode: GenerationMode::Cbr,
+            stream_settings: vec![StreamSetting {
+                port: 128,
+                stream_id: 1,
+                ethernet: Ethernet {
+                    eth_src: "32:D5:42:2A:F6:92".to_string(),
+                    eth_dst: "81:E7:9D:E3:AD:47".to_string()
+                },
+                ip: None,
+                ipv6: Some(IPv6 {
+                    ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_traffic_class: 5,
+                    ipv6_src_mask: Ipv6Addr::from_str("::").unwrap(),
+                    ipv6_dst_mask: Ipv6Addr::from_str("::ff:ffff:ffff").unwrap(),
+                    ipv6_flow_label: 3
+                }),
+                active: true,
+                vxlan: None,
+                mpls_stack: None,
+                srv6_base_header: Some(IPv6 {
+                    ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_traffic_class: 5,
+                    ipv6_src_mask: Ipv6Addr::from_str("::").unwrap(),
+                    ipv6_dst_mask: Ipv6Addr::from_str("::ff:ffff:ffff").unwrap(),
+                    ipv6_flow_label: 3
+                }),
+                sid_list: Some(vec![
+                    Ipv6Addr::from_str("ff80::").unwrap(),
+                    Ipv6Addr::from_str("abc::").unwrap()
+                ]),
+                vlan: None
+            }],
+            streams: vec![Stream {
+                stream_id: 1,
+                app_id: 1,
+                frame_size: 1024,
+                encapsulation: Encapsulation::None,
+                traffic_rate: 100f32,
+                burst: 100,
+                batches: Some(true),
+                vxlan: false,
+                generation_accuracy: None,
+                n_packets: None,
+                n_pipes: None,
+                timeout: None,
+                number_of_lse: None,
+                ip_version: Some(6),
+                number_of_srv6_sids: Some(2),
+                srv6_ip_tunneling: Some(true),
+            }],
+            port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+            duration: Some(10),
+            histogram_config: Some(HashMap::from([(
+                "136".to_string(),
+                RttHistogramConfig {
+                    min: 1000,
+                    max: 2000,
+                    num_bins: 100,
+                    percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                }
+            )])),
+            name: Some("Test 1".to_string())
+        },
+        TrafficGenData {
+            mode: GenerationMode::Cbr,
+            stream_settings: vec![StreamSetting {
+                port: 128,
+                stream_id: 1,
+                ethernet: Ethernet {
+                    eth_src: "32:D5:42:2A:F6:92".to_string(),
+                    eth_dst: "81:E7:9D:E3:AD:47".to_string()
+                },
+                ip: None,
+                ipv6: Some(IPv6 {
+                    ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_traffic_class: 5,
+                    ipv6_src_mask: Ipv6Addr::from_str("::").unwrap(),
+                    ipv6_dst_mask: Ipv6Addr::from_str("::ff:ffff:ffff").unwrap(),
+                    ipv6_flow_label: 3
+                }),
+                active: true,
+                vxlan: None,
+                mpls_stack: None,
+                srv6_base_header: Some(IPv6 {
+                    ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_dst: Ipv6Addr::from_str("ff80::").unwrap(),
+                    ipv6_traffic_class: 5,
+                    ipv6_src_mask: Ipv6Addr::from_str("::").unwrap(),
+                    ipv6_dst_mask: Ipv6Addr::from_str("::ff:ffff:ffff").unwrap(),
+                    ipv6_flow_label: 3
+                }),
+                sid_list: Some(vec![
+                    Ipv6Addr::from_str("ff80::").unwrap(),
+                    Ipv6Addr::from_str("abc::").unwrap()
+                ]),
+                vlan: None
+            }],
+            streams: vec![Stream {
+                stream_id: 1,
+                app_id: 1,
+                frame_size: 1024,
+                encapsulation: Encapsulation::None,
+                traffic_rate: 100f32,
+                burst: 100,
+                batches: Some(true),
+                vxlan: false,
+                generation_accuracy: None,
+                n_packets: None,
+                n_pipes: None,
+                timeout: None,
+                number_of_lse: None,
+                ip_version: Some(6),
+                number_of_srv6_sids: Some(2),
+                srv6_ip_tunneling: Some(true),
+            }],
+            port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+            duration: Some(15),
+            histogram_config: Some(HashMap::from([(
+                "136".to_string(),
+                RttHistogramConfig {
+                    min: 1500,
+                    max: 2000,
+                    num_bins: 100,
+                    percentiles: Some(vec![0.25, 0.5, 0.75, 0.9, 0.99]),
+                }
+            )])),
+            name: Some("Another test".to_string())
+        }
+    ];
     pub static ref EXAMPLE_POST_4_RESPONSE: Vec<Stream> = vec![
         Stream {
             stream_id: 1,

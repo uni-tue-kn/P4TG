@@ -186,15 +186,15 @@ impl IATValues {
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct TimeStatistics {
     /// L1 send rates per test and port
-    pub(crate) tx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
+    pub(crate) tx_rate_l1: HashMap<u32, BTreeMap<u32, f64>>,
     /// L1 receive rates per test and port
-    pub(crate) rx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
+    pub(crate) rx_rate_l1: HashMap<u32, BTreeMap<u32, f64>>,
     /// Number of lost packets per test and port
-    pub(crate) packet_loss: BTreeMap<u32, BTreeMap<u32, u64>>,
+    pub(crate) packet_loss: HashMap<u32, BTreeMap<u32, u64>>,
     /// Number of out-of-order packets per test and port
-    pub(crate) out_of_order: BTreeMap<u32, BTreeMap<u32, u64>>,
+    pub(crate) out_of_order: HashMap<u32, BTreeMap<u32, u64>>,
     /// RTT values per test and port
-    pub(crate) rtt: BTreeMap<u32, BTreeMap<u32, u64>>,
+    pub(crate) rtt: HashMap<u32, BTreeMap<u32, u64>>,
     /// Name of the test those stats belong to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,

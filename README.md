@@ -2,7 +2,7 @@
  <img src="./logo.png" />
  <h2>P4TG: Traffic Generation for Ethernet/IP Networks</h2>
 
- ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.4.1-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
+ ![image](https://img.shields.io/badge/licence-Apache%202.0-blue) ![image](https://img.shields.io/badge/lang-rust-darkred) ![image](https://img.shields.io/badge/built%20with-P4-orange) ![image](https://img.shields.io/badge/v-2.5.0-yellow) [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml) [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
 
 </div>
 
@@ -33,7 +33,7 @@ In analysis mode, P4TG measures rates on the input ports, measures IATs, and for
 - P4TG (v2.3.2) supports IPv6, SRv6 (Tofino 2 only), many bug fixes, and a dark mode
 - P4TG (v2.3.3) bug fixes and dependency updates
 - P4TG (v2.4.0) Automated testing, live RTT histogram and percentile support
-- P4TG (v2.4.1) Statistics export, configurable percentiles, and bug fixes
+- P4TG (v2.5.0) Statistics export, configurable percentiles, and bug fixes
 
 See [Changelog](./CHANGELOG.md) for a full changelog.
 
@@ -130,6 +130,9 @@ Afterward, re-build the controller via `docker compose build` within the `Contro
 This will automatically build and copy the configuration GUI into the controller folder and create an image containing the modifications.
 
 # Update Guide
+
+Rebuild the data plane as described [above](#data-plane).
+For the controller, run `docker compose pull && docker compose up -d` to rebuild and recreate the docker image.
 
 If you update to a newer version, it might be necessary to delete your local storage in your browser for the configuration GUI.
 

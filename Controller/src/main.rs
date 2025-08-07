@@ -50,6 +50,7 @@ use crate::core::{
 pub struct PortMapping {
     pub tx_recirculation: u32,
     pub rx_recirculation: u32,
+    pub front_panel_port: u32,
     pub mac: MacAddr,
 }
 
@@ -163,6 +164,7 @@ async fn configure_ports(
                 tx_recirculation: tx_port,
                 rx_recirculation: rx_port,
                 mac: *mac,
+                front_panel_port: *port,
             },
         );
     }

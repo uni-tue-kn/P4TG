@@ -19,6 +19,7 @@
 
 use crate::api::docs;
 use crate::api::server::Error;
+use crate::core::traffic_gen_core::helper::generate_front_panel_to_dev_port_mappings;
 use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -29,7 +30,7 @@ use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PortConfiguration {
-    pid: u32,
+    front_panel_port: u32,
     speed: Speed,
     fec: FEC,
     auto_neg: AutoNegotiation,
@@ -81,7 +82,7 @@ pub struct PortStats {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ArpReply {
-    pid: u32,
+    front_panel_port: u32,
     arp_reply: bool,
 }
 
@@ -128,28 +129,41 @@ pub async fn add_port(
 ) -> Response {
     let pm = &state.pm;
 
-    match pm.frontpanel_port(payload.pid) {
-        Ok((port, channel)) => {
-            let mut req = Port::new(port, channel)
-                .speed(payload.speed.clone())
-                .fec(payload.fec.clone())
-                .auto_negotiation(payload.auto_neg.clone());
+    let front_panel_dev_port_mappings =
+        generate_front_panel_to_dev_port_mappings(&state.port_mapping);
 
-            if state.loopback_mode {
-                req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
-            }
-
-            match pm.update_port(&state.switch, &req).await {
-                Ok(_) => StatusCode::CREATED.into_response(),
-                Err(err) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(Error::new(format!("{err:#?}"))),
-                )
-                    .into_response(),
-            }
-        }
-        Err(err) => (
+    if !front_panel_dev_port_mappings.contains_key(&payload.front_panel_port) {
+        return (
             StatusCode::BAD_REQUEST,
+            Json(Error::new(format!(
+                "Port configuration for front panel port {:?} failed: Port not available",
+                payload.front_panel_port
+            ))),
+        )
+            .into_response();
+    }
+
+    let (_, channel) = pm
+        .frontpanel_port(
+            *front_panel_dev_port_mappings
+                .get(&payload.front_panel_port)
+                .unwrap(),
+        )
+        .unwrap_or((0, 0));
+
+    let mut req = Port::new(payload.front_panel_port, channel)
+        .speed(payload.speed.clone())
+        .fec(payload.fec.clone())
+        .auto_negotiation(payload.auto_neg.clone());
+
+    if state.loopback_mode {
+        req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+    }
+
+    match pm.update_port(&state.switch, &req).await {
+        Ok(_) => StatusCode::CREATED.into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
             Json(Error::new(format!("{err:#?}"))),
         )
             .into_response(),
@@ -159,23 +173,36 @@ pub async fn add_port(
 pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpReply>) -> Response {
     let mapping = &state.port_mapping;
 
-    match mapping.get(&payload.pid) {
-        Some(port) => {
+    let front_panel_dev_port_mappings =
+        generate_front_panel_to_dev_port_mappings(&state.port_mapping);
+
+    if !front_panel_dev_port_mappings.contains_key(&payload.front_panel_port) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(format!(
+                "ARP configuration for front panel port {:?} failed: Port not available",
+                payload.front_panel_port
+            ))),
+        )
+            .into_response();
+    }
+    let dev_port = front_panel_dev_port_mappings
+        .get(&payload.front_panel_port)
+        .unwrap();
+
+    match mapping.get(dev_port) {
+        Some(port_mapping) => {
             match &state
                 .arp_handler
-                .modify_arp(&state.switch, port, payload.arp_reply)
+                .modify_arp(&state.switch, port_mapping, payload.arp_reply)
                 .await
             {
                 Ok(_) => {
-                    let port = &state.pm.frontpanel_port(payload.pid);
-
-                    if let Ok((port, _)) = port {
-                        state
-                            .config
-                            .lock()
-                            .await
-                            .update_arp_state(*port, payload.arp_reply);
-                    }
+                    state
+                        .config
+                        .lock()
+                        .await
+                        .update_arp_state(payload.front_panel_port, payload.arp_reply);
 
                     StatusCode::CREATED.into_response()
                 }
@@ -189,8 +216,8 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
         None => (
             StatusCode::BAD_REQUEST,
             Json(Error::new(format!(
-                "PID {} is not configured.",
-                payload.pid
+                "Front panel port {} is not configured.",
+                payload.front_panel_port
             ))),
         )
             .into_response(),

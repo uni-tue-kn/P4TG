@@ -20,6 +20,9 @@
 use crate::core::statistics::{
     IATStatistics, IATValues, RTTStatistics, Statistics, TimeStatistics,
 };
+use crate::core::traffic_gen_core::helper::{
+    generate_dev_port_to_front_panel_mappings, translate_port_numbers,
+};
 use crate::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -166,6 +169,56 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<Statistics> {
         }
     };
 
+    let dev_port_to_front_panel_port_mappings =
+        generate_dev_port_to_front_panel_mappings(&state.port_mapping);
+
+    // Translate the internal dev port mappings to front_panel_ports
+    let stats = Statistics {
+        sample_mode: state.sample_mode,
+        frame_size: translate_port_numbers(
+            &stats.frame_size,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        frame_type_data: translate_port_numbers(
+            &stats.frame_type_data,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        tx_rate_l1: translate_port_numbers(
+            &stats.tx_rate_l1,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        tx_rate_l2: translate_port_numbers(
+            &stats.tx_rate_l2,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        rx_rate_l1: translate_port_numbers(
+            &stats.rx_rate_l1,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        rx_rate_l2: translate_port_numbers(
+            &stats.rx_rate_l2,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        app_tx_l2: translate_port_numbers(&stats.app_tx_l2, &dev_port_to_front_panel_port_mappings),
+        app_rx_l2: translate_port_numbers(&stats.app_rx_l2, &dev_port_to_front_panel_port_mappings),
+        iats: translate_port_numbers(&stats.iats, &dev_port_to_front_panel_port_mappings),
+        rtts: translate_port_numbers(&stats.rtts, &dev_port_to_front_panel_port_mappings),
+        packet_loss: translate_port_numbers(
+            &stats.packet_loss,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        out_of_order: translate_port_numbers(
+            &stats.out_of_order,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        elapsed_time: stats.elapsed_time,
+        rtt_histogram: translate_port_numbers(
+            &stats.rtt_histogram,
+            &dev_port_to_front_panel_port_mappings,
+        ),
+        name: stats.name.clone(),
+    };
+
     let mut all_stats = vec![stats];
     let previous_stats = state
         .multiple_tests
@@ -230,7 +283,7 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
     };
 
     // get every ratio-nth element
-    let tx: BTreeMap<u32, BTreeMap<u32, f64>> = stats
+    let tx: HashMap<u32, BTreeMap<u32, f64>> = stats
         .tx_rate_l1
         .clone()
         .into_iter()
@@ -244,7 +297,7 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
         })
         .collect();
 
-    let rx: BTreeMap<u32, BTreeMap<u32, f64>> = stats
+    let rx: HashMap<u32, BTreeMap<u32, f64>> = stats
         .rx_rate_l1
         .clone()
         .into_iter()
@@ -258,7 +311,7 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
         })
         .collect();
 
-    let packet_loss: BTreeMap<u32, BTreeMap<u32, u64>> = stats
+    let packet_loss: HashMap<u32, BTreeMap<u32, u64>> = stats
         .packet_loss
         .clone()
         .into_iter()
@@ -272,7 +325,7 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
         })
         .collect();
 
-    let out_of_order: BTreeMap<u32, BTreeMap<u32, u64>> = stats
+    let out_of_order: HashMap<u32, BTreeMap<u32, u64>> = stats
         .out_of_order
         .clone()
         .into_iter()
@@ -286,7 +339,7 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
         })
         .collect();
 
-    let rtt: BTreeMap<u32, BTreeMap<u32, u64>> = stats
+    let rtt: HashMap<u32, BTreeMap<u32, u64>> = stats
         .rtt
         .clone()
         .into_iter()
@@ -300,14 +353,18 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
         })
         .collect();
 
+    // Translate the internal dev port mappings to front_panel_ports
+    let dev_port_to_front_panel_port_mappings =
+        generate_dev_port_to_front_panel_mappings(&state.port_mapping);
+
     let name = state.traffic_generator.lock().await.name.clone();
     let new_time_stats = TimeStatistics {
-        tx_rate_l1: tx,
-        rx_rate_l1: rx,
-        packet_loss,
-        out_of_order,
-        rtt,
-        name,
+        tx_rate_l1: translate_port_numbers(&tx, &dev_port_to_front_panel_port_mappings),
+        rx_rate_l1: translate_port_numbers(&rx, &dev_port_to_front_panel_port_mappings),
+        packet_loss: translate_port_numbers(&packet_loss, &dev_port_to_front_panel_port_mappings),
+        out_of_order: translate_port_numbers(&out_of_order, &dev_port_to_front_panel_port_mappings),
+        rtt: translate_port_numbers(&rtt, &dev_port_to_front_panel_port_mappings),
+        name: name.clone(),
     };
 
     let mut all_time_stats = vec![new_time_stats];

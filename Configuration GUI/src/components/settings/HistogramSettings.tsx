@@ -17,7 +17,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { RttHistogramConfig } from "../../common/Interfaces";
+import { PortInfo, RttHistogramConfig } from "../../common/Interfaces";
 import React, { useState } from "react";
 import { StyledCol } from "../../sites/Settings";
 import HistogramModal from "./HistogramModal";
@@ -29,7 +29,7 @@ const HistogramSettings = ({
     data,
     set_data
 }: {
-    port: { pid: number, port: number, channel: number, loopback: string, status: boolean }
+    port: PortInfo
     mapping: { [name: number]: number },
     disabled: boolean,
     data: Record<string, RttHistogramConfig>,
@@ -37,7 +37,7 @@ const HistogramSettings = ({
 }) => {
     const [show, set_show] = useState(false)
 
-    const rx_pid = mapping[port.pid]
+    const rx_pid = mapping[port.port]
 
     return <>
         {rx_pid !== undefined && (

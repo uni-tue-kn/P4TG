@@ -1,9 +1,47 @@
+use std::collections::HashMap;
+
 use crate::core::traffic_gen_core::const_definitions::{
     P4TG_DST_PORT, P4TG_SOURCE_PORT, VX_LAN_UDP_PORT,
 };
 use crate::core::traffic_gen_core::types::*;
+use crate::PortMapping;
 use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
 use log::error;
+
+// Create a HashMap of front_panel -> dev_port from the port_mapping
+pub(crate) fn generate_front_panel_to_dev_port_mappings(
+    port_mapping: &HashMap<u32, PortMapping>,
+) -> HashMap<u32, u32> {
+    port_mapping
+        .iter()
+        .map(|(dev_port, mapping)| (mapping.front_panel_port, *dev_port))
+        .collect()
+}
+
+// Create a HashMap of dev_port -> front_panel from the port_mapping
+pub(crate) fn generate_dev_port_to_front_panel_mappings(
+    port_mapping: &HashMap<u32, PortMapping>,
+) -> HashMap<u32, u32> {
+    port_mapping
+        .iter()
+        .map(|(dev_port, mapping)| (*dev_port, mapping.front_panel_port))
+        .collect()
+}
+
+// Translate ports based on the mapping, e.g., retrieve dev_port number based on front_panel number
+pub(crate) fn translate_port_numbers<K, V>(
+    input: &HashMap<K, V>,
+    mapping: &HashMap<K, K>,
+) -> HashMap<K, V>
+where
+    K: Copy + Eq + std::hash::Hash,
+    V: Clone,
+{
+    input
+        .iter()
+        .filter_map(|(k, v)| mapping.get(k).map(|new_k| (*new_k, v.clone())))
+        .collect()
+}
 
 pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
     let mut encapsulation_overhead = match stream.encapsulation {
