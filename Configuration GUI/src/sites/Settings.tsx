@@ -285,7 +285,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
             ports.map((v, i) => {
                 if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                    set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.pid)])
+                    set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.port)])
                 }
             })
         }
@@ -324,10 +324,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         showToast(`Cloned "${name}" to "${clonedName}"`, "success");
     };
 
-    const updateHistogramSettings = (pid: number, updated: RttHistogramConfig) => {
+    const updateHistogramSettings = (front_panel_port: number, updated: RttHistogramConfig) => {
         const updatedData = {
             ...histogram_settings,
-            [String(pid)]: updated
+            [String(front_panel_port)]: updated
         };
         set_histogram_settings(updatedData);
         localStorage.setItem("histogram_config", JSON.stringify(updatedData)); // Optional but probably helpful
@@ -375,7 +375,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const fillPortsOnMissingSetting = (streams: Stream[], stream_settings: StreamSettings[]) => {
         // If the StreamSettings are not complete, i.e., not all ports are defined, they are not correctly rendered in the frontend.
         // Therefore, we fill the stream settings for each undefined port with a default stream.
-        const available_dev_ports: number[] = ports.slice(0, 10).map(p => p.pid);
+        const available_dev_ports: number[] = ports.slice(0, 10).map(p => p.port);
 
         streams.forEach(s => {
             const ports_from_settings: number[] = stream_settings.filter(setting => setting.port && setting.stream_id == s.stream_id).map(setting => setting.port);
@@ -443,17 +443,17 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 }
             }
 
-            Object.entries(new_config).forEach(([name, config]) => {
-                console.log(config)
+            for (const [name, config] of Object.entries(new_config)) {
                 if (!validateStreams(config.streams) || !validateStreamSettings(config.stream_settings)) {
                     showToast("Settings not valid for config " + name + ". Please check the file.", "danger")
                     // @ts-ignore
                     ref.current.value = ""
-                } else if (!validatePorts(config.port_tx_rx_mapping, ports)) {
-                    showToast("Settings not valid for config " + name + ". Configured dev_port IDs are not available on this device.", "danger")
-                } else {
+                    return;
+                } else if (!validatePorts(config.port_tx_rx_mapping, ports, p4tg_infos)) {
+                    showToast("Settings not valid for config " + name + ". Configured front panel ports are not available on this device.", "danger")
+                    return;
                 }
-            });
+            };
 
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(new_config))
 
@@ -468,7 +468,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
             showToast("Settings imported successfully.", "success")
 
-            window.location.reload()
         }
     }
 
@@ -815,15 +814,15 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                         <StyledCol>{v.port} ({v.pid})</StyledCol>
                                                         <StyledCol className="d-flex align-items-center gap-2">
                                                             <Form.Select disabled={running || !v.status} required
-                                                                defaultValue={port_tx_rx_mapping[v.pid] || -1}
+                                                                defaultValue={port_tx_rx_mapping[v.port] || -1}
                                                                 onChange={(event: any) => {
                                                                     const value = parseInt(event.target.value);
                                                                     const updatedMapping = { ...port_tx_rx_mapping };
 
                                                                     if (value === -1) {
-                                                                        delete updatedMapping[v.pid]
+                                                                        delete updatedMapping[v.port]
                                                                     } else {
-                                                                        updatedMapping[v.pid] = parseInt(event.target.value);
+                                                                        updatedMapping[v.port] = parseInt(event.target.value);
                                                                     }
 
                                                                     set_port_tx_rx_mapping(updatedMapping);
@@ -832,7 +831,9 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 {ports.map((v, i) => {
                                                                     if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                                                                         return <option key={i}
-                                                                            value={v.pid}>{v.port} ({v.pid})</option>
+                                                                            value={v.port}>
+                                                                            {v.port} ({v.pid})
+                                                                        </option>
                                                                     }
                                                                 })
                                                                 }

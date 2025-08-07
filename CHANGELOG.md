@@ -25,6 +25,7 @@
 - Fix results not being rendered for multiple tests in frontend, if tests were triggered via direct REST API calls.
 - Streamlined settings validation in backend. Validation errors are now properly propagated, even for multiple tests.
 - Fix crash of settings import of malformed data.
+- Fix port and stream setting config validation on settings import.
 
 ## v2.4.0
 ### New features
