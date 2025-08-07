@@ -140,35 +140,39 @@ export const validateStreamSettings = (setting: StreamSettings[]) => {
         return false
     }
 
-    setting.forEach((streamSetting, _) => {
-        // Verify and add missing fields in the main stream settings object
-        Object.keys(defaultStreamSetting).forEach(key => {
-            // @ts-ignore
-            if (!Object.prototype.hasOwnProperty.call(streamSetting, key) || streamSetting[key] === null) {
-                // @ts-ignore: Add missing key with default value
-                streamSetting[key] = defaultStreamSetting[key];
-            }
-        });
-
-        // Validate and add missing keys in specific nested properties (e.g., vlan, ethernet, ip, vxlan)
-        Object.keys(defaultStreamSetting).every(key => {
-            // @ts-ignore
-            if (!streamSetting[key]) {
-                // If the nested key is completely missing, add it
-                // @ts-ignore: Add the entire nested key with defaults
-                streamSetting[key] = defaultStreamSetting[key];
-            } else {
-                // If the nested key exists, validate and add individual missing keys
+    if (Array.isArray(setting)) {
+        setting.forEach((streamSetting, _) => {
+            // Verify and add missing fields in the main stream settings object
+            Object.keys(defaultStreamSetting).forEach(key => {
                 // @ts-ignore
-                Object.keys(defaultStreamSetting[key]).forEach(settingKey => {
+                if (!Object.prototype.hasOwnProperty.call(streamSetting, key) || streamSetting[key] === null) {
+                    // @ts-ignore: Add missing key with default value
+                    streamSetting[key] = defaultStreamSetting[key];
+                }
+            });
+
+            // Validate and add missing keys in specific nested properties (e.g., vlan, ethernet, ip, vxlan)
+            Object.keys(defaultStreamSetting).every(key => {
+                // @ts-ignore
+                if (!streamSetting[key]) {
+                    // If the nested key is completely missing, add it
+                    // @ts-ignore: Add the entire nested key with defaults
+                    streamSetting[key] = defaultStreamSetting[key];
+                } else {
+                    // If the nested key exists, validate and add individual missing keys
                     // @ts-ignore
-                    if (!Object.prototype.hasOwnkey.call(streamSetting[key], settingKey)) {
-                        // @ts-ignore: Add the missing key with its default value
-                        streamSetting[key][settingKey] = defaultStreamSetting[key][settingKey];
-                    }
-                });
-            }
+                    Object.keys(defaultStreamSetting[key]).forEach(settingKey => {
+                        // @ts-ignore
+                        if (!Object.prototype.hasOwnkey.call(streamSetting[key], settingKey)) {
+                            // @ts-ignore: Add the missing key with its default value
+                            streamSetting[key][settingKey] = defaultStreamSetting[key][settingKey];
+                        }
+                    });
+                }
+            });
         });
-    });
-    return true;
+        return true;
+    } else {
+        return false
+    }
 }

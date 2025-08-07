@@ -24,6 +24,7 @@
 - Fix a crash if histogram settings in one of multiple tests where invalid.
 - Fix results not being rendered for multiple tests in frontend, if tests were triggered via direct REST API calls.
 - Streamlined settings validation in backend. Validation errors are now properly propagated, even for multiple tests.
+- Fix crash of settings import of malformed data.
 
 ## v2.4.0
 ### New features
