@@ -29,7 +29,6 @@
 - Fix crash of settings import of malformed data.
 - Fix port and stream setting config validation on settings import.
 
-
 ## v2.4.0
 ### New features
 - Live RTT histogram generation (#16)
