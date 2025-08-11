@@ -55,7 +55,7 @@ pub fn validate_request(
     for setting in active_stream_settings.iter() {
         if !front_panel_dev_port_mappings.contains_key(&setting.port) {
             return Err(Error::new(format!(
-                "No mapping for front panel port {:?} in StreamSettings. If you upgraded from version 2.4.0, the front panel port is now required as configuration index.",
+                "No mapping for front panel port {:?} in StreamSettings. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number.",
                 setting.port
             )));
         }
@@ -75,12 +75,12 @@ pub fn validate_request(
     for (tx, rx) in tx_rx_port_mapping.iter() {
         if !front_panel_dev_port_mappings.contains_key(rx) {
             return Err(Error::new(format!(
-                "No mapping for front panel port {rx:?} in TX-RX mapping. If you upgraded from version 2.4.0, the front panel port is now required as configuration index."
+                "No mapping for front panel port {rx:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
             )));
         }
         if !front_panel_dev_port_mappings.contains_key(&tx.parse().unwrap_or(u32::MAX)) {
             return Err(Error::new(format!(
-                "No mapping for front panel port {tx:?} in TX-RX mapping. If you upgraded from version 2.4.0, the front panel port is now required as configuration index."
+                "No mapping for front panel port {tx:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
             )));
         }
     }
@@ -91,7 +91,7 @@ pub fn validate_request(
         for (rx, _) in h_cfg.iter() {
             if !front_panel_dev_port_mappings.contains_key(&rx.parse().unwrap_or(u32::MAX)) {
                 return Err(Error::new(format!(
-                "No mapping for front panel port {rx:?} in histogram config. If you upgraded from version 2.4.0, the front panel port is now required as configuration index."
+                "No mapping for front panel port {rx:?} in histogram config. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
             )));
             }
         }

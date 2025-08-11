@@ -2,19 +2,20 @@
 
 ## v2.5.0
 ### New features
+- ⚠ Breaking change: Port configuration for StreamSettings, TX/RX port mapping, histograms, port config, ARP config, statistics and time_statistics now use the front panel numbers (e.g., 1-10) instead of dev_port numbers. This makes exported configurations portable across different Tofino devices.
+- ⚠ Schema change: `GET:/api/statistics` and `GET:/api/time_statistics` now returns an array of all test results. This facilitates data analysis.
 - Increase the number of supported streams to 15 on Tofino 2.
 - Percentiles to calculate from RTT histogram data are now configurable via the histogram_config struct in `POST:api/trafficgen`. Defaults to [0.25, 0.5, 0.75, 0.9].
 - Added JSON export feature of collected statistics over time after a test.
-- ⚠ Schema change: `GET:/api/statistics` and `GET:/api/time_statistics` now returns an array of all test results. This facilitates data analysis.
 - Display 'Status: Error' on dashboard if a histogram measurement has outliers.
 - Replaced alert() popups with Bootstrap ToastMessages.
 - Added button to clone test configuration in frontend settings.
 - Only export active stream settings on settings export, reducing the size of the exported settings file by up to 90%.
-- Add API doc for POST:/api/traffic_gen with multiple test definitions.
-- ⚠ Breaking change: Port configuration for StreamSettings, TX/RX port mapping, histograms, port config, ARP config, statistics and time_statistics now use the front panel numbers (e.g., 1-10) instead of dev_port numbers. This makes exported configurations portable across different Tofino devices.
+- Data returned from `GET:/api/statistics` and `GET:/api/time_statistics` now only contains data for active ports (either contained in stream_settings, or in tx_rx_mapping). This reduces the overall size of the HTTP response by up to 90%.
 
 ### Bug fixes
 - Add missing API doc for `POST:/api/ports/` endpoint.
+- Add API doc for POST:/api/traffic_gen with multiple test definitions.
 - Removed `POST:/api/histogram` endpoint. This feature is included in `POST:api/trafficgen`.
 - Added example for histogram configuration to `POST:api/trafficgen` API doc.
 - Fix crash if no TX RX mapping is configured.
@@ -27,6 +28,7 @@
 - Streamlined settings validation in backend. Validation errors are now properly propagated, even for multiple tests.
 - Fix crash of settings import of malformed data.
 - Fix port and stream setting config validation on settings import.
+
 
 ## v2.4.0
 ### New features
