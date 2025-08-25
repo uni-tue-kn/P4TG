@@ -11,7 +11,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "2.4.0"
+    "version": "2.5.0"
   },
   "paths": {
     "/api/histogram": {
@@ -38,68 +38,6 @@
                   }
                 },
                 "example": "{\"136\":{\"max\":2500,\"min\":1500,\"num_bins\":50},\"144\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"152\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"160\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"168\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"176\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"184\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"192\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"312\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"320\":{\"max\":2500,\"min\":1500,\"num_bins\":10}}"
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "histogram"
-        ],
-        "summary": "Method called on POST /histogram\nConfigures the histogram settings for the specified RX dev port.",
-        "operationId": "configure_histogram",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HistogramConfigRequest"
-              },
-              "examples": {
-                "Example 1": {
-                  "summary": "Range 1500-2000ns with 50 bins",
-                  "value": {
-                    "config": {
-                      "max": 2000,
-                      "min": 1500,
-                      "num_bins": 50
-                    },
-                    "port": 136
-                  }
-                }
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Returns the configured histogram config.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "$ref": "#/components/schemas/RttHistogramConfig"
-                  },
-                  "propertyNames": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  }
-                },
-                "examples": {
-                  "Example 1": {
-                    "summary": "Range 1500-2000ns with 50 bins",
-                    "value": {
-                      "136": {
-                        "max": 2000,
-                        "min": 1500,
-                        "num_bins": 50
-                      }
-                    }
-                  }
-                }
               }
             }
           }
@@ -146,6 +84,34 @@
                 "example": "[{\"auto_neg\":\"PM_AN_DEFAULT\",\"channel\":0,\"enable\":true,\"fec\":\"BF_FEC_TYP_NONE\",\"loopback\":\"BF_LPBK_NONE\",\"pid\":128,\"port\":1,\"speed\":\"BF_SPEED_100G\",\"status\":true},{\"auto_neg\":\"PM_AN_DEFAULT\",\"channel\":0,\"enable\":true,\"fec\":\"BF_FEC_TYP_NONE\",\"loopback\":\"BF_LPBK_NONE\",\"pid\":136,\"port\":2,\"speed\":\"BF_SPEED_100G\",\"status\":true}]"
               }
             }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ports"
+        ],
+        "summary": "Configures a port",
+        "operationId": "add_port",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Pet"
+              },
+              "examples": {
+                "Example 1": {
+                  "summary": "Configure dev port 136 with 100G, no FEC, and auto negotiation.",
+                  "value": "[{\"auto_neg\":\"PM_AN_DEFAULT\",\"fec\":\"BF_FEC_TYP_NONE\",\"pid\":136,\"speed\":\"BF_SPEED_100G\"}]"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
           }
         }
       }
@@ -231,7 +197,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Statistics"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Statistics"
+                  }
                 },
                 "example": "{\"app_rx_l2\":{\"128\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"136\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"144\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"152\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"160\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"168\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"176\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"184\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"52\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"60\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0}},\"app_tx_l2\":{\"128\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"136\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"144\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"152\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"160\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"168\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"176\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"184\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"52\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"60\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0}},\"elapsed_time\":0,\"frame_size\":{\"128\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":1763654244},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"136\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":1763654244},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"144\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"152\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"160\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"168\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"176\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"184\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"52\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"60\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]}},\"frame_type_data\":{\"128\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":1763654244,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":1763654244}},\"136\":{\"rx\":{\"arp\":0,\"ipv4\":1763654244,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":1763654244},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"144\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"152\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"160\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"168\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"176\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"184\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"52\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"60\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}}},\"iats\":{\"128\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":1.0767169,\"mean\":10.758202,\"n\":166744604,\"std\":null}},\"136\":{\"rx\":{\"mae\":1.0738868,\"mean\":10.758202,\"n\":166744605,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"144\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"152\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"160\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"168\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"176\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"184\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"52\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"60\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}}},\"out_of_order\":{\"128\":0,\"136\":0,\"144\":0,\"152\":0,\"160\":0,\"168\":0,\"176\":0,\"184\":0,\"52\":0,\"60\":0},\"packet_loss\":{\"128\":0,\"136\":0,\"144\":0,\"152\":0,\"160\":0,\"168\":0,\"176\":0,\"184\":0,\"52\":0,\"60\":0},\"rtts\":{\"136\":{\"current\":1040,\"jitter\":5.407541284205046,\"max\":1060,\"mean\":1040.6738382099827,\"min\":1020,\"n\":1162}},\"rx_rate_l1\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"rx_rate_l2\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"sample_mode\":false,\"tx_rate_l1\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"tx_rate_l2\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0}}"
               }
@@ -296,7 +265,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TimeStatistics"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TimeStatistics"
+                  }
                 },
                 "example": "{\"out_of_order\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"packet_loss\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":17896232,\"1\":41711833,\"2\":65527482,\"3\":89343132,\"4\":113158704,\"5\":136974370},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"rtt\":{\"144\":{\"0\":2507,\"1\":2501,\"2\":2519,\"3\":2506,\"4\":2510,\"5\":2510}},\"rx_rate_l1\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":25185835458.60229,\"1\":99999989456.00134,\"2\":100000006703.98941,\"3\":99999993656.00053,\"4\":99999999204.00131,\"5\":100000000855.99998},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"tx_rate_l1\":{\"136\":{\"0\":100137345491.58797,\"1\":397599999034.4001,\"2\":397599997160.0049,\"3\":397600000624.8,\"4\":397599999943.2001,\"5\":397600001022.3999},\"144\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":100137345491.58797,\"1\":397599999034.4001,\"2\":397599995967.2069,\"3\":397600001419.9999,\"4\":397600001533.59735,\"5\":397599999432.00006},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":100137345391.45062,\"1\":397599999034.4001,\"2\":397599996364.8062,\"3\":397599999829.6,\"4\":397600001135.99805,\"5\":397600002215.1999},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}}}"
               }
@@ -325,7 +297,19 @@
                     "summary": "First example",
                     "value": {
                       "duration": 10,
-                      "histogram_config": null,
+                      "histogram_config": {
+                        "136": {
+                          "max": 2000,
+                          "min": 1000,
+                          "num_bins": 100,
+                          "percentiles": [
+                            0.25,
+                            0.5,
+                            0.75,
+                            0.9
+                          ]
+                        }
+                      },
                       "mode": 1,
                       "port_tx_rx_mapping": {
                         "128": 136
@@ -379,7 +363,19 @@
                     "summary": "Second example",
                     "value": {
                       "duration": null,
-                      "histogram_config": null,
+                      "histogram_config": {
+                        "136": {
+                          "max": 2000,
+                          "min": 1000,
+                          "num_bins": 100,
+                          "percentiles": [
+                            0.25,
+                            0.5,
+                            0.75,
+                            0.9
+                          ]
+                        }
+                      },
                       "mode": 1,
                       "port_tx_rx_mapping": {
                         "128": 136
@@ -463,7 +459,19 @@
                   "summary": "VxLAN 1024 (+50) byte @ 100 Gbps",
                   "value": {
                     "duration": null,
-                    "histogram_config": null,
+                    "histogram_config": {
+                      "136": {
+                        "max": 2000,
+                        "min": 1000,
+                        "num_bins": 100,
+                        "percentiles": [
+                          0.25,
+                          0.5,
+                          0.75,
+                          0.9
+                        ]
+                      }
+                    },
                     "mode": 1,
                     "port_tx_rx_mapping": {
                       "128": 136
@@ -514,7 +522,19 @@
                   "summary": "VLAN 64 (+4) byte @ 80 Gbps",
                   "value": {
                     "duration": null,
-                    "histogram_config": null,
+                    "histogram_config": {
+                      "136": {
+                        "max": 2000,
+                        "min": 1000,
+                        "num_bins": 100,
+                        "percentiles": [
+                          0.25,
+                          0.5,
+                          0.75,
+                          0.9
+                        ]
+                      }
+                    },
                     "mode": 1,
                     "port_tx_rx_mapping": {
                       "128": 136
@@ -602,6 +622,146 @@
                       }
                     ]
                   }
+                },
+                "Example 4": {
+                  "summary": "Multiple tests",
+                  "value": [
+                    {
+                      "duration": 10,
+                      "histogram_config": {
+                        "136": {
+                          "max": 2000,
+                          "min": 1000,
+                          "num_bins": 100,
+                          "percentiles": [
+                            0.25,
+                            0.5,
+                            0.75,
+                            0.9
+                          ]
+                        }
+                      },
+                      "mode": 1,
+                      "name": "Test 1",
+                      "port_tx_rx_mapping": {
+                        "128": 136
+                      },
+                      "stream_settings": [
+                        {
+                          "active": true,
+                          "ethernet": {
+                            "eth_dst": "81:E7:9D:E3:AD:47",
+                            "eth_src": "32:D5:42:2A:F6:92"
+                          },
+                          "ipv6": {
+                            "ipv6_dst": "ff80::",
+                            "ipv6_dst_mask": "::ff:ffff:ffff",
+                            "ipv6_flow_label": 3,
+                            "ipv6_src": "ff80::",
+                            "ipv6_src_mask": "::",
+                            "ipv6_traffic_class": 5
+                          },
+                          "port": 128,
+                          "sid_list": [
+                            "ff80::",
+                            "abc::"
+                          ],
+                          "srv6_base_header": {
+                            "ipv6_dst": "ff80::",
+                            "ipv6_dst_mask": "::ff:ffff:ffff",
+                            "ipv6_flow_label": 3,
+                            "ipv6_src": "ff80::",
+                            "ipv6_src_mask": "::",
+                            "ipv6_traffic_class": 5
+                          },
+                          "stream_id": 1
+                        }
+                      ],
+                      "streams": [
+                        {
+                          "app_id": 1,
+                          "batches": true,
+                          "burst": 100,
+                          "encapsulation": 0,
+                          "frame_size": 1024,
+                          "ip_version": 6,
+                          "number_of_srv6_sids": 2,
+                          "srv6_ip_tunneling": true,
+                          "stream_id": 1,
+                          "traffic_rate": 100.0,
+                          "vxlan": false
+                        }
+                      ]
+                    },
+                    {
+                      "duration": 15,
+                      "histogram_config": {
+                        "136": {
+                          "max": 2000,
+                          "min": 1500,
+                          "num_bins": 100,
+                          "percentiles": [
+                            0.25,
+                            0.5,
+                            0.75,
+                            0.9,
+                            0.99
+                          ]
+                        }
+                      },
+                      "mode": 1,
+                      "name": "Another test",
+                      "port_tx_rx_mapping": {
+                        "128": 136
+                      },
+                      "stream_settings": [
+                        {
+                          "active": true,
+                          "ethernet": {
+                            "eth_dst": "81:E7:9D:E3:AD:47",
+                            "eth_src": "32:D5:42:2A:F6:92"
+                          },
+                          "ipv6": {
+                            "ipv6_dst": "ff80::",
+                            "ipv6_dst_mask": "::ff:ffff:ffff",
+                            "ipv6_flow_label": 3,
+                            "ipv6_src": "ff80::",
+                            "ipv6_src_mask": "::",
+                            "ipv6_traffic_class": 5
+                          },
+                          "port": 128,
+                          "sid_list": [
+                            "ff80::",
+                            "abc::"
+                          ],
+                          "srv6_base_header": {
+                            "ipv6_dst": "ff80::",
+                            "ipv6_dst_mask": "::ff:ffff:ffff",
+                            "ipv6_flow_label": 3,
+                            "ipv6_src": "ff80::",
+                            "ipv6_src_mask": "::",
+                            "ipv6_traffic_class": 5
+                          },
+                          "stream_id": 1
+                        }
+                      ],
+                      "streams": [
+                        {
+                          "app_id": 1,
+                          "batches": true,
+                          "burst": 100,
+                          "encapsulation": 0,
+                          "frame_size": 1024,
+                          "ip_version": 6,
+                          "number_of_srv6_sids": 2,
+                          "srv6_ip_tunneling": true,
+                          "stream_id": 1,
+                          "traffic_rate": 100.0,
+                          "vxlan": false
+                        }
+                      ]
+                    }
+                  ]
                 }
               }
             }
@@ -659,6 +819,65 @@
                         "vxlan": true
                       }
                     ]
+                  },
+                  "Example 3": {
+                    "summary": "Poisson @ 30 Gbps",
+                    "value": [
+                      {
+                        "app_id": 1,
+                        "batches": true,
+                        "burst": 100,
+                        "encapsulation": 1,
+                        "frame_size": 64,
+                        "generation_accuracy": 100.0,
+                        "ip_version": 4,
+                        "n_packets": 5,
+                        "n_pipes": 2,
+                        "stream_id": 1,
+                        "timeout": 88,
+                        "traffic_rate": 30.0,
+                        "vxlan": false
+                      }
+                    ]
+                  },
+                  "Example 4": {
+                    "summary": "Multiple tests",
+                    "value": [
+                      {
+                        "app_id": 1,
+                        "batches": true,
+                        "burst": 100,
+                        "encapsulation": 4,
+                        "frame_size": 1024,
+                        "generation_accuracy": 99.9111099243164,
+                        "ip_version": 6,
+                        "n_packets": 1,
+                        "n_pipes": 4,
+                        "number_of_srv6_sids": 2,
+                        "srv6_ip_tunneling": true,
+                        "stream_id": 1,
+                        "timeout": 360,
+                        "traffic_rate": 100.0,
+                        "vxlan": false
+                      },
+                      {
+                        "app_id": 1,
+                        "batches": true,
+                        "burst": 100,
+                        "encapsulation": 4,
+                        "frame_size": 1024,
+                        "generation_accuracy": 99.9111099243164,
+                        "ip_version": 6,
+                        "n_packets": 1,
+                        "n_pipes": 4,
+                        "number_of_srv6_sids": 2,
+                        "srv6_ip_tunneling": true,
+                        "stream_id": 1,
+                        "timeout": 360,
+                        "traffic_rate": 100.0,
+                        "vxlan": false
+                      }
+                    ]
                   }
                 }
               }
@@ -700,7 +919,497 @@
           "Tofino2"
         ]
       },
-      "CommonStatistics": {
+      "EmptyResponse": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Not running."
+          }
+        }
+      },
+      "Encapsulation": {
+        "type": "string",
+        "description": "Describes the supported encapsulations of P4TG.\nCurrently, MPLS, VLAN, QinQ, and SRv6 are supported.\n\n[Encapsulation::None] corresponds to plain Ethernet | IP packet.",
+        "enum": [
+          "None",
+          "Vlan",
+          "QinQ",
+          "Mpls",
+          "SRv6"
+        ]
+      },
+      "Ethernet": {
+        "type": "object",
+        "required": [
+          "eth_src",
+          "eth_dst"
+        ],
+        "properties": {
+          "eth_dst": {
+            "type": "string",
+            "description": "Destination Ethernet mac",
+            "example": "d6:67:75:a1:94:c3"
+          },
+          "eth_src": {
+            "type": "string",
+            "description": "Source Ethernet mac",
+            "example": "00:d0:67:a2:a9:42"
+          }
+        }
+      },
+      "GenerationMode": {
+        "type": "string",
+        "description": "Describes the used generation mode",
+        "enum": [
+          "Cbr",
+          "Mpps",
+          "Poisson",
+          "Analyze"
+        ]
+      },
+      "IATStatistics": {
+        "type": "object",
+        "required": [
+          "tx",
+          "rx"
+        ],
+        "properties": {
+          "rx": {
+            "$ref": "#/components/schemas/IATValues",
+            "description": "RX path"
+          },
+          "tx": {
+            "$ref": "#/components/schemas/IATValues",
+            "description": "TX path"
+          }
+        }
+      },
+      "IATValues": {
+        "type": "object",
+        "required": [
+          "mean",
+          "mae",
+          "n"
+        ],
+        "properties": {
+          "mae": {
+            "type": "number",
+            "format": "float",
+            "description": "Mean absolute error. Only calculated if sample mode is false.\nThis value is directly calculated in the data plane."
+          },
+          "mean": {
+            "type": "number",
+            "format": "float",
+            "description": "Mean value. Either based on samples or computed in the data plane.\nSee sample mode."
+          },
+          "n": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of IAT samples. Only valid if sample mode is true.",
+            "minimum": 0
+          },
+          "std": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Standard deviation. Only calculated if sample mode is true."
+          }
+        }
+      },
+      "IPv4": {
+        "type": "object",
+        "required": [
+          "ip_src",
+          "ip_dst",
+          "ip_tos",
+          "ip_src_mask",
+          "ip_dst_mask"
+        ],
+        "properties": {
+          "ip_dst": {
+            "type": "string",
+            "description": "Destination IPv4 address",
+            "example": "192.168.178.10"
+          },
+          "ip_dst_mask": {
+            "type": "string",
+            "description": "Mask that is used to randomize the IP dst address.\n255.255.255.255 means that all bytes in the IP address are randomized.",
+            "example": "255.0.0.0"
+          },
+          "ip_src": {
+            "type": "string",
+            "description": "Source IPv4 address",
+            "example": "192.168.178.10"
+          },
+          "ip_src_mask": {
+            "type": "string",
+            "description": "Mask that is used to randomize the IP src address.\n255.255.255.255 means that all bytes in the IP address are randomized.",
+            "example": "255.0.0.0"
+          },
+          "ip_tos": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "IPv6": {
+        "type": "object",
+        "required": [
+          "ipv6_src",
+          "ipv6_dst",
+          "ipv6_traffic_class",
+          "ipv6_src_mask",
+          "ipv6_dst_mask",
+          "ipv6_flow_label"
+        ],
+        "properties": {
+          "ipv6_dst": {
+            "type": "string",
+            "description": "Destination IPv4 address",
+            "example": "fe80::1766:cf5:f031:eba3"
+          },
+          "ipv6_dst_mask": {
+            "type": "string",
+            "description": "Mask that is used to randomize the IP dst address. The 48 least-significant bits can be randomized.\n::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.",
+            "example": "::ff"
+          },
+          "ipv6_flow_label": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "ipv6_src": {
+            "type": "string",
+            "description": "Source IPv6 address",
+            "example": "fe80::1766:cf5:f031:eba3"
+          },
+          "ipv6_src_mask": {
+            "type": "string",
+            "description": "Mask that is used to randomize the IP src address. The 48 least-significant bits can be randomized.\n::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.",
+            "example": "::ff"
+          },
+          "ipv6_traffic_class": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "MPLSHeader": {
+        "type": "object",
+        "description": "Defines an MPLS LSE",
+        "required": [
+          "label",
+          "tc",
+          "ttl"
+        ],
+        "properties": {
+          "label": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Label of this MPLS LSE",
+            "minimum": 0
+          },
+          "tc": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Traffic class field of this MPLS LSE",
+            "minimum": 0
+          },
+          "ttl": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Time-to-live of this MPLS LSE",
+            "minimum": 0
+          }
+        }
+      },
+      "Online": {
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "asic",
+          "loopback"
+        ],
+        "properties": {
+          "asic": {
+            "$ref": "#/components/schemas/Asic"
+          },
+          "loopback": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "Pet": {
+        "type": "object",
+        "required": [
+          "id",
+          "speed",
+          "fec",
+          "auto_neg"
+        ],
+        "properties": {
+          "auto_neg": {
+            "type": "string"
+          },
+          "fec": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "speed": {
+            "type": "string"
+          }
+        }
+      },
+      "RTTStatistics": {
+        "type": "object",
+        "required": [
+          "mean",
+          "min",
+          "max",
+          "current",
+          "jitter",
+          "n"
+        ],
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "jitter": {
+            "type": "number",
+            "format": "double"
+          },
+          "max": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "mean": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "n": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RangeCount": {
+        "type": "object",
+        "required": [
+          "tx",
+          "rx"
+        ],
+        "properties": {
+          "rx": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RangeCountValue"
+            }
+          },
+          "tx": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RangeCountValue"
+            }
+          }
+        }
+      },
+      "RangeCountValue": {
+        "type": "object",
+        "description": "Stores the number of packets that have been received with frame size\nin a given range",
+        "required": [
+          "low",
+          "high",
+          "packets"
+        ],
+        "properties": {
+          "high": {
+            "type": "integer",
+            "format": "int32",
+            "description": "upper bound on the frame size",
+            "minimum": 0
+          },
+          "low": {
+            "type": "integer",
+            "format": "int32",
+            "description": "lower bound on the frame size",
+            "minimum": 0
+          },
+          "packets": {
+            "type": "integer",
+            "description": "number of packets with lower bound <= packet size <= upper bound",
+            "minimum": 0
+          }
+        }
+      },
+      "Reset": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "RttHistogram": {
+        "type": "object",
+        "required": [
+          "config",
+          "data"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/RttHistogramConfig"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RttHistogramData"
+          }
+        }
+      },
+      "RttHistogramBinEntry": {
+        "type": "object",
+        "required": [
+          "count",
+          "probability"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Number of packets in this bin.",
+            "minimum": 0
+          },
+          "probability": {
+            "type": "number",
+            "format": "double",
+            "description": "Probability for this bin based on total_pkt_count."
+          }
+        }
+      },
+      "RttHistogramConfig": {
+        "type": "object",
+        "required": [
+          "num_bins",
+          "min",
+          "max"
+        ],
+        "properties": {
+          "max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum range for histogram.",
+            "minimum": 0
+          },
+          "min": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Minimum range for histogram.",
+            "minimum": 0
+          },
+          "num_bins": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "percentiles": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "number",
+              "format": "double"
+            },
+            "description": "Percentiles to calculate from histogram data. Float values between 0 and 1.0"
+          }
+        }
+      },
+      "RttHistogramData": {
+        "type": "object",
+        "required": [
+          "data_bins",
+          "percentiles",
+          "mean_rtt",
+          "std_dev_rtt",
+          "total_pkt_count",
+          "missed_bin_count"
+        ],
+        "properties": {
+          "data_bins": {
+            "type": "object",
+            "description": "HashMap with bin index as key and bin count with probability as value.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RttHistogramBinEntry"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "mean_rtt": {
+            "type": "number",
+            "format": "double",
+            "description": "Mean RTT calculated from the histogram data."
+          },
+          "missed_bin_count": {
+            "type": "integer",
+            "description": "Number of packets not matched to any bin.",
+            "minimum": 0
+          },
+          "percentiles": {
+            "type": "object",
+            "description": "HashMap with percentiles and their values.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "std_dev_rtt": {
+            "type": "number",
+            "format": "double",
+            "description": "Standard deviation calculated from the histogram data."
+          },
+          "total_pkt_count": {
+            "type": "integer",
+            "description": "Total number of packets matched to bins.",
+            "minimum": 0
+          }
+        }
+      },
+      "Statistics": {
         "type": "object",
         "required": [
           "sample_mode",
@@ -919,514 +1628,6 @@
             }
           }
         }
-      },
-      "EmptyResponse": {
-        "type": "object",
-        "required": [
-          "message"
-        ],
-        "properties": {
-          "message": {
-            "type": "string",
-            "example": "Not running."
-          }
-        }
-      },
-      "Encapsulation": {
-        "type": "string",
-        "description": "Describes the supported encapsulations of P4TG.\nCurrently, MPLS, VLAN, QinQ, and SRv6 are supported.\n\n[Encapsulation::None] corresponds to plain Ethernet | IP packet.",
-        "enum": [
-          "None",
-          "Vlan",
-          "QinQ",
-          "Mpls",
-          "SRv6"
-        ]
-      },
-      "Ethernet": {
-        "type": "object",
-        "required": [
-          "eth_src",
-          "eth_dst"
-        ],
-        "properties": {
-          "eth_dst": {
-            "type": "string",
-            "description": "Destination Ethernet mac",
-            "example": "d6:67:75:a1:94:c3"
-          },
-          "eth_src": {
-            "type": "string",
-            "description": "Source Ethernet mac",
-            "example": "00:d0:67:a2:a9:42"
-          }
-        }
-      },
-      "GenerationMode": {
-        "type": "string",
-        "description": "Describes the used generation mode",
-        "enum": [
-          "Cbr",
-          "Mpps",
-          "Poisson",
-          "Analyze"
-        ]
-      },
-      "HistogramConfigRequest": {
-        "type": "object",
-        "required": [
-          "port",
-          "config"
-        ],
-        "properties": {
-          "config": {
-            "$ref": "#/components/schemas/RttHistogramConfig",
-            "description": "The configuration object. It holds the minimum and maximum value, and the number of bins."
-          },
-          "port": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The dev port number to configure the histogram on.",
-            "minimum": 0
-          }
-        }
-      },
-      "HistoryStatistics": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/CommonStatistics"
-          }
-        ]
-      },
-      "IATStatistics": {
-        "type": "object",
-        "required": [
-          "tx",
-          "rx"
-        ],
-        "properties": {
-          "rx": {
-            "$ref": "#/components/schemas/IATValues",
-            "description": "RX path"
-          },
-          "tx": {
-            "$ref": "#/components/schemas/IATValues",
-            "description": "TX path"
-          }
-        }
-      },
-      "IATValues": {
-        "type": "object",
-        "required": [
-          "mean",
-          "mae",
-          "n"
-        ],
-        "properties": {
-          "mae": {
-            "type": "number",
-            "format": "float",
-            "description": "Mean absolute error. Only calculated if sample mode is false.\nThis value is directly calculated in the data plane."
-          },
-          "mean": {
-            "type": "number",
-            "format": "float",
-            "description": "Mean value. Either based on samples or computed in the data plane.\nSee sample mode."
-          },
-          "n": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Number of IAT samples. Only valid if sample mode is true.",
-            "minimum": 0
-          },
-          "std": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float",
-            "description": "Standard deviation. Only calculated if sample mode is true."
-          }
-        }
-      },
-      "IPv4": {
-        "type": "object",
-        "required": [
-          "ip_src",
-          "ip_dst",
-          "ip_tos",
-          "ip_src_mask",
-          "ip_dst_mask"
-        ],
-        "properties": {
-          "ip_dst": {
-            "type": "string",
-            "description": "Destination IPv4 address",
-            "example": "192.168.178.10"
-          },
-          "ip_dst_mask": {
-            "type": "string",
-            "description": "Mask that is used to randomize the IP dst address.\n255.255.255.255 means that all bytes in the IP address are randomized.",
-            "example": "255.0.0.0"
-          },
-          "ip_src": {
-            "type": "string",
-            "description": "Source IPv4 address",
-            "example": "192.168.178.10"
-          },
-          "ip_src_mask": {
-            "type": "string",
-            "description": "Mask that is used to randomize the IP src address.\n255.255.255.255 means that all bytes in the IP address are randomized.",
-            "example": "255.0.0.0"
-          },
-          "ip_tos": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          }
-        }
-      },
-      "IPv6": {
-        "type": "object",
-        "required": [
-          "ipv6_src",
-          "ipv6_dst",
-          "ipv6_traffic_class",
-          "ipv6_src_mask",
-          "ipv6_dst_mask",
-          "ipv6_flow_label"
-        ],
-        "properties": {
-          "ipv6_dst": {
-            "type": "string",
-            "description": "Destination IPv4 address",
-            "example": "fe80::1766:cf5:f031:eba3"
-          },
-          "ipv6_dst_mask": {
-            "type": "string",
-            "description": "Mask that is used to randomize the IP dst address. The 48 least-significant bits can be randomized.\n::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.",
-            "example": "::ff"
-          },
-          "ipv6_flow_label": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "ipv6_src": {
-            "type": "string",
-            "description": "Source IPv6 address",
-            "example": "fe80::1766:cf5:f031:eba3"
-          },
-          "ipv6_src_mask": {
-            "type": "string",
-            "description": "Mask that is used to randomize the IP src address. The 48 least-significant bits can be randomized.\n::ff:ffff:ffff means that the 48 least significant bits in the IP address are randomized.",
-            "example": "::ff"
-          },
-          "ipv6_traffic_class": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          }
-        }
-      },
-      "MPLSHeader": {
-        "type": "object",
-        "description": "Defines an MPLS LSE",
-        "required": [
-          "label",
-          "tc",
-          "ttl"
-        ],
-        "properties": {
-          "label": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Label of this MPLS LSE",
-            "minimum": 0
-          },
-          "tc": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Traffic class field of this MPLS LSE",
-            "minimum": 0
-          },
-          "ttl": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Time-to-live of this MPLS LSE",
-            "minimum": 0
-          }
-        }
-      },
-      "Online": {
-        "type": "object",
-        "required": [
-          "status",
-          "version",
-          "asic",
-          "loopback"
-        ],
-        "properties": {
-          "asic": {
-            "$ref": "#/components/schemas/Asic"
-          },
-          "loopback": {
-            "type": "boolean"
-          },
-          "status": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          }
-        }
-      },
-      "RTTStatistics": {
-        "type": "object",
-        "required": [
-          "mean",
-          "min",
-          "max",
-          "current",
-          "jitter",
-          "n"
-        ],
-        "properties": {
-          "current": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "jitter": {
-            "type": "number",
-            "format": "double"
-          },
-          "max": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "mean": {
-            "type": "number",
-            "format": "double"
-          },
-          "min": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "n": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          }
-        }
-      },
-      "RangeCount": {
-        "type": "object",
-        "required": [
-          "tx",
-          "rx"
-        ],
-        "properties": {
-          "rx": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RangeCountValue"
-            }
-          },
-          "tx": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RangeCountValue"
-            }
-          }
-        }
-      },
-      "RangeCountValue": {
-        "type": "object",
-        "description": "Stores the number of packets that have been received with frame size\nin a given range",
-        "required": [
-          "low",
-          "high",
-          "packets"
-        ],
-        "properties": {
-          "high": {
-            "type": "integer",
-            "format": "int32",
-            "description": "upper bound on the frame size",
-            "minimum": 0
-          },
-          "low": {
-            "type": "integer",
-            "format": "int32",
-            "description": "lower bound on the frame size",
-            "minimum": 0
-          },
-          "packets": {
-            "type": "integer",
-            "description": "number of packets with lower bound <= packet size <= upper bound",
-            "minimum": 0
-          }
-        }
-      },
-      "Reset": {
-        "type": "object",
-        "required": [
-          "message"
-        ],
-        "properties": {
-          "message": {
-            "type": "string"
-          }
-        }
-      },
-      "RttHistogram": {
-        "type": "object",
-        "required": [
-          "config",
-          "data"
-        ],
-        "properties": {
-          "config": {
-            "$ref": "#/components/schemas/RttHistogramConfig"
-          },
-          "data": {
-            "$ref": "#/components/schemas/RttHistogramData"
-          }
-        }
-      },
-      "RttHistogramBinEntry": {
-        "type": "object",
-        "required": [
-          "count",
-          "probability"
-        ],
-        "properties": {
-          "count": {
-            "type": "integer",
-            "description": "Number of packets in this bin.",
-            "minimum": 0
-          },
-          "probability": {
-            "type": "number",
-            "format": "double",
-            "description": "Probability for this bin based on total_pkt_count."
-          }
-        }
-      },
-      "RttHistogramConfig": {
-        "type": "object",
-        "required": [
-          "num_bins",
-          "min",
-          "max"
-        ],
-        "properties": {
-          "max": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Maximum range for histogram.",
-            "minimum": 0
-          },
-          "min": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Minimum range for histogram.",
-            "minimum": 0
-          },
-          "num_bins": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          }
-        }
-      },
-      "RttHistogramData": {
-        "type": "object",
-        "required": [
-          "data_bins",
-          "percentiles",
-          "mean_rtt",
-          "std_dev_rtt",
-          "total_pkt_count",
-          "missed_bin_count"
-        ],
-        "properties": {
-          "data_bins": {
-            "type": "object",
-            "description": "HashMap with bin index as key and bin count with probability as value.",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/RttHistogramBinEntry"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "mean_rtt": {
-            "type": "number",
-            "format": "double",
-            "description": "Mean RTT calculated from the histogram data."
-          },
-          "missed_bin_count": {
-            "type": "integer",
-            "description": "Number of packets not matched to any bin.",
-            "minimum": 0
-          },
-          "percentiles": {
-            "type": "object",
-            "description": "HashMap with percentiles and their values.",
-            "additionalProperties": {
-              "type": "number",
-              "format": "double"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "std_dev_rtt": {
-            "type": "number",
-            "format": "double",
-            "description": "Standard deviation calculated from the histogram data."
-          },
-          "total_pkt_count": {
-            "type": "integer",
-            "description": "Total number of packets matched to bins.",
-            "minimum": 0
-          }
-        }
-      },
-      "Statistics": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/CommonStatistics"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "previous_statistics": {
-                "type": [
-                  "object",
-                  "null"
-                ],
-                "description": "Save previous statistics, where the key is the test number of the statistics.\nSkip serializing if there are no previous statistics.",
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/HistoryStatistics"
-                },
-                "propertyNames": {
-                  "type": "integer",
-                  "format": "int32",
-                  "minimum": 0
-                }
-              }
-            }
-          }
-        ]
       },
       "Stream": {
         "type": "object",
@@ -1692,24 +1893,31 @@
       },
       "TimeStatistics": {
         "type": "object",
+        "description": "Common fields for time-based statistics",
         "required": [
           "tx_rate_l1",
-          "tx_rate_l2",
           "rx_rate_l1",
-          "rx_rate_l2",
-          "rtts",
           "packet_loss",
-          "out_of_order"
+          "out_of_order",
+          "rtt"
         ],
         "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the test those stats belong to"
+          },
           "out_of_order": {
             "type": "object",
-            "description": "Number of out of order packets per port.",
+            "description": "Number of out-of-order packets per test and port",
             "additionalProperties": {
               "type": "object",
               "additionalProperties": {
-                "type": "number",
-                "format": "double"
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
               },
               "propertyNames": {
                 "type": "integer",
@@ -1725,12 +1933,13 @@
           },
           "packet_loss": {
             "type": "object",
-            "description": "Number of lost packets per port.",
+            "description": "Number of lost packets per test and port",
             "additionalProperties": {
               "type": "object",
               "additionalProperties": {
-                "type": "number",
-                "format": "double"
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
               },
               "propertyNames": {
                 "type": "integer",
@@ -1744,14 +1953,15 @@
               "minimum": 0
             }
           },
-          "rtts": {
+          "rtt": {
             "type": "object",
-            "description": "Statistics of the round trip times per port.",
+            "description": "RTT values per test and port",
             "additionalProperties": {
               "type": "object",
               "additionalProperties": {
-                "type": "number",
-                "format": "double"
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
               },
               "propertyNames": {
                 "type": "integer",
@@ -1767,7 +1977,7 @@
           },
           "rx_rate_l1": {
             "type": "object",
-            "description": "L1 receive rates per port.",
+            "description": "L1 receive rates per test and port",
             "additionalProperties": {
               "type": "object",
               "additionalProperties": {
@@ -1779,19 +1989,6 @@
                 "format": "int32",
                 "minimum": 0
               }
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "rx_rate_l2": {
-            "type": "object",
-            "description": "L2 receive rates per port.",
-            "additionalProperties": {
-              "type": "number",
-              "format": "double"
             },
             "propertyNames": {
               "type": "integer",
@@ -1801,7 +1998,7 @@
           },
           "tx_rate_l1": {
             "type": "object",
-            "description": "L1 send rates per port.",
+            "description": "L1 send rates per test and port",
             "additionalProperties": {
               "type": "object",
               "additionalProperties": {
@@ -1813,19 +2010,6 @@
                 "format": "int32",
                 "minimum": 0
               }
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "tx_rate_l2": {
-            "type": "object",
-            "description": "L2 send rates per port.",
-            "additionalProperties": {
-              "type": "number",
-              "format": "double"
             },
             "propertyNames": {
               "type": "integer",
