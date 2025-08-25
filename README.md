@@ -126,7 +126,7 @@ If you want to adapt the configuration GUI, or the control plane:
 - Re-build the configuration GUI via `npm install && npm start` within the `Configuration GUI` folder.
 - Adapt the `API_URL` in the `config.ts` to run the controller and configuration GUI independently.
 
-Afterward, re-build the controller via `docker compose build` within the `Controller` folder.
+If you want to build the docker image locally, use the following command from inside the repository root: `docker build --file Controller/Dockerfile --no-cache -t unituekn/p4tg-controller:test .`
 This will automatically build and copy the configuration GUI into the controller folder and create an image containing the modifications.
 
 # Update Guide
