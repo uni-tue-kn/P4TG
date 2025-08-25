@@ -41,17 +41,6 @@ impl HistogramMonitor {
         for (port, hist) in self.histogram.iter() {
             let hist_config = &hist.config;
 
-            if hist_config.max <= hist_config.min {
-                return Err(RBFRTError::GenericError {
-                    message: ("Maximum must be greater than minimum for histogram config"
-                        .to_string()),
-                });
-            } else if hist_config.num_bins == 0 {
-                return Err(RBFRTError::GenericError {
-                    message: ("num_bins must be positive for histogram config".to_string()),
-                });
-            }
-
             // Calculate bin width based on config params
             let bin_width = hist_config.get_bin_width();
 
@@ -84,13 +73,11 @@ impl HistogramMonitor {
         }
 
         let number_requests = requests.len();
-        if number_requests > 8196 {
-            return Err(RBFRTError::GenericError { message: (format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")) });
+
+        if !requests.is_empty() {
+            switch.write_table_entries(requests).await?;
+            info!("Configured table {RTT_HISTOGRAM_TABLE} with {number_requests} entries.");
         }
-
-        switch.write_table_entries(requests).await?;
-
-        info!("Configured table {RTT_HISTOGRAM_TABLE} with {number_requests} entries.");
 
         Ok(())
     }
@@ -206,7 +193,11 @@ impl HistogramMonitor {
                                 }
 
                                 // Calculate percentiles
-                                let percentiles: Vec<f64> = vec![0.25, 0.5, 0.75, 0.9];
+                                let percentiles = hist_config
+                                    .percentiles
+                                    .clone()
+                                    .unwrap_or(vec![0.25, 0.5, 0.75, 0.9]);
+
                                 let percentile_results = Self::estimate_percentiles_from_bins(
                                     &bins_data,
                                     percentiles,
@@ -249,7 +240,7 @@ impl HistogramMonitor {
                 }
             }
 
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
     }
 
@@ -367,7 +358,6 @@ impl TrafficGenEvent for HistogramMonitor {
         // Histogram config is deleted in start_single_test
         self.init_rtt_histogram_table(switch).await?;
         self.clear_data();
-
         Ok(())
     }
 

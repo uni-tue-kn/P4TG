@@ -2,7 +2,7 @@ name: Controller build
 
 on:
   push:
-    branches: [ "main", "nightly" ]
+    branches: [ "main", "nightly"]
   pull_request:
     branches: [ "main", "nightly" ]
 
@@ -24,15 +24,27 @@ jobs:
           echo "tag=dev" >> $GITHUB_OUTPUT
         fi
 
+    - name: Read version from VERSION.md
+      id: version
+      run: |
+        version=$(cat VERSION.md | tr -d ' \n')
+        echo "version=$version" >> $GITHUB_OUTPUT
+
+    - name: Cache Node.js modules
+      uses: actions/cache@v3
+      with:
+        path: Configuration\ GUI/node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('Configuration GUI/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
     - name: Build frontend
       run: cd Configuration\ GUI && npm install && npm run build
       env:
         CI: false
 
-    - name: Controller Build
-      run: cd Controller && docker compose build
-      env:
-        TAG: ${{ steps.vars.outputs.tag }}
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
     - name: Log in to Docker Hub
       uses: docker/login-action@v2
@@ -40,6 +52,13 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Push Docker Image
+    - name: Controller Build with Buildx and Cache
       run: |
-        docker push unituekn/p4tg-controller:${{ steps.vars.outputs.tag }}
+        docker buildx build \
+          --cache-from=type=registry,ref=unituekn/p4tg-controller:buildcache \
+          --cache-to=type=registry,ref=unituekn/p4tg-controller:buildcache,mode=max \
+          --tag unituekn/p4tg-controller:${{ steps.vars.outputs.tag }} \
+          --tag unituekn/p4tg-controller:${{ steps.version.outputs.version }} \
+          --file Controller/Dockerfile \
+          --push \
+          .

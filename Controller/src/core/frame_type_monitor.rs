@@ -330,7 +330,7 @@ impl FrameTypeMonitor {
                 frame_type_state.statistics = stats;
             }
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
         }
     }
 
@@ -352,6 +352,7 @@ impl TrafficGenEvent for FrameTypeMonitor {
         _mode: &GenerationMode,
     ) -> Result<(), RBFRTError> {
         self.configure(switch).await?;
+
         Ok(())
     }
 

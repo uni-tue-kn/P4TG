@@ -106,7 +106,7 @@ const Tables = () => {
     const loadTables = async () => {
         let tables = await get({ route: "/tables" })
 
-        if (tables.status === 200) {
+        if (tables?.status === 200) {
             set_table_data(sort_json(tables.data))
         }
     }

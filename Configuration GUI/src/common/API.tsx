@@ -23,6 +23,7 @@ import { AxiosResponse } from "axios"
 import Config from "../config";
 import { ReactNode, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { ToastVariant } from "./Interfaces";
 
 const instance = axios.create({
     baseURL: Config.API_URL
@@ -48,7 +49,7 @@ const getHeader = (token?: string) => {
 }
 
 
-const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError: (message: string) => void, onOffline: () => void, onOnline: () => void, children: JSX.Element }) => {
+const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError: (message: string, bg: ToastVariant) => void, onOffline: () => void, onOnline: () => void, children: JSX.Element }) => {
 
     useEffect(() => {
 
@@ -59,27 +60,27 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError:
 
         const errInterceptor = (error: any) => {
             if (!("response" in error) || ("code" in error && error.code === "ERR_NETWORK")) {
-                onOffline()
+                onOffline();
             }
             else if (error.response.status === 400) {
                 console.log(error.response)
-                onError(error.response.data.message)
+                onError(error.response.data.message, "danger")
             }
             else if (error.response.status === 401) {
-                onError(error.response.data.message)
+                onError(error.response.data.message, "danger")
             }
             else if (error.response.status === 422) {
-                onError(error.response.data)
+                onError(error.response.data, "danger")
             }
             else if (error.response.status === 500) {
                 if ("data" in error.response && "message" in error.response.data) {
-                    onError("Internal Server Error: " + error.response.data.message)
+                    onError("Internal Server Error: " + error.response.data.message, "danger")
                 } else {
-                    onError("Internal Server Error.")
+                    onError("Internal Server Error.", "danger")
                 }
             }
             else if (error.response.status === 404) {
-                onError("Request endpoint not found.")
+                onError("Request endpoint not found.", "danger")
             }
 
             return Promise.resolve();
@@ -96,9 +97,15 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError:
     return children;
 };
 
-const get = async (request: Request) => {
-    return await instance.get(request.route, getHeader(request.token))
-}
+const get = async (request: Request): Promise<AxiosResponse | undefined> => {
+    try {
+        return await instance.get(request.route, getHeader(request.token));
+    } catch (error) {
+        // Let interceptor handle it
+        return undefined;
+    }
+};
+
 
 const post = async (request: Request) => {
     return await instance.post(request.route, request.body, getHeader(request.token))

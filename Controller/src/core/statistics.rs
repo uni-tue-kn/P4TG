@@ -18,8 +18,10 @@
  */
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use utoipa::ToSchema;
+
+use crate::core::traffic_gen_core::helper::{filter_map_for_keys, translate_keys};
 
 #[derive(Serialize, Clone, ToSchema)]
 pub struct FrameSizeStatistics {
@@ -184,61 +186,32 @@ impl IATValues {
 
 /// Common fields for time-based statistics
 #[derive(Serialize, Debug, Clone, ToSchema)]
-pub struct CommonTimeStatistic {
+pub struct TimeStatistics {
     /// L1 send rates per test and port
-    pub(crate) tx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
+    pub(crate) tx_rate_l1: HashMap<u32, BTreeMap<u32, f64>>,
     /// L1 receive rates per test and port
-    pub(crate) rx_rate_l1: BTreeMap<u32, BTreeMap<u32, f64>>,
+    pub(crate) rx_rate_l1: HashMap<u32, BTreeMap<u32, f64>>,
     /// Number of lost packets per test and port
-    pub(crate) packet_loss: BTreeMap<u32, BTreeMap<u32, u64>>,
+    pub(crate) packet_loss: HashMap<u32, BTreeMap<u32, u64>>,
     /// Number of out-of-order packets per test and port
-    pub(crate) out_of_order: BTreeMap<u32, BTreeMap<u32, u64>>,
+    pub(crate) out_of_order: HashMap<u32, BTreeMap<u32, u64>>,
     /// RTT values per test and port
-    pub(crate) rtt: BTreeMap<u32, BTreeMap<u32, u64>>,
+    pub(crate) rtt: HashMap<u32, BTreeMap<u32, u64>>,
     /// Name of the test those stats belong to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,
 }
 
-/// Represents the time-based statistics
-/// for visualisation
-#[derive(Serialize, Debug, Clone, ToSchema)]
-pub struct TimeStatistic {
-    #[serde(flatten)]
-    pub(crate) inner: CommonTimeStatistic,
-
-    /// Save previous statistics, where the key is the test number of the statistics.
-    /// Skip serializing if there are no previous statistics.
-    /// If this is `TimeStatistic` instead of `HistoryTimeStatistic`, we have a recursive stack overflow
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) previous_statistics: Option<BTreeMap<u32, HistoryTimeStatistic>>,
-}
-
-impl TimeStatistic {
-    pub fn default() -> TimeStatistic {
-        TimeStatistic {
-            inner: CommonTimeStatistic {
-                tx_rate_l1: Default::default(),
-                rx_rate_l1: Default::default(),
-                packet_loss: Default::default(),
-                out_of_order: Default::default(),
-                rtt: Default::default(),
-                name: None,
-            },
-            previous_statistics: None,
+impl TimeStatistics {
+    pub fn default() -> TimeStatistics {
+        TimeStatistics {
+            tx_rate_l1: Default::default(),
+            rx_rate_l1: Default::default(),
+            packet_loss: Default::default(),
+            out_of_order: Default::default(),
+            rtt: Default::default(),
+            name: None,
         }
-    }
-}
-
-#[derive(Serialize, Debug, Clone, ToSchema)]
-pub struct HistoryTimeStatistic {
-    #[serde(flatten)]
-    pub(crate) inner: CommonTimeStatistic,
-}
-
-impl From<TimeStatistic> for HistoryTimeStatistic {
-    fn from(stat: TimeStatistic) -> Self {
-        HistoryTimeStatistic { inner: stat.inner }
     }
 }
 
@@ -250,6 +223,8 @@ pub struct RttHistogramConfig {
     pub min: u32,
     /// Maximum range for histogram.
     pub max: u32,
+    /// Percentiles to calculate from histogram data. Float values between 0 and 1.0
+    pub percentiles: Option<Vec<f64>>,
 }
 
 impl RttHistogramConfig {
@@ -264,6 +239,7 @@ impl Default for RttHistogramConfig {
             min: 1500,
             max: 2500,
             num_bins: 10,
+            percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
         }
     }
 }
@@ -304,5 +280,164 @@ impl RttHistogram {
             data: Default::default(),
             config: Default::default(),
         }
+    }
+}
+
+#[derive(Serialize, ToSchema, Clone)]
+pub struct Statistics {
+    /// Indicates whether the sample mode is used or not.
+    /// In sampling mode, IATs are sampled and not calculated in the data plane.
+    /// It is recommended to don't use the sample mode to get more precise values
+    pub(crate) sample_mode: bool,
+    /// Frame size statistics that are divided in (lower, upper) sections.
+    pub(crate) frame_size: HashMap<u32, RangeCount>,
+    /// L1 send rates per port.
+    pub(crate) tx_rate_l1: HashMap<u32, f64>,
+    /// L2 send rates per port.
+    pub(crate) tx_rate_l2: HashMap<u32, f64>,
+    /// L1 receive rates per port.
+    pub(crate) rx_rate_l1: HashMap<u32, f64>,
+    /// L2 receive rates per port.
+    pub(crate) rx_rate_l2: HashMap<u32, f64>,
+    /// L2 send rate per stream and port.
+    /// The number corresponds to the app_id in the Stream description.
+    pub(crate) app_tx_l2: HashMap<u32, HashMap<u32, f64>>,
+    /// L2 receive rate per stream and port.
+    /// The number corresponds to the app_id in the Stream description.
+    pub(crate) app_rx_l2: HashMap<u32, HashMap<u32, f64>>,
+    /// Statistics what kind of packets have been received per port
+    pub(crate) frame_type_data: HashMap<u32, TypeCount>,
+    /// Statistics of the inter arrival times per port.
+    pub(crate) iats: HashMap<u32, IATStatistics>,
+    /// Statistics of the round trip times per port.
+    pub(crate) rtts: HashMap<u32, RTTStatistics>,
+    /// Number of lost packets per port.
+    pub(crate) packet_loss: HashMap<u32, u64>,
+    /// Number of out of order packets per port.
+    pub(crate) out_of_order: HashMap<u32, u64>,
+    /// Elapsed time since the traffic generation has started in seconds.
+    pub(crate) elapsed_time: u32,
+    /// RTT histogram data per port and per bin.
+    pub(crate) rtt_histogram: HashMap<u32, RttHistogram>,
+    // Name of the test for the statistics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) name: Option<String>,
+}
+
+impl Statistics {
+    /// Replaces the key (dev-ports) in all stored statistics with the front_panel port.
+    /// The mapping from dev-port to front-panel port is provided in `dev_port_to_front_panel_port_mappings`
+    fn translate_dev_port_to_front_panel_port_numbers(
+        self,
+        dev_port_to_front_panel_port_mappings: HashMap<u32, u32>,
+    ) -> Statistics {
+        Statistics {
+            sample_mode: self.sample_mode,
+            frame_size: translate_keys(&self.frame_size, &dev_port_to_front_panel_port_mappings),
+            frame_type_data: translate_keys(
+                &self.frame_type_data,
+                &dev_port_to_front_panel_port_mappings,
+            ),
+            tx_rate_l1: translate_keys(&self.tx_rate_l1, &dev_port_to_front_panel_port_mappings),
+            tx_rate_l2: translate_keys(&self.tx_rate_l2, &dev_port_to_front_panel_port_mappings),
+            rx_rate_l1: translate_keys(&self.rx_rate_l1, &dev_port_to_front_panel_port_mappings),
+            rx_rate_l2: translate_keys(&self.rx_rate_l2, &dev_port_to_front_panel_port_mappings),
+            app_tx_l2: translate_keys(&self.app_tx_l2, &dev_port_to_front_panel_port_mappings),
+            app_rx_l2: translate_keys(&self.app_rx_l2, &dev_port_to_front_panel_port_mappings),
+            iats: translate_keys(&self.iats, &dev_port_to_front_panel_port_mappings),
+            rtts: translate_keys(&self.rtts, &dev_port_to_front_panel_port_mappings),
+            packet_loss: translate_keys(&self.packet_loss, &dev_port_to_front_panel_port_mappings),
+            out_of_order: translate_keys(
+                &self.out_of_order,
+                &dev_port_to_front_panel_port_mappings,
+            ),
+            elapsed_time: self.elapsed_time,
+            rtt_histogram: translate_keys(
+                &self.rtt_histogram,
+                &dev_port_to_front_panel_port_mappings,
+            ),
+            name: self.name,
+        }
+    }
+
+    /// Removes all statistics of unused ports.
+    /// Used ports are provided in `used_ports`.
+    fn filter_inactive_ports(mut self, used_ports: HashSet<u32>) -> Statistics {
+        filter_map_for_keys(&mut self.frame_size, &used_ports);
+        filter_map_for_keys(&mut self.frame_type_data, &used_ports);
+        filter_map_for_keys(&mut self.tx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut self.tx_rate_l2, &used_ports);
+        filter_map_for_keys(&mut self.rx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut self.rx_rate_l2, &used_ports);
+        filter_map_for_keys(&mut self.app_tx_l2, &used_ports);
+        filter_map_for_keys(&mut self.app_rx_l2, &used_ports);
+        filter_map_for_keys(&mut self.iats, &used_ports);
+        filter_map_for_keys(&mut self.rtts, &used_ports);
+        filter_map_for_keys(&mut self.packet_loss, &used_ports);
+        filter_map_for_keys(&mut self.out_of_order, &used_ports);
+        filter_map_for_keys(&mut self.rtt_histogram, &used_ports);
+
+        self
+    }
+
+    /// Replaces the key (dev-ports) in all stored statistics with the front_panel port.
+    /// The mapping from dev-port to front-panel port is provided in `dev_port_to_front_panel_port_mappings`  
+    /// Removes all statistics of unused ports.
+    /// Used ports are provided in `used_ports`.    
+    pub fn translate_and_filter_ports(
+        self,
+        dev_port_to_front_panel_port_mappings: HashMap<u32, u32>,
+        used_ports: HashSet<u32>,
+    ) -> Statistics {
+        let stats = self
+            .translate_dev_port_to_front_panel_port_numbers(dev_port_to_front_panel_port_mappings);
+        stats.filter_inactive_ports(used_ports)
+    }
+}
+
+impl TimeStatistics {
+    /// Replaces the key (dev-ports) in all stored statistics with the front_panel port.
+    /// The mapping from dev-port to front-panel port is provided in `dev_port_to_front_panel_port_mappings`    
+    fn translate_dev_port_to_front_panel_port_numbers(
+        self,
+        dev_port_to_front_panel_port_mappings: HashMap<u32, u32>,
+    ) -> TimeStatistics {
+        TimeStatistics {
+            tx_rate_l1: translate_keys(&self.tx_rate_l1, &dev_port_to_front_panel_port_mappings),
+            rx_rate_l1: translate_keys(&self.rx_rate_l1, &dev_port_to_front_panel_port_mappings),
+            packet_loss: translate_keys(&self.packet_loss, &dev_port_to_front_panel_port_mappings),
+            out_of_order: translate_keys(
+                &self.out_of_order,
+                &dev_port_to_front_panel_port_mappings,
+            ),
+            rtt: translate_keys(&self.rtt, &dev_port_to_front_panel_port_mappings),
+            name: self.name,
+        }
+    }
+
+    /// Removes all statistics of unused ports.
+    /// Used ports are provided in `used_ports`.
+    fn filter_inactive_ports(mut self, used_ports: HashSet<u32>) -> TimeStatistics {
+        filter_map_for_keys(&mut self.tx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut self.rx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut self.packet_loss, &used_ports);
+        filter_map_for_keys(&mut self.out_of_order, &used_ports);
+        filter_map_for_keys(&mut self.rtt, &used_ports);
+
+        self
+    }
+
+    /// Replaces the key (dev-ports) in all stored statistics with the front_panel port.
+    /// The mapping from dev-port to front-panel port is provided in `dev_port_to_front_panel_port_mappings`  
+    /// Removes all statistics of unused ports.
+    /// Used ports are provided in `used_ports`.
+    pub fn translate_and_filter_ports(
+        self,
+        dev_port_to_front_panel_port_mappings: HashMap<u32, u32>,
+        used_ports: HashSet<u32>,
+    ) -> TimeStatistics {
+        let stats = self
+            .translate_dev_port_to_front_panel_port_numbers(dev_port_to_front_panel_port_mappings);
+        stats.filter_inactive_ports(used_ports)
     }
 }

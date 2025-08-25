@@ -25,34 +25,24 @@ import { AxiosInterceptor, get } from "./common/API"
 import styled from "styled-components"
 import ErrorView from "./components/ErrorView"
 import Navbar from "./components/Navbar"
+import ToastMessage from "./components/ToastMessage"
 
 import Home from "./sites/Home"
 import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
 import Offline from "./sites/Offline"
 import Tables from "./sites/Tables";
-import { ASIC, P4TGInfos, StreamSettings } from "./common/Interfaces";
+import { ASIC, P4TGInfos, StreamSettings, ToastVariant } from "./common/Interfaces";
 import { Stream } from "./common/Interfaces";
 import Loader from "./components/Loader";
 import { validateStreams, validateStreamSettings } from "./common/Validators";
 
 
 const App = () => {
-    const [error, set_error] = useState(false)
-    const [message, set_message] = useState("")
-    const [time, set_time] = useState("00:00")
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
     const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({ status: "", version: "", asic: ASIC.Tofino1, loopback: false })
-
-    const setError = (msg: string) => {
-        set_error(true)
-        set_message(msg)
-
-        let now = new Date()
-
-        set_time(now.getHours() + ":" + now.getMinutes())
-    }
+    const [toast, setToast] = useState({ time: "00:00", show: false, message: "", bg: "success" })
 
 
     useEffect(() => {
@@ -65,22 +55,15 @@ const App = () => {
                 let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
                 let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
 
-                if (!validateStreams(stored_streams)) {
-                    alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
-                    localStorage.clear()
-                    window.location.reload()
-                    return
-                }
-
-                if (!validateStreamSettings(stored_settings)) {
-                    alert("Incompatible stream description found. This may be due to an update. Resetting local storage.")
+                if (!validateStreams(stored_streams) || !validateStreamSettings(stored_settings)) {
+                    showToast("Incompatible stream description found. This may be due to an update. Resetting local storage.", "danger")
                     localStorage.clear()
                     window.location.reload()
                     return
                 }
             }
             catch {
-                alert("Error in reading local storage. Resetting local storage.")
+                showToast("Error in reading local storage. Resetting local storage.", "danger")
                 localStorage.clear()
                 window.location.reload()
             }
@@ -100,6 +83,13 @@ const App = () => {
         loadInfos()
 
     }, [])
+
+
+    const showToast = (message: string, bg: ToastVariant) => {
+        let now = new Date();
+        let time = now.getHours() + ":" + now.getMinutes();
+        setToast({ time: time, show: true, message, bg })
+    }
 
     const Wrapper = styled.div``
 
@@ -121,23 +111,30 @@ const App = () => {
                     <Navbar p4tg_infos={p4tg_infos} />
                 </Col>
                 <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-3"}>
-                    <ErrorView error={error} message={message} time={time} close={() => set_error(false)} />
-                    <AxiosInterceptor onError={setError} onOffline={() => set_online(false)}
+                    <AxiosInterceptor onError={showToast} onOffline={() => set_online(false)}
                         onOnline={() => set_online(true)}>
                         <Container fluid className={"pb-2"}>
                             <Wrapper>
                                 <ASICVersion>{p4tg_infos.asic}</ASICVersion>
                                 {online ?
-                                    <Routes>
-                                        <Route path={""} element={<Home p4tg_infos={p4tg_infos} />} />
-                                        <Route path={"/"} element={<Home p4tg_infos={p4tg_infos} />} />
-                                        <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} />} />
-                                        <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos} />} />
-                                        <Route path={"/tables"} element={<Tables />} />
-                                        <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} />} />
-                                    </Routes>
+                                    <>
+                                        <Routes>
+                                            <Route path={""} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                            <Route path={"/"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                            <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                            <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos} />} />
+                                            <Route path={"/tables"} element={<Tables />} />
+                                            <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                        </Routes>
+                                        <ToastMessage
+                                            time={toast.time}
+                                            show={toast.show}
+                                            message={toast.message}
+                                            bg={toast.bg as ToastVariant}
+                                        />
+                                    </>
                                     :
-                                    <Offline />
+                                    <Offline setP4TGInfos={set_p4tg_infos} />
                                 }
                             </Wrapper>
 
@@ -145,7 +142,9 @@ const App = () => {
                     </AxiosInterceptor>
                 </Col>
             </Row>
+
         </Router>
+
 
 
     </Loader>

@@ -1,10 +1,10 @@
 import { Tabs, Tab } from "react-bootstrap";
-import { Encapsulation, Statistics, Stream, StreamSettings, TimeStatistics } from "../common/Interfaces";
+import { Encapsulation, StatisticsEntry, Stream, StreamSettings, TimeStatisticsEntry } from "../common/Interfaces";
 import StatView from "./StatView";
 import StreamView from "./StreamView";
 
 
-const SummaryView = ({ statistics, time_statistics, port_tx_rx_mapping, stream_settings, streams, visual, mode }: { statistics: Statistics, time_statistics: TimeStatistics, port_tx_rx_mapping: { [name: number]: number }, stream_settings: StreamSettings[], streams: Stream[], visual: boolean, mode: number }) => {
+const SummaryView = ({ statistics, time_statistics, port_tx_rx_mapping, stream_settings, streams, visual, mode }: { statistics: StatisticsEntry, time_statistics: TimeStatisticsEntry, port_tx_rx_mapping: { [name: number]: number }, stream_settings: StreamSettings[], streams: Stream[], visual: boolean, mode: number }) => {
 
     const activePorts = (port_tx_rx_mapping: { [name: number]: number }): { "tx": number, "rx": number }[] => {
         let active_ports: { tx: number, rx: number }[] = []

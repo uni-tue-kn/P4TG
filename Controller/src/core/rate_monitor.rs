@@ -30,7 +30,7 @@ use rbfrt::table::{MatchValue, ToBytes};
 use rbfrt::{register, table, SwitchConnection};
 use tokio::time::sleep;
 
-use crate::core::statistics::{IATStatistics, RateMonitorStatistics, TimeStatistic};
+use crate::core::statistics::{IATStatistics, RateMonitorStatistics, TimeStatistics};
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::core::traffic_gen_core::types::GenerationMode;
 use crate::core::traffic_gen_core::types::MonitoringMapping;
@@ -57,7 +57,7 @@ const RTT_STORAGE: usize = 50000;
 pub struct RateMonitor {
     port_mapping: HashMap<u32, PortMapping>,
     pub statistics: RateMonitorStatistics,
-    pub time_statistics: TimeStatistic,
+    pub time_statistics: TimeStatistics,
     pub rtt_storage: HashMap<u32, VecDeque<u64>>,
     pub tx_iat_storage: HashMap<u32, VecDeque<u64>>,
     pub rx_iat_storage: HashMap<u32, VecDeque<u64>>,
@@ -97,7 +97,7 @@ impl RateMonitor {
         RateMonitor {
             port_mapping,
             statistics: RateMonitorStatistics::default(),
-            time_statistics: TimeStatistic::default(),
+            time_statistics: TimeStatistics::default(),
             rtt_storage: Default::default(),
             tx_iat_storage: Default::default(),
             rx_iat_storage: Default::default(),
@@ -611,7 +611,6 @@ impl RateMonitor {
                                         .lock()
                                         .await
                                         .time_statistics
-                                        .inner
                                         .tx_rate_l1
                                         .entry(*port)
                                         .or_default()
@@ -623,7 +622,6 @@ impl RateMonitor {
                                         .lock()
                                         .await
                                         .time_statistics
-                                        .inner
                                         .tx_rate_l1
                                         .entry(*port)
                                         .or_default()
@@ -652,7 +650,6 @@ impl RateMonitor {
                                         .lock()
                                         .await
                                         .time_statistics
-                                        .inner
                                         .rx_rate_l1
                                         .entry(*port)
                                         .or_default()
@@ -662,7 +659,6 @@ impl RateMonitor {
                                         .lock()
                                         .await
                                         .time_statistics
-                                        .inner
                                         .packet_loss
                                         .entry(*port)
                                         .or_default()
@@ -672,7 +668,6 @@ impl RateMonitor {
                                         .lock()
                                         .await
                                         .time_statistics
-                                        .inner
                                         .out_of_order
                                         .entry(*port)
                                         .or_default()
@@ -684,7 +679,6 @@ impl RateMonitor {
                                         .lock()
                                         .await
                                         .time_statistics
-                                        .inner
                                         .rx_rate_l1
                                         .entry(*port)
                                         .or_default()
@@ -694,7 +688,6 @@ impl RateMonitor {
                                         .lock()
                                         .await
                                         .time_statistics
-                                        .inner
                                         .packet_loss
                                         .entry(*port)
                                         .or_default()
@@ -704,7 +697,6 @@ impl RateMonitor {
                                         .lock()
                                         .await
                                         .time_statistics
-                                        .inner
                                         .out_of_order
                                         .entry(*port)
                                         .or_default()
@@ -803,7 +795,6 @@ impl RateMonitor {
                                 .lock()
                                 .await
                                 .time_statistics
-                                .inner
                                 .rtt
                                 .entry(*port)
                                 .or_insert(BTreeMap::default())
@@ -815,7 +806,6 @@ impl RateMonitor {
                                 .lock()
                                 .await
                                 .time_statistics
-                                .inner
                                 .rtt
                                 .entry(*port)
                                 .or_default()
@@ -885,8 +875,8 @@ impl TrafficGenEvent for RateMonitor {
             .clear_tables(vec![MONITOR_IAT_TABLE, IS_INGRESS_TABLE])
             .await?;
 
-        self.time_statistics.inner.tx_rate_l1.clear();
-        self.time_statistics.inner.rx_rate_l1.clear();
+        self.time_statistics.tx_rate_l1.clear();
+        self.time_statistics.rx_rate_l1.clear();
 
         // allow iat generation
         let req = table::Request::new(MONITOR_IAT_TABLE)
@@ -918,11 +908,11 @@ impl TrafficGenEvent for RateMonitor {
         self.rtt_storage.clear();
         self.tx_iat_storage.clear();
         self.rx_iat_storage.clear();
-        self.time_statistics.inner.tx_rate_l1.clear();
-        self.time_statistics.inner.rx_rate_l1.clear();
-        self.time_statistics.inner.packet_loss.clear();
-        self.time_statistics.inner.out_of_order.clear();
-        self.time_statistics.inner.rtt.clear();
+        self.time_statistics.tx_rate_l1.clear();
+        self.time_statistics.rx_rate_l1.clear();
+        self.time_statistics.packet_loss.clear();
+        self.time_statistics.out_of_order.clear();
+        self.time_statistics.rtt.clear();
 
         let monitoring_registers = vec![
             "ingress.p4tg.rx_seq",

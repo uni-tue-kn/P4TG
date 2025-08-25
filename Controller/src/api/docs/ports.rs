@@ -27,4 +27,13 @@ lazy_static! {
         }
     ])
     .to_string();
+    pub static ref EXAMPLE_POST_1_REQUEST: String = json!([
+        {
+            "pid": 136,
+            "speed": "BF_SPEED_100G",
+            "fec": "BF_FEC_TYP_NONE",
+            "auto_neg": "PM_AN_DEFAULT"
+        }
+    ])
+    .to_string();
 }

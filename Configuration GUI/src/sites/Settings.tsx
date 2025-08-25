@@ -23,6 +23,7 @@ import { Button, Col, Form, Nav, Row, Tab, Table } from "react-bootstrap";
 import { get } from "../common/API";
 import Loader from "../components/Loader";
 import {
+    ASIC,
     DefaultMPLSHeader,
     DefaultStream,
     DefaultStreamSettings,
@@ -31,7 +32,7 @@ import {
     PortInfo,
     RttHistogramConfig,
     Stream,
-    StreamSettings, TrafficGenData,
+    StreamSettings, ToastVariant, TrafficGenData,
 } from "../common/Interfaces";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
@@ -57,7 +58,7 @@ const CONFIG_STORAGE_KEY = "saved_configs";
 const DEFAULT_CONFIG_NAME = "Test 1";
 
 
-const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
+const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (msg: string, bg: ToastVariant) => void }) => {
     const [ports, set_ports] = useState<PortInfo[]>([])
     const [running, set_running] = useState(false)
     // @ts-ignore
@@ -84,7 +85,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const loadPorts = async () => {
         let stats = await get({ route: "/ports" })
 
-        if (stats.status === 200) {
+        if (stats?.status === 200) {
             set_ports(stats.data)
         }
     }
@@ -179,17 +180,6 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         set_histogram_settings(config.histogram_config || {});
     };
 
-    const saveCurrentAsNamedConfig = (name: string) => {
-        const newConfig: TrafficGenData = {
-            mode, duration, streams, stream_settings, port_tx_rx_mapping: port_tx_rx_mapping, histogram_config: histogram_settings,
-        };
-
-        const updated = { ...savedConfigs, [name]: newConfig };
-        setSavedConfigs(updated);
-        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updated));
-        setActiveConfigName(name);
-    };
-
     const deleteConfig = (name: string) => {
         const updated = { ...savedConfigs };
         delete updated[name];
@@ -251,7 +241,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedSavedConfigs));
 
         if (do_alert) {
-            alert("Settings saved.")
+            showToast("Settings saved successfully.", "success");
         }
     }
 
@@ -276,12 +266,14 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         setSavedConfigs({ [DEFAULT_CONFIG_NAME]: defaultConfig })
         setActiveConfigName(DEFAULT_CONFIG_NAME)
 
-        alert("Reset complete.")
+        showToast("Settings reset successfully.", "success")
     }
 
     const addStream = () => {
-        if (streams.length > 6) {
-            alert("Only 7 different streams allowed.")
+        if (p4tg_infos.asic == ASIC.Tofino1 && streams.length > 6) {
+            showToast("Only 7 different streams allowed.", "warning")
+        } else if (p4tg_infos.asic == ASIC.Tofino2 && streams.length > 14) {
+            showToast("Only 15 different streams allowed.", "warning")
         } else {
             let id = 0
 
@@ -293,16 +285,49 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
             ports.map((v, i) => {
                 if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                    set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.pid)])
+                    set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.port)])
                 }
             })
         }
     }
 
-    const updateHistogramSettings = (pid: number, updated: RttHistogramConfig) => {
+    const getCloneName = (baseName: string): string => {
+        let copyName = `${baseName}_copy`;
+        let counter = 2;
+
+        while (savedConfigs[copyName]) {
+            copyName = `${baseName}_copy${counter}`;
+            counter++;
+        }
+        return copyName;
+    };
+
+
+    const cloneConfig = (name: string) => {
+        const original = savedConfigs[name];
+        if (!original) return;
+
+        const clonedName = getCloneName(name);
+
+        const newConfig = {
+            ...original,
+            name: clonedName,
+        };
+
+        const updatedConfigs = {
+            ...savedConfigs,
+            [clonedName]: newConfig,
+        };
+
+        setSavedConfigs(updatedConfigs);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+        showToast(`Cloned "${name}" to "${clonedName}"`, "success");
+    };
+
+    const updateHistogramSettings = (front_panel_port: number, updated: RttHistogramConfig) => {
         const updatedData = {
             ...histogram_settings,
-            [String(pid)]: updated
+            [String(front_panel_port)]: updated
         };
         set_histogram_settings(updatedData);
         localStorage.setItem("histogram_config", JSON.stringify(updatedData)); // Optional but probably helpful
@@ -316,10 +341,23 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const exportSettings = () => {
         const settings = savedConfigs
 
-        console.log(savedConfigs)
+
+        const flattened_settings = Object.entries(settings).map(([key, value]) => {
+            // Filter stream_settings to only include active ones
+            const filteredStreamSettings = value.stream_settings.filter(
+                (setting) => setting.active
+            );
+
+            return {
+                ...value,
+                name: key,
+                stream_settings: filteredStreamSettings,
+            };
+        });
+
 
         const json = `data:text/json;charset=utf-8,${encodeURIComponent(
-            JSON.stringify(settings, null, "\t")
+            JSON.stringify(flattened_settings, null, "\t")
         )}`
 
         const link = document.createElement("a");
@@ -337,7 +375,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const fillPortsOnMissingSetting = (streams: Stream[], stream_settings: StreamSettings[]) => {
         // If the StreamSettings are not complete, i.e., not all ports are defined, they are not correctly rendered in the frontend.
         // Therefore, we fill the stream settings for each undefined port with a default stream.
-        const available_dev_ports: number[] = ports.slice(0, 10).map(p => p.pid);
+        const available_dev_ports: number[] = ports.slice(0, 10).map(p => p.port);
 
         streams.forEach(s => {
             const ports_from_settings: number[] = stream_settings.filter(setting => setting.port && setting.stream_id == s.stream_id).map(setting => setting.port);
@@ -365,7 +403,6 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         return typeof val === 'object' && val !== null
             && 'streams' in val
             && 'stream_settings' in val
-        // you can add more checks if needed for safety
     }
 
     const loadSettings = (e: any) => {
@@ -380,29 +417,43 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
             if (typeof data === 'object' && data !== null) {
                 if (Object.values(data).every(isSingleTrafficGenData)) {
-                    // It's Record<string, TrafficGenData>
-                    new_config = data;
+                    // It's Record<string, TrafficGenData>, old format
+                    const typedData = data as Record<string, TrafficGenData>;
+                    for (let [key, value] of Object.entries(typedData)) {
+                        // Use the name in the test object as a key.
+                        // This deflates the POST:/api/trafficgen format back to the savedConfig format.
+                        if (value.name && typeof value.name === "string") {
+                            if (key !== value.name) {
+                                new_config[value.name] = value;
+                            } else {
+                                new_config[key] = value;
+                            }
+                        } else {
+                            // fallback if no name property
+                            new_config[key] = value;
+                        }
+                    }
 
                 } else if (isSingleTrafficGenData(data)) {
                     // It's a single TrafficGenData
                     new_config = { [DEFAULT_CONFIG_NAME]: data }
                 } else {
-                    alert("Could not serialize file content. Please check the file.")
+                    showToast("Could not serialize file content. Please check the file.", "danger")
                     return;
                 }
             }
 
-            Object.entries(new_config).forEach(([name, config]) => {
-                console.log(config)
+            for (const [name, config] of Object.entries(new_config)) {
                 if (!validateStreams(config.streams) || !validateStreamSettings(config.stream_settings)) {
-                    alert("Settings not valid for config " + name + ".")
+                    showToast("Settings not valid for config " + name + ". Please check the file.", "danger")
                     // @ts-ignore
                     ref.current.value = ""
-                } else if (!validatePorts(config.port_tx_rx_mapping, ports)) {
-                    alert("Settings not valid for config " + name + ". Configured dev_port IDs are not available on this device.")
-                } else {
+                    return;
+                } else if (!validatePorts(config.port_tx_rx_mapping, ports, p4tg_infos)) {
+                    showToast("Settings not valid for config " + name + ". Configured front panel ports are not available on this device.", "danger")
+                    return;
                 }
-            });
+            };
 
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(new_config))
 
@@ -415,9 +466,8 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(first_test.port_tx_rx_mapping))
             localStorage.setItem("histogram_config", first_test.histogram_config ? JSON.stringify(first_test.histogram_config) : "{}")
 
-            alert("Import successfull. Reloading...")
+            showToast("Settings imported successfully.", "success")
 
-            window.location.reload()
         }
     }
 
@@ -428,6 +478,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             // Invalid name or name already exists
             setRenamingTab(null);
             setRenameValue("");
+            showToast("Name already exists or is invalid.", "warning");
             return;
         }
         // Rename in savedConfigs
@@ -474,7 +525,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                     onSubmit={e => {
                                         e.preventDefault();
                                         if (renameValue.length > 20) {
-                                            alert("Name too long (max 20 characters).");
+                                            showToast("Name too long (max 20 characters).", "warning");
                                             return;
                                         }
                                         handleRenameTab(name, renameValue);
@@ -496,9 +547,32 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             ) : (
                                 <>
                                     {name}
-                                    {name !== Object.keys(savedConfigs)[0] && (
-                                        // Add delete button only if it's not the first tab
-                                        <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "5px" }}>
+                                    <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "5px", gap: "4px" }}>
+                                        {/* Clone Button */}
+                                        <Button
+                                            size="sm"
+                                            disabled={running}
+                                            variant="outline-secondary"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                cloneConfig(name);
+                                            }}
+                                            style={{
+                                                padding: "0px",
+                                                borderWidth: "1px",
+                                                width: "20px",
+                                                height: "20px",
+                                                display: "flex",
+                                                justifyContent: "center",
+                                                alignItems: "center",
+                                            }}
+                                            title="Clone Test"
+                                        >
+                                            <i className="bi bi-files" />
+                                        </Button>
+
+                                        {/* Delete Button */}
+                                        {Object.keys(savedConfigs).length > 1 && (
                                             <Button
                                                 size="sm"
                                                 disabled={running}
@@ -516,11 +590,12 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                                     justifyContent: "center",
                                                     alignItems: "center",
                                                 }}
+                                                title="Delete Test"
                                             >
                                                 <i className="bi bi-x" />
                                             </Button>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </>
                             )}
                         </Nav.Link>
@@ -556,7 +631,7 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                 setActiveConfigName(newName);
                             } else {
                                 // Should actually never happen
-                                alert("Name already exists.");
+                                showToast("Name already exists.", "warning");
                             }
                         }}
                         variant="outline-secondary"
@@ -739,15 +814,15 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                                         <StyledCol>{v.port} ({v.pid})</StyledCol>
                                                         <StyledCol className="d-flex align-items-center gap-2">
                                                             <Form.Select disabled={running || !v.status} required
-                                                                defaultValue={port_tx_rx_mapping[v.pid] || -1}
+                                                                defaultValue={port_tx_rx_mapping[v.port] || -1}
                                                                 onChange={(event: any) => {
                                                                     const value = parseInt(event.target.value);
                                                                     const updatedMapping = { ...port_tx_rx_mapping };
 
                                                                     if (value === -1) {
-                                                                        delete updatedMapping[v.pid]
+                                                                        delete updatedMapping[v.port]
                                                                     } else {
-                                                                        updatedMapping[v.pid] = parseInt(event.target.value);
+                                                                        updatedMapping[v.port] = parseInt(event.target.value);
                                                                     }
 
                                                                     set_port_tx_rx_mapping(updatedMapping);
@@ -756,7 +831,9 @@ const Settings = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                                                 {ports.map((v, i) => {
                                                                     if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
                                                                         return <option key={i}
-                                                                            value={v.pid}>{v.port} ({v.pid})</option>
+                                                                            value={v.port}>
+                                                                            {v.port} ({v.pid})
+                                                                        </option>
                                                                     }
                                                                 })
                                                                 }

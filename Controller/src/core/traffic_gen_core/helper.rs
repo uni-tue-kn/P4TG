@@ -1,9 +1,86 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
 use crate::core::traffic_gen_core::const_definitions::{
     P4TG_DST_PORT, P4TG_SOURCE_PORT, VX_LAN_UDP_PORT,
 };
 use crate::core::traffic_gen_core::types::*;
+use crate::{AppState, PortMapping};
 use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
 use log::error;
+
+// Create a HashMap of front_panel -> dev_port from the port_mapping
+pub(crate) fn generate_front_panel_to_dev_port_mappings(
+    port_mapping: &HashMap<u32, PortMapping>,
+) -> HashMap<u32, u32> {
+    port_mapping
+        .iter()
+        .map(|(dev_port, mapping)| (mapping.front_panel_port, *dev_port))
+        .collect()
+}
+
+/// Create a HashMap of dev_port -> front_panel from the port_mapping
+pub(crate) fn generate_dev_port_to_front_panel_mappings(
+    port_mapping: &HashMap<u32, PortMapping>,
+) -> HashMap<u32, u32> {
+    port_mapping
+        .iter()
+        .map(|(dev_port, mapping)| (*dev_port, mapping.front_panel_port))
+        .collect()
+}
+
+/// Translates key values in `input` with values from `mapping`
+pub(crate) fn translate_keys<K, V>(input: &HashMap<K, V>, mapping: &HashMap<K, K>) -> HashMap<K, V>
+where
+    K: Copy + Eq + std::hash::Hash,
+    V: Clone,
+{
+    input
+        .iter()
+        .filter_map(|(k, v)| mapping.get(k).map(|new_k| (*new_k, v.clone())))
+        .collect()
+}
+
+/// Remove all keys from `map` that are not contained in `allowed_keys`
+pub(crate) fn filter_map_for_keys<K, V>(map: &mut HashMap<K, V>, allowed_keys: &HashSet<K>)
+where
+    K: Eq + std::hash::Hash,
+{
+    map.retain(|k, _| allowed_keys.contains(k));
+}
+
+/// Collects all ports that may currently be active during traffic generation.
+/// Those ports are either contained in one of the stream settings, or in the TX/RX port mapping.
+/// This function obtains a lock on the state.
+pub(crate) async fn get_used_ports(state: &Arc<AppState>) -> HashSet<u32> {
+    let mut used_ports: HashSet<u32> = HashSet::new();
+
+    // Collect ports from active stream settings
+    state
+        .traffic_generator
+        .lock()
+        .await
+        .stream_settings
+        .iter()
+        .filter(|s| s.active)
+        .for_each(|s| {
+            used_ports.insert(s.port);
+        });
+
+    // Collect ports from port_mapping
+    state
+        .traffic_generator
+        .lock()
+        .await
+        .port_mapping
+        .iter()
+        .for_each(|(tx, rx)| {
+            let tx_num = tx.parse::<u32>().unwrap_or(1);
+            used_ports.insert(tx_num);
+            used_ports.insert(*rx);
+        });
+    used_ports
+}
 
 pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
     let mut encapsulation_overhead = match stream.encapsulation {

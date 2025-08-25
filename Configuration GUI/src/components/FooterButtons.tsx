@@ -20,7 +20,7 @@
 import { useState, useEffect } from "react";
 import { Col, Row } from "react-bootstrap";
 
-const ThemeBtn = () => {
+const FooterButtons = () => {
   const [theme, setTheme] = useState(() => {
     let storedTheme = localStorage.getItem("theme");
     if (!storedTheme) {
@@ -45,7 +45,7 @@ const ThemeBtn = () => {
   };
 
   return (
-    <Row className="mb-3">
+    <>
       <Col className="text-center col-12 mt-1">
         <i
           className={`theme-icon ${theme === "light" ? "bi bi-moon-fill" : "bi bi-brightness-high-fill"
@@ -58,8 +58,23 @@ const ThemeBtn = () => {
           onClick={toggleTheme}
         ></i>
       </Col>
-    </Row>
+
+      <Col className="text-center col-12 mt-1">
+        <i
+          className="theme-icon bi bi-book"
+          style={{
+            color: theme === "dark" ? "white" : "black",
+            fontSize: "1.1rem",
+            fontWeight: "bold",
+            cursor: "pointer",
+          }}
+          onClick={() => window.open("/api/docs", "_blank", "noopener,noreferrer")}
+        ></i>
+      </Col>
+
+    </>
+
   );
 };
 
-export default ThemeBtn;
+export default FooterButtons;

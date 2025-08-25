@@ -16,8 +16,8 @@
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
-use api::statistics::Statistics;
-use core::statistics::TimeStatistic;
+use core::statistics::Statistics;
+use core::statistics::TimeStatistics;
 use log::{info, warn};
 use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
@@ -50,6 +50,7 @@ use crate::core::{
 pub struct PortMapping {
     pub tx_recirculation: u32,
     pub rx_recirculation: u32,
+    pub front_panel_port: u32,
     pub mac: MacAddr,
 }
 
@@ -62,7 +63,7 @@ pub struct Experiment {
 /// Stores statistics and configurations, as well as an abort signal for multiple tests
 pub struct MultiTest {
     pub(crate) collected_statistics: Mutex<Vec<Statistics>>,
-    pub(crate) collected_time_statistics: Mutex<Vec<TimeStatistic>>,
+    pub(crate) collected_time_statistics: Mutex<Vec<TimeStatistics>>,
     pub(crate) multiple_test_monitor_task: Mutex<DurationMonitorTask>,
 }
 
@@ -163,6 +164,7 @@ async fn configure_ports(
                 tx_recirculation: tx_port,
                 rx_recirculation: rx_port,
                 mac: *mac,
+                front_panel_port: *port,
             },
         );
     }

@@ -34,14 +34,14 @@ use utoipa::{
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::{
-    add_port, config, configure_histogram, configure_traffic_gen, online, ports, reset, restart,
-    statistics, stop_traffic_gen, traffic_gen,
+    add_port, config, configure_traffic_gen, online, ports, reset, restart, statistics,
+    stop_traffic_gen, traffic_gen,
 };
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::api::helper::serve_static_files::{serve_index, static_path};
 use crate::api::histogram;
-use crate::api::ports::arp_reply;
+use crate::api::ports::{arp_reply, PortConfiguration};
 use crate::api::statistics::time_statistics;
 use crate::api::tables;
 use crate::api::tables::tables;
@@ -61,12 +61,13 @@ use crate::core::traffic_gen_core::types::*;
         restart::restart,
         reset::reset,
         ports::ports,
-        histogram::configure_histogram,
+        ports::add_port,
         histogram::config,
         online::online
     ),
     components(
         schemas(TrafficGenData,
+        PortConfiguration,
         GenerationMode,
         Encapsulation,
         StreamSetting,
@@ -80,8 +81,8 @@ use crate::core::traffic_gen_core::types::*;
         VxLAN,
         MPLSHeader,
         tables::TableDescriptor,
-        statistics::Statistics,
-        statistics::TimeStatistics,
+        crate::core::statistics::Statistics,
+        crate::core::statistics::TimeStatistics,
         crate::core::statistics::RangeCount,
         crate::core::statistics::RangeCountValue,
         crate::core::statistics::TypeCount,
@@ -172,10 +173,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/ports/arp", post(arp_reply))
         .route("/tables", get(tables))
         .route("/config", get(config))
-        .route(
-            "/histogram",
-            get(histogram::config).post(configure_histogram),
-        )
+        .route("/histogram", get(histogram::config))
         .layer(cors)
         .with_state(Arc::clone(&state));
 

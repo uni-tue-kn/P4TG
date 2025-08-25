@@ -27,12 +27,13 @@ import {
     ASIC,
     GenerationMode,
     P4TGInfos,
-    Statistics as StatInterface,
+    Statistics,
     StatisticsObject,
     Stream,
     StreamSettings,
     TimeStatistics,
     TimeStatisticsObject,
+    ToastVariant,
     TrafficGenData
 } from '../common/Interfaces'
 import styled from "styled-components";
@@ -78,7 +79,7 @@ export const GitHub = () => {
     </Row>
 }
 
-const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
+const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (msg: string, bg: ToastVariant) => void }) => {
     const [loaded, set_loaded] = useState(false)
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
@@ -101,18 +102,12 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
-    const [statistics, set_statistics] = useState<StatInterface>(StatisticsObject)
-    const [time_statistics, set_time_statistics] = useState<TimeStatistics>(TimeStatisticsObject)
+    const [statistics, set_statistics] = useState<Statistics>([StatisticsObject])
+    const [time_statistics, set_time_statistics] = useState<TimeStatistics>([TimeStatisticsObject])
 
     const NumTests = ({ running }: { running: boolean }) => {
         const total_tests = Object.keys(savedConfigs).length;
-        let num_avail_stats = Object.keys(statistics.previous_statistics || {}).length;
-        let last_test = false
-
-        if (num_avail_stats !== total_tests) {
-            num_avail_stats += 1
-            last_test = num_avail_stats === total_tests
-        }
+        let num_avail_stats = Object.keys(statistics || {}).length;
 
         return (
             <TestNumber>
@@ -126,7 +121,7 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             animationDuration: '0.5s'
                         }}
                     />
-                ) : !running && (num_avail_stats !== total_tests) || last_test ? (
+                ) : !running && (num_avail_stats !== total_tests) ? (
                     <i className="bi bi-pause-circle-fill" />
                 ) : !running && num_avail_stats === total_tests ? (
                     <i className="bi bi-check-circle-fill" />
@@ -212,25 +207,25 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                     }
                 })
                 if (config.mode !== GenerationMode.MPPS && overall_rate > max_rate) {
-                    alert("Sum of stream rates > " + max_rate + " Gbps for test " + name + "!")
+                    showToast("Sum of stream rates > " + max_rate + " Gbps for test " + name + "!", "danger")
                     set_overlay(false)
                     return;
                 }
                 if (config.streams.length === 0 && config.mode !== GenerationMode.ANALYZE) {
-                    alert("You need to define at least one traffic configuration for " + name + ".");
+                    showToast("You need to define at least one traffic configuration for " + name + ".", "danger")
                     set_overlay(false)
                     return;
                 }
                 if (!config.stream_settings.some(s => s.active) && config.mode !== GenerationMode.ANALYZE) {
-                    alert("You need to have at least one active stream setting for " + name + ".");
+                    showToast("You need to have at least one active stream setting for " + name + ".", "danger")
                     set_overlay(false);
                     return;
                 }
             }
 
             // Delete all previous statistics in local state
-            set_statistics(StatisticsObject)
-            set_time_statistics(TimeStatisticsObject)
+            set_statistics([StatisticsObject])
+            set_time_statistics([TimeStatisticsObject])
             // Reset the mode to 0 to detect when traffic generation actually starts
             set_mode(0)
 
@@ -285,6 +280,20 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
             localStorage.setItem("histogram_config", JSON.stringify(stats.data.histogram_config))
 
+            // This copies TrafficGenData from the GET response into localStorage and config.
+            // It's needed to keep the state consistent if multiple tests were started directly via the REST API
+            if (stats.data.name) {
+                setSavedConfigs(prev => {
+                    const updatedConfigs = {
+                        ...prev,
+                        // @ts-ignore
+                        [stats.data.name]: stats.data,
+                    };
+                    localStorage.setItem("saved_configs", JSON.stringify(updatedConfigs));
+                    return updatedConfigs;
+                });
+            }
+
             set_running(true)
         } else {
             set_running(false)
@@ -310,10 +319,20 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         set_overlay(false)
     }
 
+    const export_json = async () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(time_statistics, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "p4tg_time_statistics.json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
+
     return <Loader loaded={loaded} overlay={overlay}>
         <form onSubmit={onSubmit}>
             <Row className={"mb-3"}>
-                <SendReceiveMonitor stats={statistics} running={running} />
+                <SendReceiveMonitor stats={statistics[0]} running={running} />
                 <Col className={"text-end col-4"}>
                     {savedConfigs && Object.keys(savedConfigs).length > 1 &&
                         <>
@@ -336,6 +355,11 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                         </>
                         :
                         <>
+                            {time_statistics && time_statistics[0].tx_rate_l1 && Object.keys(time_statistics[0].tx_rate_l1).length > 0 ?
+                                <Button onClick={export_json} className="mb-1" variant="dark"><i
+                                    className="bi bi-file-earmark-arrow-down-fill" /> Export </Button>
+                                : null}
+                            {" "}
                             <Button type={"submit"} className="mb-1" variant="primary"><i
                                 className="bi bi-play-circle-fill" /> Start </Button>
                             {" "}
@@ -358,7 +382,7 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             />
         </Form>
 
-        {statistics.previous_statistics && Object.keys(statistics.previous_statistics).length > 0 ? (
+        {statistics && Object.keys(statistics).length > 1 ? (
             (() => {
                 const savedConfigKeys = Object.keys(savedConfigs);
 
@@ -382,8 +406,8 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             {running &&
                                 <Tab.Pane eventKey="current" key="current">
                                     <SummaryView
-                                        statistics={statistics}
-                                        time_statistics={time_statistics}
+                                        statistics={statistics[0]}
+                                        time_statistics={time_statistics[0]}
                                         port_tx_rx_mapping={port_tx_rx_mapping}
                                         visual={visual}
                                         mode={mode}
@@ -395,10 +419,10 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                             {savedConfigKeys.map((name) => {
                                 /// Find the statistics for the current test identified by the name field
-                                const statData = Object.values(statistics.previous_statistics || {}).find(
+                                const statData = Object.values(statistics || {}).find(
                                     (stat: any) => stat.name === name
                                 ) ?? StatisticsObject;
-                                const timeStatsData = Object.values(time_statistics.previous_statistics || {}).find(
+                                const timeStatsData = Object.values(time_statistics || {}).find(
                                     (stat: any) => stat.name === name
                                 ) ?? TimeStatisticsObject;
                                 const config = savedConfigs[name];
@@ -427,8 +451,8 @@ const Home = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             // OLD VIEW here — no previous_statistics present. Rendered when only a single test is applied.
             <>
                 <SummaryView
-                    statistics={statistics}
-                    time_statistics={time_statistics}
+                    statistics={statistics[0]}
+                    time_statistics={time_statistics[0]}
                     port_tx_rx_mapping={port_tx_rx_mapping}
                     visual={visual}
                     mode={mode}

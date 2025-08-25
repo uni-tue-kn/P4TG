@@ -20,7 +20,7 @@
 import React from 'react'
 
 import styled from "styled-components";
-import { Statistics } from "../common/Interfaces";
+import { StatisticsEntry } from "../common/Interfaces";
 
 const StatusIndicator = styled.span<{ error: boolean }>`
     background: ${props => (props.error ? 'var(--color-primary)' : 'var(--color-okay)')};
@@ -31,16 +31,21 @@ const StatusIndicator = styled.span<{ error: boolean }>`
     margin-right: 10px;
 `
 
-const hasError = (stats: Statistics) => {
+const hasError = (stats: StatisticsEntry) => {
     let loss = 0
 
     if ("packet_loss" in stats) {
         loss = Object.values(stats.packet_loss).reduce((a, b) => a + b, 0)
     }
 
-    return loss > 0
+    return (
+        loss > 0 ||
+        Object.values(stats.rtt_histogram).some(
+            (hist: { data: { missed_bin_count: number } }) => hist.data.missed_bin_count > 0
+        )
+    )
 }
-const Status = ({ stats, running }: { stats: Statistics, running: boolean }) => {
+const Status = ({ stats, running }: { stats: StatisticsEntry, running: boolean }) => {
 
     return <StatusIndicator error={hasError(stats)}>{hasError(stats) ? "Status: Error" : "Status: Ok"}</StatusIndicator>
 }

@@ -57,17 +57,17 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         let stats = await get({ route: "/ports" })
         let config = await get({ route: "/config" })
 
-        if (stats.status === 200) {
+        if (stats?.status === 200) {
             set_ports(stats.data)
-            set_config(config.data)
+            set_config(config?.data)
             set_loaded(true)
         }
     }
 
-    const updatePort = async (pid: number, speed: string, fec: string, auto_neg: string) => {
+    const updatePort = async (front_panel_port: number, speed: string, fec: string, auto_neg: string) => {
         let update = await post({
             route: "/ports", body: {
-                pid: pid,
+                front_panel_port: front_panel_port,
                 speed: speed,
                 fec: fec,
                 auto_neg: auto_neg
@@ -79,11 +79,10 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         }
     }
 
-    const updateArp = async (pid: number, state: boolean) => {
-        console.log(state)
+    const updateArp = async (front_panel_port: number, state: boolean) => {
         let update = await post({
             route: "/ports/arp", body: {
-                pid: pid,
+                front_panel_port: front_panel_port,
                 arp_reply: state
             }
         })
@@ -174,7 +173,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                         fec = FEC.BF_FEC_TYP_NONE
                                     }
 
-                                    await updatePort(v.pid, event.target.value, fec, v.auto_neg)
+                                    await updatePort(v.port, event.target.value, fec, v.auto_neg)
                                 }}>
                                     {Object.keys(speed_mapping).map(f => {
                                         if (f == SPEED.BF_SPEED_400G && p4tg_infos.asic != ASIC.Tofino2) {
@@ -188,7 +187,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             </StyledCol>
                             <StyledCol className={"col-2"}>
                                 <Form.Select onChange={async (event: any) => {
-                                    await updatePort(v["pid"], v["speed"], v["fec"], event.target.value)
+                                    await updatePort(v["port"], v["speed"], v["fec"], event.target.value)
                                 }}>
                                     {Object.keys(auto_neg_mapping).map(f => {
                                         return <option selected={f == v["auto_neg"]}
@@ -196,7 +195,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                     })}
                                 </Form.Select></StyledCol>
                             <StyledCol className={"col-2"}><Form.Select onChange={async (event: any) => {
-                                await updatePort(v["pid"], v["speed"], event.target.value, v["auto_neg"])
+                                await updatePort(v["port"], v["speed"], event.target.value, v["auto_neg"])
                             }}>
                                 {Object.keys(fec_mapping).map(f => {
                                     if (f != FEC.BF_FEC_TYP_REED_SOLOMON && v.speed == SPEED.BF_SPEED_400G) {
@@ -217,7 +216,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                 <Form.Check
                                     defaultChecked={getArpReply(v['port'])}
                                     onChange={async (event: any) => {
-                                        await updateArp(v["pid"], event.target.checked)
+                                        await updateArp(v["port"], event.target.checked)
                                     }}
                                     type={"switch"}
                                 >

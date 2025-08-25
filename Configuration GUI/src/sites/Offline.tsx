@@ -21,6 +21,7 @@ import React, { useEffect } from 'react'
 import styled from 'styled-components'
 import { Row } from "react-bootstrap";
 import { get } from "../common/API";
+import { ASIC } from '../common/Interfaces';
 
 const StyledIcon = styled.i`
     font-size: 100px;
@@ -28,7 +29,7 @@ const StyledIcon = styled.i`
 `
 
 
-const Offline = () => {
+const Offline = ({ setP4TGInfos }: { setP4TGInfos: (arg0: any) => void }) => {
     useEffect(() => {
         const loadStatus = async () => {
             let stats = await get({ route: "/online" })
@@ -37,7 +38,11 @@ const Offline = () => {
                 return
             }
 
-
+            if (stats !== undefined && stats.status === 200) {
+                setP4TGInfos(stats.data)
+            } else {
+                setP4TGInfos({ status: "", version: "", asic: ASIC.Tofino1, loopback: false })
+            }
         }
 
         const interval = setInterval(loadStatus, 2000)
