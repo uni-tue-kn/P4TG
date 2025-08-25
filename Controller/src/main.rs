@@ -23,10 +23,10 @@ use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
 use rbfrt::table::ActionData;
 use rbfrt::util::PortManager;
-use rbfrt::util::FEC::BF_FEC_TYP_REED_SOLOMON;
 use rbfrt::util::{AutoNegotiation, Loopback, Port, Speed, FEC};
 use rbfrt::{table, SwitchConnection};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::str::FromStr;
@@ -60,6 +60,18 @@ pub struct Experiment {
     running: bool,
 }
 
+#[derive(Clone, Debug)]
+struct RecChoice {
+    tx_port: u32,
+    tx_speed: Option<Speed>,
+    tx_fec: Option<FEC>,
+    tx_auto_neg: Option<AutoNegotiation>,
+    rx_port: u32,
+    rx_speed: Option<Speed>,
+    rx_fec: Option<FEC>,
+    rx_auto_neg: Option<AutoNegotiation>,
+}
+
 /// Stores statistics and configurations, as well as an abort signal for multiple tests
 pub struct MultiTest {
     pub(crate) collected_statistics: Mutex<Vec<Statistics>>,
@@ -91,96 +103,191 @@ async fn configure_ports(
     switch: &mut SwitchConnection,
     pm: &PortManager,
     config: &Config,
-    recirculation_ports: &Vec<u32>,
+    recirculation_ports: &[u32],
     port_mapping: &mut HashMap<u32, PortMapping>,
     is_tofino2: bool,
     loopback_mode: bool,
 ) -> Result<(), RBFRTError> {
-    // Delete previously configured ports
+    // Reset
     switch.clear_table("$PORT").await?;
 
-    let mut port_requests = vec![];
-    let mut tg_ports = vec![];
+    let mut port_requests = Vec::new();
+    let mut auto_tg_ports = Vec::new();
+    let mut manual_tg_ports = Vec::new();
 
-    // TG_PORTS
+    // --- TG ports ---
     for tg in &config.tg_ports {
-        let mut pm_req = Port::new(tg.port, 0)
-            .speed(if is_tofino2 {
-                Speed::BF_SPEED_400G
-            } else {
-                Speed::BF_SPEED_100G
-            })
-            .fec(if is_tofino2 {
-                BF_FEC_TYP_REED_SOLOMON
-            } else {
-                FEC::BF_FEC_TYP_NONE
-            })
-            .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT);
+        let speed = tg.speed.clone().unwrap_or(if is_tofino2 {
+            Speed::BF_SPEED_400G
+        } else {
+            Speed::BF_SPEED_100G
+        });
+        let fec = tg.fec.clone().unwrap_or(if is_tofino2 {
+            FEC::BF_FEC_TYP_REED_SOLOMON
+        } else {
+            FEC::BF_FEC_TYP_NONE
+        });
+        let auto_neg = tg
+            .auto_negotiation
+            .clone()
+            .unwrap_or(AutoNegotiation::PM_AN_DEFAULT);
+
+        let mut req = Port::new(tg.port, 0)
+            .speed(speed)
+            .fec(fec)
+            .auto_negotiation(auto_neg);
 
         if loopback_mode {
-            // loopback mode is used for testing if no cables are available
-            pm_req = pm_req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+            req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
         }
 
-        // we validated the mac address before
-        tg_ports.push((tg.port, MacAddr::from_str(&tg.mac).unwrap()));
+        port_requests.push(req);
 
-        port_requests.push(pm_req);
+        let mac = MacAddr::from_str(&tg.mac).unwrap(); // validated earlier
+        if tg.recirculation_ports.is_some() {
+            manual_tg_ports.push((tg.port, mac));
+        } else {
+            auto_tg_ports.push((tg.port, mac));
+        }
     }
 
-    // Recirculation ports
-    for port in recirculation_ports {
-        let pm_req = Port::new(*port, 0)
-            .speed(if is_tofino2 {
-                Speed::BF_SPEED_400G
-            } else {
-                Speed::BF_SPEED_100G
-            })
-            .fec(if is_tofino2 {
-                BF_FEC_TYP_REED_SOLOMON
-            } else {
-                FEC::BF_FEC_TYP_NONE
-            })
-            .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
-            .loopback(Loopback::BF_LPBK_MAC_NEAR);
+    // --- Build choices for each TG: config-first, then auto from remaining pool ---
+    let mut per_tg_choice: HashMap<u32, RecChoice> = HashMap::new();
+    let mut used_recirc: HashSet<u32> = HashSet::new();
 
-        port_requests.push(pm_req);
+    // Reserve manual mappings and enforce uniqueness up-front
+    for tg in &config.tg_ports {
+        if let Some(rec) = &tg.recirculation_ports {
+            for &p in &[rec.tx.port, rec.rx.port] {
+                if !used_recirc.insert(p) {
+                    panic!("Recirculation port {p} is used more than once in config.");
+                }
+            }
+            per_tg_choice.insert(
+                tg.port,
+                RecChoice {
+                    tx_port: rec.tx.port,
+                    tx_speed: rec.tx.speed.clone(),
+                    tx_fec: rec.tx.fec.clone(),
+                    tx_auto_neg: rec.tx.auto_negotiation.clone(),
+                    rx_port: rec.rx.port,
+                    rx_speed: rec.rx.speed.clone(),
+                    rx_fec: rec.rx.fec.clone(),
+                    rx_auto_neg: rec.rx.auto_negotiation.clone(),
+                },
+            );
+        }
     }
 
+    // Free pool = recirculation_ports minus manually used
+    let free: Vec<u32> = recirculation_ports
+        .iter()
+        .copied()
+        .filter(|p| !used_recirc.contains(p))
+        .collect();
+
+    let needed = auto_tg_ports.len() * 2;
+    if free.len() < needed {
+        panic!(
+            "Not enough recirculation ports: need {}, have {} (after reserving manual mappings).",
+            needed,
+            free.len()
+        );
+    }
+
+    // Assign pairs (2*i, 2*i+1) from the filtered pool
+    for (i, (tg_port, _)) in auto_tg_ports.iter().enumerate() {
+        per_tg_choice.insert(
+            *tg_port,
+            RecChoice {
+                tx_port: free[2 * i],
+                tx_speed: None,
+                tx_fec: None,
+                tx_auto_neg: None,
+                rx_port: free[2 * i + 1],
+                rx_speed: None,
+                rx_fec: None,
+                rx_auto_neg: None,
+            },
+        );
+        used_recirc.insert(free[2 * i]);
+        used_recirc.insert(free[2 * i + 1]);
+    }
+
+    // --- Configure recirc ports actually used (avoid double-adding same port) ---
+    let mut added_recirc_once: HashSet<u32> = HashSet::new();
+
+    for choice in per_tg_choice.values() {
+        let mut add = |port: u32,
+                       speed: Option<Speed>,
+                       fec: Option<FEC>,
+                       auto_neg: Option<AutoNegotiation>| {
+            if added_recirc_once.insert(port) {
+                let speed = speed.unwrap_or(if is_tofino2 {
+                    Speed::BF_SPEED_400G
+                } else {
+                    Speed::BF_SPEED_100G
+                });
+                let fec = fec.unwrap_or(if is_tofino2 {
+                    FEC::BF_FEC_TYP_REED_SOLOMON
+                } else {
+                    FEC::BF_FEC_TYP_NONE
+                });
+                let auto_neg = auto_neg.unwrap_or(AutoNegotiation::PM_AN_DEFAULT);
+
+                let req = Port::new(port, 0)
+                    .speed(speed)
+                    .fec(fec)
+                    .auto_negotiation(auto_neg)
+                    .loopback(Loopback::BF_LPBK_MAC_NEAR);
+                port_requests.push(req);
+            }
+        };
+        add(
+            choice.tx_port,
+            choice.tx_speed.clone(),
+            choice.tx_fec.clone(),
+            choice.tx_auto_neg.clone(),
+        );
+        add(
+            choice.rx_port,
+            choice.rx_speed.clone(),
+            choice.rx_fec.clone(),
+            choice.rx_auto_neg.clone(),
+        );
+    }
+
+    // Push to hardware
     pm.add_ports(switch, &port_requests).await?;
-
     info!("Ports of device configured.");
 
+    // --- Build mapping (TG dev_port -> recirc dev_ports) ---
     port_mapping.clear();
 
-    for (offset, (index, (port, mac))) in tg_ports.iter().enumerate().enumerate() {
-        let dev_port = pm.dev_port(*port, 0)?;
-        let tx_port = pm.dev_port(*recirculation_ports.get(index + offset).unwrap(), 0)?;
-        let rx_port = pm.dev_port(*recirculation_ports.get(index + offset + 1).unwrap(), 0)?;
-
+    for (tg_port, mac) in manual_tg_ports.iter().chain(auto_tg_ports.iter()) {
+        let choice = per_tg_choice
+            .get(tg_port)
+            .expect("internal: missing recirc choice");
+        let dev_port = pm.dev_port(*tg_port, 0)?;
+        let tx_dev = pm.dev_port(choice.tx_port, 0)?;
+        let rx_dev = pm.dev_port(choice.rx_port, 0)?;
         port_mapping.insert(
             dev_port,
             PortMapping {
-                tx_recirculation: tx_port,
-                rx_recirculation: rx_port,
+                tx_recirculation: tx_dev,
+                rx_recirculation: rx_dev,
                 mac: *mac,
-                front_panel_port: *port,
+                front_panel_port: *tg_port,
             },
         );
     }
 
-    // Verify that all recirculation ports are unique
-    let mut used_recirculation_ports = vec![];
-
-    for port in port_mapping.values() {
-        used_recirculation_ports.push(port.tx_recirculation);
-        used_recirculation_ports.push(port.rx_recirculation);
-    }
-
-    used_recirculation_ports.dedup();
-
-    if used_recirculation_ports.len() != tg_ports.len() * 2 {
-        panic!("Recirculation ports not unique.")
+    // --- Final uniqueness assertion (dev_port-level) ---
+    let mut seen_dev: HashSet<u32> = HashSet::new();
+    for m in port_mapping.values() {
+        if !seen_dev.insert(m.tx_recirculation) || !seen_dev.insert(m.rx_recirculation) {
+            panic!("Recirculation ports not unique.");
+        }
     }
 
     Ok(())
@@ -239,35 +346,40 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .as_u32();
     info!("#Pipes: {num_pipes:?}");
 
+    // TODO find a way to derive this from device configuration
+    let num_ports = env::var("NUM_PORTS")
+        .unwrap_or("32".to_owned())
+        .parse()
+        .unwrap_or(32);
+
     if loopback_mode {
         info!("Loopback mode activated.");
     }
 
     // Front panel ports that can be used for traffic generation.
     // At default, the first 10 ports are used for traffic generation.
-    let all_ports: Vec<u32> = (1..33).collect(); // we dont have a 64-port Tofino for testing purposes
-                                                 // limit to 32 ports
+    let all_ports: Vec<u32> = (1..=num_ports).collect();
 
     // TG ports either from config or default
-    let config = match File::open("/app/config.json") {
+    let config = match File::open("config.json") {
         Ok(file) => {
-            let mut config: Config = serde_json::from_reader(file).unwrap_or_else(|_| {
+            let config: Config = serde_json::from_reader(file).unwrap_or_else(|_| {
                 warn!("Config file not valid. Using default config.");
-                Config::default()
+                Config::default_tofino(is_tofino2)
             });
 
-            if !config.validate() {
-                warn!("Config not valid. At most 10 ports can be used, and no front panel port > 32. \
-                       Mac addresses need to be correct. \
-                       Using default config.");
-                config = Config::default();
-            }
+            let config = if let Err(err) = config.validate(num_ports) {
+                warn!("{err} Using default config.");
+                Config::default_tofino(is_tofino2)
+            } else {
+                config
+            };
 
             config
         }
         Err(_) => {
             warn!("No config file (/app/config.json) for controller found. Using default config.");
-            Config::default()
+            Config::default_tofino(is_tofino2)
         }
     };
 
