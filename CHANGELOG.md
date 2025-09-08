@@ -1,5 +1,10 @@
 # Changelog 
 
+## v2.5.1
+
+### Bug fixes
+- Fix RX frame type and Ethernet type not being counted
+
 ## v2.5.0
 ### New features
 - ⚠ Breaking change: Port configuration for StreamSettings, TX/RX port mapping, histograms, port config, ARP config, statistics and time_statistics now use the front panel numbers (e.g., 1-10) instead of dev_port numbers. This makes exported configurations portable across different Tofino devices.

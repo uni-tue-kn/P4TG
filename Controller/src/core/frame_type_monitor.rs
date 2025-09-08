@@ -317,7 +317,7 @@ impl FrameTypeMonitor {
                             .frame_type_data
                             .get_mut(port)
                             .unwrap()
-                            .tx
+                            .rx
                             .entry(frame_type.to_owned())
                             .and_modify(|e| *e += count)
                             .or_insert(count);
