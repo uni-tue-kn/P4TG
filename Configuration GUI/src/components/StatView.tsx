@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
-import { GenerationMode, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
+import { GenerationMode, PortTxRxMap, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
 import { formatBits } from "./SendReceiveMonitor";
 
 import styled from 'styled-components'
@@ -30,7 +30,7 @@ const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port }: { stats: StatisticsEntry, time_stats: TimeStatisticsEntry, port_mapping: { [name: number]: number }, mode: GenerationMode, visual: boolean, is_summary: boolean, rx_port: number }) => {
+const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port }: { stats: StatisticsEntry, time_stats: TimeStatisticsEntry, port_mapping: PortTxRxMap, mode: GenerationMode, visual: boolean, is_summary: boolean, rx_port: number }) => {
     const [total_tx, set_total_tx] = useState(0);
     const [total_rx, set_total_rx] = useState(0);
     const [iat_tx, set_iat_tx] = useState({ "mean": 0, "std": 0, "n": 0, "mae": 0 });
@@ -45,111 +45,103 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         </Tooltip>
     );
 
-    const get_frame_types = (type: string): { tx: number, rx: number } => {
-        let ret = { "tx": 0, "rx": 0 }
+    const get_frame_types = (type: string): { tx: number; rx: number } => {
+        const ret = { tx: 0, rx: 0 };
+        const ftd = stats.frame_type_data ?? {};
 
-        // if (!["multicast", "broadcast", "unicast", "total", "non-unicast", "vlan", "ipv4", "ipv6", "qinq", "unknown"].includes(type)) {
-        //     return ret
-        // }
+        for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
+            for (const [txCh, target] of Object.entries(perCh ?? {})) {
+                // TX: sum for (txPort, txCh)
+                const txVal = (ftd[txPort]?.[txCh]?.tx as any)?.[type];
+                if (typeof txVal === "number") ret.tx += txVal;
 
-        if (stats.frame_type_data == undefined) {
-            return ret
+                // RX: sum for mapped (rxPort, rxCh)
+                const rxPort = String((target as any).port);
+                const rxCh = String((target as any).channel);
+                const rxVal = (ftd[rxPort]?.[rxCh]?.rx as any)?.[type];
+                if (typeof rxVal === "number") ret.rx += rxVal;
+            }
         }
 
-        Object.keys(stats.frame_type_data).forEach((v: string) => {
-            if (Object.keys(port_mapping).includes(v)) {
-                // @ts-ignore
-                if (!(type in stats.frame_type_data[v].tx)) {
-                    ret.tx += 0
-                }
-                else {
-                    // @ts-ignore
-                    ret.tx += stats.frame_type_data[v].tx[type]
-                }
+        return ret;
+    };
 
-            }
-
-            if (Object.values(port_mapping).map(Number).includes(parseInt(v))) {
-                // @ts-ignore
-                if (!(type in stats.frame_type_data[v].rx)) {
-                    ret.rx += 0
-                }
-                else {
-                    // @ts-ignore
-                    ret.rx += stats.frame_type_data[v].rx[type]
-                }
-            }
-        })
-
-        return ret
-    }
 
     const get_lost_packets = () => {
-        let ret = 0
-
-        Object.keys(stats.packet_loss).forEach(v => {
-            if (Object.values(port_mapping).map(Number).includes(parseInt(v))) {
-                ret += stats.packet_loss[v]
+        let ret = 0;
+        for (const perCh of Object.values(port_mapping ?? {})) {
+            for (const t of Object.values(perCh ?? {})) {
+                const rp = String((t as any).port), rc = String((t as any).channel);
+                ret += stats.packet_loss?.[rp]?.[rc] ?? 0;
             }
-        })
-
-        return ret
-    }
+        }
+        return ret;
+    };
 
     const get_out_of_order_packets = () => {
-        let ret = 0
-
-        Object.keys(stats.out_of_order).forEach(v => {
-            if (Object.values(port_mapping).map(Number).includes(parseInt(v))) {
-                ret += stats.out_of_order[v]
+        let ret = 0;
+        for (const perCh of Object.values(port_mapping ?? {})) {
+            for (const t of Object.values(perCh ?? {})) {
+                const rp = String((t as any).port), rc = String((t as any).channel);
+                ret += stats.out_of_order?.[rp]?.[rc] ?? 0;
             }
-        })
+        }
+        return ret;
+    };
 
-        return ret
-    }
 
-    const get_frame_stats = (type: string, low: number, high: number) => {
-        let ret = 0
+    const get_frame_stats = (type: "tx" | "rx", low: number, high: number) => {
+        let ret = 0;
+        const fs = stats.frame_size ?? {};
 
-        if (stats.frame_size == undefined || port_mapping == undefined) {
-            return ret
+        if (!port_mapping) return 0;
+
+        if (type === "tx") {
+            // Sum bins for all mapped TX (port, channel)
+            for (const [txPort, perCh] of Object.entries(port_mapping)) {
+                for (const txCh of Object.keys(perCh ?? {})) {
+                    const bins = fs?.[txPort]?.[txCh]?.tx ?? [];
+                    for (const f of bins) {
+                        if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
+                    }
+                }
+            }
+        } else {
+            // Sum bins for all mapped RX (port, channel) targets
+            for (const perCh of Object.values(port_mapping)) {
+                for (const target of Object.values(perCh ?? {})) {
+                    const rxPort = String((target as any).port);
+                    const rxCh = String((target as any).channel);
+                    const bins = fs?.[rxPort]?.[rxCh]?.rx ?? [];
+                    for (const f of bins) {
+                        if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
+                    }
+                }
+            }
         }
 
-        Object.keys(stats.frame_size).forEach(v => {
-            if ((type == "tx" && Object.keys(port_mapping).includes(v))
-                || type == "rx" && Object.values(port_mapping).map(Number).includes(parseInt(v))) {
-                // @ts-ignore
-                stats.frame_size[v][type].forEach(f => {
-                    if (f.low == low && f.high == high) {
-                        ret += f.packets
-                    }
-                })
-            }
-        })
+        return ret;
+    };
 
-        return ret
-    }
 
 
     useEffect(() => {
         let ret_tx = 0
         let ret_rx = 0
 
+        for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
+            for (const [txCh, target] of Object.entries(perCh ?? {})) {
+                // TX side: sum bins for (txPort, txCh)
+                const txBins = stats.frame_size?.[txPort]?.[txCh]?.tx ?? [];
+                ret_tx += txBins.reduce((s, f) => s + (f?.packets ?? 0), 0);
 
-        Object.keys(stats.frame_size).forEach(v => {
-            if (Object.keys(port_mapping).includes(v)) {
-                stats.frame_size[v]["tx"].forEach(f => {
-                    ret_tx += f.packets
-                })
+                // RX side: sum bins for (rxPort, rxCh)
+                const rxPort = String((target as any).port);
+                const rxCh = String((target as any).channel);
+                const rxBins = stats.frame_size?.[rxPort]?.[rxCh]?.rx ?? [];
+                ret_rx += rxBins.reduce((s, f) => s + (f?.packets ?? 0), 0);
             }
-
-
-            if (Object.values(port_mapping).map(Number).includes(parseInt(v))) {
-                stats.frame_size[v]["rx"].forEach(f => {
-                    ret_rx += f.packets
-                })
-            }
-        })
+        }
 
         set_iat_tx(calculateWeightedIATs("tx", stats))
         set_iat_rx(calculateWeightedIATs("rx", stats))
@@ -168,20 +160,21 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         let all_max = 0
         let all_n = 0
 
-        Object.keys(stats.rtts).forEach(v => {
+        for (const perCh of Object.values(port_mapping ?? {})) {
+            for (const target of Object.values(perCh ?? {})) {
+                const rxPort = String((target as any).port);
+                const rxCh = String((target as any).channel);
+                const r = stats.rtts?.[rxPort]?.[rxCh];
+                if (!r) continue;
 
-            // only count ports that are used for traffic gen
-            // @ts-ignore
-            if (Object.values(port_mapping).map(Number).includes(parseInt(v))) {
-                all_mean += stats.rtts[v].mean * stats.rtts[v].n
-                all_std += stats.rtts[v].jitter * stats.rtts[v].n
-                all_min = Math.min(all_min, stats.rtts[v].min)
-                all_max = Math.max(all_max, stats.rtts[v].max)
-                all_current += stats.rtts[v].current * stats.rtts[v].n
-                all_n += stats.rtts[v].n
+                all_mean += (r.mean ?? 0) * (r.n ?? 0);
+                all_std += (r.jitter ?? 0) * (r.n ?? 0);
+                all_min = Math.min(all_min, r.min ?? Infinity);
+                all_max = Math.max(all_max, r.max ?? -Infinity);
+                all_current += (r.current ?? 0) * (r.n ?? 0);
+                all_n += (r.n ?? 0);
             }
-        })
-
+        }
 
         if (all_n === 0) {
             return { mean: 0, jitter: 0, min: 0, max: 0, current: 0, n: 0 }
@@ -201,20 +194,33 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         let all_mae: number[] = [];
 
 
-        Object.keys(stats.iats).forEach(v => {
-            if ((type === "tx" || type === "rx") && Object.keys(stats.iats[v]).includes(type)) {
+        if (type === "tx") {
+            for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
+                for (const [txCh, _target] of Object.entries(perCh ?? {})) {
+                    const i = stats.iats?.[txPort]?.[txCh]?.tx;
+                    if (!i) continue;
 
-                if ((type === "tx" && Object.keys(port_mapping).includes(v)) ||
-                    // @ts-ignore
-                    (type === "rx" && Object.values(port_mapping).map(Number).includes(parseInt(v)))) {
-                    all_mean += stats.iats[v][type].mean * stats.iats[v][type].n
-                    all_mae.push(stats.iats[v][type].mae)
-                    all_std += stats.iats[v][type].std * stats.iats[v][type].n
-                    all_n += stats.iats[v][type].n
+                    all_mean += (i.mean ?? 0) * (i.n ?? 0);
+                    all_mae.push(i.mae ?? 0);
+                    all_std += (i.std ?? 0) * (i.n ?? 0);
+                    all_n += i.n ?? 0;
                 }
             }
-        })
+        } else if (type === "rx") {
+            for (const perCh of Object.values(port_mapping ?? {})) {
+                for (const target of Object.values(perCh ?? {})) {
+                    const rxPort = String((target as any).port);
+                    const rxCh = String((target as any).channel);
+                    const i = stats.iats?.[rxPort]?.[rxCh]?.rx;
+                    if (!i) continue;
 
+                    all_mean += (i.mean ?? 0) * (i.n ?? 0);
+                    all_mae.push(i.mae ?? 0);
+                    all_std += (i.std ?? 0) * (i.n ?? 0);
+                    all_n += i.n ?? 0;
+                }
+            }
+        }
 
 
         if (all_n === 0) {
@@ -229,27 +235,28 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         return { mean: all_mean / all_n, std: all_std / all_n, n: all_n, mae: sum_mae / n_mae }
     }
 
-    const addRates = (object: { [name: string]: number }, keys: string[] | number[]) => {
-        let ret = 0
+    // object: { [port]: { [channel]: number } }
+    // pairs:  [ [port, channel], ... ]
+    const addRatesByPairs = (
+        object: { [port: string]: { [ch: string]: number } } | undefined,
+        pairs: Array<[string, string]>
+    ) =>
+        pairs.reduce((sum, [p, c]) => sum + (object?.[p]?.[c] ?? 0), 0);
 
-        if (object == undefined) {
-            return 0
-        }
+    // Build (port,channel) pairs from mapping
+    const txPairs: Array<[string, string]> = Object.entries(port_mapping ?? {}).flatMap(
+        ([txPort, perCh]) => Object.keys(perCh ?? {}).map((txCh) => [txPort, txCh] as [string, string])
+    );
 
-        keys.forEach(v => {
-            if (Object.keys(object).includes(v.toString())) {
-                ret += object[v]
-            }
-        })
+    const rxPairs: Array<[string, string]> = Object.values(port_mapping ?? {}).flatMap((perCh) =>
+        Object.values(perCh ?? {}).map((t: any) => [String(t.port), String(t.channel)] as [string, string])
+    );
 
-        return ret
-    }
-
-    const tx_rate_l1 = addRates(stats.tx_rate_l1, Object.keys(port_mapping))
-    const tx_rate_l2 = addRates(stats.tx_rate_l2, Object.keys(port_mapping))
-    const rx_rate_l1 = addRates(stats.rx_rate_l1, Object.values(port_mapping).map(Number))
-    const rx_rate_l2 = addRates(stats.rx_rate_l2, Object.values(port_mapping).map(Number))
-
+    // Sums
+    const tx_rate_l1 = addRatesByPairs(stats.tx_rate_l1, txPairs);
+    const tx_rate_l2 = addRatesByPairs(stats.tx_rate_l2, txPairs);
+    const rx_rate_l1 = addRatesByPairs(stats.rx_rate_l1, rxPairs);
+    const rx_rate_l2 = addRatesByPairs(stats.rx_rate_l2, rxPairs);
 
     return <>
         {visual ?

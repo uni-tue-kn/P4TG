@@ -64,26 +64,29 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         }
     }
 
-    const updatePort = async (front_panel_port: number, speed: string, fec: string, auto_neg: string) => {
+    const updatePort = async (front_panel_port: number, speed: string, fec: string, auto_neg: string, breakout_mode: boolean, channel: number) => {
         let update = await post({
             route: "/ports", body: {
                 front_panel_port: front_panel_port,
                 speed: speed,
                 fec: fec,
-                auto_neg: auto_neg
+                auto_neg: auto_neg,
+                breakout_mode: breakout_mode,
+                channel: channel
             }
         })
 
-        if (update.status === 201) {
+        if (update?.status === 201) {
             refresh()
         }
     }
 
-    const updateArp = async (front_panel_port: number, state: boolean) => {
+    const updateArp = async (front_panel_port: number, state: boolean, breakout_mode: boolean) => {
         let update = await post({
             route: "/ports/arp", body: {
                 front_panel_port: front_panel_port,
-                arp_reply: state
+                arp_reply: state,
+                breakout_mode: breakout_mode,
             }
         })
 
@@ -102,6 +105,18 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         })
 
         return mac
+    }
+
+    const getBreakoutMode = (port: number) => {
+        let breakout = false
+
+        config.tg_ports.forEach(p => {
+            if (p.port == port) {
+                breakout = p.breakout_mode ?? false
+            }
+        })
+
+        return breakout
     }
 
     const getArpReply = (port: number) => {
@@ -137,6 +152,10 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                         <p>MAC address that is used to answer ARP requests (if enabled). The address can be changed in the config.json file of the controller.</p>
                     </InfoBox>
                     </th>
+                    <th>Breakout &nbsp; <InfoBox>
+                        <p>In breakout mode, the port is split across 4 channels, e.g., 1x100G to 4x25G. Configure the breakout mode in config.json and restartthe controller.</p>
+                    </InfoBox>
+                    </th>
                     <th>Speed</th>
                     <th>Auto Negotiation</th>
                     <th>FEC</th>
@@ -154,6 +173,15 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             <StyledCol className={"col-1"}>{v["pid"]}</StyledCol>
                             <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>
                             <StyledCol className={"col-2"}>{getMac(v['port'])}</StyledCol>
+                            <StyledCol className={"col-1 align-items-center"}>
+                                <Form.Check
+                                    type="checkbox"
+                                    id={`breakout-${v.pid}`}
+                                    checked={getBreakoutMode(v.port)}
+                                    disabled={true}
+                                    readOnly
+                                />
+                            </StyledCol>
                             <StyledCol className={"col-2"}>
                                 <Form.Select onChange={async (event: any) => {
                                     let fec = v.fec
@@ -173,10 +201,13 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                         fec = FEC.BF_FEC_TYP_NONE
                                     }
 
-                                    await updatePort(v.port, event.target.value, fec, v.auto_neg)
+                                    await updatePort(v.port, event.target.value, fec, v.auto_neg, getBreakoutMode(v.port), v.channel)
                                 }}>
                                     {Object.keys(speed_mapping).map(f => {
                                         if (f == SPEED.BF_SPEED_400G && p4tg_infos.asic != ASIC.Tofino2) {
+                                            return
+                                        }
+                                        if (getBreakoutMode(v.port) && f != SPEED.BF_SPEED_10G && f != SPEED.BF_SPEED_25G) {
                                             return
                                         }
 
@@ -187,7 +218,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             </StyledCol>
                             <StyledCol className={"col-2"}>
                                 <Form.Select onChange={async (event: any) => {
-                                    await updatePort(v["port"], v["speed"], v["fec"], event.target.value)
+                                    await updatePort(v["port"], v["speed"], v["fec"], event.target.value, getBreakoutMode(v.port), v.channel)
                                 }}>
                                     {Object.keys(auto_neg_mapping).map(f => {
                                         return <option selected={f == v["auto_neg"]}
@@ -195,7 +226,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                     })}
                                 </Form.Select></StyledCol>
                             <StyledCol className={"col-2"}><Form.Select onChange={async (event: any) => {
-                                await updatePort(v["port"], v["speed"], event.target.value, v["auto_neg"])
+                                await updatePort(v["port"], v["speed"], event.target.value, v["auto_neg"], getBreakoutMode(v.port), v.channel)
                             }}>
                                 {Object.keys(fec_mapping).map(f => {
                                     if (f != FEC.BF_FEC_TYP_REED_SOLOMON && v.speed == SPEED.BF_SPEED_400G) {
@@ -214,9 +245,9 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             </StyledCol>
                             <StyledCol className={"col-1"}>
                                 <Form.Check
-                                    defaultChecked={getArpReply(v['port'])}
+                                    defaultChecked={getArpReply(v.port)}
                                     onChange={async (event: any) => {
-                                        await updateArp(v["port"], event.target.checked)
+                                        await updateArp(v["port"], event.target.checked, getBreakoutMode(v.port))
                                     }}
                                     type={"switch"}
                                 >

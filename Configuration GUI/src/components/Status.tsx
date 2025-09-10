@@ -32,19 +32,22 @@ const StatusIndicator = styled.span<{ error: boolean }>`
 `
 
 const hasError = (stats: StatisticsEntry) => {
-    let loss = 0
+    const loss =
+        "packet_loss" in stats
+            ? Object.values(stats.packet_loss).reduce(
+                (acc, perCh) => acc + Object.values(perCh).reduce((s, v) => s + (v ?? 0), 0),
+                0
+            )
+            : 0;
 
-    if ("packet_loss" in stats) {
-        loss = Object.values(stats.packet_loss).reduce((a, b) => a + b, 0)
-    }
+    const missed =
+        Object.values(stats.rtt_histogram).some(perCh =>
+            Object.values(perCh).some((hist: any) => (hist?.data?.missed_bin_count ?? 0) > 0)
+        );
 
-    return (
-        loss > 0 ||
-        Object.values(stats.rtt_histogram).some(
-            (hist: { data: { missed_bin_count: number } }) => hist.data.missed_bin_count > 0
-        )
-    )
-}
+    return loss > 0 || missed;
+};
+
 const Status = ({ stats, running }: { stats: StatisticsEntry, running: boolean }) => {
 
     return <StatusIndicator error={hasError(stats)}>{hasError(stats) ? "Status: Error" : "Status: Ok"}</StatusIndicator>

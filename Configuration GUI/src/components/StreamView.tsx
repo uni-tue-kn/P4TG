@@ -19,39 +19,39 @@
 
 import React, { useEffect, useState } from 'react'
 import { Col, Row, Table } from "react-bootstrap";
-import { StatisticsEntry } from "../common/Interfaces";
+import { PortTxRxMap, StatisticsEntry } from "../common/Interfaces";
 import { formatBits } from "./SendReceiveMonitor";
 
 const StreamView = ({ stats, port_mapping, stream_id, frame_size }: {
     stats: StatisticsEntry,
-    port_mapping: { [name: number]: number },
+    port_mapping: PortTxRxMap,
     stream_id: number,
     frame_size: number
 }) => {
-    const [tx_rate_l2, set_tx_rate_l2] = useState(0)
-    const [rx_rate_l2, set_rx_rate_l2] = useState(0)
+    const [tx_rate_l2, set_tx_rate_l2] = useState(0);
+    const [rx_rate_l2, set_rx_rate_l2] = useState(0);
 
     useEffect(() => {
-        let tx_rate_l2 = 0
-        let rx_rate_l2 = 0
+        let tx = 0;
+        let rx = 0;
+        const appKey = String(stream_id);
 
+        for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
+            for (const [txCh, target] of Object.entries(perCh ?? {})) {
+                // TX side
+                tx += stats.app_tx_l2?.[txPort]?.[txCh]?.[appKey] ?? 0;
 
-        Object.keys(port_mapping).map(p => {
-            if (Object.keys(stats.app_tx_l2).includes(p)) {
-                tx_rate_l2 += stats.app_tx_l2[p][stream_id.toString()]
+                // RX side (mapped target)
+                const rxPort = String((target as any).port);
+                const rxCh = String((target as any).channel);
+                rx += stats.app_rx_l2?.[rxPort]?.[rxCh]?.[appKey] ?? 0;
             }
-        })
+        }
 
-        Object.values(port_mapping).map(String).map(p => {
-            if (Object.keys(stats.app_rx_l2).includes(p)) {
-                rx_rate_l2 += stats.app_rx_l2[p][stream_id.toString()]
-            }
-        })
+        set_tx_rate_l2(tx);
+        set_rx_rate_l2(rx);
+    }, [stats]);
 
-
-        set_tx_rate_l2(tx_rate_l2)
-        set_rx_rate_l2(rx_rate_l2)
-    }, [stats])
     return <>
         <Row className={"mb-3"}>
             <Col>

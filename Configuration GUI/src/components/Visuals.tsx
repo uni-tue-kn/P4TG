@@ -34,7 +34,7 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { secondsToTime } from "./SendReceiveMonitor";
-import { StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
+import { PortTxRxMap, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
 import React, { useState } from "react";
 import { Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import StatViewHistogram from './StatViewHistogram';
@@ -185,50 +185,59 @@ function getTimeUnit(value: number): [value: number, unit: string] {
     return [value, unit];
 }
 
-const generateLineData = (data_key: string, use_key: boolean, data: TimeStatisticsEntry, port_mapping: { [name: number]: number }): [string[], number[]] => {
-    let cum_data: { [name: number]: number }[] = []
+const generateLineData = (
+    data_key: string,
+    use_key: boolean,
+    data: TimeStatisticsEntry,
+    port_mapping: { [port: string]: { [channel: string]: { port: number; channel: number } } }
+): [string[], number[]] => {
+    // data[data_key]: { [port]: { [channel]: { [time]: number } } }
+    const source = (data as any)[data_key] as
+        | { [port: string]: { [ch: string]: { [time: string]: number } } }
+        | undefined;
 
-    if (data_key in data) {
+    const series: Array<{ [time: string]: number }> = [];
+    if (source) {
         if (use_key) {
-            Object.keys(port_mapping).map(v => {
-                // @ts-ignore
-                if (v in data[data_key]) {
-                    // @ts-ignore
-                    cum_data.push(data[data_key][v])
+            // TX: iterate mapping keys (tx port/channel)
+            for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
+                for (const txCh of Object.keys(perCh ?? {})) {
+                    const s = source[txPort]?.[txCh];
+                    if (s) series.push(s);
                 }
-            })
-        }
-        else {
-            Object.values(port_mapping).map(v => {
-                // @ts-ignore
-                if (v in data[data_key]) {
-                    // @ts-ignore
-                    cum_data.push(data[data_key][v])
+            }
+        } else {
+            // RX: iterate mapping values (rx target port/channel)
+            for (const perCh of Object.values(port_mapping ?? {})) {
+                for (const target of Object.values(perCh ?? {})) {
+                    const rxPort = String((target as any).port);
+                    const rxCh = String((target as any).channel);
+                    const s = source[rxPort]?.[rxCh];
+                    if (s) series.push(s);
                 }
-            })
+            }
         }
     }
 
-    let ret_data = cum_data.reduce((acc, current) => {
-        const key = Object.keys(current)
-        const found = Object.keys(acc)
+    // Merge by time (sum across series)
+    const merged: { [t: string]: number } = {};
+    for (const s of series) {
+        for (const [t, v] of Object.entries(s)) {
+            merged[t] = (merged[t] ?? 0) + (v ?? 0);
+        }
+    }
 
-        key.forEach(k => {
-            if (Object.keys(acc).includes(k)) {
-                // @ts-ignore
-                acc[k] += current[k]
-            }
-            else {
-                // @ts-ignore
-                acc[k] = current[k]
-            }
-        })
+    // Sort by numeric time for consistent axes
+    const times = Object.keys(merged)
+        .map((t) => Number(t))
+        .sort((a, b) => a - b);
 
-        return acc
-    }, {})
+    const labels = times.map((t) => secondsToTime(t));
+    const values = times.map((t) => merged[String(t)]);
 
-    return [Object.keys(ret_data).map(v => secondsToTime(parseInt(v))), Object.values(ret_data)]
-}
+    return [labels, values];
+};
+
 
 const renderTooltip = (props: any) => (
     <Tooltip id="tooltip-disabled" {...props}>
@@ -238,34 +247,40 @@ const renderTooltip = (props: any) => (
 
 const generateHistogram = (
     data: StatisticsEntry,
-    port_mapping: { [name: number]: number }
+    port_mapping: PortTxRxMap
 ): [string[], number[]] => {
-    const histogram_data = data["rtt_histogram"];
-    // We only use the probabilities from the bin_data here
+    const histogram_data = data.rtt_histogram; // { [port]: { [ch]: RttHistogram } }
     let combined_bins: { [binIndex: string]: number } = {};
     let min = Infinity;
     let max = -Infinity;
     let num_bins = 0;
 
     if (histogram_data) {
-        const ports = Object.values(port_mapping).map(String);
-        ports.forEach(port => {
+        // collect RX (port,channel) pairs from mapping
+        for (const perCh of Object.values(port_mapping ?? {})) {
+            for (const target of Object.values(perCh ?? {})) {
+                const rxPort = String((target as any).port);
+                const rxCh = String((target as any).channel);
 
-            const config = histogram_data[port]?.config;
-            const data = histogram_data[port]?.data;
-            if (config && data) {
-                min = Math.min(min, config.min);
-                max = Math.max(max, config.max);
-                num_bins = config.num_bins;
+                const hist = histogram_data?.[rxPort]?.[rxCh];
+                const config = hist?.config;
+                const hdata = hist?.data;
 
-                for (let i = 0; i < config.num_bins; i++) {
-                    const binKey = i.toString();
-                    const value = data.data_bins[binKey]?.probability || 0;
-                    combined_bins[binKey] = (combined_bins[binKey] || 0) + value;
+                if (config && hdata) {
+                    min = Math.min(min, config.min);
+                    max = Math.max(max, config.max);
+                    num_bins = config.num_bins;
+
+                    for (let i = 0; i < config.num_bins; i++) {
+                        const binKey = String(i);
+                        const value = hdata.data_bins?.[binKey]?.probability ?? 0;
+                        combined_bins[binKey] = (combined_bins[binKey] ?? 0) + value;
+                    }
                 }
             }
-        });
+        }
     }
+
 
     if (min === Infinity || max === -Infinity || num_bins === 0) {
         return [[], []]; // no valid data
@@ -276,200 +291,215 @@ const generateHistogram = (
     const values: number[] = [];
 
     for (let i = 0; i < num_bins; i++) {
-        const start = Math.round(min + i * binWidth);
-        let [start_val, start_unit] = getTimeUnit(start);
-        const end = Math.round(min + (i + 1) * binWidth);
+        const start = min + i * binWidth;
+        const [start_val, start_unit] = getTimeUnit(start);
+        const end = min + (i + 1) * binWidth;
+        const [end_val, end_unit] = getTimeUnit(end);
 
-        let [end_val, end_unit] = getTimeUnit(end);
-        let label;
-        if (end_unit === start_unit) {
-            label = `${start_val.toFixed(2)} – ${end_val.toFixed(2)} ${start_unit}`
-        } else {
-            label = `${start_val.toFixed(2)} ${start_unit} – ${end_val.toFixed(2)} ${end_unit}`
-        }
+        const label =
+            end_unit === start_unit
+                ? `${start_val.toFixed(2)} – ${end_val.toFixed(2)} ${start_unit}`
+                : `${start_val.toFixed(2)} ${start_unit} – ${end_val.toFixed(2)} ${end_unit}`;
+
         labels.push(label);
-        values.push(combined_bins[i.toString()] || 0);
+        values.push(combined_bins[String(i)] ?? 0);
     }
+    console.log(values)
 
     return [labels, values];
 };
 
 const getPercentileAnnotations = (
     data: StatisticsEntry,
-    port_mapping: { [name: number]: number }
+    port_mapping: PortTxRxMap
 ): Record<string, any> => {
     const annotations: Record<string, any> = {};
+    const histogram = data.rtt_histogram; // { [port]: { [channel]: RttHistogram } }
 
-    const histogram = data["rtt_histogram"];
+    const percentileColors: string[] = ['#3c82e7', '#e74c3c', '#e7a23c', '#a23ce7'];
 
-    const percentileColors: Array<string> = [
-        '#3c82e7',
-        '#e74c3c',
-        '#e7a23c',
-        '#a23ce7'
-    ];
+    if (!histogram) return annotations;
 
-    if (histogram) {
-        const ports = Object.values(port_mapping).map(String);
+    // Iterate RX endpoints from mapping (values of TX->channel->RxTarget)
+    for (const perCh of Object.values(port_mapping ?? {})) {
+        for (const target of Object.values(perCh ?? {})) {
+            const rxPort = String((target as any).port);
+            const rxCh = String((target as any).channel);
 
-        ports.forEach(port => {
-            const config = histogram[port]?.config;
-            const data = histogram[port]?.data;
+            const hist = histogram?.[rxPort]?.[rxCh];
+            const config = hist?.config;
+            const hdata = hist?.data;
+            if (!config || !hdata) continue;
 
-            if (config && data) {
-                const percentile_data = data.percentiles;
-                const maxYValue = Math.max(
-                    ...Object.values(data.data_bins).map((entry) => entry.probability)
-                );
-                let percentileIndex = 0
+            const percentiles = hdata.percentiles ?? {};
+            const maxYValue =
+                Math.max(0, ...Object.values(hdata.data_bins ?? {}).map((e: any) => e?.probability ?? 0));
 
-                Object.entries(percentile_data).forEach(([key, value]) => {
-                    const binWidth = (config.max - config.min) / config.num_bins;
-                    const binIndex = Math.floor((value - config.min) / binWidth);
+            let percentileIndex = 0;
+            for (const [key, value] of Object.entries(percentiles)) {
+                if (value == null) { percentileIndex++; continue; }
 
-                    // Check if multiple percentiles are at the same xValue. Place them 7% below each other
-                    const offsetFactor = 0.065;
-                    const yOffset = maxYValue * 0.95 * (1 - offsetFactor * percentileIndex);
+                const binWidth = (config.max - config.min) / config.num_bins;
+                const binIndex = Math.floor((Number(value) - config.min) / binWidth);
 
-                    const color = percentileColors[(percentileIndex % 4)] || 'gray';
+                // Stagger labels if multiple fall on the same x
+                const offsetFactor = 0.065;
+                const yOffset = maxYValue * 0.95 * (1 - offsetFactor * percentileIndex);
+                const color = percentileColors[percentileIndex % percentileColors.length] || 'gray';
 
-                    if (value != null) {
-                        annotations[`p${key}`] = {
-                            type: 'line',
-                            scaleID: 'x',
-                            value: binIndex,
-                            borderColor: color,
-                            borderWidth: 2,
-                            borderDash: [6, 6],
-                        };
-                        annotations[`label_p${key}`] = {
-                            type: 'label',
-                            xScaleID: 'x',
-                            yScaleID: 'y',
-                            xValue: binIndex - 0.15,
-                            yValue: yOffset,
-                            content: [`p${key}`],
-                            backgroundColor: `${color}80`, // 50% opacity background color
-                            font: {
-                                size: 18,
-                                family: 'sans-serif',
-                                color: '#fff',
-                            },
-                            padding: 4,
-                            borderRadius: 7,
-                            position: 'center',
-                            xAdjust: 0,
-                            yAdjust: -10,
-                        };
-                    }
-                    percentileIndex += 1
-                });
+                const lineKey = `p${key}_${rxPort}_${rxCh}`;
+                const labelKey = `label_p${key}_${rxPort}_${rxCh}`;
+
+                annotations[lineKey] = {
+                    type: 'line',
+                    scaleID: 'x',
+                    value: binIndex,
+                    borderColor: color,
+                    borderWidth: 2,
+                    borderDash: [6, 6],
+                };
+                annotations[labelKey] = {
+                    type: 'label',
+                    xScaleID: 'x',
+                    yScaleID: 'y',
+                    xValue: binIndex - 0.15,
+                    yValue: yOffset,
+                    content: [`p${key}`],
+                    backgroundColor: `${color}80`,
+                    font: { size: 18, family: 'sans-serif', color: '#fff' },
+                    padding: 4,
+                    borderRadius: 7,
+                    position: 'center',
+                    xAdjust: 0,
+                    yAdjust: -10,
+                };
+
+                percentileIndex++;
             }
-        });
+        }
     }
 
     return annotations;
 };
 
-const get_frame_types = (stats: StatisticsEntry, port_mapping: { [name: number]: number }, type: string): { tx: number, rx: number } => {
-    let ret = { "tx": 0, "rx": 0 }
+const get_frame_types = (
+    stats: StatisticsEntry,
+    port_mapping: PortTxRxMap,
+    type: string
+): { tx: number; rx: number } => {
+    const ret = { tx: 0, rx: 0 };
+    const ftd = stats.frame_type_data; // { [port]: { [ch]: { tx: {...}, rx: {...} } } }
 
-    if (stats.frame_type_data == undefined) {
-        return ret
+    if (!ftd) return ret;
+
+    for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
+        for (const [txCh, target] of Object.entries(perCh ?? {})) {
+            // TX side: use (txPort, txCh)
+            const txVal = (ftd[txPort]?.[txCh]?.tx as any)?.[type];
+            if (typeof txVal === "number") ret.tx += txVal;
+
+            // RX side: use mapped (rxPort, rxCh)
+            const rxPort = String((target as any).port);
+            const rxCh = String((target as any).channel);
+            const rxVal = (ftd[rxPort]?.[rxCh]?.rx as any)?.[type];
+            if (typeof rxVal === "number") ret.rx += rxVal;
+        }
     }
 
-    Object.keys(stats.frame_type_data).forEach((v: string) => {
-        if (Object.keys(port_mapping).includes(v)) {
-            // @ts-ignore
-            if (!(type in stats.frame_type_data[v].tx)) {
-                ret.tx += 0
-            }
-            else {
-                // @ts-ignore
-                ret.tx += stats.frame_type_data[v].tx[type]
-            }
-        }
+    return ret;
+};
 
-        if (Object.values(port_mapping).map(Number).includes(parseInt(v))) {
-            // @ts-ignore
-            if (!(type in stats.frame_type_data[v].rx)) {
-                ret.rx += 0
-            }
-            else {
-                // @ts-ignore
-                ret.rx += stats.frame_type_data[v].rx[type]
-            }
-        }
-    })
 
-    return ret
-}
+const get_frame_stats = (
+    stats: StatisticsEntry,
+    port_mapping: PortTxRxMap,
+    type: "tx" | "rx",
+    low: number,
+    high: number
+) => {
+    let ret = 0;
+    const fs = stats.frame_size ?? {};
 
-const get_frame_stats = (stats: StatisticsEntry, port_mapping: { [name: number]: number }, type: string, low: number, high: number) => {
-    let ret = 0
+    if (!port_mapping) return 0;
 
-    if (stats.frame_size == undefined || port_mapping == undefined) {
-        return ret
-    }
-
-    Object.keys(stats.frame_size).forEach(v => {
-        if ((type == "tx" && Object.keys(port_mapping).includes(v))
-            || type == "rx" && Object.values(port_mapping).map(Number).includes(parseInt(v))) {
-            // @ts-ignore
-            stats.frame_size[v][type].forEach(f => {
-                if (f.low == low && f.high == high) {
-                    ret += f.packets
+    if (type === "tx") {
+        // sum for all mapped TX (port, channel)
+        for (const [txPort, perCh] of Object.entries(port_mapping)) {
+            for (const txCh of Object.keys(perCh ?? {})) {
+                const bins = fs?.[txPort]?.[txCh]?.tx ?? [];
+                for (const f of bins) {
+                    if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
                 }
-            })
-        }
-    })
-
-    return ret
-}
-
-const get_rtt = (data: TimeStatisticsEntry, port_mapping: { [name: number]: number }): [string[], number[]] => {
-    let cum_data: { [name: number]: number }[] = []
-
-    if ("rtt" in data) {
-        Object.values(port_mapping).map(v => {
-            // @ts-ignore
-            if (v in data["rtt"]) {
-                // @ts-ignore
-                cum_data.push(data["rtt"][v])
             }
-        })
+        }
+    } else if (type === "rx") {
+        // sum for all mapped RX (port, channel) targets
+        for (const perCh of Object.values(port_mapping)) {
+            for (const target of Object.values(perCh ?? {})) {
+                const rxPort = String((target as any).port);
+                const rxCh = String((target as any).channel);
+                const bins = fs?.[rxPort]?.[rxCh]?.rx ?? [];
+                for (const f of bins) {
+                    if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
+                }
+            }
+        }
     }
 
-    let ret_data = cum_data.reduce((acc, current) => {
-        const key = Object.keys(current)
+    return ret;
+};
 
-        key.forEach(k => {
-            if (Object.keys(acc[0]).includes(k)) {
-                // @ts-ignore
-                acc[0][k] += current[k]
-                // @ts-ignore
-                acc[1][k] += 1
+
+const get_rtt = (
+    data: TimeStatisticsEntry,
+    port_mapping: PortTxRxMap
+): [string[], number[]] => {
+    // data.rtt: { [port]: { [channel]: { [time]: number } } }
+    const src = (data as any).rtt as
+        | { [port: string]: { [ch: string]: { [t: string]: number } } }
+        | undefined;
+
+    const series: Array<{ [t: string]: number }> = [];
+    if (src) {
+        // use RX targets from mapping
+        for (const perCh of Object.values(port_mapping ?? {})) {
+            for (const target of Object.values(perCh ?? {})) {
+                const rxPort = String((target as any).port);
+                const rxCh = String((target as any).channel);
+                const s = src[rxPort]?.[rxCh];
+                if (s) series.push(s);
             }
-            else {
-                // @ts-ignore
-                acc[0][k] = current[k]
-                // @ts-ignore
-                acc[1][k] = 1
+        }
+    }
+
+    // merge by time: sum and count
+    const [sum, cnt] = series.reduce(
+        ([accSum, accCnt], cur) => {
+            for (const [t, v] of Object.entries(cur)) {
+                accSum[t] = (accSum[t] ?? 0) + (v ?? 0);
+                accCnt[t] = (accCnt[t] ?? 0) + 1;
             }
-        })
+            return [accSum, accCnt];
+        },
+        [{} as Record<string, number>, {} as Record<string, number>]
+    );
 
-        return acc
-    }, [{}, {}])
+    // sort by time for consistent axes
+    const times = Object.keys(sum)
+        .map(Number)
+        .sort((a, b) => a - b);
 
-    Object.keys(ret_data[0]).forEach(v => {
-        // @ts-ignore
-        ret_data[0][v] = ret_data[0][v] / ret_data[1][v]
-    })
+    const labels = times.map((t) => secondsToTime(t));
+    const values = times.map((t) => {
+        const key = String(t);
+        const c = cnt[key] || 1;
+        return sum[key] / c;
+    });
 
-    return [Object.keys(ret_data[0]).map(v => secondsToTime(parseInt(v))), Object.values(ret_data[0])]
-}
+    return [labels, values];
+};
 
-const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: TimeStatisticsEntry, stats: StatisticsEntry, port_mapping: { [name: number]: number }, is_summary: boolean, rx_port: number }) => {
+const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: TimeStatisticsEntry, stats: StatisticsEntry, port_mapping: PortTxRxMap, is_summary: boolean, rx_port: number }) => {
     const [labels_tx, line_data_tx] = generateLineData("tx_rate_l1", true, data, port_mapping)
     const [labels_rx, line_data_rx] = generateLineData("rx_rate_l1", false, data, port_mapping)
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)

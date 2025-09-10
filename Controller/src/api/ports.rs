@@ -34,6 +34,8 @@ pub struct PortConfiguration {
     speed: Speed,
     fec: FEC,
     auto_neg: AutoNegotiation,
+    breakout_mode: Option<bool>,
+    channel: Option<u8>,
 }
 
 impl utoipa::ToSchema for PortConfiguration {
@@ -84,6 +86,7 @@ pub struct PortStats {
 pub struct ArpReply {
     front_panel_port: u32,
     arp_reply: bool,
+    breakout_mode: Option<bool>,
 }
 
 /// Returns the currently configured ports
@@ -143,13 +146,23 @@ pub async fn add_port(
             .into_response();
     }
 
-    let (_, channel) = pm
-        .frontpanel_port(
-            *front_panel_dev_port_mappings
-                .get(&payload.front_panel_port)
-                .unwrap(),
-        )
-        .unwrap_or((0, 0));
+    if payload.breakout_mode == Some(true) {
+        match payload.speed {
+            Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => {}
+            _ => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(Error::new(format!(
+                        "Port speed {:?} is not available in breakout mode on port {}.",
+                        payload.speed, payload.front_panel_port
+                    ))),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    let channel = payload.channel.unwrap_or(0);
 
     let mut req = Port::new(payload.front_panel_port, channel)
         .speed(payload.speed.clone())
@@ -194,7 +207,12 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
         Some(port_mapping) => {
             match &state
                 .arp_handler
-                .modify_arp(&state.switch, port_mapping, payload.arp_reply)
+                .modify_arp(
+                    &state.switch,
+                    port_mapping,
+                    payload.arp_reply,
+                    payload.breakout_mode,
+                )
                 .await
             {
                 Ok(_) => {

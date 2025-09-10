@@ -41,7 +41,7 @@ const StreamSettingsList = ({ stream_settings, streams, running, p4tg_infos, por
             if (stream == null) {
                 console.log(s, streams)
             }
-            if (s.port == port.port && stream != null) {
+            if (s.port == port.port && s.channel == port.channel && stream != null) {
                 return <StreamSettingsElement key={i} running={running} port_status={port.status} stream_data={stream}
                     stream={s} p4tg_infos={p4tg_infos} />
             }

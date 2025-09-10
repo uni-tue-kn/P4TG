@@ -105,10 +105,13 @@ const SendReceiveMonitor = ({ stats, running }: {
     stats: StatisticsEntry,
     running: boolean
 }) => {
-    const tx_rate_l1 = Object.values(stats.tx_rate_l1).reduce((a, b) => a + b, 0)
-    const tx_rate_l2 = Object.values(stats.tx_rate_l2).reduce((a, b) => a + b, 0)
-    const rx_rate_l1 = Object.values(stats.rx_rate_l1).reduce((a, b) => a + b, 0)
-    const rx_rate_l2 = Object.values(stats.rx_rate_l2).reduce((a, b) => a + b, 0)
+
+    // Sum rates across all ports and channels
+    const tx_rate_l1 = Object.values(stats.tx_rate_l1).reduce((t, chs) => t + Object.values(chs).reduce((s, v) => s + (v ?? 0), 0), 0);
+    const tx_rate_l2 = Object.values(stats.tx_rate_l2).reduce((t, chs) => t + Object.values(chs).reduce((s, v) => s + (v ?? 0), 0), 0);
+    const rx_rate_l1 = Object.values(stats.rx_rate_l1).reduce((t, chs) => t + Object.values(chs).reduce((s, v) => s + (v ?? 0), 0), 0);
+    const rx_rate_l2 = Object.values(stats.rx_rate_l2).reduce((t, chs) => t + Object.values(chs).reduce((s, v) => s + (v ?? 0), 0), 0);
+
 
     const mean_frame_size_tx = (tx_rate_l1 - tx_rate_l2) <= 0 ? 0 : 20 * tx_rate_l2 / (tx_rate_l1 - tx_rate_l2)
     const mean_frame_size_rx = (rx_rate_l1 - rx_rate_l2) <= 0 ? 0 : 20 * rx_rate_l2 / (rx_rate_l1 - rx_rate_l2)

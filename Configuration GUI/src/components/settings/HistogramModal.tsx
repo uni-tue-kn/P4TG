@@ -33,14 +33,16 @@ const HistogramModal = ({
     data,
     disabled,
     pid,
+    channel,
     set_data
 }: {
     show: boolean,
     hide: () => void,
     data: RttHistogramConfig,
     disabled: boolean,
-    pid: number
-    set_data: (pid: number, updated: RttHistogramConfig) => void,
+    pid: number,
+    channel: number
+    set_data: (pid: number, channel: number, updated: RttHistogramConfig) => void,
 }) => {
 
     const [tmp_data, set_tmp_data] = useState(data || [])
@@ -133,7 +135,7 @@ const HistogramModal = ({
 
         setAlertMessage(null);
 
-        set_data(pid, {
+        set_data(pid, channel, {
             num_bins: tmp_data.num_bins,
             min,
             max,
@@ -151,7 +153,7 @@ const HistogramModal = ({
 
     return <Modal show={show} size="lg" onHide={hideRestore}>
         <Modal.Header closeButton>
-            <Modal.Title>Configure histogram options on RX port {pid}</Modal.Title>
+            <Modal.Title>Configure histogram options on RX port {pid}/{channel}</Modal.Title>
         </Modal.Header>
         <form onSubmit={submit}>
             <Modal.Body>

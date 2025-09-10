@@ -32,6 +32,9 @@ export type RttHistogramConfig = {
     percentiles?: Array<number>;
 };
 
+// nested map: { [rxPort]: { [rxChannel]: RttHistogramConfig } }
+export type HistogramConfigMap = Record<string, Record<string, RttHistogramConfig>>;
+
 export type RttHistogramBinEntry = {
     count: bigint,
     probability: number,
@@ -53,33 +56,87 @@ export type RttHistogram = {
 
 export type Statistics = Array<StatisticsEntry>;
 export type StatisticsEntry = {
-    sample_mode: boolean,
-    tx_rate_l1: { [name: string]: number },
-    tx_rate_l2: { [name: string]: number },
-    rx_rate_l1: { [name: string]: number },
-    rx_rate_l2: { [name: string]: number },
-    frame_size: { [name: string]: { tx: { low: number, high: number, packets: number }[], rx: { low: number, high: number, packets: number }[] } },
+    sample_mode: boolean;
+
+    tx_rate_l1: { [port: string]: { [channel: string]: number } };
+    tx_rate_l2: { [port: string]: { [channel: string]: number } };
+    rx_rate_l1: { [port: string]: { [channel: string]: number } };
+    rx_rate_l2: { [port: string]: { [channel: string]: number } };
+
+    frame_size: {
+        [port: string]: {
+            [channel: string]: {
+                tx: { low: number; high: number; packets: number }[];
+                rx: { low: number; high: number; packets: number }[];
+            };
+        };
+    };
+
     iats: {
-        [name: string]: { tx: { mean: number, std: number, n: number, mae: number }, rx: { mean: number, std: number, n: number, mae: number } }
-    }
-    frame_type_data: { [name: string]: { tx: { multicast: number, broadcast: number, unicast: number, total: number, "non-unicast": number }, rx: { multicast: number, broadcast: number, unicast: number, total: number, "non-unicast": number } } },
-    rtts: { [name: string]: { mean: number, current: number, min: number, max: number, jitter: number, n: number } },
-    packet_loss: { [name: string]: number },
+        [port: string]: {
+            [channel: string]: {
+                tx: { mean: number; std: number; n: number; mae: number };
+                rx: { mean: number; std: number; n: number; mae: number };
+            };
+        };
+    };
+
+    frame_type_data: {
+        [port: string]: {
+            [channel: string]: {
+                tx: {
+                    multicast: number;
+                    broadcast: number;
+                    unicast: number;
+                    total: number;
+                    "non-unicast": number;
+                };
+                rx: {
+                    multicast: number;
+                    broadcast: number;
+                    unicast: number;
+                    total: number;
+                    "non-unicast": number;
+                };
+            };
+        };
+    };
+
+    rtts: {
+        [port: string]: {
+            [channel: string]: {
+                mean: number;
+                current: number;
+                min: number;
+                max: number;
+                jitter: number;
+                n: number;
+            };
+        };
+    };
+
+    packet_loss: { [port: string]: { [channel: string]: number } };
+    out_of_order: { [port: string]: { [channel: string]: number } };
+
     app_tx_l2: {
-        [name: string]: {
-            [name: string]: number
-        }
-    },
+        [port: string]: {
+            [channel: string]: { [appId: string]: number };
+        };
+    };
     app_rx_l2: {
-        [name: string]: {
-            [name: string]: number
-        }
-    },
-    out_of_order: { [name: string]: number },
-    elapsed_time: number,
-    rtt_histogram: { [port: string]: RttHistogram },
-    name?: string,
+        [port: string]: {
+            [channel: string]: { [appId: string]: number };
+        };
+    };
+
+    elapsed_time: number;
+
+    // now per port -> channel
+    rtt_histogram: { [port: string]: { [channel: string]: RttHistogram } };
+
+    name?: string;
 };
+
 
 export const StatisticsObject: StatisticsEntry = {
     sample_mode: false,
@@ -100,20 +157,26 @@ export const StatisticsObject: StatisticsEntry = {
 }
 
 export type TimeStatistics = Array<TimeStatisticsEntry>;
-
 export type TimeStatisticsEntry = {
     tx_rate_l1: {
-        [name: number]: {
-            [name: number]: number
-        }
-    },
+        [port: number]: {
+            [channel: number]: {
+                [time: number]: number;
+            };
+        };
+    };
     rx_rate_l1: {
-        [name: number]: {
-            [name: number]: number
-        }
-    },
-    name?: string,
-}
+        [port: number]: {
+            [channel: number]: {
+                [time: number]: number;
+            };
+        };
+    };
+    name?: string;
+};
+
+export type RxTarget = { port: number; channel: number };
+export type PortTxRxMap = { [port: string]: { [channel: string]: RxTarget } };
 
 export const TimeStatisticsObject: TimeStatisticsEntry = {
     tx_rate_l1: {},
@@ -123,6 +186,7 @@ export const TimeStatisticsObject: TimeStatisticsEntry = {
 export interface StreamSettings {
     mpls_stack: MPLSHeader[],
     port: number,
+    channel: number,
     stream_id: number,
     vlan: {
         vlan_id: number,
@@ -227,9 +291,10 @@ export const DefaultStream = (id: number) => {
     return stream
 }
 
-export const DefaultStreamSettings = (id: number, port: number) => {
+export const DefaultStreamSettings = (id: number, port: number, channel: number) => {
     let stream: StreamSettings = {
         port: port,
+        channel: channel,
         stream_id: id,
         vlan: {
             vlan_id: 1,
@@ -287,7 +352,8 @@ export interface P4TGConfig {
     tg_ports: {
         port: number,
         mac: string,
-        arp_reply: boolean
+        arp_reply: boolean,
+        breakout_mode: boolean
     }[]
 }
 
@@ -323,9 +389,9 @@ export interface TrafficGenData {
     mode: GenerationMode,
     streams: Stream[],
     stream_settings: StreamSettings[],
-    port_tx_rx_mapping: { [name: number]: number },
+    port_tx_rx_mapping: PortTxRxMap,
     duration: number,
-    histogram_config: { [name: string]: RttHistogramConfig },
+    histogram_config: HistogramConfigMap,
     name?: string,
 }
 

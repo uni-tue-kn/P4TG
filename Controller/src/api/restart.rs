@@ -19,6 +19,9 @@
 
 use crate::api::docs::traffic_gen::EXAMPLE_POST_1_RESPONSE;
 use crate::api::server::Error;
+use crate::core::traffic_gen_core::helper::{
+    generate_front_panel_to_dev_port_mappings, translate_fp_channel_to_dev_port_mapping,
+};
 use crate::core::traffic_gen_core::types::*;
 use crate::AppState;
 use axum::debug_handler;
@@ -45,6 +48,8 @@ use std::time::SystemTime;
 /// Restarts the current traffic generation
 pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
     let tg = &mut state.traffic_generator.lock().await;
+
+    let port_mapping = &state.port_mapping;
 
     if !tg.running {
         return (
@@ -73,8 +78,11 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
     let mode = tg.mode;
-    let mapping = tg.port_mapping.clone();
     let duration = tg.duration;
+
+    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(port_mapping);
+    let tx_rx_port_mapping =
+        translate_fp_channel_to_dev_port_mapping(&tg.port_mapping, &front_panel_dev_port_mappings);
 
     // Cancel any existing duration monitor task
     state
@@ -97,7 +105,7 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
             active_streams,
             mode,
             active_stream_settings,
-            &mapping,
+            &tx_rx_port_mapping,
         )
         .await
     {

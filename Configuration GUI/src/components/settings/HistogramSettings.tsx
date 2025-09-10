@@ -17,7 +17,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { PortInfo, RttHistogramConfig } from "../../common/Interfaces";
+import { HistogramConfigMap, PortInfo, PortTxRxMap, RttHistogramConfig } from "../../common/Interfaces";
 import React, { useState } from "react";
 import { StyledCol } from "../../sites/Settings";
 import HistogramModal from "./HistogramModal";
@@ -29,23 +29,27 @@ const HistogramSettings = ({
     data,
     set_data
 }: {
-    port: PortInfo
-    mapping: { [name: number]: number },
+    port: PortInfo,
+    mapping: PortTxRxMap,
     disabled: boolean,
-    data: Record<string, RttHistogramConfig>,
-    set_data: (pid: number, updated: RttHistogramConfig) => void
+    data: HistogramConfigMap,
+    set_data: (pid: number, channel: number, updated: RttHistogramConfig) => void
 }) => {
     const [show, set_show] = useState(false)
 
-    const rx_pid = mapping[port.port]
+    const rx_pid = mapping?.[String(port.port)]?.[String(port.channel)]?.port;
+    const rx_channel = mapping?.[String(port.port)]?.[String(port.channel)]?.channel;
+
+    const cfg = data?.[String(rx_pid)]?.[String(rx_channel)];
 
     return <>
-        {rx_pid !== undefined && (
+        {rx_pid !== undefined && rx_channel !== undefined && (
             <HistogramModal
                 disabled={disabled}
-                data={data[String(rx_pid)]}
+                data={cfg}
                 show={show}
                 pid={rx_pid}
+                channel={rx_channel}
                 hide={() => set_show(false)}
                 set_data={set_data}
             />

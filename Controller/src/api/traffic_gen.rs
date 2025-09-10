@@ -18,14 +18,15 @@
  */
 
 use crate::api::helper::validate::{validate_multiple_test, validate_request};
-use crate::core::traffic_gen_core::helper::generate_front_panel_to_dev_port_mappings;
+use crate::core::traffic_gen_core::helper::{
+    generate_front_panel_to_dev_port_mappings, translate_fp_channel_to_dev_port_mapping,
+};
 use axum::debug_handler;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -138,11 +139,13 @@ pub async fn configure_traffic_gen(
     let mut stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
     stats_lock.clear();
 
+    let port_mapping = &state.port_mapping;
+
     match payload {
         axum::Json(TrafficGenTests::SingleTest(traffic_gen_data)) => {
             // Just start a single test.
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
-            match validate_request(&traffic_gen_data, &state.port_mapping, is_tofino2) {
+            match validate_request(&traffic_gen_data, port_mapping, is_tofino2) {
                 Ok(r) => {
                     info!("Test validation successful.");
                     start_single_test(&state, traffic_gen_data).await;
@@ -161,8 +164,7 @@ pub async fn configure_traffic_gen(
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
 
             // Request validation
-            match validate_multiple_test(traffic_gen_datas.clone(), &state.port_mapping, is_tofino2)
-            {
+            match validate_multiple_test(traffic_gen_datas.clone(), port_mapping, is_tofino2) {
                 Ok(_) => {
                     state
                         .multiple_tests
@@ -180,8 +182,9 @@ pub async fn configure_traffic_gen(
 }
 
 pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -> Response {
-    let front_panel_dev_port_mappings =
-        generate_front_panel_to_dev_port_mappings(&state.port_mapping);
+    let port_mapping = &state.port_mapping;
+
+    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(port_mapping);
 
     // contains the description of the stream, i.e., packet size and rate
     // only look at active stream settings
@@ -191,8 +194,8 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
         .into_iter()
         .filter_map(|mut s| {
             if s.active {
-                // Translate front_panel_ports from Payload to internal dev_ports
-                s.port = *front_panel_dev_port_mappings.get(&s.port)?;
+                let channel = s.channel.unwrap_or(0);
+                s.port = *front_panel_dev_port_mappings.get(&s.port)? + channel as u32;
                 Some(s)
             } else {
                 None
@@ -208,22 +211,12 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
 
-    // contains the mapping of Send->Receive ports
+    // contains the mapping of Send->Receive ports. Uses the channel info to calculate dev ports
     // required for analyze mode
-    let tx_rx_port_mapping: &HashMap<String, u32> = &payload
-        .port_tx_rx_mapping
-        .iter()
-        .map(|(tx, rx)| {
-            let tx_num = tx.parse::<u32>().unwrap();
-            let tx_dev_port = front_panel_dev_port_mappings
-                .get(&tx_num)
-                .unwrap()
-                .to_string();
-
-            let rx_dev_port = *front_panel_dev_port_mappings.get(rx).unwrap();
-            (tx_dev_port, rx_dev_port)
-        })
-        .collect();
+    let tx_rx_port_mapping = translate_fp_channel_to_dev_port_mapping(
+        &payload.port_tx_rx_mapping,
+        &front_panel_dev_port_mappings,
+    );
 
     // Clear histogram config state and release lock when out of scope
     {
@@ -233,23 +226,24 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
 
     // Write histogram config into state. The tables will be later populated by init_histogram_config
     let histogram_config_cloned = payload.histogram_config.clone();
-    for (rx, config) in histogram_config_cloned.unwrap_or_default() {
-        let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
-
+    for (rx, channel_map) in histogram_config_cloned.unwrap_or_default() {
         let front_panel_port = rx.parse::<u32>().unwrap_or(0);
-
-        let dev_port = front_panel_dev_port_mappings
-            .get(&front_panel_port)
-            .unwrap();
-
-        // Create new histogram config with empty data from payload
-        histogram_monitor.histogram.insert(
-            *dev_port,
-            RttHistogram {
-                config,
-                data: RttHistogramData::default(),
-            },
-        );
+        for (channel, config) in channel_map {
+            let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
+            let channel_num = channel.parse::<u32>().unwrap_or(0);
+            let dev_port = front_panel_dev_port_mappings
+                .get(&front_panel_port)
+                .unwrap()
+                + channel_num;
+            // Create new histogram config with empty data from payload
+            histogram_monitor.histogram.insert(
+                dev_port,
+                RttHistogram {
+                    config,
+                    data: RttHistogramData::default(),
+                },
+            );
+        }
     }
 
     // Write default histogram config for active rx ports that do not have a histogram config set
@@ -271,7 +265,7 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
             active_streams,
             payload.mode,
             active_stream_settings,
-            tx_rx_port_mapping,
+            &tx_rx_port_mapping,
         )
         .await
     {

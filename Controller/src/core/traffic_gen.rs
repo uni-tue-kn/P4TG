@@ -63,16 +63,16 @@ pub struct TrafficGen {
     /// The port mapping is received by the REST API and stored to synchronize multiple configuration clients
     /// (e.g., multiple open web browsers) to the same settings.
     /// The port mapping indicates which ports are used for traffic generation and on which port the returning traffic
-    /// is expected.
-    pub port_mapping: HashMap<String, u32>,
+    /// is expected. The first index is the front panel port, the second is the channel.
+    pub port_mapping: HashMap<String, HashMap<String, RxTarget>>,
     /// Indicates if tofino2 is used
     pub is_tofino2: bool,
     /// Indicates the number of available pipes in hardware
     pub num_pipes: u32,
     /// Duration of this test in seconds. 0 for unlimited
     pub duration: Option<u32>,
-    /// Mapping between RX port and histogram config.
-    pub(crate) histogram_config: HashMap<String, RttHistogramConfig>,
+    /// Mapping between RX port and histogram config. The first index is the front panel port, the second is the channel.
+    pub(crate) histogram_config: HashMap<String, HashMap<String, RttHistogramConfig>>,
     /// Name of the current test
     pub(crate) name: Option<String>,
 }
@@ -308,6 +308,7 @@ impl TrafficGen {
             init_requests.push(req);
 
             // configure forwarding in ingress
+            // TODO tofino2 app_ids
             for app_id in 1..8 {
                 // Forward packets from ingress TX to next egress RX
                 let req = table::Request::new(MONITORING_FORWARD_TABLE)
@@ -662,7 +663,7 @@ impl TrafficGen {
 
         // configure default forwarding
         // this pushes rules for RX -> RX Recirc and TX Recirc -> TX
-        self.configure_default_forwarding_path(switch, &state.port_mapping)
+        self.configure_default_forwarding_path(switch, port_mapping)
             .await?;
 
         // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on multiple pipes

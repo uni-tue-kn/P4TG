@@ -18,21 +18,143 @@
  */
 
 use crate::core::statistics::{
-    IATStatistics, IATValues, RTTStatistics, Statistics, TimeStatistics,
+    IATStatistics, IATValues, RTTStatistics, RangeCount, RttHistogram, Statistics, TimeStatistics,
+    TypeCount,
 };
 use crate::core::traffic_gen_core::helper::{
-    generate_dev_port_to_front_panel_mappings, get_used_ports,
+    derive_fpch, filter_map_for_keys, generate_dev_port_to_front_panel_mappings, get_used_ports,
+    remap_app_map, remap_port_map,
 };
 use crate::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
+use utoipa::ToSchema;
 
 use crate::api::{docs, helper};
+
+// Those statistics are communicated via the API.
+// The structure is Port(u32)->Channel(u8)->Stats
+// Ports are front panel numbers
+#[derive(Serialize, Clone, ToSchema)]
+pub struct StatisticsApi {
+    pub sample_mode: bool,
+    pub frame_size: HashMap<u32, HashMap<u8, RangeCount>>,
+    pub tx_rate_l1: HashMap<u32, HashMap<u8, f64>>,
+    pub tx_rate_l2: HashMap<u32, HashMap<u8, f64>>,
+    pub rx_rate_l1: HashMap<u32, HashMap<u8, f64>>,
+    pub rx_rate_l2: HashMap<u32, HashMap<u8, f64>>,
+    pub app_tx_l2: HashMap<u32, HashMap<u8, HashMap<u32, f64>>>,
+    pub app_rx_l2: HashMap<u32, HashMap<u8, HashMap<u32, f64>>>,
+    pub frame_type_data: HashMap<u32, HashMap<u8, TypeCount>>,
+    pub iats: HashMap<u32, HashMap<u8, IATStatistics>>,
+    pub rtts: HashMap<u32, HashMap<u8, RTTStatistics>>,
+    pub packet_loss: HashMap<u32, HashMap<u8, u64>>,
+    pub out_of_order: HashMap<u32, HashMap<u8, u64>>,
+    pub elapsed_time: u32,
+    pub rtt_histogram: HashMap<u32, HashMap<u8, RttHistogram>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl StatisticsApi {
+    pub fn to_api_statistics(
+        core: &Statistics,             // core struct, contains only dev ports
+        dev_to_fp: &HashMap<u32, u32>, // dev_port -> front_panel
+    ) -> StatisticsApi {
+        let dev_to_fpch = derive_fpch(dev_to_fp);
+
+        StatisticsApi {
+            sample_mode: core.sample_mode,
+            frame_size: remap_port_map(&core.frame_size, &dev_to_fpch),
+            tx_rate_l1: remap_port_map(&core.tx_rate_l1, &dev_to_fpch),
+            tx_rate_l2: remap_port_map(&core.tx_rate_l2, &dev_to_fpch),
+            rx_rate_l1: remap_port_map(&core.rx_rate_l1, &dev_to_fpch),
+            rx_rate_l2: remap_port_map(&core.rx_rate_l2, &dev_to_fpch),
+            app_tx_l2: remap_app_map(&core.app_tx_l2, &dev_to_fpch),
+            app_rx_l2: remap_app_map(&core.app_rx_l2, &dev_to_fpch),
+            frame_type_data: remap_port_map(&core.frame_type_data, &dev_to_fpch),
+            iats: remap_port_map(&core.iats, &dev_to_fpch),
+            rtts: remap_port_map(&core.rtts, &dev_to_fpch),
+            packet_loss: remap_port_map(&core.packet_loss, &dev_to_fpch),
+            out_of_order: remap_port_map(&core.out_of_order, &dev_to_fpch),
+            elapsed_time: core.elapsed_time,
+            rtt_histogram: remap_port_map(&core.rtt_histogram, &dev_to_fpch),
+            name: core.name.clone(),
+        }
+    }
+
+    /// Removes all statistics of unused ports.
+    /// Used ports are provided in `used_ports`.
+    fn filter_inactive_ports(mut stats: StatisticsApi, used_ports: HashSet<u32>) -> StatisticsApi {
+        filter_map_for_keys(&mut stats.frame_size, &used_ports);
+        filter_map_for_keys(&mut stats.frame_type_data, &used_ports);
+        filter_map_for_keys(&mut stats.tx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut stats.tx_rate_l2, &used_ports);
+        filter_map_for_keys(&mut stats.rx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut stats.rx_rate_l2, &used_ports);
+        filter_map_for_keys(&mut stats.app_tx_l2, &used_ports);
+        filter_map_for_keys(&mut stats.app_rx_l2, &used_ports);
+        filter_map_for_keys(&mut stats.iats, &used_ports);
+        filter_map_for_keys(&mut stats.rtts, &used_ports);
+        filter_map_for_keys(&mut stats.packet_loss, &used_ports);
+        filter_map_for_keys(&mut stats.out_of_order, &used_ports);
+        filter_map_for_keys(&mut stats.rtt_histogram, &used_ports);
+
+        stats
+    }
+}
+
+// Those statistics are communicated via the API.
+// The structure is Port(u32)->Channel(u8)->Stats
+// Ports are front panel numbers
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct TimeStatisticsApi {
+    pub(crate) tx_rate_l1: HashMap<u32, HashMap<u8, BTreeMap<u32, f64>>>,
+    pub(crate) rx_rate_l1: HashMap<u32, HashMap<u8, BTreeMap<u32, f64>>>,
+    pub(crate) packet_loss: HashMap<u32, HashMap<u8, BTreeMap<u32, u64>>>,
+    pub(crate) out_of_order: HashMap<u32, HashMap<u8, BTreeMap<u32, u64>>>,
+    pub(crate) rtt: HashMap<u32, HashMap<u8, BTreeMap<u32, u64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) name: Option<String>,
+}
+
+impl TimeStatisticsApi {
+    fn to_api_time_statistics(
+        core: &TimeStatistics,
+        dev_to_fp: &HashMap<u32, u32>, // dev_port -> front_panel
+    ) -> TimeStatisticsApi {
+        let dev_to_fpch = derive_fpch(dev_to_fp);
+
+        TimeStatisticsApi {
+            tx_rate_l1: remap_port_map(&core.tx_rate_l1, &dev_to_fpch),
+            rx_rate_l1: remap_port_map(&core.rx_rate_l1, &dev_to_fpch),
+            packet_loss: remap_port_map(&core.packet_loss, &dev_to_fpch),
+            out_of_order: remap_port_map(&core.out_of_order, &dev_to_fpch),
+            rtt: remap_port_map(&core.rtt, &dev_to_fpch),
+            name: core.name.clone(),
+        }
+    }
+
+    /// Removes all statistics of unused ports.
+    /// Used ports are provided in `used_ports`.
+    fn filter_inactive_ports(
+        mut stats: TimeStatisticsApi,
+        used_ports: HashSet<u32>,
+    ) -> TimeStatisticsApi {
+        filter_map_for_keys(&mut stats.tx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut stats.rx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut stats.packet_loss, &used_ports);
+        filter_map_for_keys(&mut stats.out_of_order, &used_ports);
+        filter_map_for_keys(&mut stats.rtt, &used_ports);
+
+        stats
+    }
+}
 
 #[utoipa::path(
     get,
@@ -51,7 +173,7 @@ pub async fn statistics(State(state): State<Arc<AppState>>) -> Response {
     (StatusCode::OK, Json(stats)).into_response()
 }
 
-pub async fn get_statistics(state: &Arc<AppState>) -> Vec<Statistics> {
+pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
     let frame_size_monitor = &state.frame_size_monitor;
     let frame_type_monitor = &state.frame_type_monitor;
     let rate_monitor = &state.rate_monitor;
@@ -115,12 +237,14 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<Statistics> {
         rtt_stats.insert(*port, stats);
     }
 
+    let port_mapping = &state.port_mapping;
+
     if state.sample_mode {
         let mut iats = HashMap::new();
         let tx_stats = &mut state.rate_monitor.lock().await.tx_iat_storage.clone();
         let rx_stats = &mut state.rate_monitor.lock().await.rx_iat_storage.clone();
 
-        for port in state.port_mapping.keys() {
+        for port in port_mapping.keys() {
             let tx_iats = tx_stats.entry(*port).or_default();
             let rx_iats = rx_stats.entry(*port).or_default();
 
@@ -169,12 +293,14 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<Statistics> {
         }
     };
 
-    let dev_port_to_front_panel_port_mappings =
-        generate_dev_port_to_front_panel_mappings(&state.port_mapping);
-    let used_ports: HashSet<u32> = get_used_ports(state).await;
+    let dev_to_fp = generate_dev_port_to_front_panel_mappings(port_mapping);
 
-    // Translate the internal dev port mappings to front_panel_ports and filter for inactive ports
-    let stats = stats.translate_and_filter_ports(dev_port_to_front_panel_port_mappings, used_ports);
+    // We get dev-port <-> stats from core. Translate it to front_panel/channel <-> stats and give this to API
+    let stats = StatisticsApi::to_api_statistics(&stats, &dev_to_fp);
+
+    // Filter for inactive ports
+    let used_ports: HashSet<u32> = get_used_ports(state).await;
+    let stats = StatisticsApi::filter_inactive_ports(stats, used_ports);
 
     let mut all_stats = vec![stats];
     let previous_stats = state
@@ -215,9 +341,11 @@ pub async fn time_statistics(
     (StatusCode::OK, Json(stats)).into_response()
 }
 
-pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<TimeStatistics> {
+pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<TimeStatisticsApi> {
     let rate_monitor = &state.rate_monitor;
     let stats = rate_monitor.lock().await.time_statistics.clone();
+
+    let port_mapping = &state.port_mapping;
 
     let limit = params.limit.unwrap_or(usize::MAX);
 
@@ -320,13 +448,15 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
         name,
     };
 
-    let dev_port_to_front_panel_port_mappings =
-        generate_dev_port_to_front_panel_mappings(&state.port_mapping);
-    let used_ports: HashSet<u32> = get_used_ports(state).await;
+    let dev_to_fp = generate_dev_port_to_front_panel_mappings(port_mapping);
 
-    // Translate the internal dev port mappings to front_panel_ports and filter for inactive ports
-    let new_time_stats = new_time_stats
-        .translate_and_filter_ports(dev_port_to_front_panel_port_mappings, used_ports);
+    // Translate to API view (front_panel -> channel)
+    // We get dev-port <-> stats from core. Translate it to front_panel/channel <-> stats and give this to API
+    let new_time_stats = TimeStatisticsApi::to_api_time_statistics(&new_time_stats, &dev_to_fp);
+
+    // Filter for inactive ports
+    let used_ports: HashSet<u32> = get_used_ports(state).await;
+    let new_time_stats = TimeStatisticsApi::filter_inactive_ports(new_time_stats, used_ports);
 
     let mut all_time_stats = vec![new_time_stats];
     let previous_time_stats = state

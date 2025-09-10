@@ -16,8 +16,6 @@
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
-use core::statistics::Statistics;
-use core::statistics::TimeStatistics;
 use log::{info, warn};
 use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
@@ -37,10 +35,13 @@ mod api;
 mod core;
 mod error;
 
+use crate::api::statistics::StatisticsApi;
+use crate::api::statistics::TimeStatisticsApi;
 use crate::core::traffic_gen_core::const_definitions::{
     DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2, PORT_CFG_TF2,
 };
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
+use crate::core::traffic_gen_core::helper::breakout_mapping;
 use crate::core::{
     Arp, Config, DurationMonitorTask, FrameSizeMonitor, FrameTypeMonitor, HistogramMonitor,
     RateMonitor, TrafficGen,
@@ -52,6 +53,8 @@ pub struct PortMapping {
     pub rx_recirculation: u32,
     pub front_panel_port: u32,
     pub mac: MacAddr,
+    pub breakout_mode: Option<bool>,
+    pub channel: u8,
 }
 
 /// Stores the start time of the current experiment
@@ -74,8 +77,8 @@ struct RecChoice {
 
 /// Stores statistics and configurations, as well as an abort signal for multiple tests
 pub struct MultiTest {
-    pub(crate) collected_statistics: Mutex<Vec<Statistics>>,
-    pub(crate) collected_time_statistics: Mutex<Vec<TimeStatistics>>,
+    pub(crate) collected_statistics: Mutex<Vec<StatisticsApi>>,
+    pub(crate) collected_time_statistics: Mutex<Vec<TimeStatisticsApi>>,
     pub(crate) multiple_test_monitor_task: Mutex<DurationMonitorTask>,
 }
 
@@ -102,7 +105,7 @@ pub struct AppState {
 async fn configure_ports(
     switch: &mut SwitchConnection,
     pm: &PortManager,
-    config: &Config,
+    config: &mut Config,
     recirculation_ports: &[u32],
     port_mapping: &mut HashMap<u32, PortMapping>,
     is_tofino2: bool,
@@ -116,7 +119,7 @@ async fn configure_ports(
     let mut manual_tg_ports = Vec::new();
 
     // --- TG ports ---
-    for tg in &config.tg_ports {
+    for tg in &mut config.tg_ports {
         let speed = tg.speed.clone().unwrap_or(if is_tofino2 {
             Speed::BF_SPEED_400G
         } else {
@@ -127,21 +130,32 @@ async fn configure_ports(
         } else {
             FEC::BF_FEC_TYP_NONE
         });
-        let auto_neg = tg
-            .auto_negotiation
-            .clone()
-            .unwrap_or(AutoNegotiation::PM_AN_DEFAULT);
 
-        let mut req = Port::new(tg.port, 0)
-            .speed(speed)
-            .fec(fec)
-            .auto_negotiation(auto_neg);
+        let (channels, per_channel_speed) =
+            breakout_mapping(&speed, tg.breakout_mode.unwrap_or(false));
 
-        if loopback_mode {
-            req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+        if tg.breakout_mode == Some(true) && channels.len() == 1 {
+            // Invalid speed configured for breakout mode
+            tg.breakout_mode = Some(false);
+            warn!("Invalid port speed for breakout mode on port configured. Only 100G and 40G are possible. Falling back to single channel.");
         }
 
-        port_requests.push(req);
+        for c in channels {
+            let mut req = Port::new(tg.port, c)
+                .speed(per_channel_speed.clone())
+                .fec(fec.clone())
+                .auto_negotiation(
+                    tg.auto_negotiation
+                        .clone()
+                        .unwrap_or(AutoNegotiation::PM_AN_DEFAULT),
+                );
+
+            if loopback_mode {
+                req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+            }
+
+            port_requests.push(req);
+        }
 
         let mac = MacAddr::from_str(&tg.mac).unwrap(); // validated earlier
         if tg.recirculation_ports.is_some() {
@@ -214,72 +228,128 @@ async fn configure_ports(
         used_recirc.insert(free[2 * i + 1]);
     }
 
-    // --- Configure recirc ports actually used (avoid double-adding same port) ---
-    let mut added_recirc_once: HashSet<u32> = HashSet::new();
+    // --- Configure recirc ports actually used ---
+    let mut added_recirc_once: HashSet<(u32, u32)> = HashSet::new();
 
-    for choice in per_tg_choice.values() {
-        let mut add = |port: u32,
-                       speed: Option<Speed>,
-                       fec: Option<FEC>,
-                       auto_neg: Option<AutoNegotiation>| {
-            if added_recirc_once.insert(port) {
-                let speed = speed.unwrap_or(if is_tofino2 {
-                    Speed::BF_SPEED_400G
-                } else {
-                    Speed::BF_SPEED_100G
-                });
-                let fec = fec.unwrap_or(if is_tofino2 {
-                    FEC::BF_FEC_TYP_REED_SOLOMON
-                } else {
-                    FEC::BF_FEC_TYP_NONE
-                });
-                let auto_neg = auto_neg.unwrap_or(AutoNegotiation::PM_AN_DEFAULT);
+    for (tg_port, _) in manual_tg_ports.iter().chain(auto_tg_ports.iter()) {
+        let tg_cfg = config
+            .tg_ports
+            .iter()
+            .find(|p| &p.port == tg_port)
+            .expect("internal: missing tg cfg");
 
-                let req = Port::new(port, 0)
-                    .speed(speed)
-                    .fec(fec)
-                    .auto_negotiation(auto_neg)
-                    .loopback(Loopback::BF_LPBK_MAC_NEAR);
-                port_requests.push(req);
-            }
+        let base_speed = tg_cfg.speed.clone().unwrap_or(if is_tofino2 {
+            Speed::BF_SPEED_400G
+        } else {
+            Speed::BF_SPEED_100G
+        });
+        let breakout = tg_cfg.breakout_mode.unwrap_or(false);
+        let (channels, tg_per_ch_speed) = breakout_mapping(&base_speed, breakout);
+
+        let choice = per_tg_choice
+            .get(tg_port)
+            .expect("internal: missing recirc choice");
+
+        // TX recirc (use override speed if provided; otherwise match TG per-channel speed)
+        let tx_per_ch_speed = if let Some(s) = choice.tx_speed.clone() {
+            breakout_mapping(&s, breakout).1
+        } else {
+            tg_per_ch_speed.clone()
         };
-        add(
-            choice.tx_port,
-            choice.tx_speed.clone(),
-            choice.tx_fec.clone(),
-            choice.tx_auto_neg.clone(),
-        );
-        add(
-            choice.rx_port,
-            choice.rx_speed.clone(),
-            choice.rx_fec.clone(),
-            choice.rx_auto_neg.clone(),
-        );
+        let tx_fec = choice.tx_fec.clone().unwrap_or(if is_tofino2 {
+            FEC::BF_FEC_TYP_REED_SOLOMON
+        } else {
+            FEC::BF_FEC_TYP_NONE
+        });
+        let tx_an = choice
+            .tx_auto_neg
+            .clone()
+            .unwrap_or(AutoNegotiation::PM_AN_DEFAULT);
+
+        for &ch in &channels {
+            if added_recirc_once.insert((choice.tx_port, ch as u32)) {
+                port_requests.push(
+                    Port::new(choice.tx_port, ch)
+                        .speed(tx_per_ch_speed.clone())
+                        .fec(tx_fec.clone())
+                        .auto_negotiation(tx_an.clone())
+                        .loopback(Loopback::BF_LPBK_MAC_NEAR),
+                );
+            }
+        }
+
+        // RX recirc
+        let rx_per_ch_speed = if let Some(s) = choice.rx_speed.clone() {
+            breakout_mapping(&s, breakout).1
+        } else {
+            tg_per_ch_speed.clone()
+        };
+        let rx_fec = choice.rx_fec.clone().unwrap_or(if is_tofino2 {
+            FEC::BF_FEC_TYP_REED_SOLOMON
+        } else {
+            FEC::BF_FEC_TYP_NONE
+        });
+        let rx_an = choice
+            .rx_auto_neg
+            .clone()
+            .unwrap_or(AutoNegotiation::PM_AN_DEFAULT);
+
+        for &ch in &channels {
+            if added_recirc_once.insert((choice.rx_port, ch as u32)) {
+                port_requests.push(
+                    Port::new(choice.rx_port, ch)
+                        .speed(rx_per_ch_speed.clone())
+                        .fec(rx_fec.clone())
+                        .auto_negotiation(rx_an.clone())
+                        .loopback(Loopback::BF_LPBK_MAC_NEAR),
+                );
+            }
+        }
     }
 
     // Push to hardware
     pm.add_ports(switch, &port_requests).await?;
     info!("Ports of device configured.");
 
-    // --- Build mapping (TG dev_port -> recirc dev_ports) ---
+    // --- Build mapping (TG dev_port(+ch) -> recirc dev_ports(+ch)) ---
     port_mapping.clear();
 
     for (tg_port, mac) in manual_tg_ports.iter().chain(auto_tg_ports.iter()) {
+        let tg_cfg = config
+            .tg_ports
+            .iter()
+            .find(|p| &p.port == tg_port)
+            .expect("internal: missing tg cfg");
+
+        let base_speed = tg_cfg.speed.clone().unwrap_or(if is_tofino2 {
+            Speed::BF_SPEED_400G
+        } else {
+            Speed::BF_SPEED_100G
+        });
+        let breakout = tg_cfg.breakout_mode.unwrap_or(false);
+        let (channels, _per_ch_speed) = breakout_mapping(&base_speed, breakout);
+
         let choice = per_tg_choice
             .get(tg_port)
             .expect("internal: missing recirc choice");
-        let dev_port = pm.dev_port(*tg_port, 0)?;
-        let tx_dev = pm.dev_port(choice.tx_port, 0)?;
-        let rx_dev = pm.dev_port(choice.rx_port, 0)?;
-        port_mapping.insert(
-            dev_port,
-            PortMapping {
-                tx_recirculation: tx_dev,
-                rx_recirculation: rx_dev,
-                mac: *mac,
-                front_panel_port: *tg_port,
-            },
-        );
+
+        for &ch in &channels {
+            let tx_dev = pm.dev_port(choice.tx_port, ch)?;
+            let rx_dev = pm.dev_port(choice.rx_port, ch)?;
+            let dev_port = pm.dev_port(*tg_port, ch)?;
+
+            port_mapping.insert(
+                dev_port,
+                PortMapping {
+                    tx_recirculation: tx_dev,
+                    rx_recirculation: rx_dev,
+                    mac: *mac,
+                    front_panel_port: *tg_port,
+                    breakout_mode: tg_cfg.breakout_mode,
+                    channel: ch,
+                },
+            );
+        }
     }
 
     // --- Final uniqueness assertion (dev_port-level) ---
@@ -361,7 +431,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let all_ports: Vec<u32> = (1..=num_ports).collect();
 
     // TG ports either from config or default
-    let config = match File::open("config.json") {
+    let mut config = match File::open("config.json") {
         Ok(file) => {
             let config: Config = serde_json::from_reader(file).unwrap_or_else(|_| {
                 warn!("Config file not valid. Using default config.");
@@ -401,7 +471,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     configure_ports(
         &mut switch,
         &pm,
-        &config,
+        &mut config,
         &recirculation_ports,
         &mut port_mapping,
         is_tofino2,

@@ -1,9 +1,47 @@
 # Changelog 
 
-## v2.5.1
+## v2.6.0
+- Breakout mode: P4TG now supports traffic generation via breakout channels, i.e., 1x100G -> 4x25G and 1x40G -> 4x10G. Each channel can be configured individually. Breakout mode for a port must be configured in `config.json`:
+```json
+     {
+      "port": 1,
+      "mac": "fa:a6:68:e0:3d:70",
+      "breakout_mode": true,
+      "speed": "BF_SPEED_100G"
+    }
+```
+- ⚠️ API schema changes
+  - `POST:/api/trafficgen` now requires Port<->Channel mappings for `port_tx_rx_mapping` and `histogram_config`.
+  - `GET:/api/statistics` and `GET:/api/time_statistics` now return a list of channels with stats per port.
+- Support for 64-port Tofino switches: Set the maximum number of front panel ports in `docker-compose.json` to enable.
+- More options in `config.json` available: Speed, FEC, Breakout mode, and Auto Negotiation can be pre-configured. Further, TX/RX recirculation ports can be configured manually:
+```json
+    {
+      "port": 49,
+      "mac": "fa:a6:68:e0:3d:70",
+      "speed": "BF_SPEED_100G",
+      "recirculation_ports": {
+        "tx": {
+          "port": 50,
+          "speed": "BF_SPEED_100G"
+        },
+        "rx": {
+          "port": 51,
+          "speed": "BF_SPEED_100G"
+        }
+      }
+    }
+  ```
+- Possible values are:
+  - speed: BF_SPEED_10G, BF_SPEED_25GB, BF_SPEED_40G, F_SPEED_100G, BF_SPEED_400G
+  - auto_negotiation: PM_AN_DEFAULT, PM_AN_FORCE_ENABLE, PM_AN_FORCE_DISABLE
+  - fec: BF_FEC_TYP_NONE, BF_FEC_TYP_FC, BF_FEC_TYP_REED_SOLOMON
+
 
 ### Bug fixes
-- Fix RX frame type and Ethernet type not being counted
+- Fix RX frame type and Ethernet type not being counted.
+- Fixed percentile calculation in some special cases.
+- Updated API docs.
 
 ## v2.5.0
 ### New features

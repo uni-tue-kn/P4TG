@@ -15,6 +15,8 @@ pub struct PortDescription {
     pub auto_negotiation: Option<AutoNegotiation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) recirculation_ports: Option<RecirculationPair>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) breakout_mode: Option<bool>,
     arp_reply: Option<bool>,
 }
 
@@ -85,6 +87,7 @@ impl Config {
                     }),
                     auto_negotiation: Some(AutoNegotiation::PM_AN_DEFAULT),
                     recirculation_ports: None,
+                    breakout_mode: None,
                 })
                 .collect(),
         }

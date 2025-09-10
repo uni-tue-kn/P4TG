@@ -101,7 +101,9 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
 
     // @ts-ignore
-    const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
+    const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(
+        () => JSON.parse(localStorage.getItem("port_tx_rx_mapping") || "{}")
+    );
     const [statistics, set_statistics] = useState<Statistics>([StatisticsObject])
     const [time_statistics, set_time_statistics] = useState<TimeStatistics>([TimeStatisticsObject])
 
