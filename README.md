@@ -10,6 +10,7 @@
 - [Installation & Start Instructions](#installation--start-instructions)
   - [Data plane](#data-plane)
   - [Control plane](#control-plane)
+- [Test Automation](#test-automation)
 - [Development](#development)
 - [Changelog](./CHANGELOG.md)
 - [Documentation](#documentation)
@@ -117,6 +118,12 @@ Further, the MAC address can be specified that should be used to answer ARP requ
 
 Connect to the REST-API server through the frontend of the configuration GUI: http://*ip-of-tofino-controller*:`P4TG_PORT`/api
 
+### Test Automation
+For scripted and batch runs, check out the [p4tg_test_automation](p4tg_test_automation/) folder.
+It contains a Python CLI that talks to the P4TG REST API to start/stop tests, wait for completion, fetch time statistics and RTT histograms, and render publication-ready PDFs.
+Quick start: `python run.py --payload payloads/your_test.json`.
+Example payloads and detailed usage are in that folder’s [README](p4tg_test_automation/README.md).
+
 ### Development
 
 The configuration GUI is automatically served by the controller at http://*ip-of-tofino-controller*:`P4TG_PORT` and is included in the prebuilt docker image.
@@ -128,6 +135,8 @@ If you want to adapt the configuration GUI, or the control plane:
 
 If you want to build the docker image locally, use the following command from inside the repository root: `docker build --file Controller/Dockerfile --no-cache -t unituekn/p4tg-controller:test .`
 This will automatically build and copy the configuration GUI into the controller folder and create an image containing the modifications.
+
+
 
 # Update Guide
 

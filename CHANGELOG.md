@@ -38,6 +38,7 @@
   - fec: BF_FEC_TYP_NONE, BF_FEC_TYP_FC, BF_FEC_TYP_REED_SOLOMON
 - Added warning message if configured generation rate exceeds line rate of a port.
 - Increased data plane table sizes to accomodate more streams and ports.
+- Added a Python framework for test automation.
 
 ### Bug fixes
 - Fix RX frame type and Ethernet type not being counted.

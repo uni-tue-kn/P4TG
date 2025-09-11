@@ -18,7 +18,7 @@
 * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
 */
 
-use log::{info, warn};
+use log::warn;
 use std::collections::HashMap;
 
 use crate::api::server::Error;

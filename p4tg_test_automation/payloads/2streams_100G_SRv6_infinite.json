@@ -1,0 +1,161 @@
+[
+    {
+        "streams": [
+            {
+                "stream_id": 1,
+                "app_id": 1,
+                "frame_size": 256,
+                "encapsulation": 0,
+                "number_of_lse": 0,
+                "number_of_srv6_sids": 0,
+                "srv6_ip_tunneling": true,
+                "traffic_rate": 100,
+                "burst": 100,
+                "batches": true,
+                "vxlan": false,
+                "ip_version": 4
+            },
+            {
+                "stream_id": 2,
+                "app_id": 2,
+                "frame_size": 1518,
+                "encapsulation": 4,
+                "number_of_lse": 0,
+                "number_of_srv6_sids": 2,
+                "srv6_ip_tunneling": true,
+                "traffic_rate": 100,
+                "burst": 100,
+                "batches": true,
+                "vxlan": false,
+                "ip_version": 6
+            }
+        ],
+        "mode": 1,
+        "duration": 0,
+        "stream_settings": [
+            {
+                "port": 1,
+                "channel": 0,
+                "stream_id": 1,
+                "vlan": {
+                    "vlan_id": 1,
+                    "pcp": 0,
+                    "dei": 0,
+                    "inner_vlan_id": 1,
+                    "inner_pcp": 0,
+                    "inner_dei": 0
+                },
+                "mpls_stack": [],
+                "srv6_base_header": {
+                    "ipv6_src": "ff80::",
+                    "ipv6_dst": "ff80::",
+                    "ipv6_traffic_class": 0,
+                    "ipv6_src_mask": "::",
+                    "ipv6_dst_mask": "::",
+                    "ipv6_flow_label": 0
+                },
+                "sid_list": [],
+                "ethernet": {
+                    "eth_src": "32:D5:42:2A:F6:92",
+                    "eth_dst": "81:E7:9D:E3:AD:47"
+                },
+                "ip": {
+                    "ip_src": "131.98.182.218",
+                    "ip_dst": "8.53.185.142",
+                    "ip_tos": 0,
+                    "ip_src_mask": "0.0.0.0",
+                    "ip_dst_mask": "0.0.0.0"
+                },
+                "ipv6": {
+                    "ipv6_src": "ff80::",
+                    "ipv6_dst": "ff80::",
+                    "ipv6_traffic_class": 0,
+                    "ipv6_src_mask": "::",
+                    "ipv6_dst_mask": "::",
+                    "ipv6_flow_label": 0
+                },
+                "active": true,
+                "vxlan": {
+                    "eth_src": "32:D5:42:2A:F6:92",
+                    "eth_dst": "81:E7:9D:E3:AD:47",
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "udp_source": 49152,
+                    "vni": 1
+                }
+            },
+            {
+                "port": 2,
+                "channel": 0,
+                "stream_id": 2,
+                "vlan": {
+                    "vlan_id": 1,
+                    "pcp": 0,
+                    "dei": 0,
+                    "inner_vlan_id": 1,
+                    "inner_pcp": 0,
+                    "inner_dei": 0
+                },
+                "mpls_stack": [],
+                "srv6_base_header": {
+                    "ipv6_src": "5590:a72e:df6d:a97c:aed3:dcb9:0680:3d97",
+                    "ipv6_dst": "97e6:36c1:41fb:d671:90fe:7dfb:c5c8:c16a",
+                    "ipv6_traffic_class": 0,
+                    "ipv6_src_mask": "::",
+                    "ipv6_dst_mask": "::",
+                    "ipv6_flow_label": 0
+                },
+                "sid_list": [
+                    "2af7:7635:5678:f8a3:1817:19c9:b89f:ec55",
+                    "6f47:2088:c8c1:e035:1535:95da:f4ac:9912"
+                ],
+                "ethernet": {
+                    "eth_src": "32:D5:42:2A:F6:92",
+                    "eth_dst": "81:E7:9D:E3:AD:47"
+                },
+                "ip": {
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "ip_src_mask": "0.0.0.0",
+                    "ip_dst_mask": "0.0.0.0"
+                },
+                "ipv6": {
+                    "ipv6_src": "3eb5:37a1:9223:7acd:8c04:6342:2ce5:ff73",
+                    "ipv6_dst": "d086:f23b:a07a:7a1a:2873:800a:f0ea:012a",
+                    "ipv6_traffic_class": 0,
+                    "ipv6_src_mask": "::ff",
+                    "ipv6_dst_mask": "::fc",
+                    "ipv6_flow_label": 0
+                },
+                "active": true,
+                "vxlan": {
+                    "eth_src": "32:D5:42:2A:F6:92",
+                    "eth_dst": "81:E7:9D:E3:AD:47",
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "udp_source": 49152,
+                    "vni": 1
+                }
+            }
+        ],
+        "histogram_config": {},
+        "port_tx_rx_mapping": {
+            "1": {
+                "0": {
+                    "port": 2,
+                    "channel": 0
+                }
+            },
+            "2": {
+                "0": {
+                    "port": 1,
+                    "channel": 0
+                }
+            }
+        },
+        "name": "Test 1"
+    }
+]
