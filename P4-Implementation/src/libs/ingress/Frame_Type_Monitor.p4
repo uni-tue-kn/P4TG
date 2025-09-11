@@ -61,7 +61,7 @@ control Frame_Type_Monitor(
         }
         default_action = unicast;
         counters = frame_type_counter;
-        size = 128;
+        size = 1024;
     }
 
     action mpls() {
@@ -108,7 +108,7 @@ control Frame_Type_Monitor(
         }
         default_action = unknown;
         counters = ethernet_type_counter;
-        size = 256;
+        size = 1024;
     }
 
     apply {

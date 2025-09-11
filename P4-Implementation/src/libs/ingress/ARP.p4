@@ -41,7 +41,7 @@ control ARP(inout header_t hdr, inout ingress_metadata_t ig_md, in ingress_intri
         actions = {
             answer_arp;
         }
-        size = 64;
+        size = 128;
     }
 
     apply {

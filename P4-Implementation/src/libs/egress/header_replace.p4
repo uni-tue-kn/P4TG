@@ -111,7 +111,11 @@ control Header_Replace(
             rewrite_ipv6;
             rewrite_vxlan;
         }
-        size = 64;
+        #if __TARGET_TOFINO__ == 2
+            size = 650;
+        #else 
+            size = 300;
+        #endif
     }
 
 
@@ -139,8 +143,12 @@ control Header_Replace(
             rewrite_vlan;
             rewrite_q_in_q;
         }
-        size = 64;
-    }
+        #if __TARGET_TOFINO__ == 2
+            size = 650;
+        #else 
+            size = 300;
+        #endif
+        }
 
     apply {
 

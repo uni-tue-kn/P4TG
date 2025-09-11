@@ -450,7 +450,11 @@ control MPLS_Replace(
                 rewrite_mpls_14;
                 rewrite_mpls_15;
             }
-            size = 64;
+        #if __TARGET_TOFINO__ == 2
+            size = 650;
+        #else 
+            size = 300;
+        #endif
         }
 
         apply {

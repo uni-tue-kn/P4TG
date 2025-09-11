@@ -243,9 +243,9 @@ impl TrafficGen {
         let mut reverse_mapping = HashMap::new();
 
         let app_ids: Vec<u8> = if self.is_tofino2 {
-            (1..16).collect()
+            (1..17).collect()
         } else {
-            (1..8).collect()
+            (1..9).collect()
         };
 
         for mapping in port_mapping.values() {
@@ -314,12 +314,8 @@ impl TrafficGen {
             init_requests.push(req);
 
             // configure forwarding in ingress
-            let app_ids: Vec<u8> = if self.is_tofino2 {
-                (1..8).collect()
-            } else {
-                (1..16).collect()
-            };
-            for &app_id in &app_ids {
+            let app_ids = if self.is_tofino2 { 1..16 } else { 1..8 };
+            for app_id in app_ids {
                 // Forward packets from ingress TX to next egress RX
                 let req = table::Request::new(MONITORING_FORWARD_TABLE)
                     .match_key(

@@ -37,6 +37,7 @@
   - auto_negotiation: PM_AN_DEFAULT, PM_AN_FORCE_ENABLE, PM_AN_FORCE_DISABLE
   - fec: BF_FEC_TYP_NONE, BF_FEC_TYP_FC, BF_FEC_TYP_REED_SOLOMON
 - Added warning message if configured generation rate exceeds line rate of a port.
+- Increased data plane table sizes to accomodate more streams and ports.
 
 ### Bug fixes
 - Fix RX frame type and Ethernet type not being counted.
