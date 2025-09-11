@@ -18,7 +18,7 @@
 * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
 */
 
-use log::warn;
+use log::{info, warn};
 use std::collections::HashMap;
 
 use crate::api::server::Error;
@@ -51,13 +51,31 @@ pub fn validate_request(
         .filter(|s| s.active)
         .collect();
 
-    // Validate that front panel port is available
     for setting in active_stream_settings.iter() {
+        // Validate that front panel port is available
         if !front_panel_dev_port_mappings.contains_key(&setting.port) {
             return Err(Error::new(format!(
                 "No mapping for front panel port {:?} in StreamSettings. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number.",
                 setting.port
             )));
+        }
+        // Validate that configured channels are available (i.e., port is in breakout mode, if multiple channels configured)
+        if let Some(x) = setting.channel {
+            if x != 0 {
+                let default_pm = PortMapping::default();
+                // Breakout mode
+                let dev_port = front_panel_dev_port_mappings
+                    .get(&setting.port)
+                    .unwrap_or(&0u32);
+                let breakout_mode = available_ports
+                    .get(dev_port)
+                    .unwrap_or(&default_pm)
+                    .breakout_mode
+                    .unwrap_or(false);
+                if !breakout_mode {
+                    return Err(Error::new(format!("Port {:?} is not configured in breakout mode, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
+                }
+            }
         }
     }
 

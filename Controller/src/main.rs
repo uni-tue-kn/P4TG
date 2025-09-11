@@ -57,6 +57,19 @@ pub struct PortMapping {
     pub channel: u8,
 }
 
+impl Default for PortMapping {
+    fn default() -> Self {
+        PortMapping {
+            tx_recirculation: 0,
+            rx_recirculation: 0,
+            front_panel_port: 0,
+            mac: MacAddr::from([0, 0, 0, 0, 0, 0]),
+            breakout_mode: None,
+            channel: 0,
+        }
+    }
+}
+
 /// Stores the start time of the current experiment
 pub struct Experiment {
     start: std::time::SystemTime,
