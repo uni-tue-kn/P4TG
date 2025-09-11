@@ -36,11 +36,12 @@
   - speed: BF_SPEED_10G, BF_SPEED_25GB, BF_SPEED_40G, F_SPEED_100G, BF_SPEED_400G
   - auto_negotiation: PM_AN_DEFAULT, PM_AN_FORCE_ENABLE, PM_AN_FORCE_DISABLE
   - fec: BF_FEC_TYP_NONE, BF_FEC_TYP_FC, BF_FEC_TYP_REED_SOLOMON
-
+- Added warning message if configured generation rate exceeds line rate of a port.
 
 ### Bug fixes
 - Fix RX frame type and Ethernet type not being counted.
-- Fixed percentile calculation in some special cases.
+- Fix percentile calculation in some special cases.
+- Fix statistics collection on Tofino 2 if more than 7 streams are generated.
 - Updated API docs.
 
 ## v2.5.0
