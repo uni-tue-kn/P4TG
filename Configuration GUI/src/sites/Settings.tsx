@@ -19,7 +19,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Button, Col, Form, Nav, Row, Tab, Table } from "react-bootstrap";
+import { Button, Col, Form, Nav, OverlayTrigger, Row, Tab, Table, Tooltip } from "react-bootstrap";
 import { get } from "../common/API";
 import Loader from "../components/Loader";
 import {
@@ -32,6 +32,7 @@ import {
     PortInfo,
     PortTxRxMap,
     RttHistogramConfig,
+    speedToGbps,
     Stream,
     StreamSettings, ToastVariant, TrafficGenData,
 } from "../common/Interfaces";
@@ -43,6 +44,7 @@ import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
 import { validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
 import HistogramSettings from '../components/settings/HistogramSettings';
+import { PortStatus } from './Ports';
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -82,6 +84,31 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const [renamingTab, setRenamingTab] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
+
+
+    const renderTooltip = (props: any, message: string) => (
+        <Tooltip id="tooltip-disabled" {...props}>
+            {message}
+        </Tooltip>
+    );
+
+    const findStreamById = (stream_id: number) => {
+        return streams.find((s) => s.stream_id === stream_id)
+    }
+
+    const totalRatePerPort = (port: PortInfo) => {
+        let total_rate = 0;
+        stream_settings.forEach((setting: StreamSettings) => {
+            if (setting.active && setting.port == port.port && setting.channel == port.channel) {
+                let stream = findStreamById(setting.stream_id)
+                if (stream !== undefined) {
+                    total_rate += stream?.traffic_rate;
+                }
+            }
+        })
+        console.log("Port: ", port.port, "/", port.channel, "Total Rate: ", total_rate)
+        return total_rate
+    }
 
     const loadPorts = async () => {
         let stats = await get({ route: "/ports" })
@@ -393,7 +420,9 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const fillPortsOnMissingSetting = (streams: Stream[], stream_settings: StreamSettings[]) => {
         // Take first 10 device (port,channel) pairs
-        const availablePairs: Array<[number, number]> = ports.map(p => [p.port, p.channel]);
+        const availablePairs: Array<[number, number]> = ports
+            .filter(p => p.loopback === "BF_LPBK_NONE" || !!p4tg_infos.loopback)
+            .map(p => [p.port, p.channel]);
 
         streams.forEach((s) => {
             const existing = new Set(
@@ -876,71 +905,111 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         </thead>
                                         <tbody>
                                             {ports.map((v) => {
-                                                if (v.loopback !== "BF_LPBK_NONE" && !p4tg_infos.loopback) return null;
+                                                if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
 
-                                                const txKey = String(v.port);
-                                                const chKey = String(v.channel);
-                                                const current = port_tx_rx_mapping?.[txKey]?.[chKey];
-                                                const defaultValue = current ? `${current.port}/${current.channel}` : "-1";
+                                                    const txKey = String(v.port);
+                                                    const chKey = String(v.channel);
+                                                    const current = port_tx_rx_mapping?.[txKey]?.[chKey];
+                                                    const defaultValue = current ? `${current.port}/${current.channel}` : "-1";
 
-                                                return (
-                                                    <tr key={`${v.pid}`}>
-                                                        <StyledCol>{v.port}/{v.channel} ({v.pid})</StyledCol>
-                                                        <StyledCol className="d-flex align-items-center gap-2">
-                                                            <Form.Select
-                                                                disabled={running || !v.status}
-                                                                required
-                                                                defaultValue={defaultValue}
-                                                                onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
-                                                                    const value = event.target.value;
-                                                                    // clone shallowly, then the nested level we modify
-                                                                    const updated = {
-                                                                        ...port_tx_rx_mapping,
-                                                                        [txKey]: { ...(port_tx_rx_mapping?.[txKey] ?? {}) },
-                                                                    };
+                                                    const totalRate = totalRatePerPort(v);
+                                                    const speedExceeded = totalRate > speedToGbps(v.speed);
 
-                                                                    if (value === "-1") {
-                                                                        // remove this (txPort, txCh) mapping
-                                                                        delete updated[txKey][chKey];
-                                                                        // clean up empty port entry
-                                                                        if (Object.keys(updated[txKey]).length === 0) {
-                                                                            delete updated[txKey];
-                                                                        }
-                                                                    } else {
-                                                                        const [rxPortStr, rxChStr] = value.split("/");
-                                                                        updated[txKey][chKey] = {
-                                                                            port: Number(rxPortStr),
-                                                                            channel: Number(rxChStr),
+                                                    return (
+                                                        <tr key={`${v.pid}`}>
+                                                            <StyledCol className="align-items-center">
+                                                                {/* fixed slot for the warning icon */}
+                                                                <span
+                                                                    className="d-inline-flex justify-content-center align-items-center me-2"
+                                                                    style={{ width: 18, height: 18 }}
+                                                                >
+                                                                    {speedExceeded ? (
+                                                                        <OverlayTrigger
+                                                                            placement="top"
+                                                                            overlay={(props) =>
+                                                                                renderTooltip(
+                                                                                    props,
+                                                                                    `Total rate of enabled streams (${totalRate} Gb/s) exceeds line rate of this port (${speedToGbps(v.speed)} Gb/s)`
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <span role="img" aria-label="Warning" style={{ lineHeight: 1 }}>
+                                                                                ⚠️
+                                                                            </span>
+                                                                        </OverlayTrigger>
+                                                                    ) : (
+                                                                        // placeholder keeps the width; hidden from screen readers
+                                                                        <span aria-hidden="true" style={{ visibility: "hidden" }}>⚠️</span>
+                                                                    )}
+                                                                </span>
+
+                                                                <span className="me-2">
+                                                                    <PortStatus active={v.status} />
+                                                                </span>
+
+                                                                <span>
+                                                                    {v.port}/{v.channel} ({v.pid})
+                                                                </span>
+                                                            </StyledCol>
+
+
+                                                            <StyledCol className="d-flex align-items-center gap-2">
+                                                                <Form.Select
+                                                                    disabled={running || !v.status}
+                                                                    required
+                                                                    defaultValue={defaultValue}
+                                                                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                                                                        const value = event.target.value;
+                                                                        // clone shallowly, then the nested level we modify
+                                                                        const updated = {
+                                                                            ...port_tx_rx_mapping,
+                                                                            [txKey]: { ...(port_tx_rx_mapping?.[txKey] ?? {}) },
                                                                         };
-                                                                    }
 
-                                                                    set_port_tx_rx_mapping(updated);
-                                                                }}
-                                                            >
-                                                                <option value="-1">Select RX Port/Channel</option>
-                                                                {ports.map((p) => {
-                                                                    if (p.loopback !== "BF_LPBK_NONE" && !p4tg_infos.loopback) return null;
-                                                                    const optionValue = `${p.port}/${p.channel}`;
-                                                                    return (
-                                                                        <option key={p.pid} value={optionValue}>
-                                                                            {p.port}/{p.channel} ({p.pid})
-                                                                        </option>
-                                                                    );
-                                                                })}
-                                                            </Form.Select>
+                                                                        if (value === "-1") {
+                                                                            // remove this (txPort, txCh) mapping
+                                                                            delete updated[txKey][chKey];
+                                                                            // clean up empty port entry
+                                                                            if (Object.keys(updated[txKey]).length === 0) {
+                                                                                delete updated[txKey];
+                                                                            }
+                                                                        } else {
+                                                                            const [rxPortStr, rxChStr] = value.split("/");
+                                                                            updated[txKey][chKey] = {
+                                                                                port: Number(rxPortStr),
+                                                                                channel: Number(rxChStr),
+                                                                            };
+                                                                        }
 
-                                                            <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings} set_data={updateHistogramSettings} />
-                                                        </StyledCol>
+                                                                        set_port_tx_rx_mapping(updated);
+                                                                    }}
+                                                                >
+                                                                    <option value="-1">Select RX Port/Channel</option>
+                                                                    {ports.map((p) => {
+                                                                        if (p.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
+                                                                            const optionValue = `${p.port}/${p.channel}`;
+                                                                            return (
+                                                                                <option key={p.pid} value={optionValue}>
+                                                                                    {p.port}/{p.channel} ({p.pid})
+                                                                                </option>
+                                                                            )
+                                                                        };
+                                                                    })}
+                                                                </Form.Select>
 
-                                                        <StreamSettingsList
-                                                            stream_settings={stream_settings}
-                                                            streams={streams}
-                                                            running={running}
-                                                            port={v}
-                                                            p4tg_infos={p4tg_infos}
-                                                        />
-                                                    </tr>
-                                                );
+                                                                <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings} set_data={updateHistogramSettings} />
+                                                            </StyledCol>
+
+                                                            <StreamSettingsList
+                                                                stream_settings={stream_settings}
+                                                                streams={streams}
+                                                                running={running}
+                                                                port={v}
+                                                                p4tg_infos={p4tg_infos}
+                                                            />
+                                                        </tr>
+                                                    )
+                                                };
                                             })}
 
                                         </tbody>

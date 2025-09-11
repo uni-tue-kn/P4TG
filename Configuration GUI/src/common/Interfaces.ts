@@ -367,6 +367,20 @@ export enum SPEED {
     BF_SPEED_400G = "BF_SPEED_400G"
 }
 
+export const SPEED_GBPS: Record<SPEED, number> = {
+    [SPEED.BF_SPEED_1G]: 1,
+    [SPEED.BF_SPEED_10G]: 10,
+    [SPEED.BF_SPEED_25G]: 25,
+    [SPEED.BF_SPEED_40G]: 40,
+    [SPEED.BF_SPEED_50G]: 50,
+    [SPEED.BF_SPEED_100G]: 100,
+    [SPEED.BF_SPEED_400G]: 400,
+};
+
+export function speedToGbps(speed: SPEED): number {
+    return SPEED_GBPS[speed];
+}
+
 export enum FEC {
     BF_FEC_TYP_NONE = "BF_FEC_TYP_NONE",
     BF_FEC_TYP_FC = "BF_FEC_TYP_FC",
@@ -400,7 +414,10 @@ export interface PortInfo {
     port: number,
     channel: number,
     loopback: string,
-    status: boolean
+    status: boolean,
+    speed: SPEED,
+    enable: boolean,
+    fec: FEC,
 }
 
 export type ToastVariant = "success" | "danger" | "info" | "warning"
