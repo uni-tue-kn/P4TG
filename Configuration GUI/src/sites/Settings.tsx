@@ -85,6 +85,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const [renamingTab, setRenamingTab] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
 
+    const maxStreams = p4tg_infos.asic === ASIC.Tofino1 ? 7 : 15;
 
     const renderTooltip = (props: any, message: string) => (
         <Tooltip id="tooltip-disabled" {...props}>
@@ -878,17 +879,38 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                             </Row>
                             : null
                         }
-                        <Row className={"mb-3"}>
-                            <Col className={"text-start"}>
-                                {running ? null :
-                                    mode === GenerationMode.CBR || mode == GenerationMode.MPPS ?
-                                        <Button onClick={addStream} variant="primary"><i className="bi bi-plus" /> Add
-                                            stream</Button>
-                                        :
-                                        null
-                                }
+                        <Row className="mb-3">
+                            <Col className="text-start">
+                                {running ? null : (mode === GenerationMode.CBR || mode === GenerationMode.MPPS) ? (
+                                    (() => {
+                                        const reachedMax = streams.length >= maxStreams;
+                                        return (
+                                            <OverlayTrigger
+                                                placement="top"
+                                                overlay={
+                                                    reachedMax
+                                                        ? (props) => renderTooltip(props, "Maximum number of streams reached")
+                                                        : <></>
+                                                }
+                                            >
+                                                {/* Disabled buttons don't fire tooltips — wrap them */}
+                                                <span className="d-inline-block" tabIndex={0}>
+                                                    <Button
+                                                        disabled={reachedMax}
+                                                        onClick={addStream}
+                                                        variant="primary"
+                                                        style={reachedMax ? { pointerEvents: "none" } : undefined}
+                                                    >
+                                                        <i className="bi bi-plus" /> Add stream
+                                                    </Button>
+                                                </span>
+                                            </OverlayTrigger>
+                                        );
+                                    })()
+                                ) : null}
                             </Col>
                         </Row>
+
 
                         {streams.length > 0 || mode == GenerationMode.ANALYZE ?
                             <Row>
