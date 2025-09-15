@@ -50,6 +50,9 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
     let tg = &mut state.traffic_generator.lock().await;
 
     let port_mapping = &state.port_mapping;
+    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(port_mapping);
+    let tx_rx_port_mapping =
+        translate_fp_channel_to_dev_port_mapping(&tg.port_mapping, &front_panel_dev_port_mappings);
 
     if !tg.running {
         return (
@@ -64,11 +67,20 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
 
     // contains the description of the stream, i.e., packet size and rate
     // only look at active stream settings
+    // Translate front panel port to dev port
     let active_stream_settings: Vec<StreamSetting> = tg
         .stream_settings
         .clone()
         .into_iter()
-        .filter(|s| s.active)
+        .filter_map(|mut s| {
+            if s.active {
+                let channel = s.channel.unwrap_or(0);
+                s.port = *front_panel_dev_port_mappings.get(&s.port)? + channel as u32;
+                Some(s)
+            } else {
+                None
+            }
+        })
         .collect();
     let active_stream_ids: Vec<u8> = active_stream_settings.iter().map(|s| s.stream_id).collect();
     let active_streams: Vec<Stream> = tg
@@ -79,10 +91,6 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
         .collect();
     let mode = tg.mode;
     let duration = tg.duration;
-
-    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(port_mapping);
-    let tx_rx_port_mapping =
-        translate_fp_channel_to_dev_port_mapping(&tg.port_mapping, &front_panel_dev_port_mappings);
 
     // Cancel any existing duration monitor task
     state

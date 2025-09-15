@@ -44,6 +44,7 @@
 - Fix RX frame type and Ethernet type not being counted.
 - Fix percentile calculation in some special cases.
 - Fix statistics collection on Tofino 2 if more than 7 streams are generated.
+- Fix `GET:/api/restart` endpoint.
 - Updated API docs.
 
 ## v2.5.0
