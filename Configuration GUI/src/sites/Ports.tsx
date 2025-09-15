@@ -153,7 +153,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                     </InfoBox>
                     </th>
                     <th>Breakout &nbsp; <InfoBox>
-                        <p>In breakout mode, the port is split across 4 channels, e.g., 1x100G to 4x25G. Configure the breakout mode in config.json and restartthe controller.</p>
+                        <p>In breakout mode, the port is split across 4 channels, e.g., 1x100G to 4x25G. Configure the breakout mode in config.json and restart the controller.</p>
                     </InfoBox>
                     </th>
                     <th>Speed</th>
