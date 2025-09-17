@@ -20,7 +20,7 @@
 import React, { useEffect, useState } from 'react'
 import Loader from "../components/Loader";
 import { get, post } from '../common/API'
-import { Button, Col, Form, Row, Table } from "react-bootstrap";
+import { Button, Col, Form, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
 import { ASIC, FEC, P4TGConfig, P4TGInfos, SPEED } from "../common/Interfaces";
@@ -32,6 +32,12 @@ const StyledCol = styled.td`
     display: table-cell;
     text-indent: 5px;
 `
+
+const renderTooltip = (props: any, message: string) => (
+    <Tooltip id="tooltip-disabled" {...props}>
+        {message}
+    </Tooltip>
+);
 
 export const PortStat = styled.span<{ active: boolean }>`
     color: ${props => (props.active ? 'var(--color-okay)' : 'var(--color-primary)')};
@@ -174,13 +180,22 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                             <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>
                             <StyledCol className={"col-2"}>{getMac(v['port'])}</StyledCol>
                             <StyledCol className={"col-1 align-items-center"}>
-                                <Form.Check
-                                    type="checkbox"
-                                    id={`breakout-${v.pid}`}
-                                    checked={getBreakoutMode(v.port)}
-                                    disabled={true}
-                                    readOnly
-                                />
+                                <OverlayTrigger
+                                    placement="top"
+                                    overlay={
+                                        (props) => renderTooltip(props, "Breakout mode can be configured in config.json.")
+                                    }
+                                >
+                                    <span>
+                                        <Form.Check
+                                            type="checkbox"
+                                            id={`breakout-${v.pid}`}
+                                            checked={getBreakoutMode(v.port)}
+                                            disabled={true}
+                                            readOnly
+                                        />
+                                    </span>
+                                </OverlayTrigger>
                             </StyledCol>
                             <StyledCol className={"col-2"}>
                                 <Form.Select onChange={async (event: any) => {
