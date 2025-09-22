@@ -12,6 +12,7 @@
 ```
 - ⚠️ API schema changes
   - `POST:/api/trafficgen` now requires Port<->Channel mappings for `port_tx_rx_mapping` and `histogram_config`.
+    - You can convert your existing trafficgen config to the new schema by uploading them through the 'Import' feature in the frontend and exporting them.
   - `GET:/api/statistics` and `GET:/api/time_statistics` now return a list of channels with stats per port.
 - Support for 64-port Tofino switches: Set the maximum number of front panel ports in `docker-compose.json` to enable.
 - More options in `config.json` available: Speed, FEC, Breakout mode, and Auto Negotiation can be pre-configured. Further, TX/RX recirculation ports can be configured manually:
@@ -45,6 +46,7 @@
 - Fix percentile calculation in some special cases.
 - Fix statistics collection on Tofino 2 if more than 7 streams are generated.
 - Fix `GET:/api/restart` endpoint.
+- Fix config validation if a Tofino-2-only config is imported on a Tofino 1 device.
 - Updated API docs.
 
 ## v2.5.0

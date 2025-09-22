@@ -42,7 +42,7 @@ import InfoBox from "../components/InfoBox";
 import { GitHub } from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
-import { validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
+import { validateIPv6RandomMask, validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
 import HistogramSettings from '../components/settings/HistogramSettings';
 import { PortStatus } from './Ports';
 
@@ -552,6 +552,53 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
             const migrated_config = migrateImportedConfig(new_config)
 
+            let toastMessage;
+            let toastType;
+            // --- TOFINO1 SRv6 handling: remove unsupported encapsulation ---
+            if (p4tg_infos.asic === ASIC.Tofino1) {
+                for (const [cfgName, cfg] of Object.entries(migrated_config)) {
+                    // Streams: SRv6 -> None
+                    if (Array.isArray(cfg.streams)) {
+                        cfg.streams = cfg.streams.map((stream) => {
+                            if (stream.encapsulation === Encapsulation.SRv6) {
+                                toastMessage = `SRv6 is not supported on Tofino 1. Stream "${stream.stream_id}" encapsulation set to None.`;
+                                toastType = "warning" as ToastVariant;
+                                return { ...stream, encapsulation: Encapsulation.None };
+                            }
+                            return stream;
+                        });
+                    }
+
+                    // Stream settings: clamp IPv6 randomization masks
+                    if (Array.isArray(cfg.stream_settings)) {
+                        cfg.stream_settings = cfg.stream_settings.map((setting) => {
+                            let updated = setting;
+
+                            if (setting.ipv6) {
+                                if (!validateIPv6RandomMask(setting.ipv6.ipv6_src_mask, ASIC.Tofino1)) {
+                                    toastMessage = `IPv6 source randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
+                                    toastType = "warning" as ToastVariant;
+                                    updated = {
+                                        ...updated,
+                                        ipv6: { ...updated.ipv6, ipv6_src_mask: "::ffff:ffff" },
+                                    };
+                                }
+                                if (!validateIPv6RandomMask(setting.ipv6.ipv6_dst_mask, ASIC.Tofino1)) {
+                                    toastMessage = `IPv6 destination randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
+                                    toastType = "warning" as ToastVariant;
+                                    updated = {
+                                        ...updated,
+                                        ipv6: { ...updated.ipv6, ipv6_dst_mask: "::ffff:ffff" },
+                                    };
+                                }
+                            }
+
+                            return updated;
+                        });
+                    }
+                }
+            }
+
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(migrated_config))
 
             const first_test = Object.values(migrated_config)[0];
@@ -563,7 +610,11 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(first_test.port_tx_rx_mapping))
             localStorage.setItem("histogram_config", first_test.histogram_config ? JSON.stringify(first_test.histogram_config) : "{}")
 
-            showToast("Settings imported successfully.", "success")
+            if (toastMessage !== undefined && toastType !== undefined) {
+                showToast(toastMessage, toastType);
+            } else {
+                showToast("Settings imported successfully.", "success")
+            }
 
         }
     }
