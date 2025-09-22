@@ -103,9 +103,9 @@ impl Config {
             }
         }
 
-        // TODO validate recirculation ports
-
-        if !(self.tg_ports.len() <= 10
+        // Each port requires two recirculation ports. so floor(num_ports / 3) are actually available
+        let num_availabe_tg_ports = num_ports / 3;
+        if !(self.tg_ports.len() <= num_availabe_tg_ports as usize
             && self
                 .tg_ports
                 .clone()
