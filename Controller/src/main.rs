@@ -240,30 +240,34 @@ async fn configure_ports(
             Speed::BF_SPEED_100G
         });
         let breakout = tg_cfg.breakout_mode.unwrap_or(false);
-        let (channels, tg_per_ch_speed) = breakout_mapping(&base_speed, breakout);
+        let (channels, _) = breakout_mapping(&base_speed, breakout);
 
         let choice = per_tg_choice
             .get(tg_port)
             .expect("internal: missing recirc choice");
 
-        let fec = &config
-            .tg_ports
-            .iter()
-            .find(|p| &p.port == tg_port)
-            .unwrap()
-            .fec
-            .clone()
-            .unwrap_or(if tg_per_ch_speed == Speed::BF_SPEED_400G {
-                FEC::BF_FEC_TYP_REED_SOLOMON
-            } else {
-                FEC::BF_FEC_TYP_NONE
-            });
+        let fec = if breakout {
+            FEC::BF_FEC_TYP_NONE
+        } else if is_tofino2 {
+            FEC::BF_FEC_TYP_REED_SOLOMON
+        } else {
+            FEC::BF_FEC_TYP_NONE
+        };
+
+        // Always use maximum possible rate for recirculation ports
+        let speed = if breakout {
+            Speed::BF_SPEED_25G
+        } else if is_tofino2 {
+            Speed::BF_SPEED_400G
+        } else {
+            Speed::BF_SPEED_100G
+        };
 
         for &ch in &channels {
             if added_recirc_once.insert((choice.tx_port, ch as u32)) {
                 port_requests.push(
                     Port::new(choice.tx_port, ch)
-                        .speed(tg_per_ch_speed.clone())
+                        .speed(speed.clone())
                         .fec(fec.clone())
                         .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
                         .loopback(Loopback::BF_LPBK_MAC_NEAR),
@@ -275,7 +279,7 @@ async fn configure_ports(
             if added_recirc_once.insert((choice.rx_port, ch as u32)) {
                 port_requests.push(
                     Port::new(choice.rx_port, ch)
-                        .speed(tg_per_ch_speed.clone())
+                        .speed(speed.clone())
                         .fec(fec.clone())
                         .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
                         .loopback(Loopback::BF_LPBK_MAC_NEAR),
