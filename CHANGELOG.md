@@ -38,6 +38,7 @@
   - auto_negotiation: PM_AN_DEFAULT, PM_AN_FORCE_ENABLE, PM_AN_FORCE_DISABLE
   - fec: BF_FEC_TYP_NONE, BF_FEC_TYP_FC, BF_FEC_TYP_REED_SOLOMON
 - Added warning message if configured generation rate exceeds line rate of a port.
+- Added warning message if active stream rate exceeds maximum possible rate.
 - Increased data plane table sizes to accomodate more streams and ports.
 - Added a Python framework for test automation.
 
@@ -47,6 +48,7 @@
 - Fix statistics collection on Tofino 2 if more than 7 streams are generated.
 - Fix `GET:/api/restart` endpoint.
 - Fix config validation if a Tofino-2-only config is imported on a Tofino 1 device.
+- Fix inactive streams being considered for calculation of maximum rate.
 - Updated API docs.
 
 ## v2.5.0

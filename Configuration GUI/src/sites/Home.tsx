@@ -38,6 +38,7 @@ import {
 } from '../common/Interfaces'
 import styled from "styled-components";
 import SummaryView from '../components/SummaryView';
+import { getTotalActiveStreamRate } from '../common/Helper';
 
 styled(Row)`
     display: flex;
@@ -188,11 +189,9 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const onSubmit = async (event: any) => {
         event.preventDefault()
 
-        let max_rate = 100;
-
-        if (p4tg_infos.asic === ASIC.Tofino2) {
-            max_rate = 400;
-        }
+        const totalRate = getTotalActiveStreamRate(streams, stream_settings);
+        const maxRate = p4tg_infos.asic === ASIC.Tofino1 ? 100 : 400;
+        const rateExceeded = totalRate > maxRate;
 
         set_overlay(true)
 
@@ -208,8 +207,8 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                         overall_rate += v.traffic_rate
                     }
                 })
-                if (config.mode !== GenerationMode.MPPS && overall_rate > max_rate) {
-                    showToast("Sum of stream rates > " + max_rate + " Gbps for test " + name + "!", "danger")
+                if (config.mode !== GenerationMode.MPPS && rateExceeded) {
+                    showToast("Sum of active stream rates > " + maxRate + " Gbps for test " + name + "!", "danger")
                     set_overlay(false)
                     return;
                 }
