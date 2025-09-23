@@ -45,6 +45,7 @@ import StreamElement from "../components/settings/StreamElement";
 import { validateIPv6RandomMask, validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
 import HistogramSettings from '../components/settings/HistogramSettings';
 import { PortStatus } from './Ports';
+import { getTotalActiveStreamRate, getTotalRatePerPort } from '../common/Helper';
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -92,24 +93,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             {message}
         </Tooltip>
     );
-
-    const findStreamById = (stream_id: number) => {
-        return streams.find((s) => s.stream_id === stream_id)
-    }
-
-    const totalRatePerPort = (port: PortInfo) => {
-        let total_rate = 0;
-        stream_settings.forEach((setting: StreamSettings) => {
-            if (setting.active && setting.port == port.port && setting.channel == port.channel) {
-                let stream = findStreamById(setting.stream_id)
-                if (stream !== undefined) {
-                    total_rate += stream?.traffic_rate;
-                }
-            }
-        })
-        console.log("Port: ", port.port, "/", port.channel, "Total Rate: ", total_rate)
-        return total_rate
-    }
 
     const loadPorts = async () => {
         let stats = await get({ route: "/ports" })
@@ -619,7 +602,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         }
     }
 
-    fillPortsOnMissingSetting(streams, stream_settings);
 
     const handleRenameTab = (oldName: string, newName: string) => {
         if (!newName || newName === oldName || savedConfigs[newName]) {
@@ -644,6 +626,12 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         setRenamingTab(null);
         setRenameValue("");
     };
+
+
+    fillPortsOnMissingSetting(streams, stream_settings);
+    const totalRate = getTotalActiveStreamRate(streams, stream_settings);
+    const maxRate = p4tg_infos.asic === ASIC.Tofino1 ? 100 : 400;
+    const rateExceeded = totalRate > maxRate;
 
     // @ts-ignore
     return <Loader loaded={loaded}>
@@ -885,7 +873,33 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                             <tr>
                                                 <th>Stream-ID</th>
                                                 <th>Frame Size</th>
-                                                <th>Rate</th>
+                                                <th className="text-nowrap">
+                                                    {/* fixed slot for the warning icon (keeps layout stable) */}
+                                                    <span
+                                                        className="d-inline-flex justify-content-center align-items-center me-1"
+                                                        style={{ width: 18, height: 18 }}
+                                                    >
+                                                        {rateExceeded ? (
+                                                            <OverlayTrigger
+                                                                placement="top"
+                                                                overlay={(props) =>
+                                                                    renderTooltip(
+                                                                        props,
+                                                                        `Total rate of active streams (${totalRate} Gb/s) exceeds the maximum rate of ${maxRate} Gb/s.`
+                                                                    )
+                                                                }
+                                                            >
+                                                                <span role="img" aria-label="Warning" style={{ lineHeight: 1 }}>
+                                                                    ⚠️
+                                                                </span>
+                                                            </OverlayTrigger>
+                                                        ) : (
+                                                            <span aria-hidden="true" style={{ visibility: "hidden" }}>⚠️</span>
+                                                        )}
+                                                    </span>
+
+                                                    Rate
+                                                </th>
                                                 <th>Mode &nbsp;
                                                     <InfoBox>
                                                         <>
@@ -985,7 +999,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                     const current = port_tx_rx_mapping?.[txKey]?.[chKey];
                                                     const defaultValue = current ? `${current.port}/${current.channel}` : "-1";
 
-                                                    const totalRate = totalRatePerPort(v);
+                                                    const totalRate = getTotalRatePerPort(streams, stream_settings, v);
                                                     const speedExceeded = totalRate > speedToGbps(v.speed);
 
                                                     return (
