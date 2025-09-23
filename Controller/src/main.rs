@@ -37,6 +37,7 @@ mod error;
 
 use crate::api::statistics::StatisticsApi;
 use crate::api::statistics::TimeStatisticsApi;
+use crate::core::config::RecirculationPair;
 use crate::core::traffic_gen_core::const_definitions::{
     DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2, PORT_CFG_TF2,
 };
@@ -74,18 +75,6 @@ impl Default for PortMapping {
 pub struct Experiment {
     start: std::time::SystemTime,
     running: bool,
-}
-
-#[derive(Clone, Debug)]
-struct RecChoice {
-    tx_port: u32,
-    tx_speed: Option<Speed>,
-    tx_fec: Option<FEC>,
-    tx_auto_neg: Option<AutoNegotiation>,
-    rx_port: u32,
-    rx_speed: Option<Speed>,
-    rx_fec: Option<FEC>,
-    rx_auto_neg: Option<AutoNegotiation>,
 }
 
 /// Stores statistics and configurations, as well as an abort signal for multiple tests
@@ -138,11 +127,14 @@ async fn configure_ports(
         } else {
             Speed::BF_SPEED_100G
         });
-        let fec = tg.fec.clone().unwrap_or(if is_tofino2 {
-            FEC::BF_FEC_TYP_REED_SOLOMON
-        } else {
-            FEC::BF_FEC_TYP_NONE
-        });
+        let fec = tg
+            .fec
+            .clone()
+            .unwrap_or(if is_tofino2 && speed == Speed::BF_SPEED_400G {
+                FEC::BF_FEC_TYP_REED_SOLOMON
+            } else {
+                FEC::BF_FEC_TYP_NONE
+            });
 
         let (channels, per_channel_speed) =
             breakout_mapping(&speed, tg.breakout_mode.unwrap_or(false));
@@ -179,28 +171,25 @@ async fn configure_ports(
     }
 
     // --- Build choices for each TG: config-first, then auto from remaining pool ---
-    let mut per_tg_choice: HashMap<u32, RecChoice> = HashMap::new();
+    let mut per_tg_choice: HashMap<u32, RecirculationPair> = HashMap::new();
     let mut used_recirc: HashSet<u32> = HashSet::new();
 
     // Reserve manual mappings and enforce uniqueness up-front
     for tg in &config.tg_ports {
         if let Some(rec) = &tg.recirculation_ports {
-            for &p in &[rec.tx.port, rec.rx.port] {
+            for &p in &[rec.tx_port, rec.rx_port] {
                 if !used_recirc.insert(p) {
                     panic!("Recirculation port {p} is used more than once in config.");
+                }
+                if used_recirc.contains(&tg.port) {
+                    panic!("Recirculation port {p} is also used as front panel TG port.");
                 }
             }
             per_tg_choice.insert(
                 tg.port,
-                RecChoice {
-                    tx_port: rec.tx.port,
-                    tx_speed: rec.tx.speed.clone(),
-                    tx_fec: rec.tx.fec.clone(),
-                    tx_auto_neg: rec.tx.auto_negotiation.clone(),
-                    rx_port: rec.rx.port,
-                    rx_speed: rec.rx.speed.clone(),
-                    rx_fec: rec.rx.fec.clone(),
-                    rx_auto_neg: rec.rx.auto_negotiation.clone(),
+                RecirculationPair {
+                    tx_port: rec.tx_port,
+                    rx_port: rec.rx_port,
                 },
             );
         }
@@ -226,15 +215,9 @@ async fn configure_ports(
     for (i, (tg_port, _)) in auto_tg_ports.iter().enumerate() {
         per_tg_choice.insert(
             *tg_port,
-            RecChoice {
+            RecirculationPair {
                 tx_port: free[2 * i],
-                tx_speed: None,
-                tx_fec: None,
-                tx_auto_neg: None,
                 rx_port: free[2 * i + 1],
-                rx_speed: None,
-                rx_fec: None,
-                rx_auto_neg: None,
             },
         );
         used_recirc.insert(free[2 * i]);
@@ -263,57 +246,38 @@ async fn configure_ports(
             .get(tg_port)
             .expect("internal: missing recirc choice");
 
-        // TX recirc (use override speed if provided; otherwise match TG per-channel speed)
-        let tx_per_ch_speed = if let Some(s) = choice.tx_speed.clone() {
-            breakout_mapping(&s, breakout).1
-        } else {
-            tg_per_ch_speed.clone()
-        };
-        let tx_fec = choice.tx_fec.clone().unwrap_or(if is_tofino2 {
-            FEC::BF_FEC_TYP_REED_SOLOMON
-        } else {
-            FEC::BF_FEC_TYP_NONE
-        });
-        let tx_an = choice
-            .tx_auto_neg
+        let fec = &config
+            .tg_ports
+            .iter()
+            .find(|p| &p.port == tg_port)
+            .unwrap()
+            .fec
             .clone()
-            .unwrap_or(AutoNegotiation::PM_AN_DEFAULT);
+            .unwrap_or(if tg_per_ch_speed == Speed::BF_SPEED_400G {
+                FEC::BF_FEC_TYP_REED_SOLOMON
+            } else {
+                FEC::BF_FEC_TYP_NONE
+            });
 
         for &ch in &channels {
             if added_recirc_once.insert((choice.tx_port, ch as u32)) {
                 port_requests.push(
                     Port::new(choice.tx_port, ch)
-                        .speed(tx_per_ch_speed.clone())
-                        .fec(tx_fec.clone())
-                        .auto_negotiation(tx_an.clone())
+                        .speed(tg_per_ch_speed.clone())
+                        .fec(fec.clone())
+                        .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
                         .loopback(Loopback::BF_LPBK_MAC_NEAR),
                 );
             }
         }
 
-        // RX recirc
-        let rx_per_ch_speed = if let Some(s) = choice.rx_speed.clone() {
-            breakout_mapping(&s, breakout).1
-        } else {
-            tg_per_ch_speed.clone()
-        };
-        let rx_fec = choice.rx_fec.clone().unwrap_or(if is_tofino2 {
-            FEC::BF_FEC_TYP_REED_SOLOMON
-        } else {
-            FEC::BF_FEC_TYP_NONE
-        });
-        let rx_an = choice
-            .rx_auto_neg
-            .clone()
-            .unwrap_or(AutoNegotiation::PM_AN_DEFAULT);
-
         for &ch in &channels {
             if added_recirc_once.insert((choice.rx_port, ch as u32)) {
                 port_requests.push(
                     Port::new(choice.rx_port, ch)
-                        .speed(rx_per_ch_speed.clone())
-                        .fec(rx_fec.clone())
-                        .auto_negotiation(rx_an.clone())
+                        .speed(tg_per_ch_speed.clone())
+                        .fec(fec.clone())
+                        .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
                         .loopback(Loopback::BF_LPBK_MAC_NEAR),
                 );
             }

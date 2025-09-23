@@ -21,20 +21,9 @@ pub struct PortDescription {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct RecircPort {
-    pub port: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub speed: Option<Speed>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fec: Option<FEC>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auto_negotiation: Option<AutoNegotiation>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct RecirculationPair {
-    pub tx: RecircPort,
-    pub rx: RecircPort,
+    pub(crate) tx_port: u32,
+    pub(crate) rx_port: u32,
 }
 
 #[derive(Deserialize, Debug, Serialize, Clone)]

@@ -41,7 +41,7 @@ pub use traffic_gen::TrafficGen;
 pub use rate_monitor::RateMonitor;
 
 mod arp;
-mod config;
+pub mod config;
 pub mod traffic_gen_core;
 
 pub use config::Config;

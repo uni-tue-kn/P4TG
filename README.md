@@ -208,20 +208,14 @@ Below is an example:
       "mac": "fa:a6:68:e0:3d:70",
       "speed": "BF_SPEED_100G",
       "recirculation_ports": {
-        "tx": {
-          "port": 50,
-          "speed": "BF_SPEED_100G"
-        },
-        "rx": {
-          "port": 51,
-          "speed": "BF_SPEED_100G"
-        }
+        "tx_port": 50,
+        "rx_port": 51
       }
     }
   ]
 }
 ```
-This uses port 49 as a port for traffic generation and port 50 and 51 for internal recirculation. Ensure that the recirculation ports have enough capacity.
+This uses port 49 as a port for traffic generation and port 50 and 51 for internal recirculation. Ensure that the recirculation ports support the same line rate as the TG port.
 
 ---
 
