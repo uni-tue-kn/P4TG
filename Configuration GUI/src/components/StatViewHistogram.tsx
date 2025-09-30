@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
-import { StatisticsEntry } from "../common/Interfaces";
+import { PortTxRxMap, StatisticsEntry } from "../common/Interfaces";
 
 import styled from 'styled-components'
 import { formatNanoSeconds, formatFrameCount } from '../common/Helper';
@@ -28,7 +28,7 @@ const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: StatisticsEntry, port_mapping: { [name: number]: number }, rx_port: number }) => {
+const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: StatisticsEntry, port_mapping: PortTxRxMap, rx_port: number }) => {
     const [minValue, set_min_value] = useState(0);
     const [maxValue, set_max_value] = useState(0);
     const [numBins, set_num_bins] = useState(0);
@@ -45,34 +45,43 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
         </Tooltip>
     );
 
-
     useEffect(() => {
-        if (Object.values(port_mapping).includes(rx_port)) {
-            const rttHistogram = stats.rtt_histogram[rx_port];
-            if (!rttHistogram) return;
+        // find the first RX channel that maps to this rx_port
+        const matches =
+            Object.values(port_mapping ?? {})
+                .flatMap((perCh) => Object.values(perCh ?? {}))
+                .filter((t: any) => t?.port === rx_port);
 
-            set_min_value(rttHistogram.config.min);
-            set_max_value(rttHistogram.config.max);
-            set_num_bins(rttHistogram.config.num_bins);
-            set_mean_rtt(rttHistogram.data.mean_rtt);
-            set_std_rtt(rttHistogram.data.std_dev_rtt);
-            set_bin_width(calculateBinWidth(rttHistogram.config.min, rttHistogram.config.max, rttHistogram.config.num_bins));
-            set_total_packet_count(rttHistogram.data.total_pkt_count);
-            set_missed_bin_count(rttHistogram.data.missed_bin_count);
-            if (rttHistogram.data.percentiles) {
-                const p_data = rttHistogram.data.percentiles;
-                Object.entries(p_data).forEach(([key, value]) => {
-                    setPercentileData(prev => ({
-                        ...prev,
-                        [key]: value
-                    }));
+        if (matches.length === 0) return;
+
+        const rxPortKey = String(rx_port);
+        const rxChKey = String(matches[0].channel); // pick first matching channel
+
+        const rttHistogram = stats.rtt_histogram?.[rxPortKey]?.[rxChKey];
+        if (!rttHistogram) return;
+
+        const { config, data } = rttHistogram;
+
+        set_min_value(config.min);
+        set_max_value(config.max);
+        set_num_bins(config.num_bins);
+        set_bin_width(calculateBinWidth(config.min, config.max, config.num_bins));
+
+        set_mean_rtt(data.mean_rtt);
+        set_std_rtt(data.std_dev_rtt);
+        set_total_packet_count(data.total_pkt_count);
+        set_missed_bin_count(data.missed_bin_count);
+
+        setPercentileData(() => {
+            const p: Record<string, number> = {};
+            if (data.percentiles) {
+                for (const [k, v] of Object.entries(data.percentiles)) {
+                    p[k] = v as number;
                 }
-                );
             }
-        }
-
-    }, [stats.rtt_histogram])
-
+            return p;
+        });
+    }, [stats.rtt_histogram]);
 
     const calculateBinWidth = (minValue: number, maxValue: number, numBins: number) => {
         return (maxValue - minValue) / numBins;

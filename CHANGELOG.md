@@ -1,5 +1,58 @@
 # Changelog 
 
+## v2.6.0
+- Breakout mode: P4TG now supports traffic generation via breakout channels, i.e., 1x100G -> 4x25G and 1x40G -> 4x10G. Each channel can be configured individually. Breakout mode for a port must be configured in `config.json`:
+```json
+     {
+      "port": 1,
+      "mac": "fa:a6:68:e0:3d:70",
+      "breakout_mode": true,
+      "speed": "BF_SPEED_100G"
+    }
+```
+- ⚠️ API schema changes
+  - `POST:/api/trafficgen` now requires Port<->Channel mappings for `port_tx_rx_mapping` and `histogram_config`.
+    - You can convert your existing trafficgen config to the new schema by uploading them through the 'Import' feature in the frontend and exporting them.
+  - `GET:/api/statistics` and `GET:/api/time_statistics` now return a list of channels with stats per port.
+- Support for 64-port Tofino switches: Set the maximum number of front panel ports in `docker-compose.json` to enable.
+- More options in `config.json` available: Speed, FEC, Breakout mode, and Auto Negotiation can be pre-configured. Further, TX/RX recirculation ports can be configured manually:
+```json
+    {
+      "port": 49,
+      "mac": "fa:a6:68:e0:3d:70",
+      "speed": "BF_SPEED_100G",
+      "recirculation_ports": {
+        "tx": {
+          "port": 50,
+          "speed": "BF_SPEED_100G"
+        },
+        "rx": {
+          "port": 51,
+          "speed": "BF_SPEED_100G"
+        }
+      }
+    }
+  ```
+- Possible values are:
+  - speed: BF_SPEED_10G, BF_SPEED_25GB, BF_SPEED_40G, BF_SPEED_100G, BF_SPEED_400G
+  - auto_negotiation: PM_AN_DEFAULT, PM_AN_FORCE_ENABLE, PM_AN_FORCE_DISABLE
+  - fec: BF_FEC_TYP_NONE, BF_FEC_TYP_FC, BF_FEC_TYP_REED_SOLOMON
+- Added warning message if configured generation rate exceeds line rate of a port.
+- Added warning message if active stream rate exceeds maximum possible rate.
+- Increased data plane table sizes to accomodate more streams and ports.
+- Added a Python framework for test automation.
+
+### Bug fixes
+- Fix RX frame type and Ethernet type not being counted.
+- Fix percentile calculation in some special cases.
+- Fix statistics collection on Tofino 2 if more than 7 streams are generated.
+- Fix `GET:/api/restart` endpoint.
+- Fix config validation if a Tofino-2-only config is imported on a Tofino 1 device.
+- Fix inactive streams being considered for calculation of maximum rate.
+- Fix for CVE-2025-58754.
+- Updated API docs.
+- Updated dependencies.
+
 ## v2.5.0
 ### New features
 - ⚠ Breaking change: Port configuration for StreamSettings, TX/RX port mapping, histograms, port config, ARP config, statistics and time_statistics now use the front panel numbers (e.g., 1-10) instead of dev_port numbers. This makes exported configurations portable across different Tofino devices.

@@ -19,7 +19,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Button, Col, Form, Nav, Row, Tab, Table } from "react-bootstrap";
+import { Button, Col, Form, Nav, OverlayTrigger, Row, Tab, Table, Tooltip } from "react-bootstrap";
 import { get } from "../common/API";
 import Loader from "../components/Loader";
 import {
@@ -28,9 +28,11 @@ import {
     DefaultStream,
     DefaultStreamSettings,
     Encapsulation,
-    GenerationMode, P4TGInfos,
+    GenerationMode, HistogramConfigMap, P4TGInfos,
     PortInfo,
+    PortTxRxMap,
     RttHistogramConfig,
+    speedToGbps,
     Stream,
     StreamSettings, ToastVariant, TrafficGenData,
 } from "../common/Interfaces";
@@ -40,8 +42,10 @@ import InfoBox from "../components/InfoBox";
 import { GitHub } from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
-import { validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
+import { validateIPv6RandomMask, validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
 import HistogramSettings from '../components/settings/HistogramSettings';
+import { PortStatus } from './Ports';
+import { getTotalActiveStreamRate, getTotalRatePerPort } from '../common/Helper';
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -66,10 +70,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     // @ts-ignore
     const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
     // @ts-ignore
-    const [histogram_settings, set_histogram_settings] = useState<Record<string, RttHistogramConfig>>(JSON.parse(localStorage.getItem("histogram_config")) || {})
+    const [histogram_settings, set_histogram_settings] = useState<HistogramConfigMap>(JSON.parse(localStorage.getItem("histogram_config")) || {})
 
     // @ts-ignore
-    const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<{ [name: number]: number }>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
+    const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
@@ -81,6 +85,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const [renamingTab, setRenamingTab] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
+
+    const maxStreams = p4tg_infos.asic === ASIC.Tofino1 ? 7 : 15;
+
+    const renderTooltip = (props: any, message: string) => (
+        <Tooltip id="tooltip-disabled" {...props}>
+            {message}
+        </Tooltip>
+    );
 
     const loadPorts = async () => {
         let stats = await get({ route: "/ports" })
@@ -177,7 +189,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_mode(config.mode ?? GenerationMode.NONE);
         set_duration(config.duration ?? 0);
         set_port_tx_rx_mapping(config.port_tx_rx_mapping || {});
-        set_histogram_settings(config.histogram_config || {});
+        set_histogram_settings(config.histogram_config ?? {});
     };
 
     const deleteConfig = (name: string) => {
@@ -206,13 +218,22 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const save = (do_alert: boolean = false) => {
 
         // Iterate histogram settings and remove any entry which key (port) is not a value in port_tx_rx_mapping
-        const filteredHistogramSettings: Record<string, RttHistogramConfig> = {};
-        const rxPorts = Object.values(port_tx_rx_mapping).map(String);
-        Object.entries(histogram_settings).forEach(([rx_port, config]) => {
-            if (rxPorts.includes(rx_port)) {
-                filteredHistogramSettings[rx_port] = config;
+        // Build allowed (port/channel) set from mapping values
+        const allowed = new Set(
+            Object.values(port_tx_rx_mapping ?? {}).flatMap(perCh =>
+                Object.values(perCh ?? {}).map((t: any) => `${t.port}/${t.channel}`)
+            )
+        );
+
+        // Filter histogram_settings: keep only allowed (port,channel) pairs
+        const filteredHistogramSettings: HistogramConfigMap = {};
+        for (const [rxPort, perCh] of Object.entries(histogram_settings ?? {})) {
+            for (const [rxCh, cfg] of Object.entries(perCh ?? {})) {
+                if (allowed.has(`${rxPort}/${rxCh}`)) {
+                    (filteredHistogramSettings[rxPort] ??= {})[rxCh] = cfg;
+                }
             }
-        });
+        }
 
         localStorage.setItem("streams", JSON.stringify(streams))
         localStorage.setItem("gen-mode", String(mode))
@@ -285,7 +306,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
             ports.map((v, i) => {
                 if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                    set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.port)])
+                    set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.port, v.channel)])
                 }
             })
         }
@@ -324,14 +345,23 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         showToast(`Cloned "${name}" to "${clonedName}"`, "success");
     };
 
-    const updateHistogramSettings = (front_panel_port: number, updated: RttHistogramConfig) => {
-        const updatedData = {
-            ...histogram_settings,
-            [String(front_panel_port)]: updated
-        };
-        set_histogram_settings(updatedData);
-        localStorage.setItem("histogram_config", JSON.stringify(updatedData)); // Optional but probably helpful
-    }
+    // Update a single (rx_port, rx_channel)
+    const updateHistogramSettings = (
+        front_panel_port: number,
+        channel: number,
+        updated: RttHistogramConfig
+    ) => {
+        set_histogram_settings((prev: { [x: string]: any; }) => {
+            const p = String(front_panel_port);
+            const c = String(channel);
+            const next: HistogramConfigMap = {
+                ...prev,
+                [p]: { ...(prev[p] ?? {}), [c]: updated },
+            };
+            localStorage.setItem("histogram_config", JSON.stringify(next));
+            return next;
+        });
+    };
 
     const removeStream = (id: number) => {
         set_streams(streams.filter(v => v.stream_id != id))
@@ -373,30 +403,78 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     }
 
     const fillPortsOnMissingSetting = (streams: Stream[], stream_settings: StreamSettings[]) => {
-        // If the StreamSettings are not complete, i.e., not all ports are defined, they are not correctly rendered in the frontend.
-        // Therefore, we fill the stream settings for each undefined port with a default stream.
-        const available_dev_ports: number[] = ports.slice(0, 10).map(p => p.port);
+        // Take first 10 device (port,channel) pairs
+        const availablePairs: Array<[number, number]> = ports
+            .filter(p => p.loopback === "BF_LPBK_NONE" || !!p4tg_infos.loopback)
+            .map(p => [p.port, p.channel]);
 
-        streams.forEach(s => {
-            const ports_from_settings: number[] = stream_settings.filter(setting => setting.port && setting.stream_id == s.stream_id).map(setting => setting.port);
-            available_dev_ports.forEach(p => {
-                if (!ports_from_settings.includes(p)) {
-                    const default_stream_settings = DefaultStreamSettings(s.stream_id, p);
-                    if (s.encapsulation === Encapsulation.MPLS) {
-                        for (let i = 0; i < s.number_of_lse; i++) {
-                            default_stream_settings.mpls_stack.push(DefaultMPLSHeader())
-                        }
-                    } else if (s.encapsulation === Encapsulation.SRv6) {
-                        for (let i = 0; i < s.number_of_srv6_sids; i++) {
-                            default_stream_settings.sid_list.push("::")
-                        }
-                    }
-                    stream_settings.push(default_stream_settings)
+        streams.forEach((s) => {
+            const existing = new Set(
+                stream_settings
+                    .filter(st => st.stream_id === s.stream_id && st.port != null && st.channel != null)
+                    .map(st => `${st.port}/${st.channel}`)
+            );
+
+            for (const [p, ch] of availablePairs) {
+                const key = `${p}/${ch}`;
+                if (existing.has(key)) continue;
+
+                const def = DefaultStreamSettings(s.stream_id, p, ch);
+                if (s.encapsulation === Encapsulation.MPLS) {
+                    for (let i = 0; i < s.number_of_lse; i++) def.mpls_stack.push(DefaultMPLSHeader());
+                } else if (s.encapsulation === Encapsulation.SRv6) {
+                    for (let i = 0; i < s.number_of_srv6_sids; i++) def.sid_list.push("::");
                 }
-            })
-        })
-        // Sort by stream ID to correctly render in frontend
-        stream_settings.sort((a, b) => a.stream_id - b.stream_id);
+                stream_settings.push(def);
+            }
+        });
+
+        // Sort by stream, then port, then channel for stable rendering
+        stream_settings.sort((a, b) =>
+            a.stream_id - b.stream_id || a.port - b.port || a.channel - b.channel
+        );
+    };
+
+
+    function migrateImportedConfig(
+        cfg: Record<string, any>
+    ): Record<string, TrafficGenData> {
+
+        const isLegacyTest = (t: any) => {
+            const pm = t?.port_tx_rx_mapping;
+            const hc = t?.histogram_config;
+            const ss = Array.isArray(t?.stream_settings) ? (t.stream_settings as Array<{ channel?: number }>) : [];
+            const pmSample = pm && typeof pm === "object" ? Object.values(pm)[0] : undefined;
+            const hcSample = hc && typeof hc === "object" ? Object.values(hc)[0] : undefined;
+
+            return (
+                typeof pmSample === "number" ||                       // tx->rx (number)
+                (hcSample && typeof hcSample === "object" && "min" in hcSample) || // flat histogram
+                ss.some(s => s?.channel == null)                      // missing channel
+            );
+        };
+
+        const out: Record<string, TrafficGenData> = {};
+        for (const [k, v] of Object.entries(cfg)) {
+            if (isLegacyTest(v)) {
+                const port_tx_rx_mapping: PortTxRxMap = Object.fromEntries(
+                    Object.entries(v.port_tx_rx_mapping ?? {}).map(([tx, rx]) => [
+                        String(tx),
+                        { "0": { port: Number(rx), channel: 0 } },
+                    ])
+                );
+                const histogram_config = Object.fromEntries(
+                    Object.entries(v.histogram_config ?? {}).map(([rp, cfg]) => [String(rp), { "0": cfg }])
+                );
+                const stream_settings: StreamSettings[] = (v.stream_settings ?? []).map((s: any) => ({
+                    ...s, channel: s.channel ?? 0,
+                }));
+                out[k] = { ...v, port_tx_rx_mapping, histogram_config, stream_settings };
+            } else {
+                out[k] = v as TrafficGenData; // already new shape
+            }
+        }
+        return out;
     }
 
     function isSingleTrafficGenData(val: unknown): val is TrafficGenData {
@@ -455,9 +533,58 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 }
             };
 
-            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(new_config))
+            const migrated_config = migrateImportedConfig(new_config)
 
-            const first_test = Object.values(new_config)[0];
+            let toastMessage;
+            let toastType;
+            // --- TOFINO1 SRv6 handling: remove unsupported encapsulation ---
+            if (p4tg_infos.asic === ASIC.Tofino1) {
+                for (const [cfgName, cfg] of Object.entries(migrated_config)) {
+                    // Streams: SRv6 -> None
+                    if (Array.isArray(cfg.streams)) {
+                        cfg.streams = cfg.streams.map((stream) => {
+                            if (stream.encapsulation === Encapsulation.SRv6) {
+                                toastMessage = `SRv6 is not supported on Tofino 1. Stream "${stream.stream_id}" encapsulation set to None.`;
+                                toastType = "warning" as ToastVariant;
+                                return { ...stream, encapsulation: Encapsulation.None };
+                            }
+                            return stream;
+                        });
+                    }
+
+                    // Stream settings: clamp IPv6 randomization masks
+                    if (Array.isArray(cfg.stream_settings)) {
+                        cfg.stream_settings = cfg.stream_settings.map((setting) => {
+                            let updated = setting;
+
+                            if (setting.ipv6) {
+                                if (!validateIPv6RandomMask(setting.ipv6.ipv6_src_mask, ASIC.Tofino1)) {
+                                    toastMessage = `IPv6 source randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
+                                    toastType = "warning" as ToastVariant;
+                                    updated = {
+                                        ...updated,
+                                        ipv6: { ...updated.ipv6, ipv6_src_mask: "::ffff:ffff" },
+                                    };
+                                }
+                                if (!validateIPv6RandomMask(setting.ipv6.ipv6_dst_mask, ASIC.Tofino1)) {
+                                    toastMessage = `IPv6 destination randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
+                                    toastType = "warning" as ToastVariant;
+                                    updated = {
+                                        ...updated,
+                                        ipv6: { ...updated.ipv6, ipv6_dst_mask: "::ffff:ffff" },
+                                    };
+                                }
+                            }
+
+                            return updated;
+                        });
+                    }
+                }
+            }
+
+            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(migrated_config))
+
+            const first_test = Object.values(migrated_config)[0];
 
             localStorage.setItem("streams", JSON.stringify(first_test.streams))
             localStorage.setItem("gen-mode", String(first_test.mode))
@@ -466,12 +593,15 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(first_test.port_tx_rx_mapping))
             localStorage.setItem("histogram_config", first_test.histogram_config ? JSON.stringify(first_test.histogram_config) : "{}")
 
-            showToast("Settings imported successfully.", "success")
+            if (toastMessage !== undefined && toastType !== undefined) {
+                showToast(toastMessage, toastType);
+            } else {
+                showToast("Settings imported successfully.", "success")
+            }
 
         }
     }
 
-    fillPortsOnMissingSetting(streams, stream_settings);
 
     const handleRenameTab = (oldName: string, newName: string) => {
         if (!newName || newName === oldName || savedConfigs[newName]) {
@@ -496,6 +626,12 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         setRenamingTab(null);
         setRenameValue("");
     };
+
+
+    fillPortsOnMissingSetting(streams, stream_settings);
+    const totalRate = getTotalActiveStreamRate(streams, stream_settings);
+    const maxRate = p4tg_infos.asic === ASIC.Tofino1 ? 100 : 400;
+    const rateExceeded = totalRate > maxRate;
 
     // @ts-ignore
     return <Loader loaded={loaded}>
@@ -737,7 +873,33 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                             <tr>
                                                 <th>Stream-ID</th>
                                                 <th>Frame Size</th>
-                                                <th>Rate</th>
+                                                <th className="text-nowrap">
+                                                    {/* fixed slot for the warning icon (keeps layout stable) */}
+                                                    <span
+                                                        className="d-inline-flex justify-content-center align-items-center me-1"
+                                                        style={{ width: 18, height: 18 }}
+                                                    >
+                                                        {rateExceeded ? (
+                                                            <OverlayTrigger
+                                                                placement="top"
+                                                                overlay={(props) =>
+                                                                    renderTooltip(
+                                                                        props,
+                                                                        `Total rate of active streams (${totalRate} Gb/s) exceeds the maximum rate of ${maxRate} Gb/s.`
+                                                                    )
+                                                                }
+                                                            >
+                                                                <span role="img" aria-label="Warning" style={{ lineHeight: 1 }}>
+                                                                    ⚠️
+                                                                </span>
+                                                            </OverlayTrigger>
+                                                        ) : (
+                                                            <span aria-hidden="true" style={{ visibility: "hidden" }}>⚠️</span>
+                                                        )}
+                                                    </span>
+
+                                                    Rate
+                                                </th>
                                                 <th>Mode &nbsp;
                                                     <InfoBox>
                                                         <>
@@ -782,17 +944,38 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                             </Row>
                             : null
                         }
-                        <Row className={"mb-3"}>
-                            <Col className={"text-start"}>
-                                {running ? null :
-                                    mode === GenerationMode.CBR || mode == GenerationMode.MPPS ?
-                                        <Button onClick={addStream} variant="primary"><i className="bi bi-plus" /> Add
-                                            stream</Button>
-                                        :
-                                        null
-                                }
+                        <Row className="mb-3">
+                            <Col className="text-start">
+                                {running ? null : (mode === GenerationMode.CBR || mode === GenerationMode.MPPS) ? (
+                                    (() => {
+                                        const reachedMax = streams.length >= maxStreams;
+                                        return (
+                                            <OverlayTrigger
+                                                placement="top"
+                                                overlay={
+                                                    reachedMax
+                                                        ? (props) => renderTooltip(props, "Maximum number of streams reached")
+                                                        : <></>
+                                                }
+                                            >
+                                                {/* Disabled buttons don't fire tooltips — wrap them */}
+                                                <span className="d-inline-block" tabIndex={0}>
+                                                    <Button
+                                                        disabled={reachedMax}
+                                                        onClick={addStream}
+                                                        variant="primary"
+                                                        style={reachedMax ? { pointerEvents: "none" } : undefined}
+                                                    >
+                                                        <i className="bi bi-plus" /> Add stream
+                                                    </Button>
+                                                </span>
+                                            </OverlayTrigger>
+                                        );
+                                    })()
+                                ) : null}
                             </Col>
                         </Row>
+
 
                         {streams.length > 0 || mode == GenerationMode.ANALYZE ?
                             <Row>
@@ -808,44 +991,112 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {ports.map((v, i) => {
+                                            {ports.map((v) => {
                                                 if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                                                    return <tr key={i}>
-                                                        <StyledCol>{v.port} ({v.pid})</StyledCol>
-                                                        <StyledCol className="d-flex align-items-center gap-2">
-                                                            <Form.Select disabled={running || !v.status} required
-                                                                defaultValue={port_tx_rx_mapping[v.port] || -1}
-                                                                onChange={(event: any) => {
-                                                                    const value = parseInt(event.target.value);
-                                                                    const updatedMapping = { ...port_tx_rx_mapping };
 
-                                                                    if (value === -1) {
-                                                                        delete updatedMapping[v.port]
-                                                                    } else {
-                                                                        updatedMapping[v.port] = parseInt(event.target.value);
-                                                                    }
+                                                    const txKey = String(v.port);
+                                                    const chKey = String(v.channel);
+                                                    const current = port_tx_rx_mapping?.[txKey]?.[chKey];
+                                                    const defaultValue = current ? `${current.port}/${current.channel}` : "-1";
 
-                                                                    set_port_tx_rx_mapping(updatedMapping);
-                                                                }}>
-                                                                <option value={-1}>Select RX Port</option>
-                                                                {ports.map((v, i) => {
-                                                                    if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                                                                        return <option key={i}
-                                                                            value={v.port}>
-                                                                            {v.port} ({v.pid})
-                                                                        </option>
-                                                                    }
-                                                                })
-                                                                }
-                                                            </Form.Select>
+                                                    const totalRate = getTotalRatePerPort(streams, stream_settings, v);
+                                                    const speedExceeded = totalRate > speedToGbps(v.speed);
 
-                                                            <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings} set_data={updateHistogramSettings} />
-                                                        </StyledCol>
-                                                        <StreamSettingsList stream_settings={stream_settings} streams={streams}
-                                                            running={running} port={v} p4tg_infos={p4tg_infos} />
+                                                    return (
+                                                        <tr key={`${v.pid}`}>
+                                                            <StyledCol className="align-items-center">
+                                                                {/* fixed slot for the warning icon */}
+                                                                <span
+                                                                    className="d-inline-flex justify-content-center align-items-center me-2"
+                                                                    style={{ width: 18, height: 18 }}
+                                                                >
+                                                                    {speedExceeded ? (
+                                                                        <OverlayTrigger
+                                                                            placement="top"
+                                                                            overlay={(props) =>
+                                                                                renderTooltip(
+                                                                                    props,
+                                                                                    `Total rate of enabled streams (${totalRate} Gb/s) exceeds line rate of this port (${speedToGbps(v.speed)} Gb/s)`
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <span role="img" aria-label="Warning" style={{ lineHeight: 1 }}>
+                                                                                ⚠️
+                                                                            </span>
+                                                                        </OverlayTrigger>
+                                                                    ) : (
+                                                                        // placeholder keeps the width; hidden from screen readers
+                                                                        <span aria-hidden="true" style={{ visibility: "hidden" }}>⚠️</span>
+                                                                    )}
+                                                                </span>
 
-                                                    </tr>
-                                                }
+                                                                <span className="me-2">
+                                                                    <PortStatus active={v.status} />
+                                                                </span>
+
+                                                                <span>
+                                                                    {v.port}/{v.channel} ({v.pid})
+                                                                </span>
+                                                            </StyledCol>
+
+
+                                                            <StyledCol className="d-flex align-items-center gap-2">
+                                                                <Form.Select
+                                                                    disabled={running || !v.status}
+                                                                    required
+                                                                    defaultValue={defaultValue}
+                                                                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                                                                        const value = event.target.value;
+                                                                        // clone shallowly, then the nested level we modify
+                                                                        const updated = {
+                                                                            ...port_tx_rx_mapping,
+                                                                            [txKey]: { ...(port_tx_rx_mapping?.[txKey] ?? {}) },
+                                                                        };
+
+                                                                        if (value === "-1") {
+                                                                            // remove this (txPort, txCh) mapping
+                                                                            delete updated[txKey][chKey];
+                                                                            // clean up empty port entry
+                                                                            if (Object.keys(updated[txKey]).length === 0) {
+                                                                                delete updated[txKey];
+                                                                            }
+                                                                        } else {
+                                                                            const [rxPortStr, rxChStr] = value.split("/");
+                                                                            updated[txKey][chKey] = {
+                                                                                port: Number(rxPortStr),
+                                                                                channel: Number(rxChStr),
+                                                                            };
+                                                                        }
+
+                                                                        set_port_tx_rx_mapping(updated);
+                                                                    }}
+                                                                >
+                                                                    <option value="-1">Select RX Port/Channel</option>
+                                                                    {ports.map((p) => {
+                                                                        if (p.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
+                                                                            const optionValue = `${p.port}/${p.channel}`;
+                                                                            return (
+                                                                                <option key={p.pid} value={optionValue}>
+                                                                                    {p.port}/{p.channel} ({p.pid})
+                                                                                </option>
+                                                                            )
+                                                                        };
+                                                                    })}
+                                                                </Form.Select>
+
+                                                                <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings} set_data={updateHistogramSettings} />
+                                                            </StyledCol>
+
+                                                            <StreamSettingsList
+                                                                stream_settings={stream_settings}
+                                                                streams={streams}
+                                                                running={running}
+                                                                port={v}
+                                                                p4tg_infos={p4tg_infos}
+                                                            />
+                                                        </tr>
+                                                    )
+                                                };
                                             })}
 
                                         </tbody>

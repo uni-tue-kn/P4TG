@@ -57,7 +57,7 @@ control egress(
         actions = {
             nop;
         }
-        size = 512;
+        size = 2048;
         counters = frame_counter;
     }
 
@@ -72,7 +72,7 @@ control egress(
         actions = {
             set_tx;
         }
-        size = 32;
+        size = 128;
     }
 
     action no_action() {}
@@ -83,7 +83,7 @@ control egress(
         actions = {
             no_action;
         }
-        size = 32;
+        size = 512;
     }
 
     action init_monitor_header(bit<15> index) {
@@ -98,7 +98,7 @@ control egress(
         actions = {
             init_monitor_header;
         }
-        size = 32;
+        size = 512;
     }
 
     action monitor_stream_rate(bit<32> idx) {
@@ -114,7 +114,11 @@ control egress(
         actions = {
             monitor_stream_rate;
         }
-        size = 256;
+        #if __TARGET_TOFINO__ == 2
+            size = 2048;
+        #else 
+            size = 1024;
+        #endif
     }
 
     apply {

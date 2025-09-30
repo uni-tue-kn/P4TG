@@ -51,13 +51,31 @@ pub fn validate_request(
         .filter(|s| s.active)
         .collect();
 
-    // Validate that front panel port is available
     for setting in active_stream_settings.iter() {
+        // Validate that front panel port is available
         if !front_panel_dev_port_mappings.contains_key(&setting.port) {
             return Err(Error::new(format!(
                 "No mapping for front panel port {:?} in StreamSettings. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number.",
                 setting.port
             )));
+        }
+        // Validate that configured channels are available (i.e., port is in breakout mode, if multiple channels configured)
+        if let Some(x) = setting.channel {
+            if x != 0 {
+                let default_pm = PortMapping::default();
+                // Breakout mode
+                let dev_port = front_panel_dev_port_mappings
+                    .get(&setting.port)
+                    .unwrap_or(&0u32);
+                let breakout_mode = available_ports
+                    .get(dev_port)
+                    .unwrap_or(&default_pm)
+                    .breakout_mode
+                    .unwrap_or(false);
+                if !breakout_mode {
+                    return Err(Error::new(format!("Port {:?} is not configured in breakout mode, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
+                }
+            }
         }
     }
 
@@ -72,16 +90,18 @@ pub fn validate_request(
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
     // Validate that front panel port is available
-    for (tx, rx) in tx_rx_port_mapping.iter() {
-        if !front_panel_dev_port_mappings.contains_key(rx) {
-            return Err(Error::new(format!(
-                "No mapping for front panel port {rx:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
-            )));
-        }
+    for (tx, channel) in tx_rx_port_mapping.iter() {
         if !front_panel_dev_port_mappings.contains_key(&tx.parse().unwrap_or(u32::MAX)) {
             return Err(Error::new(format!(
                 "No mapping for front panel port {tx:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
             )));
+        }
+        for (_, rx_target) in channel.iter() {
+            if !front_panel_dev_port_mappings.contains_key(&rx_target.port) {
+                return Err(Error::new(format!(
+                "No mapping for front panel port {:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number.", rx_target.port
+            )));
+            }
         }
     }
 
@@ -339,7 +359,7 @@ pub fn validate_request(
 }
 
 pub fn validate_histogram(
-    request: &HashMap<String, RttHistogramConfig>,
+    request: &HashMap<String, HashMap<String, RttHistogramConfig>>,
     test_name: Option<String>,
 ) -> Result<(), Error> {
     let mut num_requests = 0;
@@ -349,53 +369,55 @@ pub fn validate_histogram(
         t_name = format!(", Test: {name:?},");
     }
 
-    for (port, config) in request.iter() {
-        let port: u32 = match port.parse() {
-            Ok(p) => p,
-            Err(_) => return Err(Error::new(format!("Invalid port number: {port}"))),
-        };
-        if config.min >= config.max {
-            return Err(Error::new(format!("Histogram config error {t_name} port {port}: Minimum value must be less than maximum value of range.")));
-        }
-        if config.num_bins > 500 {
-            return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins. 500 bins per port are supported at maximum.")));
-        }
-        if config.num_bins > (config.max - config.min) {
-            return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
-        }
-        if config.num_bins == 0 {
-            return Err(Error::new(format!("Histogram config error {t_name} port {port}: num_bins must be positive for histogram config.")));
-        }
+    for (port, channel_map) in request.iter() {
+        for config in channel_map.values() {
+            let port: u32 = match port.parse() {
+                Ok(p) => p,
+                Err(_) => return Err(Error::new(format!("Invalid port number: {port}"))),
+            };
+            if config.min >= config.max {
+                return Err(Error::new(format!("Histogram config error {t_name} port {port}: Minimum value must be less than maximum value of range.")));
+            }
+            if config.num_bins > 500 {
+                return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins. 500 bins per port are supported at maximum.")));
+            }
+            if config.num_bins > (config.max - config.min) {
+                return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
+            }
+            if config.num_bins == 0 {
+                return Err(Error::new(format!("Histogram config error {t_name} port {port}: num_bins must be positive for histogram config.")));
+            }
 
-        if let Some(percentiles) = &config.percentiles {
-            for p in percentiles.iter() {
-                if *p < 0.0 || *p > 1.0 {
-                    return Err(Error::new(format!(
+            if let Some(percentiles) = &config.percentiles {
+                for p in percentiles.iter() {
+                    if *p < 0.0 || *p > 1.0 {
+                        return Err(Error::new(format!(
                         "Histogram config error {t_name} port {port}: Percentile {p} is not in range (0.0, 1.0)."
                     )));
+                    }
                 }
-            }
-            if percentiles.len() > 10 {
-                return Err(Error::new(format!(
+                if percentiles.len() > 10 {
+                    return Err(Error::new(format!(
                     "Histogram config error {t_name} port {port}: Too many percentiles. At most 10 percentiles are supported."
                 )));
-            }
-        }
-
-        // Calculate bin width based on config params
-        let bin_width = config.get_bin_width();
-
-        for bin_index in 0..config.num_bins {
-            // For each bin, write table entries
-            let start = config.min + bin_index * bin_width;
-            let mut end = start + bin_width - 1;
-            if end > config.max {
-                end = config.max;
+                }
             }
 
-            num_requests += count_range_to_ternary_entries(start, end);
-            if num_requests > RTT_HISTOGRAM_TABLE_SIZE {
-                return Err(Error::new(format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")));
+            // Calculate bin width based on config params
+            let bin_width = config.get_bin_width();
+
+            for bin_index in 0..config.num_bins {
+                // For each bin, write table entries
+                let start = config.min + bin_index * bin_width;
+                let mut end = start + bin_width - 1;
+                if end > config.max {
+                    end = config.max;
+                }
+
+                num_requests += count_range_to_ternary_entries(start, end);
+                if num_requests > RTT_HISTOGRAM_TABLE_SIZE {
+                    return Err(Error::new(format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")));
+                }
             }
         }
     }

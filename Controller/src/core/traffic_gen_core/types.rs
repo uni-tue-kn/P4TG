@@ -140,14 +140,21 @@ pub struct TrafficGenData {
     pub(crate) streams: Vec<Stream>,
     /// Mapping between TX (send) ports, and RX (receive) ports.
     /// Traffic send on port TX are expected to be received on port RX.
-    pub(crate) port_tx_rx_mapping: HashMap<String, u32>,
+    /// Mapping from TX-front_panel/channel to RX-front-panel/channel
+    pub(crate) port_tx_rx_mapping: HashMap<String, HashMap<String, RxTarget>>,
     /// The duration of this test in seconds.
     pub(crate) duration: Option<u32>,
     /// Mapping between RX port and histogram config.
-    pub(crate) histogram_config: Option<HashMap<String, RttHistogramConfig>>,
+    pub(crate) histogram_config: Option<HashMap<String, HashMap<String, RttHistogramConfig>>>,
     /// The name of the test. This is used to identify the test in the UI.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, ToSchema)]
+pub struct RxTarget {
+    pub port: u32,   // front-panel
+    pub channel: u8, // channel index on that port
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -221,6 +228,8 @@ pub struct IPv6 {
 pub struct StreamSetting {
     /// Egress port to which the stream should be sent.
     pub port: u32,
+    /// Channel of the egress port to which the stream should be sent
+    pub channel: Option<u8>,
     /// ID of the stream. This stream_id maps to the stream_id in the Stream description.
     pub stream_id: u8,
     #[serde(skip_serializing_if = "Option::is_none")]

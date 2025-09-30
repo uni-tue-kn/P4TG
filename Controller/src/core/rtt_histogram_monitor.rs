@@ -291,48 +291,63 @@ impl HistogramMonitor {
 
     fn estimate_percentiles_from_bins(
         bins_data: &HashMap<u32, RttHistogramBinEntry>,
-        percentiles: Vec<f64>,
+        mut percentiles: Vec<f64>, // e.g. [0.25, 0.5, 0.75, 0.9]
         hist: &RttHistogram,
     ) -> HashMap<u32, f64> {
-        let hist_config = &hist.config;
-
-        let bin_width = hist_config.get_bin_width();
-
-        // Sort bin indices just to be sure
-        let mut sorted_bins: Vec<_> = bins_data.iter().collect();
-        sorted_bins.sort_by_key(|&(index, _)| *index);
-
-        let total: u128 = sorted_bins.iter().map(|&(_, entry)| entry.count).sum();
-
-        let mut results = HashMap::new();
-        let mut cumulative = 0u128;
-        let mut current_percentile_index = 0;
-
-        for &(bin_index, entry) in &sorted_bins {
-            // Calculate cumulative sum of bins until percentile is reached
-            cumulative += entry.count;
-            let current_fraction = cumulative as f64 / total as f64;
-
-            // Catch up on all percentiles less than or equal to this point
-            while current_percentile_index < percentiles.len()
-                && current_fraction >= percentiles[current_percentile_index]
-            {
-                let percentile = percentiles[current_percentile_index];
-                let bin_start: f64 = *bin_index as f64 * bin_width as f64;
-                let bin_mid = bin_start + (bin_width as f64 / 2.0);
-                results.insert(
-                    (percentile * 100.0) as u32,
-                    bin_mid + hist_config.min as f64,
-                );
-                current_percentile_index += 1;
-            }
-
-            if current_percentile_index >= percentiles.len() {
-                break;
-            }
+        let cfg = &hist.config;
+        let min = cfg.min as f64;
+        let num_bins = cfg.num_bins as usize;
+        if num_bins == 0 {
+            return HashMap::new();
         }
 
-        results
+        // Use floating bin width to match the frontend
+        let bin_w = (cfg.max as f64 - cfg.min as f64) / cfg.num_bins as f64;
+
+        // Sorted bins by index (missing bins treated as count=0)
+        let sorted: Vec<(u32, u128)> = (0..cfg.num_bins)
+            .map(|i| {
+                let c = bins_data.get(&i).map(|e| e.count).unwrap_or(0);
+                (i, c)
+            })
+            .collect();
+
+        let total: f64 = sorted.iter().map(|&(_, c)| c as f64).sum();
+        if total <= 0.0 {
+            return HashMap::new();
+        }
+
+        percentiles.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mut out = HashMap::new();
+
+        let mut cum_prev = 0.0; // cumulative fraction before current bin
+        let mut p_idx = 0;
+
+        for (i, count_u128) in sorted {
+            if p_idx >= percentiles.len() {
+                break;
+            }
+            let count = count_u128 as f64;
+            let bin_frac = count / total;
+            let cum_now = cum_prev + bin_frac;
+
+            while p_idx < percentiles.len() && percentiles[p_idx] <= cum_now {
+                let p = percentiles[p_idx].clamp(0.0, 1.0);
+                // Linear interpolation within the bin
+                let t = if bin_frac > 0.0 {
+                    ((p - cum_prev) / bin_frac).clamp(0.0, 1.0)
+                } else {
+                    0.5 // empty bin; fall back to mid
+                };
+                let value = min + ((i as f64) + t) * bin_w;
+                out.insert((p * 100.0).round() as u32, value);
+                p_idx += 1;
+            }
+
+            cum_prev = cum_now;
+        }
+
+        out
     }
 
     fn clear_data(&mut self) {

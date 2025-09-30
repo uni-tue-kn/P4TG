@@ -11,5 +11,6 @@ services:
       - LOOPBACK=false
       - P4TG_PORT=8000
       - P4_NAME=traffic_gen
+      - NUM_PORTS=32
     volumes:
       - ./config.json:/app/config.json

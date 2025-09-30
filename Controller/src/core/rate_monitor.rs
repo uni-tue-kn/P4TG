@@ -456,6 +456,14 @@ impl RateMonitor {
         index_mapping: &HashMap<u32, MonitoringMapping>,
         sample_mode: bool,
     ) {
+        let app_ids: Vec<u32> = {
+            if state.traffic_generator.lock().await.is_tofino2 {
+                (1..8).collect()
+            } else {
+                (1..16).collect()
+            }
+        };
+
         // Key: DataRate
         let mut last_tx: HashMap<u32, DataRate> = HashMap::new();
         let mut last_rx: HashMap<u32, DataRate> = HashMap::new();
@@ -494,7 +502,7 @@ impl RateMonitor {
                     .app_rx_l2
                     .insert(*port, HashMap::new());
 
-                for app_id in 1..8 {
+                for &app_id in &app_ids {
                     rate_monitor
                         .statistics
                         .app_tx_l2

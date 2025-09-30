@@ -1,13 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::core::traffic_gen_core::const_definitions::{
-    P4TG_DST_PORT, P4TG_SOURCE_PORT, VX_LAN_UDP_PORT,
+    P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK, VX_LAN_UDP_PORT,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::{AppState, PortMapping};
 use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
 use log::error;
+use rbfrt::util::Speed;
 
 // Create a HashMap of front_panel -> dev_port from the port_mapping
 pub(crate) fn generate_front_panel_to_dev_port_mappings(
@@ -15,7 +16,12 @@ pub(crate) fn generate_front_panel_to_dev_port_mappings(
 ) -> HashMap<u32, u32> {
     port_mapping
         .iter()
-        .map(|(dev_port, mapping)| (mapping.front_panel_port, *dev_port))
+        .map(|(dev_port, mapping)| {
+            (
+                mapping.front_panel_port,
+                *dev_port & REMOVE_PORT_CHANNEL_MASK, // Remove the last two bits to always store channel ID 0 for a front panel port
+            )
+        })
         .collect()
 }
 
@@ -29,16 +35,51 @@ pub(crate) fn generate_dev_port_to_front_panel_mappings(
         .collect()
 }
 
-/// Translates key values in `input` with values from `mapping`
-pub(crate) fn translate_keys<K, V>(input: &HashMap<K, V>, mapping: &HashMap<K, K>) -> HashMap<K, V>
-where
-    K: Copy + Eq + std::hash::Hash,
-    V: Clone,
-{
-    input
-        .iter()
-        .filter_map(|(k, v)| mapping.get(k).map(|new_k| (*new_k, v.clone())))
-        .collect()
+/// Build dev_port -> (front_panel, channel) by grouping the dev ports of each
+/// front-panel and assigning channel indices in ascending dev_port order.
+///
+/// Example: if fp=1 has dev ports [144,145,146,147], channels become 0,1,2,3.
+pub(crate) fn derive_fpch(dev_to_fp: &HashMap<u32, u32>) -> HashMap<u32, (u32, u8)> {
+    // fp -> sorted set of dev ports (use BTreeMap/BTreeSet-like behavior)
+    let mut per_fp: HashMap<u32, BTreeMap<u32, ()>> = HashMap::new();
+    for (&dev, &fp) in dev_to_fp {
+        per_fp.entry(fp).or_default().insert(dev, ());
+    }
+
+    // Assign channel = index in sorted order
+    let mut dev_to_fpch = HashMap::new();
+    for (fp, devs_sorted) in per_fp {
+        for (ch_idx, (&dev, _)) in devs_sorted.iter().enumerate() {
+            dev_to_fpch.insert(dev, (fp, ch_idx as u8));
+        }
+    }
+    dev_to_fpch
+}
+
+pub(crate) fn remap_port_map<V: Clone>(
+    src: &HashMap<u32, V>, // dev_port -> V
+    dev_to_fpch: &HashMap<u32, (u32, u8)>,
+) -> HashMap<u32, HashMap<u8, V>> {
+    let mut out: HashMap<u32, HashMap<u8, V>> = HashMap::new();
+    for (&dev, v) in src {
+        if let Some(&(fp, ch)) = dev_to_fpch.get(&dev) {
+            out.entry(fp).or_default().insert(ch, v.clone());
+        }
+    }
+    out
+}
+
+pub(crate) fn remap_app_map(
+    src: &HashMap<u32, HashMap<u32, f64>>, // dev_port -> app_id -> f64
+    dev_to_fpch: &HashMap<u32, (u32, u8)>,
+) -> HashMap<u32, HashMap<u8, HashMap<u32, f64>>> {
+    let mut out: HashMap<u32, HashMap<u8, HashMap<u32, f64>>> = HashMap::new();
+    for (&dev, per_app) in src {
+        if let Some(&(fp, ch)) = dev_to_fpch.get(&dev) {
+            out.entry(fp).or_default().insert(ch, per_app.clone());
+        }
+    }
+    out
 }
 
 /// Remove all keys from `map` that are not contained in `allowed_keys`
@@ -74,12 +115,44 @@ pub(crate) async fn get_used_ports(state: &Arc<AppState>) -> HashSet<u32> {
         .await
         .port_mapping
         .iter()
-        .for_each(|(tx, rx)| {
-            let tx_num = tx.parse::<u32>().unwrap_or(1);
-            used_ports.insert(tx_num);
-            used_ports.insert(*rx);
+        .for_each(|(tx, channel)| {
+            used_ports.insert(tx.parse().unwrap_or(1));
+            for rx_target in channel.values() {
+                used_ports.insert(rx_target.port);
+            }
         });
     used_ports
+}
+
+pub(crate) fn translate_fp_channel_to_dev_port_mapping(
+    port_tx_rx_mapping: &HashMap<String, HashMap<String, RxTarget>>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
+) -> HashMap<String, u32> {
+    // contains the mapping of Send->Receive ports. Uses the channel info to calculate dev ports
+    // required for analyze mode
+    let mut tx_rx_port_mapping: HashMap<String, u32> = HashMap::new();
+    for (tx_fp, per_ch) in port_tx_rx_mapping {
+        let tx_base = *front_panel_dev_port_mappings
+            .get(&tx_fp.parse().unwrap_or(u32::MAX))
+            .expect("tx fp missing");
+        for (
+            tx_ch,
+            RxTarget {
+                port: rx_fp,
+                channel: rx_ch,
+            },
+        ) in per_ch
+        {
+            let rx_base = *front_panel_dev_port_mappings
+                .get(rx_fp)
+                .expect("rx fp missing");
+            tx_rx_port_mapping.insert(
+                (tx_base + tx_ch.parse().unwrap_or(0)).to_string(),
+                rx_base + *rx_ch as u32,
+            );
+        }
+    }
+    tx_rx_port_mapping
 }
 
 pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
@@ -96,6 +169,20 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
     }
 
     encapsulation_overhead
+}
+
+// Maps a configured Speed to its breakout modes, e.g.,400G -> 4x100G
+pub(crate) fn breakout_mapping(speed: &Speed, breakout: bool) -> (Vec<u8>, Speed) {
+    if breakout {
+        match speed {
+            //Speed::BF_SPEED_400G => ((0..=3).collect(), Speed::BF_SPEED_100G),
+            Speed::BF_SPEED_100G => ((0..=3).collect(), Speed::BF_SPEED_25G),
+            Speed::BF_SPEED_40G => ((0..=3).collect(), Speed::BF_SPEED_10G),
+            _ => (vec![0], speed.clone()), // unsupported combo → fallback to single-lane
+        }
+    } else {
+        (vec![0], speed.clone())
+    }
 }
 
 /// Creates a packet with `frame_size` bytes and `encapsulation` (e.g., VLAN)

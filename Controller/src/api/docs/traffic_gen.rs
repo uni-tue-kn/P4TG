@@ -5,14 +5,13 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 
-// TODO Adapt examples to new port description
-
 lazy_static! {
     pub static ref EXAMPLE_GET_1: TrafficGenData = TrafficGenData {
         name: None,
         mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
-            port: 128,
+            port: 1,
+            channel: None,
             stream_id: 1,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
@@ -58,23 +57,36 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
         }],
-        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+        port_tx_rx_mapping: HashMap::from([(
+            "1".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RxTarget {
+                    port: 2,
+                    channel: 0
+                }
+            )])
+        )]),
         duration: Some(10),
         histogram_config: Some(HashMap::from([(
-            "136".to_string(),
-            RttHistogramConfig {
-                min: 1000,
-                max: 2000,
-                num_bins: 100,
-                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
-            }
+            "2".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RttHistogramConfig {
+                    min: 1000,
+                    max: 2000,
+                    num_bins: 100,
+                    percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                }
+            )])
         )])),
     };
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
         name: None,
         stream_settings: vec![StreamSetting {
-            port: 128,
+            port: 1,
+            channel: None,
             stream_id: 1,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
@@ -121,16 +133,28 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
         }],
-        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+        port_tx_rx_mapping: HashMap::from([(
+            "1".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RxTarget {
+                    port: 2,
+                    channel: 0
+                }
+            )])
+        )]),
         duration: None,
         histogram_config: Some(HashMap::from([(
-            "136".to_string(),
-            RttHistogramConfig {
-                min: 1000,
-                max: 2000,
-                num_bins: 100,
-                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
-            }
+            "2".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RttHistogramConfig {
+                    min: 1000,
+                    max: 2000,
+                    num_bins: 100,
+                    percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                }
+            )])
         )])),
     };
     pub static ref EXAMPLE_POST_1_RESPONSE: Vec<Stream> = vec![Stream {
@@ -155,7 +179,8 @@ lazy_static! {
         name: None,
         mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
-            port: 128,
+            port: 1,
+            channel: None,
             stream_id: 1,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
@@ -202,23 +227,36 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
         }],
-        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+        port_tx_rx_mapping: HashMap::from([(
+            "1".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RxTarget {
+                    port: 2,
+                    channel: 0
+                }
+            )])
+        )]),
         duration: None,
         histogram_config: Some(HashMap::from([(
-            "136".to_string(),
-            RttHistogramConfig {
-                min: 1000,
-                max: 2000,
-                num_bins: 100,
-                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
-            }
+            "2".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RttHistogramConfig {
+                    min: 1000,
+                    max: 2000,
+                    num_bins: 100,
+                    percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                }
+            )])
         )])),
     };
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
         mode: GenerationMode::Cbr,
         stream_settings: vec![StreamSetting {
-            port: 128,
+            port: 1,
+            channel: None,
             stream_id: 1,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
@@ -264,16 +302,28 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
         }],
-        port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+        port_tx_rx_mapping: HashMap::from([(
+            "1".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RxTarget {
+                    port: 2,
+                    channel: 0
+                }
+            )])
+        )]),
         duration: None,
         histogram_config: Some(HashMap::from([(
-            "136".to_string(),
-            RttHistogramConfig {
-                min: 1000,
-                max: 2000,
-                num_bins: 100,
-                percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
-            }
+            "2".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RttHistogramConfig {
+                    min: 1000,
+                    max: 2000,
+                    num_bins: 100,
+                    percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                }
+            )])
         )])),
     };
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
@@ -297,9 +347,19 @@ lazy_static! {
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Poisson,
         name: Some("Poisson".to_string()),
-        port_tx_rx_mapping: HashMap::from([("66".to_string(), 68)]),
+        port_tx_rx_mapping: HashMap::from([(
+            "1".to_string(),
+            HashMap::from([(
+                "0".to_string(),
+                RxTarget {
+                    port: 2,
+                    channel: 0
+                }
+            )])
+        )]),
         stream_settings: vec![StreamSetting {
             active: true,
+            channel: None,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string(),
@@ -313,7 +373,7 @@ lazy_static! {
             }),
             ipv6: None,
             mpls_stack: None,
-            port: 68,
+            port: 1,
             stream_id: 1,
             vlan: None,
             vxlan: None,
@@ -363,7 +423,8 @@ lazy_static! {
         TrafficGenData {
             mode: GenerationMode::Cbr,
             stream_settings: vec![StreamSetting {
-                port: 128,
+                port: 1,
+                channel: None,
                 stream_id: 1,
                 ethernet: Ethernet {
                     eth_src: "32:D5:42:2A:F6:92".to_string(),
@@ -413,23 +474,36 @@ lazy_static! {
                 number_of_srv6_sids: Some(2),
                 srv6_ip_tunneling: Some(true),
             }],
-            port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+            port_tx_rx_mapping: HashMap::from([(
+                "1".to_string(),
+                HashMap::from([(
+                    "0".to_string(),
+                    RxTarget {
+                        port: 2,
+                        channel: 0
+                    }
+                )])
+            )]),
             duration: Some(10),
             histogram_config: Some(HashMap::from([(
-                "136".to_string(),
-                RttHistogramConfig {
-                    min: 1000,
-                    max: 2000,
-                    num_bins: 100,
-                    percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
-                }
+                "2".to_string(),
+                HashMap::from([(
+                    "0".to_string(),
+                    RttHistogramConfig {
+                        min: 1000,
+                        max: 2000,
+                        num_bins: 100,
+                        percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                    }
+                )])
             )])),
             name: Some("Test 1".to_string())
         },
         TrafficGenData {
             mode: GenerationMode::Cbr,
             stream_settings: vec![StreamSetting {
-                port: 128,
+                port: 1,
+                channel: None,
                 stream_id: 1,
                 ethernet: Ethernet {
                     eth_src: "32:D5:42:2A:F6:92".to_string(),
@@ -479,16 +553,28 @@ lazy_static! {
                 number_of_srv6_sids: Some(2),
                 srv6_ip_tunneling: Some(true),
             }],
-            port_tx_rx_mapping: HashMap::from([("128".to_string(), 136)]),
+            port_tx_rx_mapping: HashMap::from([(
+                "1".to_string(),
+                HashMap::from([(
+                    "0".to_string(),
+                    RxTarget {
+                        port: 2,
+                        channel: 0
+                    }
+                )])
+            )]),
             duration: Some(15),
             histogram_config: Some(HashMap::from([(
-                "136".to_string(),
-                RttHistogramConfig {
-                    min: 1500,
-                    max: 2000,
-                    num_bins: 100,
-                    percentiles: Some(vec![0.25, 0.5, 0.75, 0.9, 0.99]),
-                }
+                "2".to_string(),
+                HashMap::from([(
+                    "0".to_string(),
+                    RttHistogramConfig {
+                        min: 1000,
+                        max: 2000,
+                        num_bins: 100,
+                        percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                    }
+                )])
             )])),
             name: Some("Another test".to_string())
         }

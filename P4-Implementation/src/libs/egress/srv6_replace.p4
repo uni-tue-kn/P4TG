@@ -62,8 +62,12 @@ control SRv6_Replace(
             rewrite_2_sids;
             rewrite_3_sids;
         }
-        size = 64;
-    }
+        #if __TARGET_TOFINO__ == 2
+            size = 650;
+        #else 
+            size = 300;
+        #endif
+        }
 
     apply {
         srv6_replace.apply();

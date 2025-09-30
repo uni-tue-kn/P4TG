@@ -1,121 +1,148 @@
 import { Tabs, Tab } from "react-bootstrap";
-import { Encapsulation, StatisticsEntry, Stream, StreamSettings, TimeStatisticsEntry } from "../common/Interfaces";
+import {
+    Encapsulation,
+    PortTxRxMap,
+    RxTarget,
+    StatisticsEntry,
+    Stream,
+    StreamSettings,
+    TimeStatisticsEntry,
+} from "../common/Interfaces";
 import StatView from "./StatView";
 import StreamView from "./StreamView";
 
+const SummaryView = ({
+    statistics,
+    time_statistics,
+    port_tx_rx_mapping,
+    stream_settings,
+    streams,
+    visual,
+    mode,
+}: {
+    statistics: StatisticsEntry;
+    time_statistics: TimeStatisticsEntry;
+    port_tx_rx_mapping: PortTxRxMap;
+    stream_settings: StreamSettings[];
+    streams: Stream[];
+    visual: boolean;
+    mode: number;
+}) => {
+    // Expand TX→channel→RxTarget into a flat list with channel info
+    const activePorts = (
+        mapping: PortTxRxMap
+    ): Array<{ tx: number; tx_ch: number; rx: number; rx_ch: number }> =>
+        Object.entries(mapping ?? {}).flatMap(([txPort, perCh]) =>
+            Object.entries(perCh ?? {}).map(([txCh, target]) => ({
+                tx: Number(txPort),
+                tx_ch: Number(txCh),
+                rx: (target as RxTarget).port,
+                rx_ch: (target as RxTarget).channel,
+            }))
+        );
 
-const SummaryView = ({ statistics, time_statistics, port_tx_rx_mapping, stream_settings, streams, visual, mode }: { statistics: StatisticsEntry, time_statistics: TimeStatisticsEntry, port_tx_rx_mapping: { [name: number]: number }, stream_settings: StreamSettings[], streams: Stream[], visual: boolean, mode: number }) => {
+    const getStreamIDsByPortAndChannel = (pid: number, ch: number): number[] => {
+        const ids = new Set<number>();
 
-    const activePorts = (port_tx_rx_mapping: { [name: number]: number }): { "tx": number, "rx": number }[] => {
-        let active_ports: { tx: number, rx: number }[] = []
-        let exists: number[] = []
-
-        Object.keys(port_tx_rx_mapping).forEach((tx_port: string) => {
-            let port = parseInt(tx_port)
-            exists.push(port)
-            active_ports.push({ tx: port, rx: port_tx_rx_mapping[port] })
-        })
-
-        return active_ports
-    }
-
-    const getStreamIDsByPort = (pid: number): number[] => {
-        let ret: number[] = []
-
-        stream_settings.forEach(v => {
-            if (v.port === pid && v.active) {
-                streams.forEach(s => {
-                    if (s.stream_id === v.stream_id) {
-                        ret.push(s.app_id)
-                        return
-                    }
-                })
+        for (const sset of stream_settings) {
+            if (sset.port === pid && sset.channel === ch && sset.active) {
+                const match = streams.find((s) => s.stream_id === sset.stream_id);
+                if (match) ids.add(match.app_id);
             }
-        })
+        }
 
-        return ret
-    }
+        return Array.from(ids);
+    };
+
 
     const getStreamFrameSize = (stream_id: number): number => {
-        let ret = 0
-
-        streams.forEach(v => {
+        let ret = 0;
+        streams.forEach((v) => {
             if (v.app_id === stream_id) {
-                ret = v.frame_size
+                ret = v.frame_size;
                 if (v.encapsulation === Encapsulation.Q) {
-                    ret += 4
+                    ret += 4;
                 } else if (v.encapsulation === Encapsulation.QinQ) {
-                    ret += 8
+                    ret += 8;
+                } else if (v.encapsulation === Encapsulation.MPLS) {
+                    ret += v.number_of_lse * 4; // 4 bytes per LSE
                 }
-                else if (v.encapsulation === Encapsulation.MPLS) {
-                    ret += v.number_of_lse * 4 // 4 bytes per LSE
-                }
-
                 if (v.vxlan) {
-                    ret += 50 // 50 bytes overhead
+                    ret += 50; // VXLAN overhead
                 }
-
-                return
             }
-        })
+        });
+        return ret;
+    };
 
-        return ret
-    }
+    return (
+        <>
+            <Tabs defaultActiveKey="Summary" className="mt-3">
+                <Tab eventKey="Summary" title="Summary">
+                    <StatView
+                        stats={statistics}
+                        time_stats={time_statistics}
+                        port_mapping={port_tx_rx_mapping}
+                        visual={visual}
+                        mode={mode}
+                        is_summary={true}
+                        rx_port={0}
+                    />
+                </Tab>
 
+                {activePorts(port_tx_rx_mapping).map((v) => {
+                    // Build a single-pair nested mapping for this tab
+                    const singleMapping: PortTxRxMap = {
+                        [String(v.tx)]: {
+                            [String(v.tx_ch)]: { port: v.rx, channel: v.rx_ch },
+                        },
+                    };
 
-    return <>
-        <Tabs defaultActiveKey="Summary" className="mt-3">
-            <Tab eventKey="Summary" title="Summary">
-                <StatView
-                    stats={statistics}
-                    time_stats={time_statistics}
-                    port_mapping={port_tx_rx_mapping}
-                    visual={visual}
-                    mode={mode}
-                    is_summary={true}
-                    rx_port={0}
-                />
-            </Tab>
-            {activePorts(port_tx_rx_mapping).map((v, i) => {
-                const mapping: { [name: number]: number } = { [v.tx]: v.rx };
-                return (
-                    <Tab eventKey={i.toString()} key={i} title={`${v.tx} → ${v.rx}`}>
-                        <Tabs defaultActiveKey={"Overview"} className={"mt-3"}>
-                            <Tab eventKey={"Overview"} title={"Overview"}>
-                                <StatView
-                                    stats={statistics}
-                                    time_stats={time_statistics}
-                                    port_mapping={mapping}
-                                    mode={mode}
-                                    visual={visual}
-                                    is_summary={false}
-                                    rx_port={v.rx}
-                                />
-                            </Tab>
-                            {Object.keys(mapping)
-                                .map(Number)
-                                .map((portNum) => {
-                                    const stream_ids = getStreamIDsByPort(portNum);
-                                    return stream_ids.map((stream: number, i) => {
+                    const tabKey = `${v.tx}/${v.tx_ch}`;
+                    const tabTitle = `${v.tx}/${v.tx_ch} → ${v.rx}/${v.rx_ch}`;
+
+                    return (
+                        <Tab eventKey={tabKey} key={tabKey} title={tabTitle}>
+                            <Tabs defaultActiveKey={"Overview"} className={"mt-3"}>
+                                <Tab eventKey={"Overview"} title={"Overview"}>
+                                    <StatView
+                                        stats={statistics}
+                                        time_stats={time_statistics}
+                                        port_mapping={singleMapping}
+                                        mode={mode}
+                                        visual={visual}
+                                        is_summary={false}
+                                        rx_port={v.rx}
+                                    />
+                                </Tab>
+
+                                {(() => {
+                                    // Use the TX front-panel port to list streams
+                                    const portNum = v.tx;
+                                    const portChannel = v.tx_ch;
+                                    const stream_ids = getStreamIDsByPortAndChannel(portNum, portChannel);
+                                    return stream_ids.map((stream) => {
                                         const stream_frame_size = getStreamFrameSize(stream);
+                                        const skey = `${tabKey}/stream/${stream}`;
                                         return (
-                                            <Tab key={i} eventKey={stream.toString()} title={"Stream " + stream}>
+                                            <Tab key={skey} eventKey={String(stream)} title={`Stream ${stream}`}>
                                                 <StreamView
                                                     stats={statistics}
-                                                    port_mapping={mapping}
+                                                    port_mapping={singleMapping}
                                                     stream_id={stream}
                                                     frame_size={stream_frame_size}
                                                 />
                                             </Tab>
                                         );
                                     });
-                                })}
-                        </Tabs>
-                    </Tab>
-                );
-            })}
-        </Tabs>
-    </>
-}
+                                })()}
+                            </Tabs>
+                        </Tab>
+                    );
+                })}
+            </Tabs>
+        </>
+    );
+};
 
-export default SummaryView
+export default SummaryView;

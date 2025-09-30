@@ -137,4 +137,8 @@ pub const MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1: Ipv6Addr =
 pub const MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2: Ipv6Addr =
     Ipv6Addr::new(0, 0, 0, 0, 0, 0xff, 0xffff, 0xffff);
 
+/// Value to multiply maximum burst size in Rate Precision Mode with batches
 pub const BATCH_FACTOR: u32 = 5;
+
+/// Mask to remove the channel number from a dev port
+pub const REMOVE_PORT_CHANNEL_MASK: u32 = 0xFFFFFFFC;

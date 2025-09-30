@@ -95,7 +95,11 @@ control P4TG_Ingress (
               port_forward;
               mc_forward;
         }
-        size = 64;
+        #if __TARGET_TOFINO__ == 2
+            size = 512;
+        #else 
+            size = 256;
+        #endif        
     }
 
     table monitor_forward {
@@ -110,7 +114,7 @@ control P4TG_Ingress (
             make_digest;
             make_digest_and_forward;
         }
-        size = 256;
+        size = 2048;
     }
 
     table forward {
@@ -120,7 +124,7 @@ control P4TG_Ingress (
         actions = {
               port_forward;
         }
-        size = 64;
+        size = 512;
     }
 
 
@@ -135,7 +139,7 @@ control P4TG_Ingress (
             nop;
 
         }
-        size = 64;
+        size = 128;
     }
 
     // this table is used to activate/deactivate

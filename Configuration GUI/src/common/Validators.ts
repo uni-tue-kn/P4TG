@@ -18,7 +18,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { ASIC, DefaultStream, DefaultStreamSettings, MPLSHeader, P4TGInfos, PortInfo, Stream, StreamSettings } from "./Interfaces";
+import { ASIC, DefaultStream, DefaultStreamSettings, MPLSHeader, P4TGInfos, PortInfo, PortTxRxMap, RxTarget, Stream, StreamSettings } from "./Interfaces";
 
 export const validateMAC = (mac: string) => {
     let regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
@@ -123,20 +123,34 @@ export const validateStreams = (s: Stream[]) => {
     return s.every(s => Object.keys(defaultStream).every(key => Object.keys(s).includes(key)))
 }
 
-export const validatePorts = (port_tx_rx_mapping: { [name: number]: number }, available_ports: PortInfo[], p4tg_infos: P4TGInfos) => {
-    // Verify if all configured ports are acutally available on this device.
-    const available_ports_for_tg = available_ports
-        .filter(port => port["loopback"] === "BF_LPBK_NONE" || p4tg_infos.loopback)
-        .map(port => port.port);
+export const validatePorts = (
+    port_tx_rx_mapping: PortTxRxMap,
+    available_ports: PortInfo[],
+    p4tg_infos: P4TGInfos
+) => {
+    // Allowed (port/channel) pairs on this device
+    const allowed = new Set(
+        available_ports
+            .filter(p => p.loopback === "BF_LPBK_NONE" || p4tg_infos.loopback)
+            .map(p => `${p.port}/${p.channel}`)
+    );
 
-    //@ts-ignore
-    const configured_ports: number[] = Object.entries(port_tx_rx_mapping).flatMap(([key, value]) => [Number(key), value]);
+    // Configured (port/channel) pairs: all TX and mapped RX targets
+    const configured = new Set<string>();
+    for (const [txPort, perCh] of Object.entries(port_tx_rx_mapping ?? {})) {
+        for (const [txCh, target] of Object.entries(perCh ?? {})) {
+            configured.add(`${txPort}/${txCh}`);
+            const t = target as RxTarget;
+            configured.add(`${t.port}/${t.channel}`);
+        }
+    }
 
-    return configured_ports.length == 0 || configured_ports.every(r => available_ports_for_tg.includes(r))
-}
+    return configured.size === 0 || Array.from(configured).every(k => allowed.has(k));
+};
+
 
 export const validateStreamSettings = (setting: StreamSettings[]) => {
-    const defaultStreamSetting = DefaultStreamSettings(1, 5)
+    const defaultStreamSetting = DefaultStreamSettings(1, 5, 0)
 
     if (!setting) {
         return false

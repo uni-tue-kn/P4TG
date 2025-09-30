@@ -18,10 +18,8 @@
  */
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use utoipa::ToSchema;
-
-use crate::core::traffic_gen_core::helper::{filter_map_for_keys, translate_keys};
 
 #[derive(Serialize, Clone, ToSchema)]
 pub struct FrameSizeStatistics {
@@ -322,122 +320,4 @@ pub struct Statistics {
     // Name of the test for the statistics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,
-}
-
-impl Statistics {
-    /// Replaces the key (dev-ports) in all stored statistics with the front_panel port.
-    /// The mapping from dev-port to front-panel port is provided in `dev_port_to_front_panel_port_mappings`
-    fn translate_dev_port_to_front_panel_port_numbers(
-        self,
-        dev_port_to_front_panel_port_mappings: HashMap<u32, u32>,
-    ) -> Statistics {
-        Statistics {
-            sample_mode: self.sample_mode,
-            frame_size: translate_keys(&self.frame_size, &dev_port_to_front_panel_port_mappings),
-            frame_type_data: translate_keys(
-                &self.frame_type_data,
-                &dev_port_to_front_panel_port_mappings,
-            ),
-            tx_rate_l1: translate_keys(&self.tx_rate_l1, &dev_port_to_front_panel_port_mappings),
-            tx_rate_l2: translate_keys(&self.tx_rate_l2, &dev_port_to_front_panel_port_mappings),
-            rx_rate_l1: translate_keys(&self.rx_rate_l1, &dev_port_to_front_panel_port_mappings),
-            rx_rate_l2: translate_keys(&self.rx_rate_l2, &dev_port_to_front_panel_port_mappings),
-            app_tx_l2: translate_keys(&self.app_tx_l2, &dev_port_to_front_panel_port_mappings),
-            app_rx_l2: translate_keys(&self.app_rx_l2, &dev_port_to_front_panel_port_mappings),
-            iats: translate_keys(&self.iats, &dev_port_to_front_panel_port_mappings),
-            rtts: translate_keys(&self.rtts, &dev_port_to_front_panel_port_mappings),
-            packet_loss: translate_keys(&self.packet_loss, &dev_port_to_front_panel_port_mappings),
-            out_of_order: translate_keys(
-                &self.out_of_order,
-                &dev_port_to_front_panel_port_mappings,
-            ),
-            elapsed_time: self.elapsed_time,
-            rtt_histogram: translate_keys(
-                &self.rtt_histogram,
-                &dev_port_to_front_panel_port_mappings,
-            ),
-            name: self.name,
-        }
-    }
-
-    /// Removes all statistics of unused ports.
-    /// Used ports are provided in `used_ports`.
-    fn filter_inactive_ports(mut self, used_ports: HashSet<u32>) -> Statistics {
-        filter_map_for_keys(&mut self.frame_size, &used_ports);
-        filter_map_for_keys(&mut self.frame_type_data, &used_ports);
-        filter_map_for_keys(&mut self.tx_rate_l1, &used_ports);
-        filter_map_for_keys(&mut self.tx_rate_l2, &used_ports);
-        filter_map_for_keys(&mut self.rx_rate_l1, &used_ports);
-        filter_map_for_keys(&mut self.rx_rate_l2, &used_ports);
-        filter_map_for_keys(&mut self.app_tx_l2, &used_ports);
-        filter_map_for_keys(&mut self.app_rx_l2, &used_ports);
-        filter_map_for_keys(&mut self.iats, &used_ports);
-        filter_map_for_keys(&mut self.rtts, &used_ports);
-        filter_map_for_keys(&mut self.packet_loss, &used_ports);
-        filter_map_for_keys(&mut self.out_of_order, &used_ports);
-        filter_map_for_keys(&mut self.rtt_histogram, &used_ports);
-
-        self
-    }
-
-    /// Replaces the key (dev-ports) in all stored statistics with the front_panel port.
-    /// The mapping from dev-port to front-panel port is provided in `dev_port_to_front_panel_port_mappings`  
-    /// Removes all statistics of unused ports.
-    /// Used ports are provided in `used_ports`.    
-    pub fn translate_and_filter_ports(
-        self,
-        dev_port_to_front_panel_port_mappings: HashMap<u32, u32>,
-        used_ports: HashSet<u32>,
-    ) -> Statistics {
-        let stats = self
-            .translate_dev_port_to_front_panel_port_numbers(dev_port_to_front_panel_port_mappings);
-        stats.filter_inactive_ports(used_ports)
-    }
-}
-
-impl TimeStatistics {
-    /// Replaces the key (dev-ports) in all stored statistics with the front_panel port.
-    /// The mapping from dev-port to front-panel port is provided in `dev_port_to_front_panel_port_mappings`    
-    fn translate_dev_port_to_front_panel_port_numbers(
-        self,
-        dev_port_to_front_panel_port_mappings: HashMap<u32, u32>,
-    ) -> TimeStatistics {
-        TimeStatistics {
-            tx_rate_l1: translate_keys(&self.tx_rate_l1, &dev_port_to_front_panel_port_mappings),
-            rx_rate_l1: translate_keys(&self.rx_rate_l1, &dev_port_to_front_panel_port_mappings),
-            packet_loss: translate_keys(&self.packet_loss, &dev_port_to_front_panel_port_mappings),
-            out_of_order: translate_keys(
-                &self.out_of_order,
-                &dev_port_to_front_panel_port_mappings,
-            ),
-            rtt: translate_keys(&self.rtt, &dev_port_to_front_panel_port_mappings),
-            name: self.name,
-        }
-    }
-
-    /// Removes all statistics of unused ports.
-    /// Used ports are provided in `used_ports`.
-    fn filter_inactive_ports(mut self, used_ports: HashSet<u32>) -> TimeStatistics {
-        filter_map_for_keys(&mut self.tx_rate_l1, &used_ports);
-        filter_map_for_keys(&mut self.rx_rate_l1, &used_ports);
-        filter_map_for_keys(&mut self.packet_loss, &used_ports);
-        filter_map_for_keys(&mut self.out_of_order, &used_ports);
-        filter_map_for_keys(&mut self.rtt, &used_ports);
-
-        self
-    }
-
-    /// Replaces the key (dev-ports) in all stored statistics with the front_panel port.
-    /// The mapping from dev-port to front-panel port is provided in `dev_port_to_front_panel_port_mappings`  
-    /// Removes all statistics of unused ports.
-    /// Used ports are provided in `used_ports`.
-    pub fn translate_and_filter_ports(
-        self,
-        dev_port_to_front_panel_port_mappings: HashMap<u32, u32>,
-        used_ports: HashSet<u32>,
-    ) -> TimeStatistics {
-        let stats = self
-            .translate_dev_port_to_front_panel_port_numbers(dev_port_to_front_panel_port_mappings);
-        stats.filter_inactive_ports(used_ports)
-    }
 }

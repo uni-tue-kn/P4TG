@@ -73,23 +73,34 @@ impl Arp {
         switch: &SwitchConnection,
         port: &PortMapping,
         active: bool,
+        breakout_mode: Option<bool>,
     ) -> Result<(), RBFRTError> {
-        let req = table::Request::new(ARP_REPLY_TABLE)
-            .match_key(
-                "ig_intr_md.ingress_port",
-                MatchValue::exact(port.rx_recirculation),
-            )
-            .action(&format!("{ACTION_PREFIX}.answer_arp"))
-            .action_data("e_port", port.tx_recirculation)
-            .action_data("src_addr", port.mac.as_bytes().to_vec())
-            .action_data("valid", active);
+        let channels = if let Some(true) = breakout_mode {
+            (0..=3).collect()
+        } else {
+            vec![0]
+        };
 
-        switch.update_table_entry(req).await?;
+        let mut requests = vec![];
+        for c in channels {
+            let req = table::Request::new(ARP_REPLY_TABLE)
+                .match_key(
+                    "ig_intr_md.ingress_port",
+                    MatchValue::exact(port.rx_recirculation + c),
+                )
+                .action(&format!("{ACTION_PREFIX}.answer_arp"))
+                .action_data("e_port", port.tx_recirculation + c)
+                .action_data("src_addr", port.mac.as_bytes().to_vec())
+                .action_data("valid", active);
+            requests.push(req);
+            info!(
+                "ARP reply rule for rx port {} change to {}.",
+                port.rx_recirculation + c,
+                active
+            );
+        }
 
-        info!(
-            "ARP reply rule for rx port {} change to {}.",
-            port.rx_recirculation, active
-        );
+        switch.update_table_entries(requests).await?;
 
         Ok(())
     }
