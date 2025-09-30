@@ -11,7 +11,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "2.5.0"
+    "version": "2.6.0"
   },
   "paths": {
     "/api/histogram": {
@@ -298,25 +298,33 @@
                     "value": {
                       "duration": 10,
                       "histogram_config": {
-                        "136": {
-                          "max": 2000,
-                          "min": 1000,
-                          "num_bins": 100,
-                          "percentiles": [
-                            0.25,
-                            0.5,
-                            0.75,
-                            0.9
-                          ]
+                        "2": {
+                          "0": {
+                            "max": 2000,
+                            "min": 1000,
+                            "num_bins": 100,
+                            "percentiles": [
+                              0.25,
+                              0.5,
+                              0.75,
+                              0.9
+                            ]
+                          }
                         }
                       },
                       "mode": 1,
                       "port_tx_rx_mapping": {
-                        "128": 136
+                        "1": {
+                          "0": {
+                            "channel": 0,
+                            "port": 2
+                          }
+                        }
                       },
                       "stream_settings": [
                         {
                           "active": true,
+                          "channel": null,
                           "ethernet": {
                             "eth_dst": "81:E7:9D:E3:AD:47",
                             "eth_src": "32:D5:42:2A:F6:92"
@@ -328,7 +336,7 @@
                             "ip_src_mask": "0.0.0.0",
                             "ip_tos": 0
                           },
-                          "port": 128,
+                          "port": 1,
                           "stream_id": 1,
                           "vlan": {
                             "dei": 0,
@@ -364,25 +372,33 @@
                     "value": {
                       "duration": null,
                       "histogram_config": {
-                        "136": {
-                          "max": 2000,
-                          "min": 1000,
-                          "num_bins": 100,
-                          "percentiles": [
-                            0.25,
-                            0.5,
-                            0.75,
-                            0.9
-                          ]
+                        "2": {
+                          "0": {
+                            "max": 2000,
+                            "min": 1000,
+                            "num_bins": 100,
+                            "percentiles": [
+                              0.25,
+                              0.5,
+                              0.75,
+                              0.9
+                            ]
+                          }
                         }
                       },
                       "mode": 1,
                       "port_tx_rx_mapping": {
-                        "128": 136
+                        "1": {
+                          "0": {
+                            "channel": 0,
+                            "port": 2
+                          }
+                        }
                       },
                       "stream_settings": [
                         {
                           "active": true,
+                          "channel": null,
                           "ethernet": {
                             "eth_dst": "81:E7:9D:E3:AD:47",
                             "eth_src": "32:D5:42:2A:F6:92"
@@ -394,7 +410,7 @@
                             "ip_src_mask": "0.0.0.0",
                             "ip_tos": 0
                           },
-                          "port": 128,
+                          "port": 1,
                           "stream_id": 1,
                           "vxlan": {
                             "eth_dst": "81:E7:9D:E3:AD:47",
@@ -460,25 +476,33 @@
                   "value": {
                     "duration": null,
                     "histogram_config": {
-                      "136": {
-                        "max": 2000,
-                        "min": 1000,
-                        "num_bins": 100,
-                        "percentiles": [
-                          0.25,
-                          0.5,
-                          0.75,
-                          0.9
-                        ]
+                      "2": {
+                        "0": {
+                          "max": 2000,
+                          "min": 1000,
+                          "num_bins": 100,
+                          "percentiles": [
+                            0.25,
+                            0.5,
+                            0.75,
+                            0.9
+                          ]
+                        }
                       }
                     },
                     "mode": 1,
                     "port_tx_rx_mapping": {
-                      "128": 136
+                      "1": {
+                        "0": {
+                          "channel": 0,
+                          "port": 2
+                        }
+                      }
                     },
                     "stream_settings": [
                       {
                         "active": true,
+                        "channel": null,
                         "ethernet": {
                           "eth_dst": "81:E7:9D:E3:AD:47",
                           "eth_src": "32:D5:42:2A:F6:92"
@@ -490,7 +514,7 @@
                           "ip_src_mask": "0.0.0.0",
                           "ip_tos": 0
                         },
-                        "port": 128,
+                        "port": 1,
                         "stream_id": 1,
                         "vxlan": {
                           "eth_dst": "81:E7:9D:E3:AD:47",
@@ -523,25 +547,33 @@
                   "value": {
                     "duration": null,
                     "histogram_config": {
-                      "136": {
-                        "max": 2000,
-                        "min": 1000,
-                        "num_bins": 100,
-                        "percentiles": [
-                          0.25,
-                          0.5,
-                          0.75,
-                          0.9
-                        ]
+                      "2": {
+                        "0": {
+                          "max": 2000,
+                          "min": 1000,
+                          "num_bins": 100,
+                          "percentiles": [
+                            0.25,
+                            0.5,
+                            0.75,
+                            0.9
+                          ]
+                        }
                       }
                     },
                     "mode": 1,
                     "port_tx_rx_mapping": {
-                      "128": 136
+                      "1": {
+                        "0": {
+                          "channel": 0,
+                          "port": 2
+                        }
+                      }
                     },
                     "stream_settings": [
                       {
                         "active": true,
+                        "channel": null,
                         "ethernet": {
                           "eth_dst": "81:E7:9D:E3:AD:47",
                           "eth_src": "32:D5:42:2A:F6:92"
@@ -553,7 +585,7 @@
                           "ip_src_mask": "0.0.0.0",
                           "ip_tos": 0
                         },
-                        "port": 128,
+                        "port": 1,
                         "stream_id": 1,
                         "vlan": {
                           "dei": 0,
@@ -588,11 +620,17 @@
                     "mode": 3,
                     "name": "Poisson",
                     "port_tx_rx_mapping": {
-                      "66": 68
+                      "1": {
+                        "0": {
+                          "channel": 0,
+                          "port": 2
+                        }
+                      }
                     },
                     "stream_settings": [
                       {
                         "active": true,
+                        "channel": null,
                         "ethernet": {
                           "eth_dst": "81:E7:9D:E3:AD:47",
                           "eth_src": "32:D5:42:2A:F6:92"
@@ -604,7 +642,7 @@
                           "ip_src_mask": "0.0.0.0",
                           "ip_tos": 0
                         },
-                        "port": 68,
+                        "port": 1,
                         "stream_id": 1
                       }
                     ],
@@ -629,26 +667,34 @@
                     {
                       "duration": 10,
                       "histogram_config": {
-                        "136": {
-                          "max": 2000,
-                          "min": 1000,
-                          "num_bins": 100,
-                          "percentiles": [
-                            0.25,
-                            0.5,
-                            0.75,
-                            0.9
-                          ]
+                        "2": {
+                          "0": {
+                            "max": 2000,
+                            "min": 1000,
+                            "num_bins": 100,
+                            "percentiles": [
+                              0.25,
+                              0.5,
+                              0.75,
+                              0.9
+                            ]
+                          }
                         }
                       },
                       "mode": 1,
                       "name": "Test 1",
                       "port_tx_rx_mapping": {
-                        "128": 136
+                        "1": {
+                          "0": {
+                            "channel": 0,
+                            "port": 2
+                          }
+                        }
                       },
                       "stream_settings": [
                         {
                           "active": true,
+                          "channel": null,
                           "ethernet": {
                             "eth_dst": "81:E7:9D:E3:AD:47",
                             "eth_src": "32:D5:42:2A:F6:92"
@@ -661,7 +707,7 @@
                             "ipv6_src_mask": "::",
                             "ipv6_traffic_class": 5
                           },
-                          "port": 128,
+                          "port": 1,
                           "sid_list": [
                             "ff80::",
                             "abc::"
@@ -696,27 +742,34 @@
                     {
                       "duration": 15,
                       "histogram_config": {
-                        "136": {
-                          "max": 2000,
-                          "min": 1500,
-                          "num_bins": 100,
-                          "percentiles": [
-                            0.25,
-                            0.5,
-                            0.75,
-                            0.9,
-                            0.99
-                          ]
+                        "2": {
+                          "0": {
+                            "max": 2000,
+                            "min": 1000,
+                            "num_bins": 100,
+                            "percentiles": [
+                              0.25,
+                              0.5,
+                              0.75,
+                              0.9
+                            ]
+                          }
                         }
                       },
                       "mode": 1,
                       "name": "Another test",
                       "port_tx_rx_mapping": {
-                        "128": 136
+                        "1": {
+                          "0": {
+                            "channel": 0,
+                            "port": 2
+                          }
+                        }
                       },
                       "stream_settings": [
                         {
                           "active": true,
+                          "channel": null,
                           "ethernet": {
                             "eth_dst": "81:E7:9D:E3:AD:47",
                             "eth_src": "32:D5:42:2A:F6:92"
@@ -729,7 +782,7 @@
                             "ipv6_src_mask": "::",
                             "ipv6_traffic_class": 5
                           },
-                          "port": 128,
+                          "port": 1,
                           "sid_list": [
                             "ff80::",
                             "abc::"
@@ -1409,6 +1462,25 @@
           }
         }
       },
+      "RxTarget": {
+        "type": "object",
+        "required": [
+          "port",
+          "channel"
+        ],
+        "properties": {
+          "channel": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "Statistics": {
         "type": "object",
         "required": [
@@ -1780,6 +1852,15 @@
             "type": "boolean",
             "description": "Indicates if this stream setting is active."
           },
+          "channel": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Channel of the egress port to which the stream should be sent",
+            "minimum": 0
+          },
           "ethernet": {
             "$ref": "#/components/schemas/Ethernet"
           },
@@ -2045,7 +2126,13 @@
             ],
             "description": "Mapping between RX port and histogram config.",
             "additionalProperties": {
-              "$ref": "#/components/schemas/RttHistogramConfig"
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/components/schemas/RttHistogramConfig"
+              },
+              "propertyNames": {
+                "type": "string"
+              }
             },
             "propertyNames": {
               "type": "string"
@@ -2064,11 +2151,15 @@
           },
           "port_tx_rx_mapping": {
             "type": "object",
-            "description": "Mapping between TX (send) ports, and RX (receive) ports.\nTraffic send on port TX are expected to be received on port RX.",
+            "description": "Mapping between TX (send) ports, and RX (receive) ports.\nTraffic send on port TX are expected to be received on port RX.\nMapping from TX-front_panel/channel to RX-front-panel/channel",
             "additionalProperties": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/components/schemas/RxTarget"
+              },
+              "propertyNames": {
+                "type": "string"
+              }
             },
             "propertyNames": {
               "type": "string"
