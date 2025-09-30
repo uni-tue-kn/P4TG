@@ -123,7 +123,11 @@ async fn configure_ports(
     // --- TG ports ---
     for tg in &mut config.tg_ports {
         let speed = tg.speed.clone().unwrap_or(if is_tofino2 {
-            Speed::BF_SPEED_400G
+            if tg.breakout_mode == Some(true) {
+                Speed::BF_SPEED_100G
+            } else {
+                Speed::BF_SPEED_400G
+            }
         } else {
             Speed::BF_SPEED_100G
         });
