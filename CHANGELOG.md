@@ -49,7 +49,9 @@
 - Fix `GET:/api/restart` endpoint.
 - Fix config validation if a Tofino-2-only config is imported on a Tofino 1 device.
 - Fix inactive streams being considered for calculation of maximum rate.
+- Fix for CVE-2025-58754.
 - Updated API docs.
+- Updated dependencies.
 
 ## v2.5.0
 ### New features
