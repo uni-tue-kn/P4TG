@@ -19,11 +19,12 @@
   - [Traffic Generation](#traffic-generation)
   - [Statistics](#statistics)
   - [Version Highlights](#version-highlights)
-  - [⚡ Features](#-features)
+  - [Features](#features)
 - [🚀 Installation \& Quick Start](#-installation--quick-start)
   - [Data Plane](#data-plane)
   - [Control Plane](#control-plane)
-  - [⚙️ Configuration](#️-configuration)
+  - [Configuration](#configuration)
+    - [Configuration Options](#configuration-options)
     - [64-port Tofino](#64-port-tofino)
 - [🤖 Test Automation](#-test-automation)
 - [🔄 Update Guide](#-update-guide)
@@ -93,7 +94,7 @@ See the full [Changelog](./CHANGELOG.md).
 
 ---
 
-### ⚡ Features
+### Features
 
 | Feature                       | Status         |
 | ----------------------------- | -------------- |
@@ -153,11 +154,12 @@ docker compose up
 
 ---
 
-### ⚙️ Configuration
-**Docker compose file**
+### Configuration
+**Docker compose file** `Controller/docker-compose.yaml` 
 - `SAMPLE=1` → IAT sampling mode (default: `0`, data plane measurement)
 - `LOOPBACK=true` → enable loopback testing mode
 - `P4TG_PORT=8000` → changes the controller port
+- `NUM_PORTS=32` → set number of front panel ports of your device
 
 
 **Config file:** `Controller/config.json`  
@@ -190,10 +192,16 @@ Example:
 }
 ```
 
-Possible values are:
-  - `speed`: BF_SPEED_10G, BF_SPEED_25GB, BF_SPEED_40G, BF_SPEED_100G, BF_SPEED_400G
-  - `auto_negotiation`: PM_AN_DEFAULT, PM_AN_FORCE_ENABLE, PM_AN_FORCE_DISABLE
-  - `fec`: BF_FEC_TYP_NONE, BF_FEC_TYP_FC, BF_FEC_TYP_REED_SOLOMON
+#### Configuration Options
+
+| Option             | Valid Values                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `mac`              | Any valid MAC address                                                                 |
+| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25GB` · `BF_SPEED_40G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
+| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                        |
+| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                       |
+| `breakout_mode`    | `true` · `false` (can be combined with 40G / 100G speeds)                             |
+
 
 #### 64-port Tofino
 Each front panel port requires two recirculation ports. They are configured automatically.
@@ -215,7 +223,7 @@ Below is an example:
   ]
 }
 ```
-This uses port 49 as a port for traffic generation and port 50 and 51 for internal recirculation. Ensure that the recirculation ports support the same line rate as the TG port.
+This uses front panel port 49 as a port for traffic generation and port 50 and 51 for internal recirculation. Ensure that the recirculation ports support the same line rate as the TG port.
 
 ---
 
@@ -223,7 +231,7 @@ This uses port 49 as a port for traffic generation and port 50 and 51 for intern
 
 Automation scripts in [p4tg_test_automation](p4tg_test_automation/):
 
-- Python CLI for starting/stopping tests, fetching stats, and rendering plots
+- Python script for starting/stopping tests, fetching stats, and rendering plots
 - Quick start:  
   ```bash
   python run.py --payload payloads/your_test.json

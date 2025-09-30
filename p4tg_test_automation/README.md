@@ -5,7 +5,7 @@ This python module lets you launch P4TG tests, wait for them to finish, pull sta
 ## Setup
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt 
 ```
 
