@@ -6,7 +6,7 @@
   ![License](https://img.shields.io/badge/licence-Apache%202.0-blue)
   ![Language](https://img.shields.io/badge/lang-rust-darkred)
   ![Built with P4](https://img.shields.io/badge/built%20with-P4-orange)
-  ![Version](https://img.shields.io/badge/v-2.6.0-yellow)
+  ![Version](https://img.shields.io/badge/v-2.6.1-yellow)
   [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml)
   [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
 </div>
@@ -56,8 +56,8 @@ P4TG combines a **P4 data plane program**, a **Rust-based control plane**, and a
 ---
 
 ### Traffic Generation
-- **Tofino 1:** Up to **1 Tb/s** across 10 × 100 Gb/s ports  
-- **Tofino 2:** Up to **4 Tb/s** across 10 × 400 Gb/s ports  
+- **Tofino 1:** Up to **1 Tb/s** across 10 × 100 Gb/s ports, or 40 × 10/25 Gb/s
+- **Tofino 2:** Up to **4 Tb/s** across 10 × 400 Gb/s ports, or 40 × 10/25 Gb/s
 
 Generated packet headers can be fully customized, including:
 - Ethernet

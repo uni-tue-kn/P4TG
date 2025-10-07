@@ -42,7 +42,7 @@ use crate::core::traffic_gen_core::const_definitions::{
     DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2, PORT_CFG_TF2,
 };
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
-use crate::core::traffic_gen_core::helper::breakout_mapping;
+use crate::core::traffic_gen_core::helper::{breakout_mapping, get_base_speed};
 use crate::core::{
     Arp, Config, DurationMonitorTask, FrameSizeMonitor, FrameTypeMonitor, HistogramMonitor,
     RateMonitor, TrafficGen,
@@ -122,15 +122,7 @@ async fn configure_ports(
 
     // --- TG ports ---
     for tg in &mut config.tg_ports {
-        let speed = tg.speed.clone().unwrap_or(if is_tofino2 {
-            if tg.breakout_mode == Some(true) {
-                Speed::BF_SPEED_100G
-            } else {
-                Speed::BF_SPEED_400G
-            }
-        } else {
-            Speed::BF_SPEED_100G
-        });
+        let speed = get_base_speed(tg, is_tofino2);
         let fec = tg
             .fec
             .clone()
@@ -238,11 +230,7 @@ async fn configure_ports(
             .find(|p| &p.port == tg_port)
             .expect("internal: missing tg cfg");
 
-        let base_speed = tg_cfg.speed.clone().unwrap_or(if is_tofino2 {
-            Speed::BF_SPEED_400G
-        } else {
-            Speed::BF_SPEED_100G
-        });
+        let base_speed = get_base_speed(tg_cfg, is_tofino2);
         let breakout = tg_cfg.breakout_mode.unwrap_or(false);
         let (channels, _) = breakout_mapping(&base_speed, breakout);
 
@@ -306,11 +294,7 @@ async fn configure_ports(
             .find(|p| &p.port == tg_port)
             .expect("internal: missing tg cfg");
 
-        let base_speed = tg_cfg.speed.clone().unwrap_or(if is_tofino2 {
-            Speed::BF_SPEED_400G
-        } else {
-            Speed::BF_SPEED_100G
-        });
+        let base_speed = get_base_speed(tg_cfg, is_tofino2);
         let breakout = tg_cfg.breakout_mode.unwrap_or(false);
         let (channels, _per_ch_speed) = breakout_mapping(&base_speed, breakout);
 
