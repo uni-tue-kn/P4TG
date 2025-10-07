@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::core::config::PortDescription;
 use crate::core::traffic_gen_core::const_definitions::{
     P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK, VX_LAN_UDP_PORT,
 };
@@ -183,6 +184,19 @@ pub(crate) fn breakout_mapping(speed: &Speed, breakout: bool) -> (Vec<u8>, Speed
     } else {
         (vec![0], speed.clone())
     }
+}
+
+// Returns the base speed for a port_description based on the is_tofino2 flag, and the optionally configured speed setting
+pub(crate) fn get_base_speed(port_config: &PortDescription, is_tofino2: bool) -> Speed {
+    port_config.speed.clone().unwrap_or(if is_tofino2 {
+        if port_config.breakout_mode == Some(true) {
+            Speed::BF_SPEED_100G
+        } else {
+            Speed::BF_SPEED_400G
+        }
+    } else {
+        Speed::BF_SPEED_100G
+    })
 }
 
 /// Creates a packet with `frame_size` bytes and `encapsulation` (e.g., VLAN)
