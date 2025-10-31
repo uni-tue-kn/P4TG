@@ -27,7 +27,8 @@ import {
     Stream,
     StreamSettings,
     P4TGInfos,
-    ASIC
+    ASIC,
+    GenerationUnit
 } from "../../common/Interfaces";
 import React, { useState } from "react";
 import { Button, Col, Form, InputGroup, Row } from "react-bootstrap";
@@ -86,6 +87,14 @@ const StreamElement = ({
             batches: !prevData.batches
         }))
         data.batches = !data.batches;
+    }
+
+    const handleUnitChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        setFormData((prevData) => ({
+            ...prevData,
+            unit: data.unit
+        }))
+        data.unit = parseInt(event.target.value);
     }
 
     const handleEncapsulationChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -218,13 +227,20 @@ const StreamElement = ({
                     onChange={(event: any) => data.traffic_rate = parseFloat(event.target.value)}
                     required
                     min={"0"}
-                    max={mode == GenerationMode.MPPS ? 200 : 100}
                     step={"any"}
                     type={"number"}
                     placeholder="Traffic rate"
                     defaultValue={data.traffic_rate > 0 ? data.traffic_rate : ""}
                 />
-                <InputGroup.Text>{mode == GenerationMode.MPPS ? "Mpps" : "Gbps"}</InputGroup.Text>
+                <Form.Select
+                    style={{ width: "auto", flex: "0 0 auto", minWidth: "fit-content", whiteSpace: "nowrap" }}
+                    disabled={running}
+                    required
+                    onChange={handleUnitChange}
+                >
+                    <option selected={GenerationUnit.Gbps === data.unit} value={GenerationUnit.Gbps}>Gbps</option>
+                    <option selected={GenerationUnit.Mpps === data.unit} value={GenerationUnit.Mpps}>Mpps</option>
+                </Form.Select>
             </InputGroup>
         </StyledCol>
         <StyledCol>

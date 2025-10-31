@@ -304,7 +304,6 @@ const generateHistogram = (
         labels.push(label);
         values.push(combined_bins[String(i)] ?? 0);
     }
-    console.log(values)
 
     return [labels, values];
 };
