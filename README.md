@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./img/logo.png" alt="P4TG Logo" width="200"/>
+  <img src="./docs/img/logo.png" alt="P4TG Logo" width="200"/>
 
   <h2>P4TG: Traffic Generation for Ethernet/IP Networks</h2>
 
@@ -21,8 +21,10 @@
   - [Version Highlights](#version-highlights)
   - [Features](#features)
 - [🚀 Installation \& Quick Start](#-installation--quick-start)
-  - [Data Plane](#data-plane)
-  - [Control Plane](#control-plane)
+  - [Quick Start](#quick-start)
+  - [Manual Installation](#manual-installation)
+    - [Data Plane](#data-plane)
+    - [Control Plane](#control-plane)
   - [Configuration](#configuration)
     - [Configuration Options](#configuration-options)
     - [64-port Tofino](#64-port-tofino)
@@ -42,7 +44,7 @@ It enables reproducible experiments with Ethernet/IP traffic at high data rates 
 P4TG combines a **P4 data plane program**, a **Rust-based control plane**, and a **React-based configuration GUI**.
 
 <div align="center">
-    <img src="img/architecture.png" alt="P4TG Architecture" width="300" style="border-radius:10px; border:1px solid #000;"/>
+    <img src="docs/img/architecture.png" alt="P4TG Architecture" width="300" style="border-radius:10px; border:1px solid #000;"/>
 </div>
 
 ---
@@ -87,10 +89,10 @@ directly in the data plane to ensure accurate results.
 ### Version Highlights
 
 <div align="center">
-    <img src="img/timeline.png" alt="P4TG Architecture" width="800" style="border-radius:10px; border:1px solid #000;"/>
+    <img src="docs/img/timeline.png" alt="P4TG Architecture" width="800" style="border-radius:10px; border:1px solid #000;"/>
 </div>
 
-See the full [Changelog](./CHANGELOG.md).
+See the full [Changelog](./docs/CHANGELOG.md).
 
 ---
 
@@ -117,9 +119,30 @@ See the full [Changelog](./CHANGELOG.md).
 ## 🚀 Installation & Quick Start
 
 P4TG requires a fully set up [SDE](https://github.com/p4lang/open-p4studio) with `$SDE` and `$SDE_INSTALL` environment variables set.
-A detailed installation guide for **open-p4studio** and P4TG can be found [here](SDE.md).
+A detailed installation guide for **open-p4studio** and P4TG can be found [here](./docs/SDE.md).
 
-### Data Plane
+### Quick Start
+
+The provided `p4tg.sh` script automates the installation of the data and control plane, provided that the SDE is installed correctly.
+```bash
+Usage: ./p4tg.sh [install|update|start|stop|restart|status]
+```
+Clone P4TG into `/opt/P4TG` and simply run `sudo -E ./p4tg.sh install` (tested on Debian-based systems).
+
+The `install` command will:
+- Compile the data plane and copy it in place.
+- Pull the docker image and start it.
+- Copy the `p4tg.sh` script to `/usr/local/bin`.
+- Copy the `p4tg.service` file to `/etc/systemd/system/p4tg.service`. This service file can be used to autostart P4TG on boot.
+
+The `start` command will:
+- Load all required kernel modules to operate the Tofino.
+- Start the data plane and wait for it to become ready.
+- Start the control plane docker image.
+
+### Manual Installation
+
+#### Data Plane
 ```bash
 cd P4-Implementation
 ```
@@ -141,7 +164,7 @@ cd P4-Implementation
 - SDE 9.9.0 (up to v2.0.0)  
 - SDE 9.13.{0,...,4}  
 
-### Control Plane
+#### Control Plane
 ```bash
 cd Controller
 docker compose up
@@ -263,15 +286,15 @@ See [README](p4tg_test_automation/README.md) for details.
 
 ## 🛠️ Development
 
-For development instructions, please see [here](./DEVELOPMENT.md)
+For development instructions, please see [here](./docs/DEVELOPMENT.md)
 
 ## 🖼️ Preview
 
-<img src="img/preview.png" alt="Preview 1" width="600" style="border-radius:10px; border:1px solid #000;"/>
-<img src="img/preview-2.png" alt="Preview 2" width="600" style="border-radius:10px; border:1px solid #000;"/>
-<img src="img/preview-3.png" alt="Preview 3" width="600" style="border-radius:10px; border:1px solid #000;"/>
-<img src="img/preview-4.png" alt="Preview 4" width="600" style="border-radius:10px; border:1px solid #000;"/>
-<img src="img/preview-5.png" alt="Preview 5" width="600" style="border-radius:10px; border:1px solid #000;"/>
+<img src="docs/img/preview.png" alt="Preview 1" width="600" style="border-radius:10px; border:1px solid #000;"/>
+<img src="docs/img/preview-2.png" alt="Preview 2" width="600" style="border-radius:10px; border:1px solid #000;"/>
+<img src="docs/img/preview-3.png" alt="Preview 3" width="600" style="border-radius:10px; border:1px solid #000;"/>
+<img src="docs/img/preview-4.png" alt="Preview 4" width="600" style="border-radius:10px; border:1px solid #000;"/>
+<img src="docs/img/preview-5.png" alt="Preview 5" width="600" style="border-radius:10px; border:1px solid #000;"/>
 
 ---
 

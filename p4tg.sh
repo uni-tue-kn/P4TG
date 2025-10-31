@@ -18,7 +18,6 @@ set -Eeuo pipefail
 # Configuration (edit me) #
 ###########################
 P4TG_DIR="${P4TG_DIR:-/opt/P4TG}"                           # root of repository checkout
-TIMEOUT_SECS="${TIMEOUT_SECS:-60}"                          # max wait for data plane readiness
 LOG_DIR="${LOG_DIR:-/var/log/traffic_gen}"                  # where to store logs
 SWITCHD_LOG="${SWITCHD_LOG:-$LOG_DIR/switchd.log}"
 
@@ -27,6 +26,7 @@ RUNTIME_DIR="${RUNTIME_DIR:-/run/traffic_gen}"
 FALLBACK_RUNTIME_DIR="${HOME}/.cache/traffic_gen"
 DP_PIDFILE="${DP_PIDFILE:-$RUNTIME_DIR/dp.pid}"
 
+TIMEOUT_SECS="${TIMEOUT_SECS:-60}"                          # max wait for data plane readiness
 TARGET="unknown"
 PROGRAM_NAME="${PROGRAM_NAME:-traffic_gen}"                 # passed to run_switchd.sh via -p
 CONTROLLER_CONTAINER="${CONTROLLER_CONTAINER:-p4tg-controller}"
@@ -347,32 +347,36 @@ controller_is_running() {
 
 start_controller_container() {
   ensure_docker_ready || return 6
-  if ! controller_exists; then
-    error "Docker container '$CONTROLLER_CONTAINER' not found. Create it first (docker create ...)."
+  local controller_dir="$P4TG_DIR/Controller"
+  if [[ ! -d "$controller_dir" ]]; then
+    error "Controller directory not found: $controller_dir"
     return 5
   fi
-  if controller_is_running; then
-    info "Control plane container '$CONTROLLER_CONTAINER' already running."
-    return 0
+  info "Starting control plane containers via docker compose up -d"
+  if ! (cd "$controller_dir" && docker compose up -d); then
+    error "docker compose up failed."
+    return 5
   fi
-  info "Starting control plane container: $CONTROLLER_CONTAINER"
-  docker start "$CONTROLLER_CONTAINER" >/dev/null || { error "Failed to start container."; return 5; }
-  info "Control plane container started."
+  info "Control plane containers started."
 }
 
 stop_controller_container() {
   ensure_docker_ready || return 6
-  if ! controller_exists; then
-    info "Container '$CONTROLLER_CONTAINER' does not exist; nothing to stop."
+  local controller_dir="$P4TG_DIR/Controller"
+  if [[ ! -d "$controller_dir" ]]; then
+    info "Controller directory not found: $controller_dir; nothing to stop."
     return 0
   fi
-  if ! controller_is_running; then
-    info "Control plane container '$CONTROLLER_CONTAINER' is not running."
-    return 0
+  if controller_is_running; then
+    info "Stopping control plane container: $CONTROLLER_CONTAINER"
+  else
+    info "Ensuring control plane containers are stopped via docker compose down."
   fi
-  info "Stopping control plane container: $CONTROLLER_CONTAINER"
-  docker stop "$CONTROLLER_CONTAINER" >/dev/null || { error "Failed to stop container."; return 5; }
-  info "Control plane container stopped."
+  if ! (cd "$controller_dir" && docker compose down); then
+    error "docker compose down failed."
+    return 5
+  fi
+  info "Control plane containers stopped."
 }
 
 ########################################
@@ -600,7 +604,7 @@ cmd_status() {
 # Entry point
 ########################################
 usage() {
-  echo "Usage: $0 {start|stop|restart|status}"
+  echo "Usage: $0 [install|update|start|stop|restart|status]"
 }
 
 main() {
