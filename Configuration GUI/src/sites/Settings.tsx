@@ -28,7 +28,7 @@ import {
     DefaultStream,
     DefaultStreamSettings,
     Encapsulation,
-    GenerationMode, HistogramConfigMap, P4TGInfos,
+    GenerationMode, GenerationUnit, HistogramConfigMap, P4TGInfos,
     PortInfo,
     PortTxRxMap,
     RttHistogramConfig,
@@ -456,6 +456,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
         const out: Record<string, TrafficGenData> = {};
         for (const [k, v] of Object.entries(cfg)) {
+
+            if (v.mode === GenerationMode.MPPS) {
+                v.mode = GenerationMode.CBR;
+                for (const s of v.streams) {
+                    s.unit = GenerationUnit.Mpps;
+                }
+            }
+
             if (isLegacyTest(v)) {
                 const port_tx_rx_mapping: PortTxRxMap = Object.fromEntries(
                     Object.entries(v.port_tx_rx_mapping ?? {}).map(([tx, rx]) => [

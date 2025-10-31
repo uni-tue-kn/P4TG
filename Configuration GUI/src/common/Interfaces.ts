@@ -244,6 +244,7 @@ export enum Encapsulation {
 export enum GenerationMode {
     NONE = 0,
     CBR = 1,
+    MPPS = 2, // DEPRECATED. Only kept for backward compatibility
     POISSON = 3,
     ANALYZE = 4,
 }
