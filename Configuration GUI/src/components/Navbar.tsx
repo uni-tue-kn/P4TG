@@ -21,7 +21,7 @@ import styled from "styled-components";
 import { Link, useLocation } from "react-router-dom";
 import FooterButtons from "./FooterButtons";
 import { CNavItem, CSidebar, CSidebarBrand, CSidebarNav } from "@coreui/react";
-import { Row } from 'react-bootstrap'
+import { OverlayTrigger, Tooltip, Row } from 'react-bootstrap'
 
 import P4TGLogo from "../assets/p4tg_logo_white.png"
 import { P4TGInfos } from "../common/Interfaces";
@@ -59,7 +59,7 @@ export const NavLink = ({ to, icon, text, overlay }: Props) => {
 }
 
 
-const Navbar = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
+const Navbar = ({ p4tg_infos, updateAvailable }: { p4tg_infos: P4TGInfos, updateAvailable: boolean }) => {
 
     return <CSidebar className={"h-100"}>
         <CSidebarNav className="h-100">
@@ -73,9 +73,29 @@ const Navbar = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             <Row className="mb-3">
                 <FooterButtons />
             </Row>
-            <Row>
-                <CNavItem className="flex-grow-1 mb-2">
-                    <span>{p4tg_infos.version === "" ? "Offline" : "v" + p4tg_infos.version}</span>
+            <Row className="justify-content-center">
+                <CNavItem className="mb-2 d-flex align-items-center justify-content-center gap-2">
+                    <span>{p4tg_infos.version === "" ? "Offline" : "v" + p4tg_infos.version}
+
+                        {updateAvailable && p4tg_infos.version !== "" &&
+                            <OverlayTrigger
+                                placement="top"
+                                overlay={<Tooltip id="update-available-tooltip">New release available</Tooltip>}
+                            >
+                                <>
+                                    &nbsp;&nbsp;<a
+                                        href="https://github.com/uni-tue-kn/P4TG/releases"
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-danger d-inline-flex align-items-center"
+                                        aria-label="New P4TG release available"
+                                    >
+                                        <i className="bi bi-arrow-up-circle-fill" />
+                                    </a>
+                                </>
+                            </OverlayTrigger>
+                        }
+                    </span>
                 </CNavItem>
             </Row>
         </CSidebarNav>

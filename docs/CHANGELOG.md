@@ -7,6 +7,7 @@
   ```bash
   ./p4tg.sh [install|update|start|stop|restart|status]
   ```
+- Added an update checker to the frontend.
 
 ## v2.6.1
 - Fix breakout mode if `speed` is not manually configured in `config.json`.

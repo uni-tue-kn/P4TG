@@ -95,3 +95,36 @@ export const getTotalActiveStreamRate = (streams: Stream[], stream_settings: Str
 
     return total_rate;
 };
+
+export async function isUpdateAvailable(localVersion: String): Promise<boolean> {
+    const url = "https://raw.githubusercontent.com/uni-tue-kn/P4TG/refs/heads/main/VERSION.md";
+
+    // Helper to parse x.y.z -> [major, minor, patch]
+    const toParts = (v: String): number[] | null => {
+        const match = /^\s*v?(\d+)\.(\d+)\.(\d+)\s*$/.exec(v.trim());
+        return match ? match.slice(1).map(Number) : null;
+    };
+
+    const local = toParts(localVersion);
+    if (!local) return false; // malformed local version → treat as "no update"
+
+    let remoteText: string;
+    try {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) return false;
+        remoteText = await response.text();
+    } catch {
+        return false; // network / no internet / fetch not available
+    }
+
+    const remote = toParts(remoteText.split(/\r?\n/)[0] || "");
+    if (!remote) return false; // malformed remote version
+
+    // Compare versions
+    for (let i = 0; i < 3; i++) {
+        if (local[i] < remote[i]) return true;
+        if (local[i] > remote[i]) return false;
+    }
+
+    return false; // identical version → no update
+}
