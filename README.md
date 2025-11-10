@@ -123,11 +123,12 @@ A detailed installation guide for **open-p4studio** and P4TG can be found [here]
 
 ### Quick Start
 
-The provided `p4tg.sh` script automates the installation of the data and control plane, provided that the SDE is installed correctly.
+The provided `p4tg.sh` script automates the installation of the data and control plane on Debian- / Ubuntu-based systems, provided that the SDE is installed correctly.
+Make sure that the environment variables `$SDE` and `$SDE_INSTALL` are set. Run with `sudo -E` to pass environment variables.
 ```bash
 Usage: ./p4tg.sh [install|update|start|stop|restart|status]
 ```
-Clone P4TG into `/opt/P4TG` and simply run `sudo -E ./p4tg.sh install` (tested on Debian-based systems).
+Clone P4TG into `/opt/P4TG` and simply run `sudo -E ./p4tg.sh install` (tested on Debian-based systems). Change the paths at the top of `p4tg.sh` if needed.
 
 The `install` command will:
 - Compile the data plane and copy it in place.
