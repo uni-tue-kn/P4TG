@@ -218,13 +218,13 @@ Example:
 
 #### Configuration Options
 
-| Option             | Valid Values                                                                          |
-| ------------------ | ------------------------------------------------------------------------------------- |
-| `mac`              | Any valid MAC address                                                                 |
-| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25GB` · `BF_SPEED_40G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
-| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                        |
-| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                       |
-| `breakout_mode`    | `true` · `false` (can be combined with 40G / 100G speeds)                             |
+| Option             | Valid Values                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| `mac`              | Any valid MAC address                                                                |
+| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
+| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                       |
+| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                      |
+| `breakout_mode`    | `true` · `false` (can be combined with 40G / 100G speeds)                            |
 
 
 #### 64-port Tofino
