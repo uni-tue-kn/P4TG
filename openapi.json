@@ -11,7 +11,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "2.6.1"
+    "version": "2.6.2"
   },
   "paths": {
     "/api/histogram": {
@@ -172,6 +172,7 @@
                     "stream_id": 1,
                     "timeout": 876,
                     "traffic_rate": 100.0,
+                    "unit": 0,
                     "vxlan": true
                   }
                 ]
@@ -362,6 +363,7 @@
                           "stream_id": 1,
                           "timeout": 88,
                           "traffic_rate": 80.0,
+                          "unit": 0,
                           "vxlan": false
                         }
                       ]
@@ -437,6 +439,7 @@
                           "stream_id": 1,
                           "timeout": 876,
                           "traffic_rate": 100.0,
+                          "unit": 0,
                           "vxlan": true
                         }
                       ]
@@ -537,6 +540,7 @@
                         "ip_version": 4,
                         "stream_id": 1,
                         "traffic_rate": 100.0,
+                        "unit": 0,
                         "vxlan": true
                       }
                     ]
@@ -607,6 +611,7 @@
                         "ip_version": 4,
                         "stream_id": 1,
                         "traffic_rate": 80.0,
+                        "unit": 0,
                         "vxlan": false
                       }
                     ]
@@ -656,6 +661,7 @@
                         "ip_version": 4,
                         "stream_id": 1,
                         "traffic_rate": 30.0,
+                        "unit": 0,
                         "vxlan": false
                       }
                     ]
@@ -735,6 +741,7 @@
                           "srv6_ip_tunneling": true,
                           "stream_id": 1,
                           "traffic_rate": 100.0,
+                          "unit": 0,
                           "vxlan": false
                         }
                       ]
@@ -810,6 +817,7 @@
                           "srv6_ip_tunneling": true,
                           "stream_id": 1,
                           "traffic_rate": 100.0,
+                          "unit": 0,
                           "vxlan": false
                         }
                       ]
@@ -849,6 +857,7 @@
                         "stream_id": 1,
                         "timeout": 876,
                         "traffic_rate": 100.0,
+                        "unit": 0,
                         "vxlan": true
                       }
                     ]
@@ -869,6 +878,7 @@
                         "stream_id": 1,
                         "timeout": 876,
                         "traffic_rate": 100.0,
+                        "unit": 0,
                         "vxlan": true
                       }
                     ]
@@ -889,6 +899,7 @@
                         "stream_id": 1,
                         "timeout": 88,
                         "traffic_rate": 30.0,
+                        "unit": 0,
                         "vxlan": false
                       }
                     ]
@@ -911,6 +922,7 @@
                         "stream_id": 1,
                         "timeout": 360,
                         "traffic_rate": 100.0,
+                        "unit": 0,
                         "vxlan": false
                       },
                       {
@@ -928,6 +940,7 @@
                         "stream_id": 1,
                         "timeout": 360,
                         "traffic_rate": 100.0,
+                        "unit": 0,
                         "vxlan": false
                       }
                     ]
@@ -1022,6 +1035,14 @@
           "Mpps",
           "Poisson",
           "Analyze"
+        ]
+      },
+      "GenerationUnit": {
+        "type": "string",
+        "description": "Describes the unit for a generated traffic stream",
+        "enum": [
+          "Gbps",
+          "Mpps"
         ]
       },
       "IATStatistics": {
@@ -1831,6 +1852,17 @@
             "format": "float",
             "description": "Traffic rate in Gbps that should be generated.",
             "example": 100
+          },
+          "unit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GenerationUnit",
+                "description": "Unit for stream generation, e.g., Gbps, Mbps, Mpps"
+              }
+            ]
           },
           "vxlan": {
             "type": "boolean",
