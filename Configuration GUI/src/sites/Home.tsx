@@ -207,7 +207,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                         overall_rate += v.traffic_rate
                     }
                 })
-                if (config.mode !== GenerationMode.MPPS && rateExceeded) {
+                if (rateExceeded) {
                     showToast("Sum of active stream rates > " + maxRate + " Gbps for test " + name + "!", "danger")
                     set_overlay(false)
                     return;

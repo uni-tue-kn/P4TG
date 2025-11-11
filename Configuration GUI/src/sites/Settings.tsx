@@ -28,7 +28,7 @@ import {
     DefaultStream,
     DefaultStreamSettings,
     Encapsulation,
-    GenerationMode, HistogramConfigMap, P4TGInfos,
+    GenerationMode, GenerationUnit, HistogramConfigMap, P4TGInfos,
     PortInfo,
     PortTxRxMap,
     RttHistogramConfig,
@@ -456,6 +456,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
         const out: Record<string, TrafficGenData> = {};
         for (const [k, v] of Object.entries(cfg)) {
+
+            if (v.mode === GenerationMode.MPPS) {
+                v.mode = GenerationMode.CBR;
+                for (const s of v.streams) {
+                    s.unit = GenerationUnit.Mpps;
+                }
+            }
+
             if (isLegacyTest(v)) {
                 const port_tx_rx_mapping: PortTxRxMap = Object.fromEntries(
                     Object.entries(v.port_tx_rx_mapping ?? {}).map(([tx, rx]) => [
@@ -796,10 +804,9 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         set_mode(parseInt(event.target.value));
                                         set_duration(0);
                                     }}>
-                                    <option value={GenerationMode.NONE}>Generation Mode</option>
+                                    <option value={GenerationMode.NONE} disabled={mode !== GenerationMode.NONE}>Generation Mode</option>
                                     <option selected={mode === GenerationMode.CBR} value={GenerationMode.CBR}>CBR</option>
                                     <option selected={mode === GenerationMode.POISSON} value={GenerationMode.POISSON}>Poisson</option>
-                                    <option selected={mode === GenerationMode.MPPS} value={GenerationMode.MPPS}>Mpps</option>
                                     <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
                                 </Form.Select>
                             </Col>
@@ -946,7 +953,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                         }
                         <Row className="mb-3">
                             <Col className="text-start">
-                                {running ? null : (mode === GenerationMode.CBR || mode === GenerationMode.MPPS) ? (
+                                {running ? null : (mode === GenerationMode.CBR) ? (
                                     (() => {
                                         const reachedMax = streams.length >= maxStreams;
                                         return (

@@ -1,0 +1,26 @@
+[Unit]
+Description=P4 Traffic Generator (Data plane + Control plane)
+After=network.target docker.service
+Wants=network.target docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Main script actions
+ExecStart=/usr/local/bin/p4tg.sh start
+ExecStartPost=/usr/local/bin/p4tg.sh status
+ExecStop=/usr/local/bin/p4tg.sh stop
+
+User=root
+WorkingDirectory=/usr/local/bin
+
+# Environment variables
+Environment="SDE=/opt/bf-sde-9.13.4" "SDE_INSTALL=/opt/bf-sde-9.13.4/install"
+
+# Logging — redirect both stdout/stderr to logfile
+StandardOutput=append:/var/log/traffic_gen/p4tg.service.log
+StandardError=append:/var/log/traffic_gen/p4tg.service.log
+
+[Install]
+WantedBy=multi-user.target

@@ -20,10 +20,9 @@
 import { useEffect, useState } from 'react'
 import Config from "./config"
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom"
-import { Col, Container, Row } from "react-bootstrap"
+import { Button, Col, Container, Modal, Row } from "react-bootstrap"
 import { AxiosInterceptor, get } from "./common/API"
 import styled from "styled-components"
-import ErrorView from "./components/ErrorView"
 import Navbar from "./components/Navbar"
 import ToastMessage from "./components/ToastMessage"
 
@@ -36,14 +35,15 @@ import { ASIC, P4TGInfos, StreamSettings, ToastVariant } from "./common/Interfac
 import { Stream } from "./common/Interfaces";
 import Loader from "./components/Loader";
 import { validateStreams, validateStreamSettings } from "./common/Validators";
-
+import { isUpdateAvailable } from './common/Helper'
 
 const App = () => {
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
     const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({ status: "", version: "", asic: ASIC.Tofino1, loopback: false })
     const [toast, setToast] = useState({ time: "00:00", show: false, message: "", bg: "success" })
-
+    const [updateAvailable, setUpdateAvailable] = useState(false)
+    const [showUpdateModal, setShowUpdateModal] = useState(false)
 
     useEffect(() => {
         // Validates the stored streams and stream settings in the local storage
@@ -74,6 +74,8 @@ const App = () => {
 
             if (stats !== undefined && stats.status === 200) {
                 set_p4tg_infos(stats.data)
+                const update = await isUpdateAvailable(stats.data.version)
+                setUpdateAvailable(update)
             }
 
             set_loaded(true)
@@ -81,8 +83,13 @@ const App = () => {
 
         validateLocalStorage()
         loadInfos()
-
     }, [])
+
+    useEffect(() => {
+        if (updateAvailable) {
+            setShowUpdateModal(true)
+        }
+    }, [updateAvailable])
 
 
     const showToast = (message: string, bg: ToastVariant) => {
@@ -108,7 +115,7 @@ const App = () => {
         <Router basename={Config.BASE_PATH}>
             <Row>
                 <Col className={'col-2 col-sm-2 col-xl-1 fixed-navbar'}>
-                    <Navbar p4tg_infos={p4tg_infos} />
+                    <Navbar p4tg_infos={p4tg_infos} updateAvailable={updateAvailable} />
                 </Col>
                 <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-3"}>
                     <AxiosInterceptor onError={showToast} onOffline={() => set_online(false)}
@@ -145,11 +152,24 @@ const App = () => {
 
         </Router>
 
-
+        <Modal show={showUpdateModal} onHide={() => setShowUpdateModal(false)} centered>
+            <Modal.Header closeButton>
+                <Modal.Title>Update available</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+                A new P4TG release is available. Visit the releases page to download the latest version.
+            </Modal.Body>
+            <Modal.Footer>
+                <Button variant="secondary" onClick={() => setShowUpdateModal(false)}>
+                    Dismiss
+                </Button>
+                <Button variant="primary" href="https://github.com/uni-tue-kn/P4TG/releases" target="_blank" rel="noreferrer">
+                    Open releases
+                </Button>
+            </Modal.Footer>
+        </Modal>
 
     </Loader>
-
-
 }
 
 export default App;

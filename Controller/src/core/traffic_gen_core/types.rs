@@ -47,13 +47,21 @@ pub enum Encapsulation {
 pub enum GenerationMode {
     /// Constant bit rate
     Cbr = 1,
-    /// Mega packets per second
+    /// Mega packets per second, kept for backward compatibility. Mpps is now included as a unit in CBR streams.
     Mpps = 2,
     /// Poisson traffic
     /// This is traffic with random inter arrival times and models random traffic
     Poisson = 3,
     /// Analyze mode. In this mode, traffic is not generated and external traffic is forwarded and analyzed.
     Analyze = 4,
+}
+
+/// Describes the unit for a generated traffic stream
+#[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug, Clone, Copy, ToSchema)]
+#[repr(u8)]
+pub enum GenerationUnit {
+    Gbps = 0,
+    Mpps = 1,
 }
 
 /// Byte representation of a packet for traffic gen application
@@ -312,6 +320,8 @@ pub struct Stream {
     pub(crate) number_of_srv6_sids: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub srv6_ip_tunneling: Option<bool>,
+    /// Unit for stream generation, e.g., Gbps, Mbps, Mpps
+    pub unit: Option<GenerationUnit>,
 }
 
 #[derive(Serialize, ToSchema)]

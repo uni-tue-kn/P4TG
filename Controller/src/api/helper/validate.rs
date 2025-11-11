@@ -326,16 +326,16 @@ pub fn validate_request(
 
     // Validate max sending rate
     // at most 100 or 400 Gbps are supported
-    let rate: f32 = if payload.mode == GenerationMode::Mpps {
-        active_streams
-            .iter()
-            .map(|x| {
+    let rate: f32 = active_streams
+        .iter()
+        .map(|x| {
+            if x.unit == Some(GenerationUnit::Mpps) || payload.mode == GenerationMode::Mpps {
                 (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
-            })
-            .sum()
-    } else {
-        active_streams.iter().map(|x| x.traffic_rate).sum()
-    };
+            } else {
+                x.traffic_rate
+            }
+        })
+        .sum();
 
     if payload.mode != GenerationMode::Analyze
         && rate

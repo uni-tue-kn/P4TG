@@ -1,5 +1,14 @@
 # Changelog 
 
+## v2.6.2
+### New features
+- Moved the Mpps mode into the CBR mode. The unit for traffic generation (Gbps / Mpps) can now be selected on a per-stream basis. For backward compatibility, the Mpps mode is still supported by the REST API.
+- Added an install and management script: 
+  ```bash
+  ./p4tg.sh [install|update|start|stop|restart|status]
+  ```
+- Added an update checker to the frontend.
+
 ## v2.6.1
 - Fix breakout mode if `speed` is not manually configured in `config.json`.
 

@@ -244,9 +244,13 @@ export enum Encapsulation {
 export enum GenerationMode {
     NONE = 0,
     CBR = 1,
-    MPPS = 2,
+    MPPS = 2, // DEPRECATED. Only kept for backward compatibility
     POISSON = 3,
     ANALYZE = 4,
+}
+export enum GenerationUnit {
+    Gbps = 0,
+    Mpps = 1,
 }
 export interface Stream {
     stream_id: number,
@@ -260,7 +264,8 @@ export interface Stream {
     traffic_rate: number,
     app_id: number,
     burst: number,
-    batches: boolean
+    batches: boolean,
+    unit: GenerationUnit,
 }
 
 export const DefaultMPLSHeader = () => {
@@ -285,7 +290,8 @@ export const DefaultStream = (id: number) => {
         burst: 1,
         batches: true,
         vxlan: false,
-        ip_version: 4
+        ip_version: 4,
+        unit: GenerationUnit.Gbps
     }
 
     return stream

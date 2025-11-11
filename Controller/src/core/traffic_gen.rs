@@ -611,11 +611,11 @@ impl TrafficGen {
         let switch = &state.switch;
         let port_mapping = &state.port_mapping;
 
-        // first stop possible existing generation
+        // First stop possible existing generation
         self.stop(switch).await?;
         self.reset_tables(switch).await?;
 
-        // first reset all stats
+        // Reset all stats
         state
             .frame_size_monitor
             .lock()
@@ -676,7 +676,7 @@ impl TrafficGen {
         let total_rate: f32 = streams
             .iter()
             .map(|x| {
-                if mode == GenerationMode::Mpps {
+                if x.unit == Some(GenerationUnit::Mpps) || mode == GenerationMode::Mpps {
                     (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate
                         / 1000f32
                 } else {
@@ -685,7 +685,7 @@ impl TrafficGen {
             })
             .sum();
 
-        info!("Total Rate {total_rate}");
+        info!("Total Rate {total_rate} Gbps.");
 
         // calculate sending behaviour via ILP optimization
         // further adds number of packets per time to the stream
@@ -702,7 +702,7 @@ impl TrafficGen {
 
             // traffic rate has MPPS semantics
             // rewrite traffic rate to reflect MPPS in Gbps
-            if mode == GenerationMode::Mpps {
+            if s.unit == Some(GenerationUnit::Mpps) || mode == GenerationMode::Mpps {
                 // recompute "correct" traffic rate in Gbps
                 s.traffic_rate = (s.frame_size + encapsulation_overhead) as f32 * 8f32 * s.traffic_rate / 1000f32;
             }
