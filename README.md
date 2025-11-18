@@ -59,7 +59,7 @@ P4TG combines a **P4 data plane program**, a **Rust-based control plane**, and a
 
 ### Traffic Generation
 - **Tofino 1:** Up to **1 Tb/s** across 10 × 100 Gb/s ports, or 40 × 10/25 Gb/s
-- **Tofino 2:** Up to **4 Tb/s** across 10 × 400 Gb/s ports, or 40 × 10/25 Gb/s
+- **Tofino 2:** Up to **4 Tb/s** across 10 × 400 Gb/s ports, or 40 × 10/25/100 Gb/s
 
 Generated packet headers can be fully customized, including:
 - Ethernet
@@ -224,7 +224,7 @@ Example:
 | `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
 | `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                       |
 | `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                      |
-| `breakout_mode`    | `true` · `false` (can be combined with 40G / 100G speeds)                            |
+| `breakout_mode`    | `true` · `false` (can be combined with 40G / 100G / 400G (Tofino 2 only) speeds)     |
 
 
 #### 64-port Tofino

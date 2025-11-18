@@ -66,6 +66,7 @@ impl StatisticsApi {
         core: &Statistics,             // core struct, contains only dev ports
         dev_to_fp: &HashMap<u32, u32>, // dev_port -> front_panel
     ) -> StatisticsApi {
+        // Deriving this mapping once would actually be nicer .....
         let dev_to_fpch = derive_fpch(dev_to_fp);
 
         StatisticsApi {

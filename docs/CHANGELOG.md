@@ -1,5 +1,12 @@
 # Changelog 
 
+## v2.6.3
+### New features
+- Added breakout mode for 400G -> 4x100G on Tofino 2, allowing up to 40x100G customizable traffic generation.
+
+### Bug fixes
+- Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
+
 ## v2.6.2
 ### New features
 - Moved the Mpps mode into the CBR mode. The unit for traffic generation (Gbps / Mpps) can now be selected on a per-stream basis. For backward compatibility, the Mpps mode is still supported by the REST API.

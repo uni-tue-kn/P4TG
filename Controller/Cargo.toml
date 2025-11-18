@@ -1,13 +1,13 @@
 [package]
 name = "p4tg-controller"
 authors = ["Steffen Lindner <steffen@steffen-lindner.net>", "Fabian Ihle <fabian.ihle@uni-tuebingen.de"]
-version = "2.6.2"
+version = "2.6.3"
 edition = "2021"
 license = "Apache-2.0"
 
 
 [dependencies]
-rbfrt = { git = "https://github.com/uni-tue-kn/rbfrt" }
+rbfrt = { git = "https://github.com/uni-tue-kn/rbfrt", branch = "dev" }
 tokio = { version = "1.47.1", features = ["rt-multi-thread"]}
 axum = { version = "0.8.4" , features =  ["macros", "json", "tokio", "form", "query"]}
 tower-http = { version = "0.6.2", features = ["cors"] }

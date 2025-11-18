@@ -141,4 +141,4 @@ pub const MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2: Ipv6Addr =
 pub const BATCH_FACTOR: u32 = 5;
 
 /// Mask to remove the channel number from a dev port
-pub const REMOVE_PORT_CHANNEL_MASK: u32 = 0xFFFFFFFC;
+pub const REMOVE_PORT_CHANNEL_MASK: u32 = 0xFFFFFFF8;

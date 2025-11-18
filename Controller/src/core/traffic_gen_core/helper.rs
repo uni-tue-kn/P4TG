@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::core::config::PortDescription;
@@ -20,7 +20,7 @@ pub(crate) fn generate_front_panel_to_dev_port_mappings(
         .map(|(dev_port, mapping)| {
             (
                 mapping.front_panel_port,
-                *dev_port & REMOVE_PORT_CHANNEL_MASK, // Remove the last two bits to always store channel ID 0 for a front panel port
+                *dev_port & REMOVE_PORT_CHANNEL_MASK, // Remove the last three bits to always store channel ID 0 for a front panel port
             )
         })
         .collect()
@@ -36,24 +36,19 @@ pub(crate) fn generate_dev_port_to_front_panel_mappings(
         .collect()
 }
 
-/// Build dev_port -> (front_panel, channel) by grouping the dev ports of each
-/// front-panel and assigning channel indices in ascending dev_port order.
+/// Build dev_port -> (front_panel, channel) where the channel is encoded in the
+/// least-significant 3 bits of the dev port.
 ///
-/// Example: if fp=1 has dev ports [144,145,146,147], channels become 0,1,2,3.
+/// Example: if dev_port == 0b..._000 then channel = 0,
+///          if dev_port == 0b..._101 then channel = 5, etc.
 pub(crate) fn derive_fpch(dev_to_fp: &HashMap<u32, u32>) -> HashMap<u32, (u32, u8)> {
-    // fp -> sorted set of dev ports (use BTreeMap/BTreeSet-like behavior)
-    let mut per_fp: HashMap<u32, BTreeMap<u32, ()>> = HashMap::new();
+    let mut dev_to_fpch = HashMap::with_capacity(dev_to_fp.len());
+
     for (&dev, &fp) in dev_to_fp {
-        per_fp.entry(fp).or_default().insert(dev, ());
+        let ch = (dev & 0b111) as u8; // LSB 3 bits encode the channel (0..7)
+        dev_to_fpch.insert(dev, (fp, ch));
     }
 
-    // Assign channel = index in sorted order
-    let mut dev_to_fpch = HashMap::new();
-    for (fp, devs_sorted) in per_fp {
-        for (ch_idx, (&dev, _)) in devs_sorted.iter().enumerate() {
-            dev_to_fpch.insert(dev, (fp, ch_idx as u8));
-        }
-    }
     dev_to_fpch
 }
 
@@ -172,17 +167,29 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
     encapsulation_overhead
 }
 
-// Maps a configured Speed to its breakout modes, e.g.,400G -> 4x100G
-pub(crate) fn breakout_mapping(speed: &Speed, breakout: bool) -> (Vec<u8>, Speed) {
+/// Maps a configured Speed to its breakout modes, e.g.,400G -> 4x100G
+/// Returns a tuple of: (vector of channel indices, per-channel speed, optional number of lanes)
+pub(crate) fn breakout_mapping(
+    speed: &Speed,
+    breakout: bool,
+    is_tofino2: bool,
+) -> (Vec<u8>, Speed, Option<u32>) {
     if breakout {
         match speed {
-            //Speed::BF_SPEED_400G => ((0..=3).collect(), Speed::BF_SPEED_100G),
-            Speed::BF_SPEED_100G => ((0..=3).collect(), Speed::BF_SPEED_25G),
-            Speed::BF_SPEED_40G => ((0..=3).collect(), Speed::BF_SPEED_10G),
-            _ => (vec![0], speed.clone()), // unsupported combo → fallback to single-lane
+            Speed::BF_SPEED_400G => {
+                if is_tofino2 {
+                    (vec![0, 2, 4, 6], Speed::BF_SPEED_100G, Some(2))
+                } else {
+                    // 400G unsupported on Tofino1 breakout → fallback to single-lane
+                    (vec![0], speed.clone(), None)
+                }
+            }
+            Speed::BF_SPEED_100G => ((0..=3).collect(), Speed::BF_SPEED_25G, None),
+            Speed::BF_SPEED_40G => ((0..=3).collect(), Speed::BF_SPEED_10G, None),
+            _ => (vec![0], speed.clone(), None), // unsupported combo → fallback to single-lane
         }
     } else {
-        (vec![0], speed.clone())
+        (vec![0], speed.clone(), None)
     }
 }
 
