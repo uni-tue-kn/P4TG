@@ -123,22 +123,24 @@ async fn configure_ports(
     // --- TG ports ---
     for tg in &mut config.tg_ports {
         let speed = get_base_speed(tg, is_tofino2);
-        let fec = tg
-            .fec
-            .clone()
-            .unwrap_or(if is_tofino2 && speed == Speed::BF_SPEED_400G {
+        let fec = tg.fec.clone().unwrap_or(
+            if is_tofino2
+                && (speed == Speed::BF_SPEED_400G
+                    || tg.breakout_mode == Some(true) && speed == Speed::BF_SPEED_100G)
+            {
                 FEC::BF_FEC_TYP_REED_SOLOMON
             } else {
                 FEC::BF_FEC_TYP_NONE
-            });
+            },
+        );
 
-        let (channels, per_channel_speed) =
-            breakout_mapping(&speed, tg.breakout_mode.unwrap_or(false));
+        let (channels, per_channel_speed, n_lanes) =
+            breakout_mapping(&speed, tg.breakout_mode.unwrap_or(false), is_tofino2);
 
         if tg.breakout_mode == Some(true) && channels.len() == 1 {
             // Invalid speed configured for breakout mode
             tg.breakout_mode = Some(false);
-            warn!("Invalid port speed for breakout mode on port configured. Only 100G and 40G are possible. Falling back to single channel.");
+            warn!("Invalid port speed for breakout mode on port configured. Only 400G (Tofino 2), 100G and 40G are possible. Falling back to single channel.");
         }
 
         for c in channels {
@@ -153,6 +155,9 @@ async fn configure_ports(
 
             if loopback_mode {
                 req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+            }
+            if let Some(n) = n_lanes {
+                req = req.n_lanes(n);
             }
 
             port_requests.push(req);
@@ -232,14 +237,19 @@ async fn configure_ports(
 
         let base_speed = get_base_speed(tg_cfg, is_tofino2);
         let breakout = tg_cfg.breakout_mode.unwrap_or(false);
-        let (channels, _) = breakout_mapping(&base_speed, breakout);
+        let (channels, per_channel_speed, n_lanes) =
+            breakout_mapping(&base_speed, breakout, is_tofino2);
 
         let choice = per_tg_choice
             .get(tg_port)
             .expect("internal: missing recirc choice");
 
         let fec = if breakout {
-            FEC::BF_FEC_TYP_NONE
+            if per_channel_speed == Speed::BF_SPEED_100G {
+                FEC::BF_FEC_TYP_REED_SOLOMON
+            } else {
+                FEC::BF_FEC_TYP_NONE
+            }
         } else if is_tofino2 {
             FEC::BF_FEC_TYP_REED_SOLOMON
         } else {
@@ -248,7 +258,11 @@ async fn configure_ports(
 
         // Always use maximum possible rate for recirculation ports
         let speed = if breakout {
-            Speed::BF_SPEED_25G
+            if per_channel_speed == Speed::BF_SPEED_100G {
+                Speed::BF_SPEED_100G
+            } else {
+                Speed::BF_SPEED_25G
+            }
         } else if is_tofino2 {
             Speed::BF_SPEED_400G
         } else {
@@ -257,25 +271,29 @@ async fn configure_ports(
 
         for &ch in &channels {
             if added_recirc_once.insert((choice.tx_port, ch as u32)) {
-                port_requests.push(
-                    Port::new(choice.tx_port, ch)
-                        .speed(speed.clone())
-                        .fec(fec.clone())
-                        .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
-                        .loopback(Loopback::BF_LPBK_MAC_NEAR),
-                );
+                let mut port_req = Port::new(choice.tx_port, ch)
+                    .speed(speed.clone())
+                    .fec(fec.clone())
+                    .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
+                    .loopback(Loopback::BF_LPBK_MAC_NEAR);
+                if let Some(n) = n_lanes {
+                    port_req = port_req.n_lanes(n);
+                }
+                port_requests.push(port_req);
             }
         }
 
         for &ch in &channels {
             if added_recirc_once.insert((choice.rx_port, ch as u32)) {
-                port_requests.push(
-                    Port::new(choice.rx_port, ch)
-                        .speed(speed.clone())
-                        .fec(fec.clone())
-                        .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
-                        .loopback(Loopback::BF_LPBK_MAC_NEAR),
-                );
+                let mut port_req = Port::new(choice.rx_port, ch)
+                    .speed(speed.clone())
+                    .fec(fec.clone())
+                    .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
+                    .loopback(Loopback::BF_LPBK_MAC_NEAR);
+                if let Some(n) = n_lanes {
+                    port_req = port_req.n_lanes(n);
+                }
+                port_requests.push(port_req);
             }
         }
     }
@@ -296,7 +314,8 @@ async fn configure_ports(
 
         let base_speed = get_base_speed(tg_cfg, is_tofino2);
         let breakout = tg_cfg.breakout_mode.unwrap_or(false);
-        let (channels, _per_ch_speed) = breakout_mapping(&base_speed, breakout);
+        let (channels, _per_ch_speed, _n_lanes) =
+            breakout_mapping(&base_speed, breakout, is_tofino2);
 
         let choice = per_tg_choice
             .get(tg_port)
