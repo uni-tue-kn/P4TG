@@ -20,7 +20,7 @@
 import React, { useEffect, useState } from 'react'
 import Loader from "../components/Loader";
 import { get, post } from '../common/API'
-import { Button, Col, Form, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
+import { Button, Col, Dropdown, Form, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
 import { ASIC, FEC, P4TGConfig, P4TGInfos, SPEED } from "../common/Interfaces";
@@ -153,7 +153,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             <thead className={"table-dark"}>
                 <tr>
                     <th>PID</th>
-                    <th>Port</th>
+                    <th>Port/Channel</th>
                     <th>MAC &nbsp; <InfoBox>
                         <p>MAC address that is used to answer ARP requests (if enabled). The address can be changed in the config.json file of the controller.</p>
                     </InfoBox>
@@ -178,7 +178,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                         return <tr key={i}>
                             <StyledCol className={"col-1"}>{v["pid"]}</StyledCol>
                             <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>
-                            <StyledCol className={"col-2"}>{getMac(v['port'])}</StyledCol>
+                            <StyledCol className={"col-1"}>{getMac(v['port'])}</StyledCol>
                             <StyledCol className={"col-1 align-items-center"}>
                                 <OverlayTrigger
                                     placement="top"
@@ -197,66 +197,232 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                     </span>
                                 </OverlayTrigger>
                             </StyledCol>
-                            <StyledCol className={"col-2"}>
-                                <Form.Select onChange={async (event: any) => {
-                                    let fec = v.fec
+                            <StyledCol className={"col-1"}>
+                                <Dropdown>
+                                    <Dropdown.Toggle
+                                        as="div"
+                                        id={`speed-${v.pid}`}
+                                        className="form-select text-start"
+                                        style={{ cursor: "pointer" }}
+                                    >
+                                        {speed_mapping[v.speed]}
+                                    </Dropdown.Toggle>
 
-                                    // 400G requires RS
-                                    if (event.target.value == SPEED.BF_SPEED_400G) {
-                                        fec = FEC.BF_FEC_TYP_REED_SOLOMON
-                                    }
+                                    <Dropdown.Menu className="w-100">
+                                        {Object.keys(speed_mapping)
+                                            .filter(f => {
+                                                // Hide 400G unless Tofino2
+                                                if (f == SPEED.BF_SPEED_400G && p4tg_infos.asic != ASIC.Tofino2) {
+                                                    return false
+                                                }
 
-                                    // 10G & 40G does not allow RS
-                                    if ((event.target.value == SPEED.BF_SPEED_10G || event.target.value == SPEED.BF_SPEED_40G) && v.fec == FEC.BF_FEC_TYP_REED_SOLOMON) {
-                                        fec = FEC.BF_FEC_TYP_NONE
-                                    }
+                                                const breakout = getBreakoutMode(v.port)
 
-                                    // 100G does not allow FC
-                                    if (event.target.value == SPEED.BF_SPEED_100G && v.fec == FEC.BF_FEC_TYP_FC) {
-                                        fec = FEC.BF_FEC_TYP_NONE
-                                    }
+                                                // In breakout mode show only 10/25/100
+                                                if (breakout) {
+                                                    return (
+                                                        f == SPEED.BF_SPEED_10G ||
+                                                        f == SPEED.BF_SPEED_25G ||
+                                                        f == SPEED.BF_SPEED_100G
+                                                    )
+                                                }
 
-                                    await updatePort(v.port, event.target.value, fec, v.auto_neg, getBreakoutMode(v.port), v.channel)
-                                }}>
-                                    {Object.keys(speed_mapping).map(f => {
-                                        if (f == SPEED.BF_SPEED_400G && p4tg_infos.asic != ASIC.Tofino2) {
-                                            return
-                                        }
-                                        if (getBreakoutMode(v.port) && f != SPEED.BF_SPEED_10G && f != SPEED.BF_SPEED_25G) {
-                                            return
-                                        }
+                                                return true
+                                            })
+                                            .map(f => {
+                                                const breakout = getBreakoutMode(v.port)
+                                                const current = v.speed
 
-                                        return <option selected={f == v.speed}
-                                            value={f}>{speed_mapping[f]}</option>
-                                    })}
-                                </Form.Select>
+                                                const is10 = f == SPEED.BF_SPEED_10G
+                                                const is25 = f == SPEED.BF_SPEED_25G
+                                                const is100 = f == SPEED.BF_SPEED_100G
+
+                                                const currentIs10or25 =
+                                                    current == SPEED.BF_SPEED_10G || current == SPEED.BF_SPEED_25G
+                                                const currentIs100 = current == SPEED.BF_SPEED_100G
+
+                                                let disabled = false
+                                                let tooltip = ""
+
+                                                // If v.speed is 10G or 25G → show 10/25/100, but disable 100G
+                                                if (breakout && currentIs10or25 && is100) {
+                                                    disabled = true
+                                                    tooltip =
+                                                        "100G is disabled while this port is in 10G/25G breakout mode (configurable in config.json)."
+                                                }
+
+                                                // If breakout enabled and v.speed is 100G → disable 10G and 25G
+                                                if (breakout && currentIs100 && (is10 || is25)) {
+                                                    disabled = true
+                                                    tooltip =
+                                                        "10G and 25G are disabled while this port is in 100G breakout mode (configurable in config.json)."
+                                                }
+
+                                                const handleClick = async () => {
+                                                    if (disabled) return
+
+                                                    let fec = v.fec
+
+                                                    // 400G requires RS
+                                                    if (f == SPEED.BF_SPEED_400G) {
+                                                        fec = FEC.BF_FEC_TYP_REED_SOLOMON
+                                                    }
+
+                                                    // 10G & 40G do not allow RS
+                                                    if (
+                                                        (f == SPEED.BF_SPEED_10G || f == SPEED.BF_SPEED_40G) &&
+                                                        v.fec == FEC.BF_FEC_TYP_REED_SOLOMON
+                                                    ) {
+                                                        fec = FEC.BF_FEC_TYP_NONE
+                                                    }
+
+                                                    // 100G does not allow FC
+                                                    if (f == SPEED.BF_SPEED_100G && v.fec == FEC.BF_FEC_TYP_FC) {
+                                                        fec = FEC.BF_FEC_TYP_NONE
+                                                    }
+
+                                                    await updatePort(
+                                                        v.port,
+                                                        f,
+                                                        fec,
+                                                        v.auto_neg,
+                                                        getBreakoutMode(v.port),
+                                                        v.channel
+                                                    )
+                                                }
+
+                                                const item = (
+                                                    <Dropdown.Item
+                                                        as="button"
+                                                        key={f}
+                                                        eventKey={f}
+                                                        active={f == v.speed}
+                                                        disabled={disabled}
+                                                        onClick={handleClick}
+                                                        style={{ cursor: disabled ? "not-allowed" : "pointer" }}
+                                                    >
+                                                        {speed_mapping[f]}
+                                                    </Dropdown.Item>
+                                                )
+
+                                                if (!disabled) return item
+
+                                                // Disabled → wrap with tooltip
+                                                return (
+                                                    <OverlayTrigger
+                                                        key={f}
+                                                        placement="right"
+                                                        overlay={props =>
+                                                            renderTooltip(
+                                                                props,
+                                                                tooltip || "Breakout mode can be configured in config.json."
+                                                            )
+                                                        }
+                                                    >
+                                                        <span className="d-inline-block">{item}</span>
+                                                    </OverlayTrigger>
+                                                )
+                                            })}
+                                    </Dropdown.Menu>
+                                </Dropdown>
+
+
                             </StyledCol>
-                            <StyledCol className={"col-2"}>
-                                <Form.Select onChange={async (event: any) => {
-                                    await updatePort(v["port"], v["speed"], v["fec"], event.target.value, getBreakoutMode(v.port), v.channel)
-                                }}>
-                                    {Object.keys(auto_neg_mapping).map(f => {
-                                        return <option selected={f == v["auto_neg"]}
-                                            value={f}>{auto_neg_mapping[f]}</option>
-                                    })}
-                                </Form.Select></StyledCol>
-                            <StyledCol className={"col-2"}><Form.Select onChange={async (event: any) => {
-                                await updatePort(v["port"], v["speed"], event.target.value, v["auto_neg"], getBreakoutMode(v.port), v.channel)
-                            }}>
-                                {Object.keys(fec_mapping).map(f => {
-                                    if (f != FEC.BF_FEC_TYP_REED_SOLOMON && v.speed == SPEED.BF_SPEED_400G) {
-                                        return
-                                    }
+                            <StyledCol className={"col-1"}>
+                                <Dropdown>
+                                    <Dropdown.Toggle
+                                        as="div"
+                                        id={`autoneg-${v.pid}`}
+                                        className="form-select text-start"
+                                        style={{ cursor: "pointer" }}
+                                    >
+                                        {auto_neg_mapping[v.auto_neg]}
+                                    </Dropdown.Toggle>
 
-                                    if (f == FEC.BF_FEC_TYP_REED_SOLOMON && (v.speed == SPEED.BF_SPEED_10G || v.speed == SPEED.BF_SPEED_40G)) {
-                                        return
-                                    }
+                                    <Dropdown.Menu className="w-100">
+                                        {Object.keys(auto_neg_mapping).map(f => {
+                                            const handleClick = async () => {
+                                                await updatePort(
+                                                    v.port,
+                                                    v.speed,
+                                                    v.fec,
+                                                    f, // this is the new auto-neg value
+                                                    getBreakoutMode(v.port),
+                                                    v.channel
+                                                )
+                                            }
 
-                                    if (f != FEC.BF_FEC_TYP_FC || v.speed != SPEED.BF_SPEED_100G) {
-                                        return <option selected={f == v["fec"]} value={f}>{fec_mapping[f]}</option>
-                                    }
-                                })}
-                            </Form.Select>
+                                            return (
+                                                <Dropdown.Item
+                                                    as="button"
+                                                    key={f}
+                                                    eventKey={f}
+                                                    active={f == v.auto_neg}
+                                                    onClick={handleClick}
+                                                >
+                                                    {auto_neg_mapping[f]}
+                                                </Dropdown.Item>
+                                            )
+                                        })}
+                                    </Dropdown.Menu>
+                                </Dropdown>
+
+                            </StyledCol>
+                            <StyledCol className={"col-1"}>
+                                <Dropdown>
+                                    <Dropdown.Toggle
+                                        as="div"
+                                        id={`fec-${v.pid}`}
+                                        className="form-select text-start"
+                                        style={{ cursor: "pointer" }}
+                                    >
+                                        {fec_mapping[v.fec]}
+                                    </Dropdown.Toggle>
+
+                                    <Dropdown.Menu className="w-100">
+                                        {Object.keys(fec_mapping).map(f => {
+                                            // 400G → only RS allowed
+                                            if (f != FEC.BF_FEC_TYP_REED_SOLOMON && v.speed == SPEED.BF_SPEED_400G) {
+                                                return null
+                                            }
+
+                                            // 10G/40G → RS not allowed
+                                            if (f == FEC.BF_FEC_TYP_REED_SOLOMON &&
+                                                (v.speed == SPEED.BF_SPEED_10G || v.speed == SPEED.BF_SPEED_40G)) {
+                                                return null
+                                            }
+
+                                            // 100G → FC not allowed
+                                            if (f == FEC.BF_FEC_TYP_FC && v.speed == SPEED.BF_SPEED_100G) {
+                                                return null
+                                            }
+
+                                            const handleClick = async () => {
+                                                await updatePort(
+                                                    v.port,
+                                                    v.speed,
+                                                    f, // <-- new fec value
+                                                    v.auto_neg,
+                                                    getBreakoutMode(v.port),
+                                                    v.channel
+                                                )
+                                            }
+
+                                            return (
+                                                <Dropdown.Item
+                                                    as="button"
+                                                    key={f}
+                                                    eventKey={f}
+                                                    active={f == v.fec}
+                                                    onClick={handleClick}
+                                                >
+                                                    {fec_mapping[f]}
+                                                </Dropdown.Item>
+                                            )
+                                        })}
+                                    </Dropdown.Menu>
+                                </Dropdown>
+
                             </StyledCol>
                             <StyledCol className={"col-1"}>
                                 <Form.Check
