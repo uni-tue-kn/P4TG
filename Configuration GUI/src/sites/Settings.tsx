@@ -612,10 +612,18 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
 
     const handleRenameTab = (oldName: string, newName: string) => {
-        if (!newName || newName === oldName || savedConfigs[newName]) {
-            // Invalid name or name already exists
+        const trimmed = newName.trim();
+
+        if (!trimmed) {
+            showToast("Name already exists or is invalid.", "warning");
+            return;
+        }
+        if (trimmed === oldName) {
             setRenamingTab(null);
             setRenameValue("");
+            return;
+        }
+        if (savedConfigs[trimmed]) {
             showToast("Name already exists or is invalid.", "warning");
             return;
         }
@@ -623,14 +631,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         const updatedConfigs: Record<string, TrafficGenData> = {};
         Object.entries(savedConfigs).forEach(([k, v]) => {
             if (k === oldName) {
-                updatedConfigs[newName] = v;
+                updatedConfigs[trimmed] = v;
             } else {
                 updatedConfigs[k] = v;
             }
         });
         setSavedConfigs(updatedConfigs);
         localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
-        setActiveConfigName(newName);
+        setActiveConfigName(trimmed);
         setRenamingTab(null);
         setRenameValue("");
     };
@@ -640,6 +648,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const totalRate = getTotalActiveStreamRate(streams, stream_settings);
     const maxRate = p4tg_infos.asic === ASIC.Tofino1 ? 100 : 400;
     const rateExceeded = totalRate > maxRate;
+
+    const patternSrc = (name: string, variant: "light" | "dark") =>
+        `${process.env.PUBLIC_URL}/patterns/${name}_${variant}.png`;
+    const patternNames = ["sine", "sawtooth", "triangle", "square", "flashcrowd"];
 
     // @ts-ignore
     return <Loader loaded={loaded}>
@@ -655,19 +667,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                             eventKey={name}
                             active={activeConfigName === name}
                             disabled={running}
-                            onDoubleClick={() => {
-                                if (running) return;
-                                setRenamingTab(name);
-                                setRenameValue(name);
-                            }}
                             style={{ userSelect: "none" }}
                         >
                             {renamingTab === name ? (
-                                // Double clicked on tab --> open rename input field
                                 <Form
                                     style={{ display: "inline-flex", alignItems: "center" }}
                                     onSubmit={e => {
                                         e.preventDefault();
+                                        e.stopPropagation();
                                         if (renameValue.length > 20) {
                                             showToast("Name too long (max 20 characters).", "warning");
                                             return;
@@ -681,17 +688,68 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         value={renameValue}
                                         maxLength={20}
                                         onChange={e => setRenameValue(e.target.value.slice(0, 20))}
-                                        onBlur={() => handleRenameTab(name, renameValue)}
                                         style={{ width: "90px", display: "inline-block", marginRight: "4px", padding: "0px 4px" }}
                                         disabled={running}
                                         // This line is required to enable spaces in input
                                         onKeyDown={e => e.stopPropagation()}
                                     />
+                                    {/* Rename Button */}
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline-success"
+                                        disabled={running}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            if (renameValue.length > 20) {
+                                                showToast("Name too long (max 20 characters).", "warning");
+                                                return;
+                                            }
+                                            handleRenameTab(name, renameValue);
+                                        }}
+                                        style={{
+                                            padding: "0px",
+                                            borderWidth: "1px",
+                                            width: "28px",
+                                            height: "20px",
+                                            display: "flex",
+                                            justifyContent: "center",
+                                            alignItems: "center",
+                                            marginLeft: "4px"
+                                        }}
+                                        title="Save name"
+                                    >
+                                        <i className="bi bi-check" />
+                                    </Button>
                                 </Form>
                             ) : (
                                 <>
                                     {name}
+                                    {/* Save name Button */}
                                     <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "5px", gap: "4px" }}>
+                                        <Button
+                                            size="sm"
+                                            disabled={running}
+                                            variant="outline-secondary"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setRenamingTab(name);
+                                                setRenameValue(name);
+                                            }}
+                                            style={{
+                                                padding: "0px",
+                                                borderWidth: "1px",
+                                                width: "20px",
+                                                height: "20px",
+                                                display: "flex",
+                                                justifyContent: "center",
+                                                alignItems: "center",
+                                            }}
+                                            title="Rename Test"
+                                        >
+                                            <i className="bi bi-pencil" />
+                                        </Button>
                                         {/* Clone Button */}
                                         <Button
                                             size="sm"
@@ -906,6 +964,37 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                     </span>
 
                                                     Rate
+                                                </th>
+                                                <th>Pattern &nbsp;
+                                                    <InfoBox>
+                                                        <>
+                                                            <h5>Pattern Generation</h5>
+
+                                                            <p>With this setting, generated traffic will be shaped into a periodic pattern.
+                                                                The maximum possible period depends on the packet rate and on the frame size.</p>
+
+                                                            {patternNames.map((pattern) => (
+                                                                <div key={pattern} style={{ marginBottom: "8px" }}>
+                                                                    <h6 style={{ textTransform: "capitalize" }}>{pattern}</h6>
+                                                                    <div>
+                                                                        <img
+                                                                            className="pattern-light"
+                                                                            src={patternSrc(pattern, "light")}
+                                                                            alt={`${pattern} pattern`}
+                                                                            style={{ maxWidth: "100%" }}
+                                                                        />
+                                                                        <img
+                                                                            className="pattern-dark"
+                                                                            src={patternSrc(pattern, "dark")}
+                                                                            alt={`${pattern} pattern`}
+                                                                            style={{ maxWidth: "100%" }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+
+                                                        </>
+                                                    </InfoBox>
                                                 </th>
                                                 <th>Mode &nbsp;
                                                     <InfoBox>

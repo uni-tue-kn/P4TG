@@ -28,7 +28,9 @@ import {
     StreamSettings,
     P4TGInfos,
     ASIC,
-    GenerationUnit
+    GenerationUnit,
+    GenerationPattern,
+    GenerationPatternConfig
 } from "../../common/Interfaces";
 import React, { useState } from "react";
 import { Button, Col, Form, InputGroup, Row } from "react-bootstrap";
@@ -57,6 +59,7 @@ const StreamElement = ({
     const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
     const [number_of_srv6_sids, set_number_of_srv6_sids] = useState(data.number_of_srv6_sids)
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
+    const [patternConfig, setPatternConfig] = useState<GenerationPatternConfig | null>(data.pattern ?? null)
 
     // Used to store VxLAN and IP Version setting. VxLAN must be disabled on changing IP version
     const [formData, setFormData] = useState({ ...data });
@@ -203,6 +206,22 @@ const StreamElement = ({
         data.srv6_ip_tunneling = !data.srv6_ip_tunneling;
     }
 
+    const handlePatternTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        if (event.target.value === "") {
+            setPatternConfig(null);
+            data.pattern = null;
+            return;
+        }
+
+        const updatedConfig: GenerationPatternConfig = {
+            pattern_type: event.target.value as GenerationPattern,
+            period: patternConfig?.period ?? 20
+        };
+
+        setPatternConfig(updatedConfig);
+        data.pattern = updatedConfig;
+    }
+
     return <tr>
         <StyledCol>{data.app_id}</StyledCol>
         <StyledCol>
@@ -242,6 +261,46 @@ const StreamElement = ({
                     <option selected={GenerationUnit.Mpps === data.unit} value={GenerationUnit.Mpps}>Mpps</option>
                 </Form.Select>
             </InputGroup>
+        </StyledCol>
+        <StyledCol>
+            <div className="d-flex align-items-center gap-2">
+                <Form.Select disabled={running} required style={{ maxWidth: "150px" }}
+                    onChange={handlePatternTypeChange}>
+                    <option selected={patternConfig == null} value={""}>None</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Sine} value={GenerationPattern.Sine}>Sine</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Sawtooth} value={GenerationPattern.Sawtooth}>Sawtooth</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Triangle} value={GenerationPattern.Triangle}>Triangle</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Square} value={GenerationPattern.Square}>Square</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Flashcrowd} value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
+                </Form.Select>
+                {patternConfig != null ?
+                    <InputGroup style={{ maxWidth: "180px" }}>
+                        <InputGroup.Text>Period (s)</InputGroup.Text>
+                        <Form.Control
+                            disabled={running}
+                            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                                if (patternConfig == null) {
+                                    return;
+                                }
+                                const updatedPattern: GenerationPatternConfig = {
+                                    ...patternConfig,
+                                    period: parseFloat(event.target.value)
+                                }
+                                setPatternConfig(updatedPattern);
+                                data.pattern = updatedPattern;
+                            }}
+                            required
+                            min={"0"}
+                            step={"any"}
+                            type={"number"}
+                            placeholder="Period (s)"
+                            value={patternConfig.period}
+                        />
+                    </InputGroup>
+                    :
+                    null
+                }
+            </div>
         </StyledCol>
         <StyledCol>
             <tr>

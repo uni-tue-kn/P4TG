@@ -266,6 +266,7 @@ export interface Stream {
     burst: number,
     batches: boolean,
     unit: GenerationUnit,
+    pattern: GenerationPatternConfig | null,
 }
 
 export const DefaultMPLSHeader = () => {
@@ -291,7 +292,8 @@ export const DefaultStream = (id: number) => {
         batches: true,
         vxlan: false,
         ip_version: 4,
-        unit: GenerationUnit.Gbps
+        unit: GenerationUnit.Gbps,
+        pattern: null,
     }
 
     return stream
@@ -424,6 +426,19 @@ export interface PortInfo {
     speed: SPEED,
     enable: boolean,
     fec: FEC,
+}
+
+export interface GenerationPatternConfig {
+    pattern_type: GenerationPattern,
+    period: number,
+}
+
+export enum GenerationPattern {
+    Sine = "Sine",
+    Square = "Square",
+    Triangle = "Triangle",
+    Sawtooth = "Sawtooth",
+    Flashcrowd = "Flashcrowd",
 }
 
 export type ToastVariant = "success" | "danger" | "info" | "warning"
