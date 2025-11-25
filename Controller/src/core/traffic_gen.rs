@@ -22,10 +22,11 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
-use crate::core::create_simple_multicast_group;
 use crate::core::multicast::delete_simple_multicast_group;
+use crate::core::patterns::build_pattern_config_entry;
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::core::traffic_gen_core::types::{Stream, StreamSetting};
+use crate::core::{build_pattern_generation_entries, create_simple_multicast_group};
 use crate::error::P4TGError;
 use crate::{AppState, PortMapping};
 use log::info;
@@ -35,7 +36,7 @@ use rbfrt::table::{MatchValue, Request};
 use rbfrt::{table, SwitchConnection};
 
 use crate::core::traffic_gen_core::const_definitions::*;
-use crate::core::traffic_gen_core::helper::{calculate_overhead, create_packet};
+use crate::core::traffic_gen_core::helper::{calculate_overhead, create_packet, mpps_to_gbps};
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
 
@@ -677,8 +678,7 @@ impl TrafficGen {
             .iter()
             .map(|x| {
                 if x.unit == Some(GenerationUnit::Mpps) || mode == GenerationMode::Mpps {
-                    (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate
-                        / 1000f32
+                    mpps_to_gbps(x.frame_size + calculate_overhead(x) + 20, x.traffic_rate)
                 } else {
                     x.traffic_rate
                 }
@@ -697,6 +697,7 @@ impl TrafficGen {
 
             // For minimal sized IPv6 frames, the size is 73 bytes + 4 FCS
             if s.ip_version == Some(6) && s.frame_size == 64 {
+                // TODO do we need FCS + IFG here again?
                 s.frame_size = 73 + 4;
             }
 
@@ -704,7 +705,7 @@ impl TrafficGen {
             // rewrite traffic rate to reflect MPPS in Gbps
             if s.unit == Some(GenerationUnit::Mpps) || mode == GenerationMode::Mpps {
                 // recompute "correct" traffic rate in Gbps
-                s.traffic_rate = (s.frame_size + encapsulation_overhead) as f32 * 8f32 * s.traffic_rate / 1000f32;
+                s.traffic_rate = mpps_to_gbps(s.frame_size + encapsulation_overhead, s.traffic_rate);
             }
 
             // call solver
@@ -735,7 +736,7 @@ impl TrafficGen {
             })?;
             let encap_overhead = 20 + calculate_overhead(stream);
 
-            let (n_packets, timeout) = calculate_send_behaviour(
+            let (n_packets, mut timeout) = calculate_send_behaviour(
                 stream.frame_size + encap_overhead,
                 if self.is_tofino2 {
                     TG_MAX_RATE_TF2
@@ -744,6 +745,14 @@ impl TrafficGen {
                 } / self.num_pipes as f32,
                 25,
             );
+
+            // More bursty traffic desired. Activate batch mode
+            timeout = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
+                timeout * BATCH_FACTOR
+            } else {
+                timeout
+            };
+
             active_streams
                 .get_mut(0)
                 .ok_or(P4TGError::Error {
@@ -797,6 +806,48 @@ impl TrafficGen {
                 }
             })
             .collect();
+
+        let mut pattern_entries = vec![];
+        for stream in &active_streams {
+            if let Some(pattern_config) = stream.pattern.clone() {
+                let encapsulation_overhead = calculate_overhead(stream);
+                // preamble + inter frame gap (IFG) = 20 bytes
+                let encapsulation_overhead = encapsulation_overhead + 20;
+
+                // For minimal sized IPv6 frames, the size is 73 bytes + 4 FCS
+                let total_frame_size = if stream.ip_version == Some(6) && stream.frame_size == 64 {
+                    encapsulation_overhead + 73 + 4
+                } else {
+                    encapsulation_overhead + stream.frame_size
+                };
+
+                let (period_pkts, entries) = build_pattern_generation_entries(
+                    stream.app_id,
+                    pattern_config,
+                    (stream.traffic_rate * stream.generation_accuracy.unwrap_or(100.0) / 100.0)
+                        as f64,
+                    total_frame_size,
+                    self.num_pipes as f64,
+                );
+
+                if pattern_entries.len() + entries.len() > MAX_PATTERN_TABLE_ENTRIES {
+                    return Err(P4TGError::Error {
+                    message: format!("Too many pattern table entries required for stream {}. Reduce the number of streams, the rate, or the period for traffic patterns.", stream.app_id),
+                }
+                .into());
+                } else {
+                    let config_req = build_pattern_config_entry(stream.app_id, period_pkts);
+                    pattern_entries.push(config_req);
+                    pattern_entries.extend(entries);
+                }
+            }
+        }
+
+        info!("Writing {} pattern table entries.", pattern_entries.len());
+
+        if !pattern_entries.is_empty() {
+            switch.write_table_entries(pattern_entries).await?;
+        }
 
         // configure egress table rules
         // we dont want to rewrite tx seq and timestamp of potential
@@ -1196,7 +1247,7 @@ impl TrafficGen {
             let pkt_len = p.bytes.len() as u32;
 
             // 16B alignment for buffer_offset
-            if buffer_offset % 16 != 0 {
+            if !buffer_offset.is_multiple_of(16) {
                 buffer_offset += 16 - (buffer_offset % 16);
             }
 
@@ -1253,6 +1304,9 @@ impl TrafficGen {
                     SRV6_HEADER_REPLACE_TABLE,
                     ETHERNET_IP_HEADER_REPLACE_TABLE,
                     DEFAULT_FORWARD_TABLE,
+                    PATTERN_TABLE,
+                    PATTERN_CONFIG_TABLE,
+                    PATTERN_INTERVAL_REGISTER,
                 ])
                 .await?;
         } else {
@@ -1265,6 +1319,9 @@ impl TrafficGen {
                     MPLS_HEADER_REPLACE_TABLE,
                     ETHERNET_IP_HEADER_REPLACE_TABLE,
                     DEFAULT_FORWARD_TABLE,
+                    PATTERN_TABLE,
+                    PATTERN_CONFIG_TABLE,
+                    PATTERN_INTERVAL_REGISTER,
                 ])
                 .await?;
         }
