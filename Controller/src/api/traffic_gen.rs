@@ -26,7 +26,9 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
+use rbfrt::error::RBFRTError;
 use serde::Deserialize;
+use serde_json::json;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -146,10 +148,22 @@ pub async fn configure_traffic_gen(
             // Just start a single test.
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
             match validate_request(&traffic_gen_data, port_mapping, is_tofino2) {
-                Ok(r) => {
+                Ok(_) => {
                     info!("Test validation successful.");
-                    start_single_test(&state, traffic_gen_data).await;
-                    (StatusCode::OK, Json(r)).into_response()
+                    match start_single_test(&state, traffic_gen_data).await {
+                        Ok(streams) => (StatusCode::OK, Json(streams)).into_response(),
+                        Err(e) => {
+                            let body = match &e {
+                                RBFRTError::GenericError { message } => {
+                                    info!("{message}");
+                                    json!({ "message": message })
+                                }
+                                _ => json!({ "message": e.to_string() }),
+                            };
+
+                            (StatusCode::BAD_REQUEST, Json(body)).into_response()
+                        }
+                    }
                 }
                 Err(e) => (StatusCode::BAD_REQUEST, Json(e)).into_response(),
             }
@@ -181,7 +195,10 @@ pub async fn configure_traffic_gen(
     }
 }
 
-pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -> Response {
+pub async fn start_single_test(
+    state: &Arc<AppState>,
+    payload: TrafficGenData,
+) -> Result<Vec<Stream>, RBFRTError> {
     let port_mapping = &state.port_mapping;
 
     let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(port_mapping);
@@ -293,13 +310,9 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
             }
 
             info!("Traffic generation started.");
-            (StatusCode::OK, Json(streams)).into_response()
+            Ok(streams)
         }
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(Error::new(format!("{err:#?}"))),
-        )
-            .into_response(),
+        Err(err) => Err(err),
     }
 }
 

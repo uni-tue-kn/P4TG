@@ -322,6 +322,8 @@ pub struct Stream {
     pub srv6_ip_tunneling: Option<bool>,
     /// Unit for stream generation, e.g., Gbps, Mbps, Mpps
     pub unit: Option<GenerationUnit>,
+    /// Traffic shaping pattern applied to this stream
+    pub pattern: Option<GenerationPatternConfig>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -333,4 +335,21 @@ pub struct EmptyResponse {
 #[derive(Serialize, ToSchema)]
 pub struct Reset {
     pub(crate) message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct GenerationPatternConfig {
+    // The type of this pattern
+    pub pattern_type: GenerationPattern,
+    // The period of this pattern in seconds
+    pub period: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub enum GenerationPattern {
+    Sine,
+    Square,
+    Triangle,
+    Sawtooth,
+    Flashcrowd,
 }

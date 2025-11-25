@@ -142,3 +142,14 @@ pub const BATCH_FACTOR: u32 = 5;
 
 /// Mask to remove the channel number from a dev port
 pub const REMOVE_PORT_CHANNEL_MASK: u32 = 0xFFFFFFF8;
+
+/// Table used for pattern shaping
+pub const PATTERN_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_generation";
+
+/// Table used to store pattern configuration
+pub const PATTERN_CONFIG_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_config";
+
+/// Maximum number of table entries we are allowed to program.
+pub const MAX_PATTERN_TABLE_ENTRIES: usize = 8192;
+
+pub const PATTERN_INTERVAL_REGISTER: &str = "ingress.p4tg.pattern_shaping.pattern_interval_number";

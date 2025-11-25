@@ -645,3 +645,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
         }
     }
 }
+
+pub fn mpps_to_gbps(total_frame_size: u32, rate_gbps: f32) -> f32 {
+    total_frame_size as f32 * 8f32 * rate_gbps / 1000f32
+}

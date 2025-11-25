@@ -29,7 +29,7 @@ use crate::core::traffic_gen_core::const_definitions::{
     RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
 use crate::core::traffic_gen_core::helper::{
-    calculate_overhead, generate_front_panel_to_dev_port_mappings,
+    calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
@@ -330,7 +330,7 @@ pub fn validate_request(
         .iter()
         .map(|x| {
             if x.unit == Some(GenerationUnit::Mpps) || payload.mode == GenerationMode::Mpps {
-                (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
+                mpps_to_gbps(x.frame_size + calculate_overhead(x) + 20, x.traffic_rate)
             } else {
                 x.traffic_rate
             }
@@ -355,7 +355,42 @@ pub fn validate_request(
         validate_histogram(histogram_config, payload.name.clone())?;
     }
 
+    validate_patterns(&active_streams)?;
+
     Ok(active_streams)
+}
+
+pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
+    for s in active_streams.iter() {
+        if let Some(pattern) = &s.pattern {
+            // Period > 1
+            if pattern.period < 1.0 {
+                return Err(Error::new(format!(
+                    "Pattern period must be greater than one in stream with ID #{}.",
+                    s.stream_id
+                )));
+            }
+
+            // Period fits into range
+            let pps = match s.unit {
+                Some(GenerationUnit::Mpps) => s.traffic_rate * 1_000_000.0,
+
+                Some(GenerationUnit::Gbps) | None => {
+                    let frame_bits = (s.frame_size + calculate_overhead(s) + 20) as f32 * 8.0;
+                    (s.traffic_rate * 1e9) / frame_bits
+                }
+            };
+            let period_max = (u32::MAX as f64) / pps as f64;
+            if pattern.period > period_max {
+                return Err(Error::new(format!(
+                    "Pattern period too large in stream with ID #{}. Maximal period for configured traffic rate and frame size {} B is {} seconds.",
+                    s.stream_id, s.frame_size + calculate_overhead(s) + 20, period_max as u32
+                )));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub fn validate_histogram(
@@ -425,7 +460,7 @@ pub fn validate_histogram(
     Ok(())
 }
 
-/// Applies a ligher version of the range to ternary conversion algorithm.
+/// Applies a lighter version of the range to ternary conversion algorithm.
 /// This version only counts the number of required entries for validation.
 fn count_range_to_ternary_entries(start: u32, end: u32) -> u32 {
     let mut num_requests = 0;

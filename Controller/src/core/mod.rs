@@ -47,3 +47,6 @@ pub mod traffic_gen_core;
 pub use config::Config;
 
 pub use arp::Arp;
+
+pub mod patterns;
+pub use patterns::build_pattern_generation_entries;
