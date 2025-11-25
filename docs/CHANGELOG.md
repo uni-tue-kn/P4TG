@@ -1,14 +1,24 @@
 # Changelog 
 
-## v2.6.3
+## v2.7.0
 ### New features
+- Added periodic pattern shaping options: Sine, Triangle, Sawtooth, Square, Flashcrowd.
+  - Pattern shaping is applied entirely in the data plane.
+  - The period is configurable.
+  - Examples:
+
+  <img src="./img/shapes.jpeg" alt="Shapes" width="70%"/>
 - Added breakout mode for 400G -> 4x100G on Tofino 2, allowing up to 40x100G customizable traffic generation.
+- Added a rename button for names of tests to make the renaming more intuitive.
 
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
+- Fixed generated traffic exceeding the configured rate if using Poisson generation with Rate Precision mode and batches.
+- Fixed errors that get thrown after passing the API validation not being propagated to the frontend.
 
 ### Other
 - Rust version bump for CI and docker image to 1.91
+- Update Controller dependencies
 
 ## v2.6.2
 ### New features
