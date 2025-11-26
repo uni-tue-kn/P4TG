@@ -30,8 +30,8 @@ RUN apt update && \
 
 # Cache Rust dependencies
 COPY ${path}/Cargo.toml .
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release || true  # Pre-cache dependencies
+#RUN mkdir src && echo "fn main() {}" > src/main.rs
+#RUN cargo build --release || true  # Pre-cache dependencies
 
 # Copy actual Rust source
 COPY ${path}/src ./src
