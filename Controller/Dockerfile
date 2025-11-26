@@ -51,5 +51,8 @@ WORKDIR /app
 # Copy the compiled binary from the builder
 COPY --from=controller-builder /app/target/release/p4tg-controller /app
 
-# Entrypoint for the app with logging
-ENTRYPOINT ["/bin/bash", "-c", "RUST_LOG=none,p4tg_controller=info,rbfrt=info /app/p4tg-controller"]
+# Default logging configuration
+ENV RUST_LOG="none,p4tg_controller=info,rbfrt=info"
+
+# Entrypoint for the app (no shell indirection)
+ENTRYPOINT ["/app/p4tg-controller"]
