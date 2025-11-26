@@ -30,18 +30,18 @@ RUN apt update && \
 
 # Cache Rust dependencies
 COPY ${path}/Cargo.toml .
+# BREAKS THE CONTROLLER IMAGE SINCE VERSION 2.7.0 :(
 #RUN mkdir src && echo "fn main() {}" > src/main.rs
 #RUN cargo build --release || true  # Pre-cache dependencies
 
 # Copy actual Rust source
 COPY ${path}/src ./src
 
-# Copy GUI build output into Rust project if needed
+# Copy GUI build output into Rust project
 COPY --from=gui-builder /app/build ./gui_build
 
 # Build Rust app
 RUN cargo build --release
-
 
 ### === Stage 3: Runtime Image === ###
 FROM debian:bookworm

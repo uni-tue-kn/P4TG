@@ -52,22 +52,13 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    #- name: Controller Build with Buildx and Cache
-    #  run: |
-    #    docker buildx build \
-    #      --cache-from=type=registry,ref=unituekn/p4tg-controller:buildcache \
-    #      --cache-to=type=registry,ref=unituekn/p4tg-controller:buildcache,mode=max \
-    #      --tag unituekn/p4tg-controller:${{ steps.vars.outputs.tag }} \
-    #      --tag unituekn/p4tg-controller:${{ steps.version.outputs.version }} \
-    #      --file Controller/Dockerfile \
-    #      --push \
-    #      .
-    - name: Controller Build with Buildx (no cache, debug)
+    - name: Controller Build with Buildx and Cache
       run: |
         docker buildx build \
-          --no-cache \
+          --cache-from=type=registry,ref=unituekn/p4tg-controller:buildcache \
+          --cache-to=type=registry,ref=unituekn/p4tg-controller:buildcache,mode=max \
           --tag unituekn/p4tg-controller:${{ steps.vars.outputs.tag }} \
           --tag unituekn/p4tg-controller:${{ steps.version.outputs.version }} \
           --file Controller/Dockerfile \
           --push \
-          .    
+          .
