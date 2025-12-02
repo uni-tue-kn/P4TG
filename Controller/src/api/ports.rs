@@ -78,11 +78,6 @@ impl utoipa::PartialSchema for PortConfiguration {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PortStats {
-    pid: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ArpReply {
     front_panel_port: u32,
     arp_reply: bool,
@@ -133,7 +128,7 @@ pub async fn add_port(
     let pm = &state.pm;
 
     let front_panel_dev_port_mappings =
-        generate_front_panel_to_dev_port_mappings(&state.port_mapping);
+        generate_front_panel_to_dev_port_mappings(&state.port_mapping, state.tofino2);
 
     if !front_panel_dev_port_mappings.contains_key(&payload.front_panel_port) {
         return (
@@ -187,7 +182,7 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
     let mapping = &state.port_mapping;
 
     let front_panel_dev_port_mappings =
-        generate_front_panel_to_dev_port_mappings(&state.port_mapping);
+        generate_front_panel_to_dev_port_mappings(&state.port_mapping, state.tofino2);
 
     if !front_panel_dev_port_mappings.contains_key(&payload.front_panel_port) {
         return (
