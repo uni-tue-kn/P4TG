@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::core::config::PortDescription;
 use crate::core::traffic_gen_core::const_definitions::{
-    P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK, VX_LAN_UDP_PORT,
+    P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK, REMOVE_PORT_CHANNEL_MASK_TOFINO_2,
+    VX_LAN_UDP_PORT,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::{AppState, PortMapping};
@@ -14,13 +15,20 @@ use rbfrt::util::Speed;
 // Create a HashMap of front_panel -> dev_port from the port_mapping
 pub(crate) fn generate_front_panel_to_dev_port_mappings(
     port_mapping: &HashMap<u32, PortMapping>,
+    is_tofino2: bool,
 ) -> HashMap<u32, u32> {
+    let remove_port_channel_mask = if is_tofino2 {
+        REMOVE_PORT_CHANNEL_MASK_TOFINO_2
+    } else {
+        REMOVE_PORT_CHANNEL_MASK
+    };
+
     port_mapping
         .iter()
         .map(|(dev_port, mapping)| {
             (
                 mapping.front_panel_port,
-                *dev_port & REMOVE_PORT_CHANNEL_MASK, // Remove the last three bits to always store channel ID 0 for a front panel port
+                *dev_port & remove_port_channel_mask, // Remove the last three bits to always store channel ID 0 for a front panel port
             )
         })
         .collect()
@@ -37,15 +45,24 @@ pub(crate) fn generate_dev_port_to_front_panel_mappings(
 }
 
 /// Build dev_port -> (front_panel, channel) where the channel is encoded in the
-/// least-significant 3 bits of the dev port.
+/// least-significant 2/3 bits of the dev port.
 ///
 /// Example: if dev_port == 0b..._000 then channel = 0,
 ///          if dev_port == 0b..._101 then channel = 5, etc.
-pub(crate) fn derive_fpch(dev_to_fp: &HashMap<u32, u32>) -> HashMap<u32, (u32, u8)> {
+pub(crate) fn derive_fpch(
+    dev_to_fp: &HashMap<u32, u32>,
+    is_tofino2: bool,
+) -> HashMap<u32, (u32, u8)> {
     let mut dev_to_fpch = HashMap::with_capacity(dev_to_fp.len());
 
+    let channel_mask = if is_tofino2 {
+        !REMOVE_PORT_CHANNEL_MASK_TOFINO_2
+    } else {
+        !REMOVE_PORT_CHANNEL_MASK
+    };
+
     for (&dev, &fp) in dev_to_fp {
-        let ch = (dev & 0b111) as u8; // LSB 3 bits encode the channel (0..7)
+        let ch = (dev & channel_mask) as u8; // LSB 2/3 (Tofino2) bits encode the channel (0..7)
         dev_to_fpch.insert(dev, (fp, ch));
     }
 

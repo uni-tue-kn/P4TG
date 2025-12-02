@@ -65,9 +65,10 @@ impl StatisticsApi {
     pub fn to_api_statistics(
         core: &Statistics,             // core struct, contains only dev ports
         dev_to_fp: &HashMap<u32, u32>, // dev_port -> front_panel
+        is_tofino2: bool,
     ) -> StatisticsApi {
         // Deriving this mapping once would actually be nicer .....
-        let dev_to_fpch = derive_fpch(dev_to_fp);
+        let dev_to_fpch = derive_fpch(dev_to_fp, is_tofino2);
 
         StatisticsApi {
             sample_mode: core.sample_mode,
@@ -128,8 +129,9 @@ impl TimeStatisticsApi {
     fn to_api_time_statistics(
         core: &TimeStatistics,
         dev_to_fp: &HashMap<u32, u32>, // dev_port -> front_panel
+        is_tofino2: bool,
     ) -> TimeStatisticsApi {
-        let dev_to_fpch = derive_fpch(dev_to_fp);
+        let dev_to_fpch = derive_fpch(dev_to_fp, is_tofino2);
 
         TimeStatisticsApi {
             tx_rate_l1: remap_port_map(&core.tx_rate_l1, &dev_to_fpch),
@@ -297,7 +299,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
     let dev_to_fp = generate_dev_port_to_front_panel_mappings(port_mapping);
 
     // We get dev-port <-> stats from core. Translate it to front_panel/channel <-> stats and give this to API
-    let stats = StatisticsApi::to_api_statistics(&stats, &dev_to_fp);
+    let stats = StatisticsApi::to_api_statistics(&stats, &dev_to_fp, state.tofino2);
 
     // Filter for inactive ports
     let used_ports: HashSet<u32> = get_used_ports(state).await;
@@ -453,7 +455,8 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
 
     // Translate to API view (front_panel -> channel)
     // We get dev-port <-> stats from core. Translate it to front_panel/channel <-> stats and give this to API
-    let new_time_stats = TimeStatisticsApi::to_api_time_statistics(&new_time_stats, &dev_to_fp);
+    let new_time_stats =
+        TimeStatisticsApi::to_api_time_statistics(&new_time_stats, &dev_to_fp, state.tofino2);
 
     // Filter for inactive ports
     let used_ports: HashSet<u32> = get_used_ports(state).await;

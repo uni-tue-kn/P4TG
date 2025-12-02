@@ -42,7 +42,8 @@ pub fn validate_request(
     available_ports: &HashMap<u32, PortMapping>,
     is_tofino2: bool,
 ) -> Result<Vec<Stream>, Error> {
-    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(available_ports);
+    let front_panel_dev_port_mappings =
+        generate_front_panel_to_dev_port_mappings(available_ports, is_tofino2);
 
     let active_stream_settings: Vec<StreamSetting> = payload
         .stream_settings

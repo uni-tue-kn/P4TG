@@ -201,7 +201,8 @@ pub async fn start_single_test(
 ) -> Result<Vec<Stream>, RBFRTError> {
     let port_mapping = &state.port_mapping;
 
-    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(port_mapping);
+    let front_panel_dev_port_mappings =
+        generate_front_panel_to_dev_port_mappings(port_mapping, state.tofino2);
 
     // contains the description of the stream, i.e., packet size and rate
     // only look at active stream settings

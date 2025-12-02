@@ -141,7 +141,9 @@ pub const MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2: Ipv6Addr =
 pub const BATCH_FACTOR: u32 = 5;
 
 /// Mask to remove the channel number from a dev port
-pub const REMOVE_PORT_CHANNEL_MASK: u32 = 0xFFFFFFF8;
+pub const REMOVE_PORT_CHANNEL_MASK: u32 = 0xFFFFFFFC;
+
+pub const REMOVE_PORT_CHANNEL_MASK_TOFINO_2: u32 = 0xFFFFFFF8;
 
 /// Table used for pattern shaping
 pub const PATTERN_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_generation";
