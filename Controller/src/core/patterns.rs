@@ -3,42 +3,12 @@ use rbfrt::table::{self, MatchValue};
 
 use crate::core::traffic_gen_core::{
     const_definitions::{MAX_PATTERN_TABLE_ENTRIES, PATTERN_CONFIG_TABLE, PATTERN_TABLE},
+    helper::range_to_prefixes,
     types::{GenerationPattern, GenerationPatternConfig},
 };
 
 /// Number of sinusoid samples per period.
-const NUM_SAMPLES: u32 = 256;
-
-/// Convert a closed integer range [start, end] into a minimal set of LPM prefixes over u32.
-fn range_to_prefixes(start: u32, end: u32) -> Vec<(u32, u8)> {
-    let mut res = Vec::new();
-    let mut cur = start as u64;
-    let end_u64 = end as u64;
-
-    while cur <= end_u64 {
-        let remaining = end_u64 - cur + 1;
-
-        // Start from largest possible block and shrink until:
-        //  - it's aligned at `cur`
-        //  - it fits within `remaining`
-        let mut block_size: u64 = 1 << 31;
-
-        loop {
-            let aligned = (cur & (block_size - 1)) == 0;
-            if aligned && block_size <= remaining {
-                break;
-            }
-            block_size >>= 1;
-        }
-
-        let prefix_len = 32 - block_size.trailing_zeros();
-        res.push((cur as u32, prefix_len as u8));
-
-        cur += block_size;
-    }
-
-    res
-}
+const NUM_SAMPLES: u32 = 128;
 
 /// Compute the [start, end] range (inclusive) of the `i`-th "point"
 /// when splitting [0, space) into `total_points` equal-ish segments.
@@ -87,7 +57,6 @@ fn sawtooth_factor(k: u32) -> f64 {
 
 fn flashcrowd_factor(k: u32) -> f64 {
     let x = k as f64 / NUM_SAMPLES as f64; // phase in [0,1)
-                                           // TODO verify
                                            // Tunable shape parameters
     let quiet_until = 0.20; // 0–20% of period: no load
     let ramp_until = 0.25; // 20–25% of period: fast ramp to 1
@@ -206,6 +175,7 @@ pub fn build_pattern_generation_entries(
             continue;
         }
 
+        // Range-to-prefix (LPM) seems to consume less MAT space than range-to-ternary here.
         let prefixes = range_to_prefixes(start, end);
 
         for (base, prefix_len) in prefixes {

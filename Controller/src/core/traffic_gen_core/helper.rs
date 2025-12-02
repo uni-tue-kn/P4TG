@@ -666,3 +666,66 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
 pub fn mpps_to_gbps(total_frame_size: u32, rate_gbps: f32) -> f32 {
     total_frame_size as f32 * 8f32 * rate_gbps / 1000f32
 }
+
+/// Decomposes a [start, end] range into a set of ternary (value, mask) entries.
+/// Uses bitmask covering similar to prefix expansion.
+pub fn range_to_ternary(start: u32, end: u32) -> Vec<(u32, u32)> {
+    let mut requests = Vec::new();
+    let mut cur = start;
+
+    while cur <= end {
+        let remaining = end - cur;
+        if remaining == 0 {
+            // Handle a single value case explicitly
+            requests.push((cur, 0xFFFFFFFF));
+            break;
+        }
+
+        let max_block_size = 1 << (31 - remaining.leading_zeros()); // largest power of two ≤ remaining
+        let align_size = if cur == 0 {
+            1
+        } else {
+            1 << cur.trailing_zeros()
+        }; // alignment constraint
+        let size = max_block_size.min(align_size);
+
+        let mask = !(size - 1);
+
+        requests.push((cur, mask));
+
+        cur += size;
+    }
+
+    requests
+}
+
+/// Convert a closed integer range [start, end] into a minimal set of LPM prefixes over u32.
+pub fn range_to_prefixes(start: u32, end: u32) -> Vec<(u32, u8)> {
+    let mut res = Vec::new();
+    let mut cur = start as u64;
+    let end_u64 = end as u64;
+
+    while cur <= end_u64 {
+        let remaining = end_u64 - cur + 1;
+
+        // Start from largest possible block and shrink until:
+        //  - it's aligned at `cur`
+        //  - it fits within `remaining`
+        let mut block_size: u64 = 1 << 31;
+
+        loop {
+            let aligned = (cur & (block_size - 1)) == 0;
+            if aligned && block_size <= remaining {
+                break;
+            }
+            block_size >>= 1;
+        }
+
+        let prefix_len = 32 - block_size.trailing_zeros();
+        res.push((cur as u32, prefix_len as u8));
+
+        cur += block_size;
+    }
+
+    res
+}

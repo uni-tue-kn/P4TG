@@ -8,7 +8,9 @@ use rbfrt::{
     SwitchConnection,
 };
 
-use crate::core::traffic_gen_core::const_definitions::RTT_HISTOGRAM_TABLE;
+use crate::core::traffic_gen_core::{
+    const_definitions::RTT_HISTOGRAM_TABLE, helper::range_to_ternary,
+};
 use crate::{AppState, PortMapping};
 
 use super::{
@@ -53,10 +55,11 @@ impl HistogramMonitor {
                 }
 
                 if let Some(mapping) = self.port_mapping.get(port) {
-                    requests.extend(self.range_to_ternary_entries(
+                    let ternary_entries = range_to_ternary(start, end);
+
+                    requests.extend(self.build_ternary_table_entries(
+                        ternary_entries,
                         mapping.rx_recirculation,
-                        start,
-                        end,
                         bin_index,
                     ));
                 }
@@ -244,53 +247,22 @@ impl HistogramMonitor {
         }
     }
 
-    /// Decomposes a [start, end] range into a set of ternary (value, mask) entries.
-    /// Uses bitmask covering similar to prefix expansion.
-    fn range_to_ternary_entries(
+    fn build_ternary_table_entries(
         &self,
+        entries: Vec<(u32, u32)>,
         port: u32,
-        start: u32,
-        end: u32,
         bin_index: u32,
     ) -> Vec<Request> {
-        let mut requests = Vec::new();
-        let mut cur = start;
-
-        while cur <= end {
-            let remaining = end - cur;
-            if remaining == 0 {
-                // Handle a single value case explicitly
-                let req = Request::new(RTT_HISTOGRAM_TABLE)
+        entries
+            .into_iter()
+            .map(|(value, mask)| {
+                Request::new(RTT_HISTOGRAM_TABLE)
                     .match_key("ig_md.ig_port", MatchValue::exact(port))
-                    .match_key("ig_md.rtt", MatchValue::ternary(cur, 0xFFFFFFFF)) // exact match
+                    .match_key("ig_md.rtt", MatchValue::ternary(value, mask))
                     .action("ingress.p4tg.rtt.count_histogram_bin")
-                    .action_data("bin_index", bin_index);
-                requests.push(req);
-                break;
-            }
-
-            let max_block_size = 1 << (31 - remaining.leading_zeros()); // largest power of two ≤ remaining
-            let align_size = if cur == 0 {
-                1
-            } else {
-                1 << cur.trailing_zeros()
-            }; // alignment constraint
-            let size = max_block_size.min(align_size);
-
-            let mask = !(size - 1);
-
-            let req = Request::new(RTT_HISTOGRAM_TABLE)
-                .match_key("ig_md.ig_port", MatchValue::exact(port))
-                .match_key("ig_md.rtt", MatchValue::ternary(cur, mask))
-                .action("ingress.p4tg.rtt.count_histogram_bin")
-                .action_data("bin_index", bin_index);
-
-            requests.push(req);
-
-            cur += size;
-        }
-
-        requests
+                    .action_data("bin_index", bin_index)
+            })
+            .collect()
     }
 
     fn estimate_percentiles_from_bins(
