@@ -15,6 +15,7 @@
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
 - Fixed generated traffic exceeding the configured rate if using Poisson generation with Rate Precision mode and batches.
 - Fixed errors that get thrown after passing the API validation not being propagated to the frontend.
+- Fixed crash for some histogram configs.
 
 ### Other
 - Rust version bump for CI and docker image to 1.91

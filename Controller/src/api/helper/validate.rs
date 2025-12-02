@@ -476,7 +476,11 @@ fn count_range_to_ternary_entries(start: u32, end: u32) -> u32 {
         }
 
         let max_block_size = 1 << (31 - remaining.leading_zeros()); // largest power of two ≤ remaining
-        let align_size = 1 << cur.trailing_zeros(); // alignment constraint
+        let align_size = if cur == 0 {
+            1
+        } else {
+            1 << cur.trailing_zeros()
+        }; // alignment constraint
         let size = max_block_size.min(align_size);
 
         num_requests += 1;
