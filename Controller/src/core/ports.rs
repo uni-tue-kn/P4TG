@@ -309,11 +309,6 @@ pub async fn configure_ports(
     let recirc_ports_per_tg_choice =
         build_recirculation_config(config, recirculation_ports, &tg_port_config.auto_tg_ports);
 
-    info!(
-        "Recirculation port assignments per TG port: {:?}",
-        recirc_ports_per_tg_choice
-    );
-
     // Build Port requests to configure recirculation ports
     let recirculation_port_requests = configure_recirculation_ports(
         config,
@@ -346,8 +341,6 @@ pub async fn configure_ports(
             return Err(e);
         }
     }
-
-    info!("Port mapping: {:?}", port_mapping);
 
     Ok(())
 }
