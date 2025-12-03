@@ -372,6 +372,45 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
                 )));
             }
 
+            // Sample Rate < 1000
+            if pattern.sample_rate > 1000 {
+                return Err(Error::new(format!(
+                    "Pattern sample rate must be smaller than 1000 in stream with ID #{}.",
+                    s.stream_id
+                )));
+            }
+
+            if let GenerationPattern::Flashcrowd = pattern.pattern_type {
+                let quiet_until = pattern.fc_quiet_until.unwrap_or(0.2); // 0–20% of period: no load
+                let ramp_until = pattern.fc_ramp_until.unwrap_or(0.25); // 20–25% of period: fast ramp to 1
+                let decay_rate = pattern.fc_decay_rate.unwrap_or(4.0); // bigger = faster decay in the tail
+
+                if quiet_until > 1.0 {
+                    return Err(Error::new(format!(
+                        "Quiet until parameter for flashcrowd must be in the range of [1,0] in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if ramp_until > 1.0 {
+                    return Err(Error::new(format!(
+                        "Ramp until parameter for flashcrowd must be in the range of [1,0] in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if quiet_until > ramp_until {
+                    return Err(Error::new(format!(
+                        "Ramp until parameter for flashcrowd must be larger than quiet until parameter in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if decay_rate < 0.0 {
+                    return Err(Error::new(format!(
+                        "Decay rate parameter for flashcrowd must be larger than zero in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+            }
+
             // Period fits into range
             let pps = match s.unit {
                 Some(GenerationUnit::Mpps) => s.traffic_rate * 1_000_000.0,
