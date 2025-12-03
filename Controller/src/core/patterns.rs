@@ -7,9 +7,6 @@ use crate::core::traffic_gen_core::{
     types::{GenerationPattern, GenerationPatternConfig},
 };
 
-/// Number of sinusoid samples per period.
-const NUM_SAMPLES: u32 = 128;
-
 /// Compute the [start, end] range (inclusive) of the `i`-th "point"
 /// when splitting [0, space) into `total_points` equal-ish segments.
 fn point_range_in_space(i: u32, total_points: u32, space: u64) -> (u32, u32) {
@@ -26,15 +23,15 @@ fn point_range_in_space(i: u32, total_points: u32, space: u64) -> (u32, u32) {
 }
 
 /// Simple normalized sine factor in [0, 1].
-fn sine_factor(k: u32) -> f64 {
-    let x = k as f64 / NUM_SAMPLES as f64;
+fn sine_factor(k: u32, sampling_rate: u32) -> f64 {
+    let x = k as f64 / sampling_rate as f64;
     // + 1 to scale from [-1, 1] to [0, 2], then *0.5 to scale to [0, 1]
     0.5 * (1.0 + (2.0 * std::f64::consts::PI * x).sin())
 }
 
 /// Simple square wave factor in {0, 1}.
-fn square_factor(k: u32) -> f64 {
-    let x = k as f64 / NUM_SAMPLES as f64;
+fn square_factor(k: u32, sampling_rate: u32) -> f64 {
+    let x = k as f64 / sampling_rate as f64;
     if x < 0.5 {
         1.0
     } else {
@@ -42,8 +39,8 @@ fn square_factor(k: u32) -> f64 {
     }
 }
 
-fn triangle_factor(k: u32) -> f64 {
-    let x = k as f64 / NUM_SAMPLES as f64;
+fn triangle_factor(k: u32, sampling_rate: u32) -> f64 {
+    let x = k as f64 / sampling_rate as f64;
     if x < 0.5 {
         2.0 * x
     } else {
@@ -51,16 +48,18 @@ fn triangle_factor(k: u32) -> f64 {
     }
 }
 
-fn sawtooth_factor(k: u32) -> f64 {
-    k as f64 / NUM_SAMPLES as f64
+fn sawtooth_factor(k: u32, sampling_rate: u32) -> f64 {
+    k as f64 / sampling_rate as f64
 }
 
-fn flashcrowd_factor(k: u32) -> f64 {
-    let x = k as f64 / NUM_SAMPLES as f64; // phase in [0,1)
-                                           // Tunable shape parameters
-    let quiet_until = 0.20; // 0–20% of period: no load
-    let ramp_until = 0.25; // 20–25% of period: fast ramp to 1
-    let decay_rate = 4.0; // bigger = faster decay in the tail
+fn flashcrowd_factor(
+    k: u32,
+    sampling_rate: u32,
+    quiet_until: f64,
+    ramp_until: f64,
+    decay_rate: f64,
+) -> f64 {
+    let x = k as f64 / sampling_rate as f64; // phase in [0,1)
 
     if x < quiet_until {
         // Quiet baseline
@@ -106,6 +105,7 @@ pub fn build_pattern_generation_entries(
 ) -> (u32, Vec<table::Request>) {
     // 1) Period (seconds) and per-pipe Mpps
     let period_secs = (pattern_config.period).max(0.001);
+    let sampling_rate = pattern_config.sample_rate;
 
     let gbps_per_pipe = traffic_gbps / num_pipes.max(1.0);
     // per-pipe Mpps = (Gbps * 1e3) / (bytes * 8)
@@ -144,7 +144,7 @@ pub fn build_pattern_generation_entries(
     // 3) Split [0..period_pkts) into NUM_SAMPLES segments
     // If period_pkts is very small, reduce sample count so each segment
     // still has at least 1 packet.
-    let total_points = NUM_SAMPLES.min(period_pkts_u32);
+    let total_points = sampling_rate.min(period_pkts_u32);
     let space = period_pkts; // length of phase space for this app_id
 
     // 4) Max rate used as amplitude (kbps)
@@ -154,13 +154,24 @@ pub fn build_pattern_generation_entries(
 
     for point_idx in 0..total_points {
         // Map point to sample on the sine
-        let sample_idx = (point_idx * NUM_SAMPLES / total_points) % NUM_SAMPLES;
+        let sample_idx = (point_idx * sampling_rate / total_points) % sampling_rate;
         let factor = match pattern_config.pattern_type {
-            GenerationPattern::Sine => sine_factor(sample_idx),
-            GenerationPattern::Square => square_factor(sample_idx),
-            GenerationPattern::Triangle => triangle_factor(sample_idx),
-            GenerationPattern::Sawtooth => sawtooth_factor(sample_idx),
-            GenerationPattern::Flashcrowd => flashcrowd_factor(sample_idx),
+            GenerationPattern::Sine => sine_factor(sample_idx, sampling_rate),
+            GenerationPattern::Square => square_factor(sample_idx, sampling_rate),
+            GenerationPattern::Triangle => triangle_factor(sample_idx, sampling_rate),
+            GenerationPattern::Sawtooth => sawtooth_factor(sample_idx, sampling_rate),
+            GenerationPattern::Flashcrowd => {
+                let quiet_until = pattern_config.fc_quiet_until.unwrap_or(0.2); // 0–20% of period: no load
+                let ramp_until = pattern_config.fc_ramp_until.unwrap_or(0.25); // 20–25% of period: fast ramp to 1
+                let decay_rate = pattern_config.fc_decay_rate.unwrap_or(4.0); // bigger = faster decay in the tail
+                flashcrowd_factor(
+                    sample_idx,
+                    sampling_rate,
+                    quiet_until,
+                    ramp_until,
+                    decay_rate,
+                )
+            }
         };
 
         let cir_kbps = (factor * max_kbps) as u64;

@@ -36,6 +36,7 @@ import React, { useState } from "react";
 import { Button, Col, Form, InputGroup, Row } from "react-bootstrap";
 import InfoBox from "../InfoBox";
 import { StyledCol, StyledRow } from "../../sites/Settings";
+import PatternModal from "./PatternModal";
 
 
 const StreamElement = ({
@@ -60,6 +61,7 @@ const StreamElement = ({
     const [number_of_srv6_sids, set_number_of_srv6_sids] = useState(data.number_of_srv6_sids)
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
     const [patternConfig, setPatternConfig] = useState<GenerationPatternConfig | null>(data.pattern ?? null)
+    const [showPatternModal, setShowPatternModal] = useState(false);
 
     // Used to store VxLAN and IP Version setting. VxLAN must be disabled on changing IP version
     const [formData, setFormData] = useState({ ...data });
@@ -213,9 +215,22 @@ const StreamElement = ({
             return;
         }
 
+        const selectedType = event.target.value as GenerationPattern;
+        const baseConfig: GenerationPatternConfig = patternConfig ?? {
+            pattern_type: selectedType,
+            period: 20,
+            sample_rate: 128,
+            fc_quiet_until: null,
+            fc_ramp_until: null,
+            fc_decay_rate: null,
+        };
+
         const updatedConfig: GenerationPatternConfig = {
-            pattern_type: event.target.value as GenerationPattern,
-            period: patternConfig?.period ?? 20
+            ...baseConfig,
+            pattern_type: selectedType,
+            fc_quiet_until: selectedType === GenerationPattern.Flashcrowd ? (baseConfig.fc_quiet_until ?? 0.2) : null,
+            fc_ramp_until: selectedType === GenerationPattern.Flashcrowd ? (baseConfig.fc_ramp_until ?? 0.25) : null,
+            fc_decay_rate: selectedType === GenerationPattern.Flashcrowd ? (baseConfig.fc_decay_rate ?? 4.0) : null,
         };
 
         setPatternConfig(updatedConfig);
@@ -273,33 +288,15 @@ const StreamElement = ({
                     <option selected={patternConfig?.pattern_type === GenerationPattern.Square} value={GenerationPattern.Square}>Square</option>
                     <option selected={patternConfig?.pattern_type === GenerationPattern.Flashcrowd} value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
                 </Form.Select>
-                {patternConfig != null ?
-                    <InputGroup style={{ maxWidth: "180px" }}>
-                        <InputGroup.Text>Period (s)</InputGroup.Text>
-                        <Form.Control
-                            disabled={running}
-                            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                                if (patternConfig == null) {
-                                    return;
-                                }
-                                const updatedPattern: GenerationPatternConfig = {
-                                    ...patternConfig,
-                                    period: parseFloat(event.target.value)
-                                }
-                                setPatternConfig(updatedPattern);
-                                data.pattern = updatedPattern;
-                            }}
-                            required
-                            min={"0"}
-                            step={"any"}
-                            type={"number"}
-                            placeholder="Period (s)"
-                            value={patternConfig.period}
-                        />
-                    </InputGroup>
-                    :
-                    null
-                }
+                <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    disabled={running || patternConfig == null}
+                    onClick={() => setShowPatternModal(true)}
+                    title="Configure pattern"
+                >
+                    <i className="bi bi-gear-wide-connected" />
+                </Button>
             </div>
         </StyledCol>
         <StyledCol>
@@ -431,11 +428,28 @@ const StreamElement = ({
                 }
             </StyledCol>
             <StyledCol className={"text-end"}>
-                <Button disabled={running} className={"btn-sm"} variant={"dark"}
+                <Button size={"sm"} disabled={running} variant={"outline-secondary"}
                     onClick={() => remove(data.stream_id)}>
                     <i className="bi bi-trash2-fill" /></Button>
             </StyledCol>
         </StyledRow>
+        <PatternModal
+            show={showPatternModal}
+            hide={() => setShowPatternModal(false)}
+            data={patternConfig ?? {
+                pattern_type: GenerationPattern.Sine,
+                period: 20,
+                sample_rate: 128,
+                fc_quiet_until: null,
+                fc_ramp_until: null,
+                fc_decay_rate: null,
+            }}
+            disabled={running}
+            set_data={(updated) => {
+                setPatternConfig(updated);
+                data.pattern = updated;
+            }}
+        />
     </tr>
 }
 

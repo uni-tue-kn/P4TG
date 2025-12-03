@@ -339,10 +339,18 @@ pub struct Reset {
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct GenerationPatternConfig {
-    // The type of this pattern
+    // The type of this pattern.
     pub pattern_type: GenerationPattern,
-    // The period of this pattern in seconds
+    // The period of this pattern in seconds.
     pub period: f64,
+    /// The number of samples per period.
+    pub sample_rate: u32,
+    /// Flash-crowd specific settings.
+    /// t_0 in the range of [0,1]
+    pub fc_quiet_until: Option<f64>,
+    /// t_1 in the range of [0,1]
+    pub fc_ramp_until: Option<f64>,
+    pub fc_decay_rate: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
