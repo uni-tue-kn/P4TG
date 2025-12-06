@@ -45,6 +45,8 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port, type }: { stats: { [p
         </Tooltip>
     );
 
+    // ! TODO clarify that those are RX IATs
+
     useEffect(() => {
         // find the first RX channel that maps to this rx_port
         const matches =
