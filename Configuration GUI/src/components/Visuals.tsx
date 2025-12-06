@@ -735,7 +735,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
         labels: labels_iat_hist,
         datasets: [
             {
-                label: 'RTT distribution',
+                label: 'IAT distribution',
                 data: hist_data_iat,
                 backgroundColor: 'rgba(53, 162, 235, 0.5)'
             },
