@@ -24,9 +24,9 @@ use std::collections::HashMap;
 use crate::api::server::Error;
 use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
-    HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
+    IAT_HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
     MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2, MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS,
-    RTT_HISTOGRAM_TABLE, TG_MAX_RATE, TG_MAX_RATE_TF2,
+    RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
 use crate::core::traffic_gen_core::helper::{
     calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps,
@@ -364,11 +364,11 @@ pub fn validate_request(
 
     if let Some(histogram_config) = rtt_histogram_config {
         // Validate histogram configuration
-        validate_histogram(histogram_config, payload.name.clone())?;
+        validate_histogram(histogram_config, payload.name.clone(), HistogramType::Rtt)?;
     }
     if let Some(histogram_config) = iat_histogram_config {
         // Validate histogram configuration
-        validate_histogram(histogram_config, payload.name.clone())?;
+        validate_histogram(histogram_config, payload.name.clone(), HistogramType::Iat)?;
     }
 
     validate_patterns(&active_streams)?;
@@ -451,6 +451,7 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
 pub fn validate_histogram(
     request: &HashMap<String, HashMap<String, HistogramConfig>>,
     test_name: Option<String>,
+    hist_type: HistogramType,
 ) -> Result<(), Error> {
     let mut num_requests = 0;
 
@@ -458,6 +459,11 @@ pub fn validate_histogram(
     if let Some(name) = test_name {
         t_name = format!(", Test: {name:?},");
     }
+
+    let max_table_size = match hist_type {
+        HistogramType::Rtt => RTT_HISTOGRAM_TABLE_SIZE,
+        HistogramType::Iat => IAT_HISTOGRAM_TABLE_SIZE,
+    };
 
     for (port, channel_map) in request.iter() {
         for config in channel_map.values() {
@@ -505,7 +511,7 @@ pub fn validate_histogram(
                 }
 
                 num_requests += count_range_to_ternary_entries(start, end);
-                if num_requests > HISTOGRAM_TABLE_SIZE {
+                if num_requests > max_table_size {
                     return Err(Error::new(format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")));
                 }
             }

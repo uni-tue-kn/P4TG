@@ -129,7 +129,7 @@ control IAT(inout header_t hdr,
         } 
         counters = histogram_counter;
         default_action = count_missed_bin;
-        size = 8192;
+        size = 4196;
     }
 
 
