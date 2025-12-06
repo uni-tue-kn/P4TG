@@ -223,6 +223,7 @@ const StreamElement = ({
             fc_quiet_until: null,
             fc_ramp_until: null,
             fc_decay_rate: null,
+            square_low: null,
         };
 
         const updatedConfig: GenerationPatternConfig = {
@@ -443,6 +444,7 @@ const StreamElement = ({
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,
+                square_low: null,
             }}
             disabled={running}
             set_data={(updated) => {

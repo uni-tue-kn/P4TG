@@ -30,12 +30,12 @@ fn sine_factor(k: u32, sampling_rate: u32) -> f64 {
 }
 
 /// Simple square wave factor in {0, 1}.
-fn square_factor(k: u32, sampling_rate: u32) -> f64 {
+fn square_factor(k: u32, low: f64, sampling_rate: u32) -> f64 {
     let x = k as f64 / sampling_rate as f64;
     if x < 0.5 {
         1.0
     } else {
-        0.0
+        low
     }
 }
 
@@ -45,6 +45,60 @@ fn triangle_factor(k: u32, sampling_rate: u32) -> f64 {
         2.0 * x
     } else {
         2.0 * (1.0 - x)
+    }
+}
+
+fn cat_factor(k: u32, sampling_rate: u32) -> f64 {
+    let x = (k as f64 / sampling_rate as f64) % 1.0;
+
+    // Control points (x_i, y_i)
+    // xs: [0.00, 0.10, 0.20, 0.25, 0.30, 0.40, 0.60, 0.70, 0.75, 0.80, 0.90, 1.00]
+    // ys: [0.00, 0.15, 0.55, 0.95, 0.55, 0.60, 0.60, 0.55, 0.95, 0.55, 0.15, 0.00]
+
+    if x < 0.10 {
+        // segment [0.00 → 0.10]
+        let t = (x - 0.00) / (0.10 - 0.00);
+        return 0.00 + t * (0.15 - 0.00);
+    } else if x < 0.20 {
+        // segment [0.10 → 0.20]
+        let t = (x - 0.10) / (0.20 - 0.10);
+        return 0.15 + t * (0.55 - 0.15);
+    } else if x < 0.25 {
+        // segment [0.20 → 0.25]
+        let t = (x - 0.20) / (0.25 - 0.20);
+        return 0.55 + t * (0.95 - 0.55);
+    } else if x < 0.30 {
+        // segment [0.25 → 0.30]
+        let t = (x - 0.25) / (0.30 - 0.25);
+        return 0.95 + t * (0.55 - 0.95);
+    } else if x < 0.40 {
+        // segment [0.30 → 0.40]
+        let t = (x - 0.30) / (0.40 - 0.30);
+        return 0.55 + t * (0.60 - 0.55);
+    } else if x < 0.60 {
+        // segment [0.40 → 0.60]
+        let t = (x - 0.40) / (0.60 - 0.40);
+        return 0.60;
+    } else if x < 0.70 {
+        // segment [0.60 → 0.70]
+        let t = (x - 0.60) / (0.70 - 0.60);
+        return 0.60 + t * (0.55 - 0.60);
+    } else if x < 0.75 {
+        // segment [0.70 → 0.75]
+        let t = (x - 0.70) / (0.75 - 0.70);
+        return 0.55 + t * (0.95 - 0.55);
+    } else if x < 0.80 {
+        // segment [0.75 → 0.80]
+        let t = (x - 0.75) / (0.80 - 0.75);
+        return 0.95 + t * (0.55 - 0.95);
+    } else if x < 0.90 {
+        // segment [0.80 → 0.90]
+        let t = (x - 0.80) / (0.90 - 0.80);
+        return 0.55 + t * (0.15 - 0.55);
+    } else {
+        // segment [0.90 → 1.00]
+        let t = (x - 0.90) / (1.00 - 0.90);
+        return 0.15 + t * (0.00 - 0.15);
     }
 }
 
@@ -157,9 +211,13 @@ pub fn build_pattern_generation_entries(
         let sample_idx = (point_idx * sampling_rate / total_points) % sampling_rate;
         let factor = match pattern_config.pattern_type {
             GenerationPattern::Sine => sine_factor(sample_idx, sampling_rate),
-            GenerationPattern::Square => square_factor(sample_idx, sampling_rate),
+            GenerationPattern::Square => {
+                let low = pattern_config.square_low.unwrap_or(0.0);
+                square_factor(sample_idx, low, sampling_rate)
+            }
             GenerationPattern::Triangle => triangle_factor(sample_idx, sampling_rate),
             GenerationPattern::Sawtooth => sawtooth_factor(sample_idx, sampling_rate),
+            GenerationPattern::CatWave => cat_factor(sample_idx, sampling_rate),
             GenerationPattern::Flashcrowd => {
                 let quiet_until = pattern_config.fc_quiet_until.unwrap_or(0.2); // 0–20% of period: no load
                 let ramp_until = pattern_config.fc_ramp_until.unwrap_or(0.25); // 20–25% of period: fast ramp to 1

@@ -28,6 +28,7 @@ const defaultPatternConfig = (config?: GenerationPatternConfig): GenerationPatte
     fc_quiet_until: config?.fc_quiet_until ?? 0.2,
     fc_ramp_until: config?.fc_ramp_until ?? 0.25,
     fc_decay_rate: config?.fc_decay_rate ?? 4.0,
+    square_low: config?.square_low ?? 0,
 });
 
 const PatternModal = ({
@@ -113,6 +114,24 @@ const PatternModal = ({
                 fc_quiet_until: quietUntil,
                 fc_ramp_until: rampUntil,
                 fc_decay_rate: decayRate,
+                square_low: null,
+            });
+        } else if (tmp_data.pattern_type === GenerationPattern.Square) {
+            const squareLow = tmp_data.square_low ?? 0;
+
+            if (squareLow < 0 || squareLow > 1) {
+                setAlertMessage("Square low must be within [0, 1].");
+                return;
+            }
+
+            set_data({
+                ...tmp_data,
+                period,
+                sample_rate: sampleRate,
+                square_low: squareLow,
+                fc_quiet_until: null,
+                fc_ramp_until: null,
+                fc_decay_rate: null,
             });
         } else {
             set_data({
@@ -122,6 +141,7 @@ const PatternModal = ({
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,
+                square_low: null,
             });
         }
 
@@ -130,6 +150,7 @@ const PatternModal = ({
     };
 
     const isFlashcrowd = tmp_data.pattern_type === GenerationPattern.Flashcrowd;
+    const isSquare = tmp_data.pattern_type === GenerationPattern.Square;
 
     return <Modal show={show} size="lg" onHide={hideRestore}>
         <Modal.Header closeButton>
@@ -196,6 +217,25 @@ const PatternModal = ({
                         <Form.Text className="text-muted">Samples per period (max 1000).</Form.Text>
                     </Col>
                 </Form.Group>
+
+                {isSquare && (
+                    <Form.Group as={Row} className="mb-3 align-items-center">
+                        <Form.Label column sm={3}>Square low</Form.Label>
+                        <Col sm={9}>
+                            <Form.Control
+                                type="number"
+                                min={0}
+                                max={1}
+                                step={"any"}
+                                value={tmp_data.square_low ?? 0}
+                                onChange={(e) => handleNumberChange("square_low", e.target.value)}
+                                required
+                                disabled={disabled}
+                            />
+                            <Form.Text className="text-muted">Relative amplitude during the low phase [0,1].</Form.Text>
+                        </Col>
+                    </Form.Group>
+                )}
 
                 {isFlashcrowd && (
                     <>
