@@ -315,7 +315,7 @@ const HistogramModal = ({
                 {renderHistogramControls(
                     "iat",
                     "IAT Histogram",
-                    "Configure the inter-arrival time histogram for this RX port. Use the same controls to tailor the range and resolution."
+                    "Configure the inter-arrival time histogram for this RX port. Use the same controls to tailor the range and resolution. The IAT histogram will be measured for TX/RX ports."
                 )}
             </Modal.Body>
 

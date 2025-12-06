@@ -36,7 +36,7 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { secondsToTime } from "./SendReceiveMonitor";
 import { Histogram, PortTxRxMap, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
 import React, { useState } from "react";
-import { Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { Button, Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import StatViewHistogram from './StatViewHistogram';
 
 ChartJS.register(
@@ -247,34 +247,50 @@ const renderTooltip = (props: any) => (
 
 const generateHistogram = (
     histogram_data: { [port: string]: { [channel: string]: Histogram } },
-    port_mapping: PortTxRxMap
-): [string[], number[]] => {
+    port_mapping: PortTxRxMap,
+    includeTx: boolean
+): [string[], number[], number[]] => {
     //const histogram_data = data.rtt_histogram; // { [port]: { [ch]: RttHistogram } }
-    let combined_bins: { [binIndex: string]: number } = {};
+    let combined_bins_tx: { [binIndex: string]: number } = {};
+    let combined_bins_rx: { [binIndex: string]: number } = {};
     let min = Infinity;
     let max = -Infinity;
     let num_bins = 0;
+    let has_tx_data = false;
+    let has_rx_data = false;
 
     if (histogram_data) {
         // collect RX (port,channel) pairs from mapping
-        for (const perCh of Object.values(port_mapping ?? {})) {
-            for (const target of Object.values(perCh ?? {})) {
+        for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
+            for (const [txCh, target] of Object.entries(perCh ?? {})) {
                 const rxPort = String((target as any).port);
                 const rxCh = String((target as any).channel);
 
-                const hist = histogram_data?.[rxPort]?.[rxCh];
-                const config = hist?.config;
-                const hdata = hist?.data;
+                const histTx = histogram_data?.[txPort]?.[txCh];
+                const histRx = histogram_data?.[rxPort]?.[rxCh];
+                const config = histRx?.config ?? histTx?.config;
+                const txData = includeTx ? histTx?.data?.tx : undefined;
+                const rxData = histRx?.data?.rx;
 
-                if (config && hdata) {
+                if (config) {
                     min = Math.min(min, config.min);
                     max = Math.max(max, config.max);
                     num_bins = config.num_bins;
+                }
 
-                    for (let i = 0; i < config.num_bins; i++) {
-                        const binKey = String(i);
-                        const value = hdata.data_bins?.[binKey]?.probability ?? 0;
-                        combined_bins[binKey] = (combined_bins[binKey] ?? 0) + value;
+                for (let i = 0; i < (config?.num_bins ?? 0); i++) {
+                    const binKey = String(i);
+
+                    if (txData) {
+                        const value = txData.data_bins?.[binKey]?.probability ?? 0;
+                        combined_bins_tx[binKey] = (combined_bins_tx[binKey] ?? 0) + value;
+                        has_tx_data = true;
+                    }
+
+                    if (rxData) {
+                        const value = rxData.data_bins?.[binKey]?.probability ?? 0;
+                        combined_bins_rx[binKey] = (combined_bins_rx[binKey] ?? 0) + value;
+                        has_rx_data = true;
                     }
                 }
             }
@@ -282,13 +298,14 @@ const generateHistogram = (
     }
 
 
-    if (min === Infinity || max === -Infinity || num_bins === 0) {
-        return [[], []]; // no valid data
+    if (min === Infinity || max === -Infinity || num_bins === 0 || (!has_tx_data && !has_rx_data)) {
+        return [[], [], []]; // no valid data
     }
 
     const binWidth = (max - min) / num_bins;
     const labels: string[] = [];
-    const values: number[] = [];
+    const values_tx: number[] = [];
+    const values_rx: number[] = [];
 
     for (let i = 0; i < num_bins; i++) {
         const start = min + i * binWidth;
@@ -302,79 +319,91 @@ const generateHistogram = (
                 : `${start_val.toFixed(2)} ${start_unit} – ${end_val.toFixed(2)} ${end_unit}`;
 
         labels.push(label);
-        values.push(combined_bins[String(i)] ?? 0);
+        values_tx.push(combined_bins_tx[String(i)] ?? 0);
+        values_rx.push(combined_bins_rx[String(i)] ?? 0);
     }
 
-    return [labels, values];
+    return [labels, values_tx, values_rx];
 };
 
 const getPercentileAnnotations = (
-    histogram_data: { [port: string]: { [channel: string]: Histogram } },
-    port_mapping: PortTxRxMap
+    histogram: { [port: string]: { [channel: string]: Histogram } },
+    port_mapping: PortTxRxMap,
+    includeTx: boolean
 ): Record<string, any> => {
     const annotations: Record<string, any> = {};
-    const histogram = histogram_data; // { [port]: { [channel]: RttHistogram } }
 
-    const percentileColors: string[] = ['#3c82e7', '#e74c3c', '#e7a23c', '#a23ce7'];
+    const percentileColors: Record<"tx" | "rx", string[]> = {
+        tx: ['#3c82e7', '#2ecc71', '#16a085', '#1f618d'],
+        rx: ['#e74c3c', '#d35400', '#e67e22', '#af601a'],
+    };
 
     if (!histogram) return annotations;
 
     // Iterate RX endpoints from mapping (values of TX->channel->RxTarget)
-    for (const perCh of Object.values(port_mapping ?? {})) {
-        for (const target of Object.values(perCh ?? {})) {
+    for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
+        for (const [txCh, target] of Object.entries(perCh ?? {})) {
             const rxPort = String((target as any).port);
             const rxCh = String((target as any).channel);
 
-            const hist = histogram?.[rxPort]?.[rxCh];
-            const config = hist?.config;
-            const hdata = hist?.data;
-            if (!config || !hdata) continue;
+            const histTx = histogram?.[txPort]?.[txCh];
+            const histRx = histogram?.[rxPort]?.[rxCh];
 
-            const percentiles = hdata.percentiles ?? {};
-            const maxYValue =
-                Math.max(0, ...Object.values(hdata.data_bins ?? {}).map((e: any) => e?.probability ?? 0));
+            (["tx", "rx"] as const).forEach((direction) => {
+                if (direction === "tx" && !includeTx) return;
 
-            let percentileIndex = 0;
-            for (const [key, value] of Object.entries(percentiles)) {
-                if (value == null) { percentileIndex++; continue; }
+                const hdata = direction === "tx" ? histTx?.data?.tx : histRx?.data?.rx;
+                const config = direction === "tx" ? histTx?.config : histRx?.config;
+                if (!hdata || !config) return;
 
-                const binWidth = (config.max - config.min) / config.num_bins;
-                const binIndex = Math.floor((Number(value) - config.min) / binWidth);
+                const percentiles = hdata.percentiles ?? {};
+                const maxYValue =
+                    Math.max(0, ...Object.values(hdata.data_bins ?? {}).map((e: any) => e?.probability ?? 0));
 
-                // Stagger labels if multiple fall on the same x
-                const offsetFactor = 0.065;
-                const yOffset = maxYValue * 0.95 * (1 - offsetFactor * percentileIndex);
-                const color = percentileColors[percentileIndex % percentileColors.length] || 'gray';
+                let percentileIndex = 0;
+                for (const [key, value] of Object.entries(percentiles)) {
+                    if (value == null) { percentileIndex++; continue; }
 
-                const lineKey = `p${key}_${rxPort}_${rxCh}`;
-                const labelKey = `label_p${key}_${rxPort}_${rxCh}`;
+                    const binWidth = (config.max - config.min) / config.num_bins;
+                    const binIndex = Math.floor((Number(value) - config.min) / binWidth);
 
-                annotations[lineKey] = {
-                    type: 'line',
-                    scaleID: 'x',
-                    value: binIndex,
-                    borderColor: color,
-                    borderWidth: 2,
-                    borderDash: [6, 6],
-                };
-                annotations[labelKey] = {
-                    type: 'label',
-                    xScaleID: 'x',
-                    yScaleID: 'y',
-                    xValue: binIndex - 0.15,
-                    yValue: yOffset,
-                    content: [`p${key}`],
-                    backgroundColor: `${color}80`,
-                    font: { size: 18, family: 'sans-serif', color: '#fff' },
-                    padding: 4,
-                    borderRadius: 7,
-                    position: 'center',
-                    xAdjust: 0,
-                    yAdjust: -10,
-                };
+                    // Stagger labels if multiple fall on the same x
+                    const offsetFactor = 0.065;
+                    const yOffset = maxYValue * 0.95 * (1 - offsetFactor * percentileIndex);
+                    const colors = percentileColors[direction];
+                    const color = colors[percentileIndex % colors.length] || 'gray';
+                    const dirPrefix = direction.toUpperCase();
 
-                percentileIndex++;
-            }
+                    const lineKey = `${direction}_p${key}_${rxPort}_${rxCh}`;
+                    const labelKey = `label_${direction}_p${key}_${rxPort}_${rxCh}`;
+
+                    annotations[lineKey] = {
+                        type: 'line',
+                        scaleID: 'x',
+                        value: binIndex,
+                        borderColor: color,
+                        borderWidth: 2,
+                        borderDash: [6, 6],
+                    };
+                    annotations[labelKey] = {
+                        type: 'label',
+                        xScaleID: 'x',
+                        yScaleID: 'y',
+                        xValue: binIndex - 0.15,
+                        yValue: yOffset,
+                        content: [`${dirPrefix} p${key}`],
+                        backgroundColor: `${color}80`,
+                        font: { size: 18, family: 'sans-serif', color: '#fff' },
+                        padding: 4,
+                        borderRadius: 7,
+                        position: 'center',
+                        xAdjust: 0,
+                        yAdjust: -10,
+                    };
+
+                    percentileIndex++;
+                }
+            });
         }
     }
 
@@ -504,12 +533,13 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)
     const [labels_out_of_order, line_data_out_of_order] = generateLineData("out_of_order", false, data, port_mapping)
     const [labels_rtt, line_data_rtt] = get_rtt(data, port_mapping)
-    const [labels_rtt_hist, hist_data_rtt] = generateHistogram(stats.rtt_histogram, port_mapping);
-    const [labels_iat_hist, hist_data_iat] = generateHistogram(stats.iat_histogram, port_mapping);
-    const percentileRTTAnnotations = getPercentileAnnotations(stats.rtt_histogram, port_mapping);
-    const percentileIATAnnotations = getPercentileAnnotations(stats.iat_histogram, port_mapping);
+    const [labels_rtt_hist, hist_data_rtt_tx, hist_data_rtt_rx] = generateHistogram(stats.rtt_histogram, port_mapping, false);
+    const [labels_iat_hist, hist_data_iat_tx, hist_data_iat_rx] = generateHistogram(stats.iat_histogram, port_mapping, true);
+    const percentileRTTAnnotations = getPercentileAnnotations(stats.rtt_histogram, port_mapping, false);
+    const percentileIATAnnotations = getPercentileAnnotations(stats.iat_histogram, port_mapping, true);
 
     const [visual_select, set_visual_select] = useState("rate")
+    const [showPercentiles, set_show_percentiles] = useState(true)
 
     const rate_data = {
         labels: labels_tx,
@@ -692,15 +722,18 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
         ],
     }
 
+    const rtt_hist_datasets: ChartData<"bar">["datasets"] = [];
+    if (hist_data_rtt_rx.length > 0) {
+        rtt_hist_datasets.push({
+            label: 'RTT RX distribution',
+            data: hist_data_rtt_rx,
+            backgroundColor: 'rgba(231, 76, 60, 0.6)'
+        });
+    }
+
     const rtt_hist_data: ChartData<"bar"> = {
         labels: labels_rtt_hist,
-        datasets: [
-            {
-                label: 'RTT distribution',
-                data: hist_data_rtt,
-                backgroundColor: 'rgba(53, 162, 235, 0.5)'
-            },
-        ]
+        datasets: rtt_hist_datasets
     }
 
     const rtt_histogram_options = {
@@ -726,7 +759,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
                 display: true,
             },
             annotation: {
-                annotations: percentileRTTAnnotations
+                annotations: showPercentiles ? percentileRTTAnnotations : {}
             }
         },
     };
@@ -735,9 +768,14 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
         labels: labels_iat_hist,
         datasets: [
             {
-                label: 'IAT distribution',
-                data: hist_data_iat,
-                backgroundColor: 'rgba(53, 162, 235, 0.5)'
+                label: 'IAT TX distribution',
+                data: hist_data_iat_tx,
+                backgroundColor: 'rgba(53, 162, 235, 0.6)'
+            },
+            {
+                label: 'IAT RX distribution',
+                data: hist_data_iat_rx,
+                backgroundColor: 'rgba(231, 76, 60, 0.6)'
             },
         ]
     }
@@ -765,7 +803,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
                 display: true,
             },
             annotation: {
-                annotations: percentileIATAnnotations
+                annotations: showPercentiles ? percentileIATAnnotations : {}
             }
         },
     };
@@ -832,7 +870,18 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
 
         {visual_select == "rtt_histogram" ?
             <>
-                <StatViewHistogram stats={stats.rtt_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"RTT"} />
+                <Row className="mb-2">
+                    <Col className="d-flex justify-content-end">
+                        <Button
+                            size="sm"
+                            variant={showPercentiles ? "outline-secondary" : "secondary"}
+                            onClick={() => set_show_percentiles((prev) => !prev)}
+                        >
+                            {showPercentiles ? "Hide percentiles" : "Show percentiles"}
+                        </Button>
+                    </Col>
+                </Row>
+                <StatViewHistogram stats={stats.rtt_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"RTT"} includeTx={false} />
                 <Bar options={rtt_histogram_options} data={rtt_hist_data} />
             </>
             :
@@ -841,6 +890,17 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
 
         {visual_select == "iat_histogram" ?
             <>
+                <Row className="mb-2">
+                    <Col className="d-flex justify-content-end">
+                        <Button
+                            size="sm"
+                            variant={showPercentiles ? "outline-secondary" : "secondary"}
+                            onClick={() => set_show_percentiles((prev) => !prev)}
+                        >
+                            {showPercentiles ? "Hide percentiles" : "Show percentiles"}
+                        </Button>
+                    </Col>
+                </Row>
                 <StatViewHistogram stats={stats.iat_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"IAT"} />
                 <Bar options={iat_histogram_options} data={iat_hist_data} />
             </>

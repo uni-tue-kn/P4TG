@@ -269,7 +269,13 @@ pub struct HistogramBinEntry {
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct Histogram {
     pub config: HistogramConfig,
-    pub data: HistogramData,
+    pub data: HistogramPacketPath,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema, Default)]
+pub struct HistogramPacketPath {
+    pub tx: HistogramData,
+    pub rx: HistogramData,
 }
 
 impl Histogram {

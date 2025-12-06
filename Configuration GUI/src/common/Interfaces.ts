@@ -49,9 +49,14 @@ export type HistogramData = {
     total_pkt_count: number;
 };
 
+export type HistogramPacketPath = {
+    tx: HistogramData,
+    rx: HistogramData
+}
+
 export type Histogram = {
     config: HistogramConfig;
-    data: HistogramData;
+    data: HistogramPacketPath;
 };
 
 export type Statistics = Array<StatisticsEntry>;

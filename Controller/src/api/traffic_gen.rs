@@ -33,7 +33,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::api::server::Error;
-use crate::core::statistics::{Histogram, HistogramData};
+use crate::core::statistics::{Histogram, HistogramPacketPath};
 use crate::AppState;
 
 use crate::api::docs::traffic_gen::{
@@ -264,18 +264,40 @@ pub async fn start_single_test(
             histogram_monitor.histogram.insert(
                 dev_port,
                 Histogram {
-                    config,
-                    data: HistogramData::default(),
+                    config: config.clone(),
+                    data: HistogramPacketPath::default(),
                 },
             );
+
+            // For IAT histograms, also write an entry for the mapped TX front panel port
+            let tx_dev_port = tx_rx_port_mapping
+                .iter()
+                .find_map(|(k, &v)| (v == dev_port).then(|| k.clone()));
+            if let Some(tx_dev_port) = tx_dev_port {
+                let tx_dev_port_int = tx_dev_port.parse::<u32>().unwrap_or(0);
+                histogram_monitor.histogram.insert(
+                    tx_dev_port_int,
+                    Histogram {
+                        config,
+                        data: HistogramPacketPath::default(),
+                    },
+                );
+            }
         }
     }
-    // Write default IAT histogram config for active rx ports that do not have a histogram config set
-    for &rx in tx_rx_port_mapping.values() {
+    // Write default IAT histogram config for active tx/rx ports that do not have a histogram config set
+    for (tx, rx) in tx_rx_port_mapping.clone() {
         let histogram_monitor = &mut state.iat_histogram_monitor.lock().await;
         if histogram_monitor.histogram.get_mut(&rx).is_none() {
             info!("Adding default IAT histogram config for rx port {rx}");
             histogram_monitor.histogram.insert(rx, Histogram::default());
+        }
+        let tx_int = tx.parse::<u32>().unwrap_or(0);
+        if histogram_monitor.histogram.get_mut(&tx_int).is_none() {
+            info!("Adding default IAT histogram config for tx port {tx_int}");
+            histogram_monitor
+                .histogram
+                .insert(tx_int, Histogram::default());
         }
     }
 
@@ -295,12 +317,11 @@ pub async fn start_single_test(
                 dev_port,
                 Histogram {
                     config,
-                    data: HistogramData::default(),
+                    data: HistogramPacketPath::default(),
                 },
             );
         }
     }
-
     // Write default RTT histogram config for active rx ports that do not have a histogram config set
     for &rx in tx_rx_port_mapping.values() {
         let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;

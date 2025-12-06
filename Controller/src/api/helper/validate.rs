@@ -510,7 +510,16 @@ pub fn validate_histogram(
                     end = config.max;
                 }
 
-                num_requests += count_range_to_ternary_entries(start, end);
+                let new_requests = count_range_to_ternary_entries(start, end);
+
+                if let HistogramType::Iat = hist_type {
+                    // Double the number because we write entries for TX and RX
+                    num_requests += 2 * new_requests;
+                } else {
+                    // Only RX
+                    num_requests += new_requests;
+                }
+
                 if num_requests > max_table_size {
                     return Err(Error::new(format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")));
                 }

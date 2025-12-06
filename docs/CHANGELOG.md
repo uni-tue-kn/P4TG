@@ -9,11 +9,14 @@
 
   <img src="./img/shapes.jpeg" alt="Shapes" width="70%"/>
 - Added breakout mode for 400G -> 4x100G on Tofino 2, allowing up to 40x100G customizable traffic generation.
-- Added histogram monitoring for RX IATs similar to RTT histograms.
+- Added histogram monitoring for TX/RX IATs similar to RTT histograms.
   - ⚠️ API schema changes
     - `histogram_config` in `POST:/api/trafficgen` is now called `rtt_histogram_config` and `iat_histogram_config`
-    - `GET:/api/statistics` now contains `rtt_histogram` and `iat_histogram`. Mean and std are renamed from `mean_rtt`, `std_rtt` to `mean` and `std`.
+    - `GET:/api/statistics` now contains `rtt_histogram` and `iat_histogram`.
+      - Each histogram data collection now contains `rx` and `tx`, where `tx` is always empty for RTT.
+      - Mean and std are renamed from `mean_rtt`, `std_rtt` to `mean` and `std`.
 - Added a rename button for names of tests to make the renaming more intuitive.
+- Added a button to show/hide the percentile annotations for histograms.
 
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
