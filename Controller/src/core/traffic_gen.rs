@@ -40,7 +40,7 @@ use crate::core::traffic_gen_core::helper::{calculate_overhead, create_packet, m
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
 
-use super::statistics::RttHistogramConfig;
+use super::statistics::HistogramConfig;
 
 /// A Traffic Generator object.
 /// The traffic generator controls the main configuration of P4TG.
@@ -72,8 +72,10 @@ pub struct TrafficGen {
     pub num_pipes: u32,
     /// Duration of this test in seconds. 0 for unlimited
     pub duration: Option<u32>,
-    /// Mapping between RX port and histogram config. The first index is the front panel port, the second is the channel.
-    pub(crate) histogram_config: HashMap<String, HashMap<String, RttHistogramConfig>>,
+    /// Mapping between RX port and RTT histogram config. The first index is the front panel port, the second is the channel.
+    pub(crate) rtt_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
+    /// Mapping between RX port and IAT histogram config. The first index is the front panel port, the second is the channel.
+    pub(crate) iat_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
     /// Name of the current test
     pub(crate) name: Option<String>,
 }
@@ -90,7 +92,8 @@ impl TrafficGen {
             is_tofino2,
             num_pipes,
             duration: None,
-            histogram_config: HashMap::new(),
+            rtt_histogram_config: HashMap::new(),
+            iat_histogram_config: HashMap::new(),
             name: None,
         }
     }
@@ -638,6 +641,12 @@ impl TrafficGen {
             .await
             .on_reset(switch)
             .await?;
+        state
+            .iat_histogram_monitor
+            .lock()
+            .await
+            .on_reset(switch)
+            .await?;
 
         // call the on_start routine on all relevant parts
         state
@@ -660,6 +669,12 @@ impl TrafficGen {
             .await?;
         state
             .rtt_histogram_monitor
+            .lock()
+            .await
+            .on_start(switch, &mode)
+            .await?;
+        state
+            .iat_histogram_monitor
             .lock()
             .await
             .on_start(switch, &mode)

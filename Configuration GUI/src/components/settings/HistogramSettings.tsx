@@ -17,7 +17,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { HistogramConfigMap, PortInfo, PortTxRxMap, RttHistogramConfig } from "../../common/Interfaces";
+import { HistogramConfigMap, PortInfo, PortTxRxMap, HistogramConfig } from "../../common/Interfaces";
 import React, { useState } from "react";
 import { StyledCol } from "../../sites/Settings";
 import HistogramModal from "./HistogramModal";
@@ -26,33 +26,42 @@ const HistogramSettings = ({
     port,
     mapping,
     disabled,
-    data,
-    set_data
+    rtt_data,
+    iat_data,
+    set_rtt_data,
+    set_iat_data
 }: {
     port: PortInfo,
     mapping: PortTxRxMap,
     disabled: boolean,
-    data: HistogramConfigMap,
-    set_data: (pid: number, channel: number, updated: RttHistogramConfig) => void
+    rtt_data: HistogramConfigMap,
+    iat_data: HistogramConfigMap,
+    set_rtt_data: (pid: number, channel: number, updated: HistogramConfig) => void
+    set_iat_data: (pid: number, channel: number, updated: HistogramConfig) => void
 }) => {
     const [show, set_show] = useState(false)
 
     const rx_pid = mapping?.[String(port.port)]?.[String(port.channel)]?.port;
     const rx_channel = mapping?.[String(port.port)]?.[String(port.channel)]?.channel;
 
-    const cfg = data?.[String(rx_pid)]?.[String(rx_channel)];
+    const rtt_cfg = rtt_data?.[String(rx_pid)]?.[String(rx_channel)];
+    const iat_cfg = iat_data?.[String(rx_pid)]?.[String(rx_channel)];
 
     return <>
         {rx_pid !== undefined && rx_channel !== undefined && (
-            <HistogramModal
-                disabled={disabled}
-                data={cfg}
-                show={show}
-                pid={rx_pid}
-                channel={rx_channel}
-                hide={() => set_show(false)}
-                set_data={set_data}
-            />
+            <>
+                <HistogramModal
+                    disabled={disabled}
+                    rtt_data={rtt_cfg}
+                    iat_data={iat_cfg}
+                    show={show}
+                    pid={rx_pid}
+                    channel={rx_channel}
+                    hide={() => set_show(false)}
+                    set_iat_data={set_iat_data}
+                    set_rtt_data={set_rtt_data}
+                />
+            </>
         )}
         <StyledCol className="justify-content-center align-items-center">
             <button

@@ -25,7 +25,7 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use utoipa::ToSchema;
 
-use crate::core::statistics::RttHistogramConfig;
+use crate::core::statistics::HistogramConfig;
 
 /// Describes the supported encapsulations of P4TG.
 /// Currently, MPLS, VLAN, QinQ, and SRv6 are supported.
@@ -152,8 +152,10 @@ pub struct TrafficGenData {
     pub(crate) port_tx_rx_mapping: HashMap<String, HashMap<String, RxTarget>>,
     /// The duration of this test in seconds.
     pub(crate) duration: Option<u32>,
-    /// Mapping between RX port and histogram config.
-    pub(crate) histogram_config: Option<HashMap<String, HashMap<String, RttHistogramConfig>>>,
+    /// Mapping between RX port and RTT histogram config.
+    pub(crate) rtt_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,
+    /// Mapping between RX port and IAT histogram config.
+    pub(crate) iat_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,
     /// The name of the test. This is used to identify the test in the UI.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,
@@ -351,6 +353,8 @@ pub struct GenerationPatternConfig {
     /// t_1 in the range of [0,1]
     pub fc_ramp_until: Option<f64>,
     pub fc_decay_rate: Option<f64>,
+    /// The minimum value for a square wave in the range of [0,1]
+    pub square_low: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -360,4 +364,11 @@ pub enum GenerationPattern {
     Triangle,
     Sawtooth,
     Flashcrowd,
+    CatWave,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub enum HistogramType {
+    Rtt,
+    Iat,
 }

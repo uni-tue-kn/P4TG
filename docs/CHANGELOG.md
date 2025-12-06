@@ -9,6 +9,10 @@
 
   <img src="./img/shapes.jpeg" alt="Shapes" width="70%"/>
 - Added breakout mode for 400G -> 4x100G on Tofino 2, allowing up to 40x100G customizable traffic generation.
+- Added histogram monitoring for RX IATs similar to RTT histograms.
+  - ⚠️ API schema changes
+    - `histogram_config` in `POST:/api/trafficgen` is now called `rtt_histogram_config` and `iat_histogram_config`
+    - `GET:/api/statistics` now contains `rtt_histogram` and `iat_histogram`. Mean and std are renamed from `mean_rtt`, `std_rtt` to `mean` and `std`.
 - Added a rename button for names of tests to make the renaming more intuitive.
 
 ### Bug fixes
@@ -32,7 +36,7 @@
 
 ## v2.6.1
 - Fix breakout mode if `speed` is not manually configured in `config.json`.
-
+GET:/api/statistics`
 ## v2.6.0
 - Breakout mode: P4TG now supports traffic generation via breakout channels, i.e., 1x100G -> 4x25G and 1x40G -> 4x10G. Each channel can be configured individually. Breakout mode for a port must be configured in `config.json`:
 ```json

@@ -18,7 +18,7 @@
  */
 
 use crate::core::statistics::{
-    IATStatistics, IATValues, RTTStatistics, RangeCount, RttHistogram, Statistics, TimeStatistics,
+    Histogram, IATStatistics, IATValues, RTTStatistics, RangeCount, Statistics, TimeStatistics,
     TypeCount,
 };
 use crate::core::traffic_gen_core::helper::{
@@ -56,7 +56,8 @@ pub struct StatisticsApi {
     pub packet_loss: HashMap<u32, HashMap<u8, u64>>,
     pub out_of_order: HashMap<u32, HashMap<u8, u64>>,
     pub elapsed_time: u32,
-    pub rtt_histogram: HashMap<u32, HashMap<u8, RttHistogram>>,
+    pub rtt_histogram: HashMap<u32, HashMap<u8, Histogram>>,
+    pub iat_histogram: HashMap<u32, HashMap<u8, Histogram>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
@@ -86,6 +87,7 @@ impl StatisticsApi {
             out_of_order: remap_port_map(&core.out_of_order, &dev_to_fpch),
             elapsed_time: core.elapsed_time,
             rtt_histogram: remap_port_map(&core.rtt_histogram, &dev_to_fpch),
+            iat_histogram: remap_port_map(&core.iat_histogram, &dev_to_fpch),
             name: core.name.clone(),
         }
     }
@@ -106,6 +108,7 @@ impl StatisticsApi {
         filter_map_for_keys(&mut stats.packet_loss, &used_ports);
         filter_map_for_keys(&mut stats.out_of_order, &used_ports);
         filter_map_for_keys(&mut stats.rtt_histogram, &used_ports);
+        filter_map_for_keys(&mut stats.iat_histogram, &used_ports);
 
         stats
     }
@@ -181,6 +184,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
     let frame_type_monitor = &state.frame_type_monitor;
     let rate_monitor = &state.rate_monitor;
     let rtt_histogram_monitor = &state.rtt_histogram_monitor;
+    let iat_histogram_monitor = &state.iat_histogram_monitor;
 
     let mut stats = Statistics {
         sample_mode: state.sample_mode,
@@ -198,6 +202,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
         out_of_order: Default::default(),
         elapsed_time: 0,
         rtt_histogram: Default::default(),
+        iat_histogram: Default::default(),
         name: None,
     };
 
@@ -215,6 +220,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
             .frame_type_data
             .clone();
         stats.rtt_histogram = rtt_histogram_monitor.lock().await.histogram.clone();
+        stats.iat_histogram = iat_histogram_monitor.lock().await.histogram.clone();
         stats.name = state.traffic_generator.lock().await.name.clone();
     }
 

@@ -101,8 +101,11 @@ pub const ETHERNET_IP_HEADER_REPLACE_TABLE: &str = "egress.header_replace.header
 /// Table used to configure the bins of RTT Histogram
 pub const RTT_HISTOGRAM_TABLE: &str = "ingress.p4tg.rtt.rtt_histogram";
 
-/// Maximum number of entries in the RTT_HISTOGRAM_TABLE
-pub const RTT_HISTOGRAM_TABLE_SIZE: u32 = 8196;
+/// Maximum number of entries in the RTT_HISTOGRAM_TABLE and IAT_HISTOGRAM_TABLE
+pub const HISTOGRAM_TABLE_SIZE: u32 = 8196;
+
+/// Table used to configure the bins of RTT Histogram
+pub const IAT_HISTOGRAM_TABLE: &str = "ingress.p4tg.iat.iat_histogram";
 
 /// VLAN replace table
 /// This table replaces the header content of QinQ and VLAN frames

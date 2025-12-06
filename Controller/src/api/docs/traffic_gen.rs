@@ -1,4 +1,4 @@
-use crate::core::statistics::RttHistogramConfig;
+use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::types::*;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -70,11 +70,11 @@ lazy_static! {
             )])
         )]),
         duration: Some(10),
-        histogram_config: Some(HashMap::from([(
+        rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
                 "0".to_string(),
-                RttHistogramConfig {
+                HistogramConfig {
                     min: 1000,
                     max: 2000,
                     num_bins: 100,
@@ -82,6 +82,7 @@ lazy_static! {
                 }
             )])
         )])),
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
@@ -148,11 +149,11 @@ lazy_static! {
             )])
         )]),
         duration: None,
-        histogram_config: Some(HashMap::from([(
+        rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
                 "0".to_string(),
-                RttHistogramConfig {
+                HistogramConfig {
                     min: 1000,
                     max: 2000,
                     num_bins: 100,
@@ -160,6 +161,7 @@ lazy_static! {
                 }
             )])
         )])),
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_POST_1_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -246,11 +248,11 @@ lazy_static! {
             )])
         )]),
         duration: None,
-        histogram_config: Some(HashMap::from([(
+        rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
                 "0".to_string(),
-                RttHistogramConfig {
+                HistogramConfig {
                     min: 1000,
                     max: 2000,
                     num_bins: 100,
@@ -258,6 +260,7 @@ lazy_static! {
                 }
             )])
         )])),
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
@@ -323,11 +326,11 @@ lazy_static! {
             )])
         )]),
         duration: None,
-        histogram_config: Some(HashMap::from([(
+        rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
                 "0".to_string(),
-                RttHistogramConfig {
+                HistogramConfig {
                     min: 1000,
                     max: 2000,
                     num_bins: 100,
@@ -335,6 +338,7 @@ lazy_static! {
                 }
             )])
         )])),
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -413,7 +417,8 @@ lazy_static! {
             pattern: None,
         }],
         duration: None,
-        histogram_config: None,
+        rtt_histogram_config: None,
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_POST_3_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -503,11 +508,11 @@ lazy_static! {
                 )])
             )]),
             duration: Some(10),
-            histogram_config: Some(HashMap::from([(
+            rtt_histogram_config: Some(HashMap::from([(
                 "2".to_string(),
                 HashMap::from([(
                     "0".to_string(),
-                    RttHistogramConfig {
+                    HistogramConfig {
                         min: 1000,
                         max: 2000,
                         num_bins: 100,
@@ -515,6 +520,7 @@ lazy_static! {
                     }
                 )])
             )])),
+            iat_histogram_config: None,
             name: Some("Test 1".to_string())
         },
         TrafficGenData {
@@ -584,11 +590,11 @@ lazy_static! {
                 )])
             )]),
             duration: Some(15),
-            histogram_config: Some(HashMap::from([(
+            rtt_histogram_config: Some(HashMap::from([(
                 "2".to_string(),
                 HashMap::from([(
                     "0".to_string(),
-                    RttHistogramConfig {
+                    HistogramConfig {
                         min: 1000,
                         max: 2000,
                         num_bins: 100,
@@ -596,6 +602,7 @@ lazy_static! {
                     }
                 )])
             )])),
+            iat_histogram_config: None,
             name: Some("Another test".to_string())
         }
     ];

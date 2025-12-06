@@ -34,7 +34,7 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { secondsToTime } from "./SendReceiveMonitor";
-import { PortTxRxMap, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
+import { Histogram, PortTxRxMap, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
 import React, { useState } from "react";
 import { Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import StatViewHistogram from './StatViewHistogram';
@@ -241,15 +241,15 @@ const generateLineData = (
 
 const renderTooltip = (props: any) => (
     <Tooltip id="tooltip-disabled" {...props}>
-        RTT Histogram is only available in the port view.
+        Histogram is only available in the port view.
     </Tooltip>
 );
 
 const generateHistogram = (
-    data: StatisticsEntry,
+    histogram_data: { [port: string]: { [channel: string]: Histogram } },
     port_mapping: PortTxRxMap
 ): [string[], number[]] => {
-    const histogram_data = data.rtt_histogram; // { [port]: { [ch]: RttHistogram } }
+    //const histogram_data = data.rtt_histogram; // { [port]: { [ch]: RttHistogram } }
     let combined_bins: { [binIndex: string]: number } = {};
     let min = Infinity;
     let max = -Infinity;
@@ -309,11 +309,11 @@ const generateHistogram = (
 };
 
 const getPercentileAnnotations = (
-    data: StatisticsEntry,
+    histogram_data: { [port: string]: { [channel: string]: Histogram } },
     port_mapping: PortTxRxMap
 ): Record<string, any> => {
     const annotations: Record<string, any> = {};
-    const histogram = data.rtt_histogram; // { [port]: { [channel]: RttHistogram } }
+    const histogram = histogram_data; // { [port]: { [channel]: RttHistogram } }
 
     const percentileColors: string[] = ['#3c82e7', '#e74c3c', '#e7a23c', '#a23ce7'];
 
@@ -504,8 +504,10 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)
     const [labels_out_of_order, line_data_out_of_order] = generateLineData("out_of_order", false, data, port_mapping)
     const [labels_rtt, line_data_rtt] = get_rtt(data, port_mapping)
-    const [labels_rtt_hist, hist_data_rtt] = generateHistogram(stats, port_mapping);
-    const percentileAnnotations = getPercentileAnnotations(stats, port_mapping);
+    const [labels_rtt_hist, hist_data_rtt] = generateHistogram(stats.rtt_histogram, port_mapping);
+    const [labels_iat_hist, hist_data_iat] = generateHistogram(stats.iat_histogram, port_mapping);
+    const percentileRTTAnnotations = getPercentileAnnotations(stats.rtt_histogram, port_mapping);
+    const percentileIATAnnotations = getPercentileAnnotations(stats.iat_histogram, port_mapping);
 
     const [visual_select, set_visual_select] = useState("rate")
 
@@ -724,7 +726,46 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
                 display: true,
             },
             annotation: {
-                annotations: percentileAnnotations
+                annotations: percentileRTTAnnotations
+            }
+        },
+    };
+
+    const iat_hist_data: ChartData<"bar"> = {
+        labels: labels_iat_hist,
+        datasets: [
+            {
+                label: 'RTT distribution',
+                data: hist_data_iat,
+                backgroundColor: 'rgba(53, 162, 235, 0.5)'
+            },
+        ]
+    }
+
+    const iat_histogram_options = {
+        responsive: true,
+        aspectRatio: 4,
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Probability (%)'
+                }
+            },
+            x: {
+                title: {
+                    display: true,
+                    text: 'IAT Range'
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: true,
+            },
+            annotation: {
+                annotations: percentileIATAnnotations
             }
         },
     };
@@ -739,6 +780,17 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
             checked={visual_select === "rtt_histogram"}
             disabled={is_summary}
             id={`rtt_histogram`}
+        />
+    );
+    const iatHistogramCheck = (
+        <Form.Check
+            inline
+            label="IAT Histogram"
+            type="radio"
+            name={"visuals"}
+            checked={visual_select === "iat_histogram"}
+            disabled={is_summary}
+            id={`iat_histogram`}
         />
     );
 
@@ -780,8 +832,17 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
 
         {visual_select == "rtt_histogram" ?
             <>
-                <StatViewHistogram stats={stats} port_mapping={port_mapping} rx_port={rx_port} />
+                <StatViewHistogram stats={stats.rtt_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"RTT"} />
                 <Bar options={rtt_histogram_options} data={rtt_hist_data} />
+            </>
+            :
+            null
+        }
+
+        {visual_select == "iat_histogram" ?
+            <>
+                <StatViewHistogram stats={stats.iat_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"IAT"} />
+                <Bar options={iat_histogram_options} data={iat_hist_data} />
             </>
             :
             null
@@ -821,6 +882,15 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
                     </OverlayTrigger>
                     :
                     rttHistogramCheck
+                }
+                {is_summary ?
+                    <OverlayTrigger placement="top" overlay={renderTooltip}>
+                        <span className="d-inline-block">
+                            {iatHistogramCheck}
+                        </span>
+                    </OverlayTrigger>
+                    :
+                    iatHistogramCheck
                 }
                 <Form.Check
                     inline

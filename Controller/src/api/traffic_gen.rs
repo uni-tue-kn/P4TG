@@ -33,7 +33,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::api::server::Error;
-use crate::core::statistics::{RttHistogram, RttHistogramData};
+use crate::core::statistics::{Histogram, HistogramData};
 use crate::AppState;
 
 use crate::api::docs::traffic_gen::{
@@ -82,7 +82,8 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             streams: tg.streams.clone(),
             port_tx_rx_mapping: tg.port_mapping.clone(),
             duration: tg.duration,
-            histogram_config: Some(tg.histogram_config.clone()),
+            rtt_histogram_config: Some(tg.rtt_histogram_config.clone()),
+            iat_histogram_config: Some(tg.iat_histogram_config.clone()),
             name: tg.name.clone(),
         };
 
@@ -236,14 +237,50 @@ pub async fn start_single_test(
         &front_panel_dev_port_mappings,
     );
 
-    // Clear histogram config state and release lock when out of scope
+    // Clear RTT histogram config state and release lock when out of scope
     {
         let mut histogram_configs = state.rtt_histogram_monitor.lock().await;
         histogram_configs.histogram.clear();
     }
 
-    // Write histogram config into state. The tables will be later populated by init_histogram_config
-    let histogram_config_cloned = payload.histogram_config.clone();
+    // Clear IAT histogram config state and release lock when out of scope
+    {
+        let mut histogram_configs = state.iat_histogram_monitor.lock().await;
+        histogram_configs.histogram.clear();
+    }
+
+    // Write IAT histogram config into state. The tables will be later populated by init_histogram_config
+    let histogram_config_cloned = payload.iat_histogram_config.clone();
+    for (rx, channel_map) in histogram_config_cloned.unwrap_or_default() {
+        let front_panel_port = rx.parse::<u32>().unwrap_or(0);
+        for (channel, config) in channel_map {
+            let histogram_monitor = &mut state.iat_histogram_monitor.lock().await;
+            let channel_num = channel.parse::<u32>().unwrap_or(0);
+            let dev_port = front_panel_dev_port_mappings
+                .get(&front_panel_port)
+                .unwrap()
+                + channel_num;
+            // Create new histogram config with empty data from payload
+            histogram_monitor.histogram.insert(
+                dev_port,
+                Histogram {
+                    config,
+                    data: HistogramData::default(),
+                },
+            );
+        }
+    }
+    // Write default IAT histogram config for active rx ports that do not have a histogram config set
+    for &rx in tx_rx_port_mapping.values() {
+        let histogram_monitor = &mut state.iat_histogram_monitor.lock().await;
+        if histogram_monitor.histogram.get_mut(&rx).is_none() {
+            info!("Adding default IAT histogram config for rx port {rx}");
+            histogram_monitor.histogram.insert(rx, Histogram::default());
+        }
+    }
+
+    // Write RTT histogram config into state. The tables will be later populated by init_histogram_config
+    let histogram_config_cloned = payload.rtt_histogram_config.clone();
     for (rx, channel_map) in histogram_config_cloned.unwrap_or_default() {
         let front_panel_port = rx.parse::<u32>().unwrap_or(0);
         for (channel, config) in channel_map {
@@ -256,22 +293,20 @@ pub async fn start_single_test(
             // Create new histogram config with empty data from payload
             histogram_monitor.histogram.insert(
                 dev_port,
-                RttHistogram {
+                Histogram {
                     config,
-                    data: RttHistogramData::default(),
+                    data: HistogramData::default(),
                 },
             );
         }
     }
 
-    // Write default histogram config for active rx ports that do not have a histogram config set
+    // Write default RTT histogram config for active rx ports that do not have a histogram config set
     for &rx in tx_rx_port_mapping.values() {
         let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
         if histogram_monitor.histogram.get_mut(&rx).is_none() {
-            info!("Adding default histogram config for rx port {rx}");
-            histogram_monitor
-                .histogram
-                .insert(rx, RttHistogram::default());
+            info!("Adding default RTT histogram config for rx port {rx}");
+            histogram_monitor.histogram.insert(rx, Histogram::default());
         }
     }
 
@@ -293,7 +328,8 @@ pub async fn start_single_test(
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
             tg.stream_settings = payload.stream_settings.clone();
             tg.streams = payload.streams.clone();
-            tg.histogram_config = payload.histogram_config.unwrap_or_default();
+            tg.rtt_histogram_config = payload.rtt_histogram_config.unwrap_or_default();
+            tg.iat_histogram_config = payload.iat_histogram_config.unwrap_or_default();
             tg.mode = payload.mode;
             tg.duration = payload.duration;
             tg.name = payload.name;

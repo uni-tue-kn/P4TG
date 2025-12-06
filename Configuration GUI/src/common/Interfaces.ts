@@ -25,33 +25,33 @@ export interface MPLSHeader {
     ttl: number
 }
 
-export type RttHistogramConfig = {
+export type HistogramConfig = {
     min: number;
     max: number;
     num_bins: number;
     percentiles?: Array<number>;
 };
 
-// nested map: { [rxPort]: { [rxChannel]: RttHistogramConfig } }
-export type HistogramConfigMap = Record<string, Record<string, RttHistogramConfig>>;
+// nested map: { [rxPort]: { [rxChannel]: HistogramConfig } }
+export type HistogramConfigMap = Record<string, Record<string, HistogramConfig>>;
 
-export type RttHistogramBinEntry = {
+export type HistogramBinEntry = {
     count: bigint,
     probability: number,
 }
 
-export type RttHistogramData = {
-    data_bins: Record<string, RttHistogramBinEntry>;
+export type HistogramData = {
+    data_bins: Record<string, HistogramBinEntry>;
     percentiles: Record<string, number>;
-    mean_rtt: number;
-    std_dev_rtt: number;
+    mean: number;
+    std_dev: number;
     missed_bin_count: number;
     total_pkt_count: number;
 };
 
-export type RttHistogram = {
-    config: RttHistogramConfig;
-    data: RttHistogramData;
+export type Histogram = {
+    config: HistogramConfig;
+    data: HistogramData;
 };
 
 export type Statistics = Array<StatisticsEntry>;
@@ -131,8 +131,9 @@ export type StatisticsEntry = {
 
     elapsed_time: number;
 
-    // now per port -> channel
-    rtt_histogram: { [port: string]: { [channel: string]: RttHistogram } };
+    // per port -> channel
+    rtt_histogram: { [port: string]: { [channel: string]: Histogram } };
+    iat_histogram: { [port: string]: { [channel: string]: Histogram } };
 
     name?: string;
 };
@@ -154,6 +155,7 @@ export const StatisticsObject: StatisticsEntry = {
     out_of_order: {},
     elapsed_time: 0,
     rtt_histogram: {},
+    iat_histogram: {},
 }
 
 export type TimeStatistics = Array<TimeStatisticsEntry>;
@@ -413,7 +415,8 @@ export interface TrafficGenData {
     stream_settings: StreamSettings[],
     port_tx_rx_mapping: PortTxRxMap,
     duration: number,
-    histogram_config: HistogramConfigMap,
+    rtt_histogram_config: HistogramConfigMap,
+    iat_histogram_config: HistogramConfigMap,
     name?: string,
 }
 
@@ -435,6 +438,7 @@ export interface GenerationPatternConfig {
     fc_quiet_until: number | null,
     fc_ramp_until: number | null,
     fc_decay_rate: number | null,
+    square_low: number | null,
 }
 
 export enum GenerationPattern {

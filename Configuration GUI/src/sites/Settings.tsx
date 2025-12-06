@@ -31,7 +31,7 @@ import {
     GenerationMode, GenerationUnit, HistogramConfigMap, P4TGInfos,
     PortInfo,
     PortTxRxMap,
-    RttHistogramConfig,
+    HistogramConfig,
     speedToGbps,
     Stream,
     StreamSettings, ToastVariant, TrafficGenData,
@@ -70,7 +70,9 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     // @ts-ignore
     const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
     // @ts-ignore
-    const [histogram_settings, set_histogram_settings] = useState<HistogramConfigMap>(JSON.parse(localStorage.getItem("histogram_config")) || {})
+    const [rtt_histogram_settings, set_rtt_histogram_settings] = useState<HistogramConfigMap>(JSON.parse(localStorage.getItem("rtt_histogram_config")) || {})
+    // @ts-ignore
+    const [iat_histogram_settings, set_iat_histogram_settings] = useState<HistogramConfigMap>(JSON.parse(localStorage.getItem("iat_histogram_config")) || {})
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
@@ -122,14 +124,16 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
                     set_stream_settings(stats.data.stream_settings)
                     set_streams(stats.data.streams)
-                    set_histogram_settings(stats.data.histogram_config)
+                    set_rtt_histogram_settings(stats.data.rtt_histogram_config)
+                    set_iat_histogram_settings(stats.data.iat_histogram_config)
 
                     localStorage.setItem("streams", JSON.stringify(stats.data.streams))
                     localStorage.setItem("gen-mode", stats.data.mode)
                     localStorage.setItem("duration", stats.data.duration)
                     localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
                     localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
-                    localStorage.setItem("histogram_config", JSON.stringify(stats.data.histogram_config))
+                    localStorage.setItem("rtt_histogram_config", JSON.stringify(stats.data.rtt_histogram_config))
+                    localStorage.setItem("iat_histogram_config", JSON.stringify(stats.data.iat_histogram_config))
                 }
                 set_running(true)
             } else {
@@ -159,7 +163,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 streams: [],
                 stream_settings: [],
                 port_tx_rx_mapping: {},
-                histogram_config: {}
+                rtt_histogram_config: {},
+                iat_histogram_config: {}
             };
             configs = { [DEFAULT_CONFIG_NAME]: defaultConfig };
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs));
@@ -189,7 +194,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_mode(config.mode ?? GenerationMode.NONE);
         set_duration(config.duration ?? 0);
         set_port_tx_rx_mapping(config.port_tx_rx_mapping || {});
-        set_histogram_settings(config.histogram_config ?? {});
+        set_rtt_histogram_settings(config.rtt_histogram_config ?? {});
+        set_iat_histogram_settings(config.iat_histogram_config ?? {});
     };
 
     const deleteConfig = (name: string) => {
@@ -209,7 +215,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 set_mode(GenerationMode.NONE);
                 set_duration(0);
                 set_port_tx_rx_mapping({});
-                set_histogram_settings({});
+                set_rtt_histogram_settings({});
+                set_iat_histogram_settings({});
             }
         }
     };
@@ -226,11 +233,19 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         );
 
         // Filter histogram_settings: keep only allowed (port,channel) pairs
-        const filteredHistogramSettings: HistogramConfigMap = {};
-        for (const [rxPort, perCh] of Object.entries(histogram_settings ?? {})) {
+        const filteredRTTHistogramSettings: HistogramConfigMap = {};
+        for (const [rxPort, perCh] of Object.entries(rtt_histogram_settings ?? {})) {
             for (const [rxCh, cfg] of Object.entries(perCh ?? {})) {
                 if (allowed.has(`${rxPort}/${rxCh}`)) {
-                    (filteredHistogramSettings[rxPort] ??= {})[rxCh] = cfg;
+                    (filteredRTTHistogramSettings[rxPort] ??= {})[rxCh] = cfg;
+                }
+            }
+        }
+        const filteredIATHistogramSettings: HistogramConfigMap = {};
+        for (const [rxPort, perCh] of Object.entries(iat_histogram_settings ?? {})) {
+            for (const [rxCh, cfg] of Object.entries(perCh ?? {})) {
+                if (allowed.has(`${rxPort}/${rxCh}`)) {
+                    (filteredIATHistogramSettings[rxPort] ??= {})[rxCh] = cfg;
                 }
             }
         }
@@ -239,7 +254,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         localStorage.setItem("gen-mode", String(mode))
         localStorage.setItem("duration", String(duration))
         localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
-        localStorage.setItem("histogram_config", JSON.stringify(filteredHistogramSettings))
+        localStorage.setItem("rtt_histogram_config", JSON.stringify(filteredRTTHistogramSettings))
+        localStorage.setItem("iat_histogram_config", JSON.stringify(filteredIATHistogramSettings))
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(port_tx_rx_mapping))
 
         const newConfig: TrafficGenData = {
@@ -247,7 +263,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             mode: mode,
             duration: duration,
             stream_settings: stream_settings,
-            histogram_config: filteredHistogramSettings,
+            rtt_histogram_config: filteredRTTHistogramSettings,
+            iat_histogram_config: filteredIATHistogramSettings,
             port_tx_rx_mapping: port_tx_rx_mapping,
         };
 
@@ -271,7 +288,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
         set_streams([])
         set_stream_settings([])
-        set_histogram_settings({})
+        set_rtt_histogram_settings({})
+        set_iat_histogram_settings({})
         set_mode(GenerationMode.NONE)
         set_duration(0)
         set_port_tx_rx_mapping({})
@@ -282,7 +300,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             streams: [],
             stream_settings: [],
             port_tx_rx_mapping: {},
-            histogram_config: {}
+            rtt_histogram_config: {},
+            iat_histogram_config: {}
         };
         setSavedConfigs({ [DEFAULT_CONFIG_NAME]: defaultConfig })
         setActiveConfigName(DEFAULT_CONFIG_NAME)
@@ -346,19 +365,37 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     };
 
     // Update a single (rx_port, rx_channel)
-    const updateHistogramSettings = (
+    const updateRTTHistogramSettings = (
         front_panel_port: number,
         channel: number,
-        updated: RttHistogramConfig
+        updated: HistogramConfig
     ) => {
-        set_histogram_settings((prev: { [x: string]: any; }) => {
+        set_rtt_histogram_settings((prev: { [x: string]: any; }) => {
             const p = String(front_panel_port);
             const c = String(channel);
             const next: HistogramConfigMap = {
                 ...prev,
                 [p]: { ...(prev[p] ?? {}), [c]: updated },
             };
-            localStorage.setItem("histogram_config", JSON.stringify(next));
+            localStorage.setItem("rtt_histogram_config", JSON.stringify(next));
+            return next;
+        });
+    };
+
+    // Update a single (rx_port, rx_channel)
+    const updateIATHistogramSettings = (
+        front_panel_port: number,
+        channel: number,
+        updated: HistogramConfig
+    ) => {
+        set_iat_histogram_settings((prev: { [x: string]: any; }) => {
+            const p = String(front_panel_port);
+            const c = String(channel);
+            const next: HistogramConfigMap = {
+                ...prev,
+                [p]: { ...(prev[p] ?? {}), [c]: updated },
+            };
+            localStorage.setItem("iat_histogram_config", JSON.stringify(next));
             return next;
         });
     };
@@ -442,7 +479,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
         const isLegacyTest = (t: any) => {
             const pm = t?.port_tx_rx_mapping;
-            const hc = t?.histogram_config;
+            const hc = t?.rtt_histogram_config;
             const ss = Array.isArray(t?.stream_settings) ? (t.stream_settings as Array<{ channel?: number }>) : [];
             const pmSample = pm && typeof pm === "object" ? Object.values(pm)[0] : undefined;
             const hcSample = hc && typeof hc === "object" ? Object.values(hc)[0] : undefined;
@@ -471,13 +508,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                         { "0": { port: Number(rx), channel: 0 } },
                     ])
                 );
-                const histogram_config = Object.fromEntries(
-                    Object.entries(v.histogram_config ?? {}).map(([rp, cfg]) => [String(rp), { "0": cfg }])
+                const rtt_histogram_config = Object.fromEntries(
+                    Object.entries(v.rtt_histogram_config ?? {}).map(([rp, cfg]) => [String(rp), { "0": cfg }])
                 );
                 const stream_settings: StreamSettings[] = (v.stream_settings ?? []).map((s: any) => ({
                     ...s, channel: s.channel ?? 0,
                 }));
-                out[k] = { ...v, port_tx_rx_mapping, histogram_config, stream_settings };
+                out[k] = { ...v, port_tx_rx_mapping, rtt_histogram_config, stream_settings };
             } else {
                 out[k] = v as TrafficGenData; // already new shape
             }
@@ -599,7 +636,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             localStorage.setItem("duration", first_test.duration ? String(first_test.duration) : "0")
             localStorage.setItem("streamSettings", JSON.stringify(first_test.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(first_test.port_tx_rx_mapping))
-            localStorage.setItem("histogram_config", first_test.histogram_config ? JSON.stringify(first_test.histogram_config) : "{}")
+            localStorage.setItem("rtt_histogram_config", first_test.rtt_histogram_config ? JSON.stringify(first_test.rtt_histogram_config) : "{}")
 
             if (toastMessage !== undefined && toastType !== undefined) {
                 showToast(toastMessage, toastType);
@@ -825,7 +862,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                     streams: [],
                                     stream_settings: [],
                                     port_tx_rx_mapping: {},
-                                    histogram_config: {}
+                                    rtt_histogram_config: {},
+                                    iat_histogram_config: {}
                                 };
                                 const updatedConfigs = { ...savedConfigs, [newName]: defaultConfig };
                                 setSavedConfigs(updatedConfigs);
@@ -855,7 +893,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                     onChange={(event: any) => {
                                         set_streams([]);
                                         set_stream_settings([]);
-                                        set_histogram_settings({});
+                                        set_rtt_histogram_settings({});
+                                        set_iat_histogram_settings({});
                                         if (event.target.value != "" && event.target.value != GenerationMode.ANALYZE) {
                                             addStream();
                                         }
@@ -1180,7 +1219,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                     })}
                                                                 </Form.Select>
 
-                                                                <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} data={histogram_settings} set_data={updateHistogramSettings} />
+                                                                <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} iat_data={iat_histogram_settings} rtt_data={rtt_histogram_settings} set_rtt_data={updateRTTHistogramSettings} set_iat_data={updateIATHistogramSettings} />
                                                             </StyledCol>
 
                                                             <StreamSettingsList

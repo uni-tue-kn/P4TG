@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
-import { PortTxRxMap, StatisticsEntry } from "../common/Interfaces";
+import { Histogram, PortTxRxMap } from "../common/Interfaces";
 
 import styled from 'styled-components'
 import { formatNanoSeconds, formatFrameCount } from '../common/Helper';
@@ -28,13 +28,13 @@ const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: StatisticsEntry, port_mapping: PortTxRxMap, rx_port: number }) => {
+const StatViewHistogram = ({ stats, port_mapping, rx_port, type }: { stats: { [port: string]: { [channel: string]: Histogram } }, port_mapping: PortTxRxMap, rx_port: number, type: string }) => {
     const [minValue, set_min_value] = useState(0);
     const [maxValue, set_max_value] = useState(0);
     const [numBins, set_num_bins] = useState(0);
     const [binWidth, set_bin_width] = useState(0);
-    const [meanRtt, set_mean_rtt] = useState(0);
-    const [stdRtt, set_std_rtt] = useState(0);
+    const [mean, set_mean] = useState(0);
+    const [std, set_std] = useState(0);
     const [missedBinCount, set_missed_bin_count] = useState(0);
     const [totalPacketCount, set_total_packet_count] = useState(0);
     const [percentileData, setPercentileData] = useState<Record<string, number>>({});
@@ -57,18 +57,18 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
         const rxPortKey = String(rx_port);
         const rxChKey = String(matches[0].channel); // pick first matching channel
 
-        const rttHistogram = stats.rtt_histogram?.[rxPortKey]?.[rxChKey];
-        if (!rttHistogram) return;
+        const histogram = stats?.[rxPortKey]?.[rxChKey];
+        if (!histogram) return;
 
-        const { config, data } = rttHistogram;
+        const { config, data } = histogram;
 
         set_min_value(config.min);
         set_max_value(config.max);
         set_num_bins(config.num_bins);
         set_bin_width(calculateBinWidth(config.min, config.max, config.num_bins));
 
-        set_mean_rtt(data.mean_rtt);
-        set_std_rtt(data.std_dev_rtt);
+        set_mean(data.mean);
+        set_std(data.std_dev);
         set_total_packet_count(data.total_pkt_count);
         set_missed_bin_count(data.missed_bin_count);
 
@@ -81,7 +81,7 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
             }
             return p;
         });
-    }, [stats.rtt_histogram]);
+    }, [stats]);
 
     const calculateBinWidth = (minValue: number, maxValue: number, numBins: number) => {
         return (maxValue - minValue) / numBins;
@@ -115,8 +115,8 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
                     <thead className="table-dark">
                         <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, "Values calculated from histogram data")}>
                             <tr>
-                                <th><Overline>RTT</Overline></th>
-                                <th>σ(RTT)</th>
+                                <th><Overline>{type}</Overline></th>
+                                <th>σ({type})</th>
                                 <th>Outlier</th>
                                 <th>Total #Packets</th>
                             </tr>
@@ -125,8 +125,8 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
                     </thead>
                     <tbody>
                         <tr>
-                            <td>{formatNanoSeconds(meanRtt)}</td>
-                            <td>{formatNanoSeconds(stdRtt)}</td>
+                            <td>{formatNanoSeconds(mean)}</td>
+                            <td>{formatNanoSeconds(std)}</td>
                             <td>{formatFrameCount(missedBinCount)}</td>
                             <td>{formatFrameCount(totalPacketCount)}</td>
                         </tr>

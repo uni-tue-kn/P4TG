@@ -9,26 +9,33 @@ use rbfrt::{
 };
 
 use crate::core::traffic_gen_core::{
-    const_definitions::RTT_HISTOGRAM_TABLE, helper::range_to_ternary,
+    const_definitions::{IAT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE},
+    helper::range_to_ternary,
+    types::HistogramType,
 };
 use crate::{AppState, PortMapping};
 
 use super::{
-    statistics::{RttHistogram, RttHistogramBinEntry},
+    statistics::{Histogram, HistogramBinEntry},
     traffic_gen_core::{event::TrafficGenEvent, types::GenerationMode},
 };
 
 #[derive(Clone, Debug)]
 pub struct HistogramMonitor {
     port_mapping: HashMap<u32, PortMapping>,
-    pub histogram: HashMap<u32, RttHistogram>,
+    pub histogram: HashMap<u32, Histogram>,
+    pub hist_type: HistogramType,
 }
 
 impl HistogramMonitor {
-    pub fn new(port_mapping: HashMap<u32, PortMapping>) -> HistogramMonitor {
+    pub fn new(
+        port_mapping: HashMap<u32, PortMapping>,
+        hist_type: HistogramType,
+    ) -> HistogramMonitor {
         HistogramMonitor {
             port_mapping,
             histogram: Default::default(),
+            hist_type,
         }
     }
 
@@ -36,7 +43,12 @@ impl HistogramMonitor {
         &mut self,
         switch: &SwitchConnection,
     ) -> Result<(), RBFRTError> {
-        switch.clear_table(RTT_HISTOGRAM_TABLE).await?;
+        let table_name = match self.hist_type {
+            HistogramType::Rtt => RTT_HISTOGRAM_TABLE,
+            HistogramType::Iat => IAT_HISTOGRAM_TABLE,
+        };
+
+        switch.clear_table(table_name).await?;
 
         let mut requests = vec![];
 
@@ -67,10 +79,16 @@ impl HistogramMonitor {
 
             // Wildcard match on RTT per port. This entry catches outliers of the histogram
             if let Some(mapping) = self.port_mapping.get(port) {
-                let req = Request::new(RTT_HISTOGRAM_TABLE)
-                    .match_key("ig_md.ig_port", MatchValue::exact(mapping.rx_recirculation))
-                    .match_key("ig_md.rtt", MatchValue::ternary(0, 0))
-                    .action("ingress.p4tg.rtt.count_missed_bin");
+                let req = match self.hist_type {
+                    HistogramType::Rtt => Request::new(RTT_HISTOGRAM_TABLE)
+                        .match_key("ig_md.ig_port", MatchValue::exact(mapping.rx_recirculation))
+                        .match_key("ig_md.rtt", MatchValue::ternary(0, 0))
+                        .action("ingress.p4tg.rtt.count_missed_bin"),
+                    HistogramType::Iat => Request::new(IAT_HISTOGRAM_TABLE)
+                        .match_key("ig_md.ig_port", MatchValue::exact(mapping.rx_recirculation))
+                        .match_key("ig_md.iat", MatchValue::ternary(0, 0))
+                        .action("ingress.p4tg.iat.count_missed_bin"),
+                };
                 requests.push(req);
             }
         }
@@ -79,7 +97,7 @@ impl HistogramMonitor {
 
         if !requests.is_empty() {
             switch.write_table_entries(requests).await?;
-            info!("Configured table {RTT_HISTOGRAM_TABLE} with {number_requests} entries.");
+            info!("Configured table {table_name} with {number_requests} entries.");
         }
 
         Ok(())
@@ -88,7 +106,16 @@ impl HistogramMonitor {
     /// Fetches histogram data for the Configuration GUI.
     ///
     /// - `state`: App state that holds the switch connection.
-    pub async fn monitor_histogram(state: Arc<AppState>) {
+    pub async fn monitor_histogram(state: Arc<AppState>, hist_type: HistogramType) {
+        let table_name = match hist_type {
+            HistogramType::Rtt => RTT_HISTOGRAM_TABLE,
+            HistogramType::Iat => IAT_HISTOGRAM_TABLE,
+        };
+        let action_name = match hist_type {
+            HistogramType::Rtt => "ingress.p4tg.rtt.count_missed_bin",
+            HistogramType::Iat => "ingress.p4tg.iat.count_missed_bin",
+        };
+
         loop {
             let running = {
                 let experiment = state.experiment.lock().await;
@@ -97,29 +124,32 @@ impl HistogramMonitor {
 
             if running {
                 let switch = &state.switch;
-                // Sync RTT Histogram counters
+                // Sync Histogram counters
                 {
-                    let sync = Request::new(RTT_HISTOGRAM_TABLE)
-                        .operation(table::TableOperation::SyncCounters);
+                    let sync =
+                        Request::new(table_name).operation(table::TableOperation::SyncCounters);
                     if switch.execute_operation(sync).await.is_err() {
-                        warn!("Error in synchronization for table {RTT_HISTOGRAM_TABLE}.");
+                        warn!("Error in synchronization for table {table_name}.");
                     }
                 }
 
-                // Retrieve all entries from table for RTT histogram
-                let req = Request::new(RTT_HISTOGRAM_TABLE);
+                // Retrieve all entries from table for histogram
+                let req = Request::new(table_name);
 
                 match switch.get_table_entries(req).await {
                     Ok(res) => {
-                        let mut rtt_histogram_monitor = state.rtt_histogram_monitor.lock().await;
-                        let port_mapping = rtt_histogram_monitor.port_mapping.clone();
+                        let mut histogram_monitor = match hist_type {
+                            HistogramType::Rtt => state.rtt_histogram_monitor.lock().await,
+                            HistogramType::Iat => state.iat_histogram_monitor.lock().await,
+                        };
+
+                        let port_mapping = histogram_monitor.port_mapping.clone();
 
                         // Clone keys so we can iterate without borrowing whole map
-                        let ports: Vec<u32> =
-                            rtt_histogram_monitor.histogram.keys().cloned().collect();
+                        let ports: Vec<u32> = histogram_monitor.histogram.keys().cloned().collect();
 
                         for port in ports {
-                            if let Some(hist) = rtt_histogram_monitor.histogram.get(&port) {
+                            if let Some(hist) = histogram_monitor.histogram.get(&port) {
                                 let hist_config = &hist.config;
                                 let mut bins_data = HashMap::new();
                                 let mut missed_bin_count = 0;
@@ -140,7 +170,7 @@ impl HistogramMonitor {
                                                     .unwrap()
                                                     .get_exact_value()
                                                     .to_u32()
-                                                    == rx_port
+                                                    == rx_port // TODO tx port for IAT as well?
                                         })
                                         .collect();
 
@@ -164,7 +194,7 @@ impl HistogramMonitor {
                                         // Insert bin count. Probabilities will be updated later
                                         bins_data.insert(
                                             b,
-                                            RttHistogramBinEntry {
+                                            HistogramBinEntry {
                                                 count: pkt_bin_count,
                                                 probability: 0f64,
                                             },
@@ -183,10 +213,7 @@ impl HistogramMonitor {
                                     // Get entry for this port with missed bin action
                                     missed_bin_count = hist_entries
                                         .iter()
-                                        .filter(|t| {
-                                            t.get_action_name()
-                                                == "ingress.p4tg.rtt.count_missed_bin"
-                                        })
+                                        .filter(|t| t.get_action_name() == action_name)
                                         .map(|e| {
                                             e.get_action_data("$COUNTER_SPEC_PKTS")
                                                 .unwrap()
@@ -207,14 +234,14 @@ impl HistogramMonitor {
                                     hist,
                                 );
 
-                                // Calculate mean RTT from histogram data
-                                let mean_rtt: f64 =
+                                // Calculate mean from histogram data
+                                let mean_hist: f64 =
                                     (running_sum / total_pkt_count as f64).max(0f64);
 
                                 let variance = (total_pkt_count as f64
                                     / (total_pkt_count as f64 - 1f64))
                                     * ((running_sum_square / total_pkt_count as f64).max(0f64)
-                                        - mean_rtt.powi(2));
+                                        - mean_hist.powi(2));
                                 let std_dev = variance.sqrt();
 
                                 // Map y-axis of histogram to probability from [0, 1]
@@ -225,20 +252,22 @@ impl HistogramMonitor {
 
                                 // Write data
                                 if let Some(hist_data_mut) =
-                                    rtt_histogram_monitor.histogram.get_mut(&port)
+                                    histogram_monitor.histogram.get_mut(&port)
                                 {
                                     hist_data_mut.data.data_bins = bins_data;
                                     hist_data_mut.data.percentiles = percentile_results;
                                     hist_data_mut.data.missed_bin_count = missed_bin_count;
                                     hist_data_mut.data.total_pkt_count = total_pkt_count;
-                                    hist_data_mut.data.mean_rtt = mean_rtt;
-                                    hist_data_mut.data.std_dev_rtt = std_dev;
+                                    hist_data_mut.data.mean = mean_hist;
+                                    hist_data_mut.data.std_dev = std_dev;
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        warn!("Encountered error while retrieving {RTT_HISTOGRAM_TABLE} table. Error: {e:#?}");
+                        warn!(
+                            "Encountered error while retrieving {table_name} table. Error: {e:#?}"
+                        );
                     }
                 }
             }
@@ -255,20 +284,25 @@ impl HistogramMonitor {
     ) -> Vec<Request> {
         entries
             .into_iter()
-            .map(|(value, mask)| {
-                Request::new(RTT_HISTOGRAM_TABLE)
+            .map(|(value, mask)| match self.hist_type {
+                HistogramType::Rtt => Request::new(RTT_HISTOGRAM_TABLE)
                     .match_key("ig_md.ig_port", MatchValue::exact(port))
                     .match_key("ig_md.rtt", MatchValue::ternary(value, mask))
                     .action("ingress.p4tg.rtt.count_histogram_bin")
-                    .action_data("bin_index", bin_index)
+                    .action_data("bin_index", bin_index),
+                HistogramType::Iat => Request::new(IAT_HISTOGRAM_TABLE)
+                    .match_key("ig_md.ig_port", MatchValue::exact(port))
+                    .match_key("ig_md.iat", MatchValue::ternary(value, mask))
+                    .action("ingress.p4tg.iat.count_histogram_bin")
+                    .action_data("bin_index", bin_index),
             })
             .collect()
     }
 
     fn estimate_percentiles_from_bins(
-        bins_data: &HashMap<u32, RttHistogramBinEntry>,
+        bins_data: &HashMap<u32, HistogramBinEntry>,
         mut percentiles: Vec<f64>, // e.g. [0.25, 0.5, 0.75, 0.9]
-        hist: &RttHistogram,
+        hist: &Histogram,
     ) -> HashMap<u32, f64> {
         let cfg = &hist.config;
         let min = cfg.min as f64;
@@ -332,8 +366,8 @@ impl HistogramMonitor {
             hist.data.percentiles.clear();
             hist.data.missed_bin_count = 0;
             hist.data.total_pkt_count = 0;
-            hist.data.mean_rtt = 0f64;
-            hist.data.std_dev_rtt = 0f64;
+            hist.data.mean = 0f64;
+            hist.data.std_dev = 0f64;
         }
     }
 }

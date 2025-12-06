@@ -37,6 +37,7 @@ use crate::core::traffic_gen_core::const_definitions::{
     DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2, PORT_CFG_TF2,
 };
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
+use crate::core::traffic_gen_core::types::HistogramType;
 use crate::core::{
     configure_ports, Arp, Config, DurationMonitorTask, FrameSizeMonitor, FrameTypeMonitor,
     HistogramMonitor, RateMonitor, TrafficGen,
@@ -86,6 +87,7 @@ pub struct AppState {
     pub(crate) port_mapping: HashMap<u32, PortMapping>,
     pub(crate) rate_monitor: Mutex<RateMonitor>,
     pub(crate) rtt_histogram_monitor: Mutex<HistogramMonitor>,
+    pub(crate) iat_histogram_monitor: Mutex<HistogramMonitor>,
     pub(crate) switch: SwitchConnection,
     pub(crate) pm: PortManager,
     pub(crate) experiment: Mutex<Experiment>,
@@ -226,7 +228,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     rate_monitor.init_iat_meter(&switch, sample_mode).await?;
     rate_monitor.on_reset(&switch).await?;
 
-    let rtt_histogram_monitor = HistogramMonitor::new(port_mapping.clone());
+    let rtt_histogram_monitor = HistogramMonitor::new(port_mapping.clone(), HistogramType::Rtt);
+    let iat_histogram_monitor = HistogramMonitor::new(port_mapping.clone(), HistogramType::Iat);
 
     let mut traffic_generator = TrafficGen::new(is_tofino2, num_pipes);
     traffic_generator.stop(&switch).await?;
@@ -245,6 +248,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         port_mapping,
         rate_monitor: Mutex::new(rate_monitor),
         rtt_histogram_monitor: Mutex::new(rtt_histogram_monitor),
+        iat_histogram_monitor: Mutex::new(iat_histogram_monitor),
         switch,
         pm,
         sample_mode,
@@ -316,7 +320,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         let local_state = monitoring_state;
 
-        HistogramMonitor::monitor_histogram(local_state).await;
+        HistogramMonitor::monitor_histogram(local_state, HistogramType::Rtt).await;
+    });
+
+    let monitoring_state = Arc::clone(&state);
+
+    // start IAT histogram monitoring
+    tokio::spawn(async move {
+        let local_state = monitoring_state;
+
+        HistogramMonitor::monitor_histogram(local_state, HistogramType::Iat).await;
     });
 
     let monitoring_state = Arc::clone(&state);

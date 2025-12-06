@@ -157,6 +157,8 @@ control P4TG_Ingress (
     }
 
     apply {
+        ig_md.ig_port = ig_intr_md.ingress_port;
+
         // monitor iats and send to controller
         // limited by meter
         if(monitor_iat.apply().hit) {
@@ -168,8 +170,6 @@ control P4TG_Ingress (
 
         // random value used for poisson traffic
         ig_md.rand_value = rand.get();
-
-        ig_md.ig_port = ig_intr_md.ingress_port;
 
         bit<64> dummy = 0;
 

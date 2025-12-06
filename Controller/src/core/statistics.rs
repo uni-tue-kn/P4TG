@@ -214,7 +214,7 @@ impl TimeStatistics {
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema, Deserialize)]
-pub struct RttHistogramConfig {
+pub struct HistogramConfig {
     // Number of bins for histogram.
     pub num_bins: u32,
     /// Minimum range for histogram.
@@ -225,15 +225,15 @@ pub struct RttHistogramConfig {
     pub percentiles: Option<Vec<f64>>,
 }
 
-impl RttHistogramConfig {
+impl HistogramConfig {
     pub fn get_bin_width(&self) -> u32 {
         (self.max - self.min) / self.num_bins
     }
 }
 
-impl Default for RttHistogramConfig {
+impl Default for HistogramConfig {
     fn default() -> Self {
-        RttHistogramConfig {
+        HistogramConfig {
             min: 1500,
             max: 2500,
             num_bins: 10,
@@ -243,15 +243,15 @@ impl Default for RttHistogramConfig {
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema, Default)]
-pub struct RttHistogramData {
+pub struct HistogramData {
     /// HashMap with bin index as key and bin count with probability as value.
-    pub data_bins: HashMap<u32, RttHistogramBinEntry>,
+    pub data_bins: HashMap<u32, HistogramBinEntry>,
     /// HashMap with percentiles and their values.
     pub percentiles: HashMap<u32, f64>,
-    /// Mean RTT calculated from the histogram data.
-    pub mean_rtt: f64,
+    /// Mean calculated from the histogram data.
+    pub mean: f64,
     /// Standard deviation calculated from the histogram data.
-    pub std_dev_rtt: f64,
+    pub std_dev: f64,
     /// Total number of packets matched to bins.
     pub total_pkt_count: u128,
     /// Number of packets not matched to any bin.
@@ -259,7 +259,7 @@ pub struct RttHistogramData {
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema, Default)]
-pub struct RttHistogramBinEntry {
+pub struct HistogramBinEntry {
     /// Number of packets in this bin.
     pub count: u128,
     /// Probability for this bin based on total_pkt_count.
@@ -267,14 +267,14 @@ pub struct RttHistogramBinEntry {
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
-pub struct RttHistogram {
-    pub config: RttHistogramConfig,
-    pub data: RttHistogramData,
+pub struct Histogram {
+    pub config: HistogramConfig,
+    pub data: HistogramData,
 }
 
-impl RttHistogram {
-    pub fn default() -> RttHistogram {
-        RttHistogram {
+impl Histogram {
+    pub fn default() -> Histogram {
+        Histogram {
             data: Default::default(),
             config: Default::default(),
         }
@@ -316,7 +316,9 @@ pub struct Statistics {
     /// Elapsed time since the traffic generation has started in seconds.
     pub(crate) elapsed_time: u32,
     /// RTT histogram data per port and per bin.
-    pub(crate) rtt_histogram: HashMap<u32, RttHistogram>,
+    pub(crate) rtt_histogram: HashMap<u32, Histogram>,
+    /// IAT histogram data per port and per bin.
+    pub(crate) iat_histogram: HashMap<u32, Histogram>,
     // Name of the test for the statistics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,
