@@ -453,7 +453,7 @@ pub fn validate_histogram(
     test_name: Option<String>,
     hist_type: HistogramType,
 ) -> Result<(), Error> {
-    let mut num_requests = 0;
+    let mut num_requests = 1; // 1 for default_action entry
 
     let mut t_name = "".to_string();
     if let Some(name) = test_name {
@@ -466,6 +466,7 @@ pub fn validate_histogram(
     };
 
     for (port, channel_map) in request.iter() {
+        num_requests += 1; // Missed bin action for this port.
         for config in channel_map.values() {
             let port: u32 = match port.parse() {
                 Ok(p) => p,
