@@ -268,17 +268,22 @@ start_dataplane_background() {
   esac
 
   local -a runner_cmd=("$runner" "--arch" "$arch" "-p" "$PROGRAM_NAME")
+  # run_switchd.sh uses sudo and manipulates tty; wrap with nohup and detach stdin to avoid SIGHUP/stty errors on non-interactive shells.
+  local -a runner_wrapper=("nohup")
+  if ! command -v nohup >/dev/null 2>&1; then
+    runner_wrapper=()
+  fi
 
   info "Starting data plane in background: $runner --arch $arch -p $PROGRAM_NAME"
   if command -v stdbuf >/dev/null 2>&1; then
-    if stdbuf -oL -eL "${runner_cmd[@]}" >>"$SWITCHD_LOG" 2>&1 & then :; else
+    if "${runner_wrapper[@]}" stdbuf -oL -eL "${runner_cmd[@]}" </dev/null >>"$SWITCHD_LOG" 2>&1 & then :; else
       warn "Direct write to $SWITCHD_LOG failed; attempting via sudo tee."
-      stdbuf -oL -eL "${runner_cmd[@]}" 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
+      "${runner_wrapper[@]}" stdbuf -oL -eL "${runner_cmd[@]}" </dev/null 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
     fi
   else
-    if "${runner_cmd[@]}" >>"$SWITCHD_LOG" 2>&1 & then :; else
+    if "${runner_wrapper[@]}" "${runner_cmd[@]}" </dev/null >>"$SWITCHD_LOG" 2>&1 & then :; else
       warn "Direct write to $SWITCHD_LOG failed; attempting via sudo tee."
-      "${runner_cmd[@]}" 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
+      "${runner_wrapper[@]}" "${runner_cmd[@]}" </dev/null 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
     fi
   fi
 
