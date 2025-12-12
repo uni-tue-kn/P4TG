@@ -28,6 +28,7 @@
 ### Other
 - Rust version bump for CI and docker image to 1.91
 - Update Controller dependencies
+- Added support to run the `p4tg.sh` management script on Asterfusion based devices.
 
 ## v2.6.2
 ### New features

@@ -111,12 +111,70 @@ ensure_runtime_dir() {
   fi
 }
 
+backup_platform_conf() {
+  local conf="/etc/platform.conf"
+  local bak="/etc/platform.conf.bak"
+
+  if [[ ! -e "$conf" ]]; then
+    return 0
+  fi
+
+  local dest="$bak"
+  if [[ -e "$bak" ]]; then
+    dest="${bak}.$(date +%s)"
+    warn "$bak already exists; backing up to $dest instead."
+  fi
+
+  info "Backing up $conf to $dest before running."
+  if mv "$conf" "$dest" 2>/dev/null; then
+    return 0
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    if sudo mv "$conf" "$dest"; then
+      return 0
+    fi
+  fi
+
+  error "Failed to move $conf to $dest (insufficient permissions?)."
+  exit 1
+}
+
 ########################################
 # Kernel module handling
 ########################################
 is_mod_loaded() {
   local name="$1"
   lsmod | awk '{print $1}' | grep -qx "$name"
+}
+
+run_xt_cfgen_fallback() {
+  local target_mod="$1"
+  local script="$SDE_INSTALL/bin/xt-cfgen.sh"
+
+  if [[ ! -x "$script" ]]; then
+    warn "Fallback loader for '$target_mod' not found or not executable: $script"
+    return 1
+  fi
+
+  info "Attempting fallback loader for '$target_mod' via: $script"
+  set +e
+  "$script"
+  local rc=$?
+  set -e
+
+  if [[ $rc -eq 0 ]] && is_mod_loaded "$target_mod"; then
+    info "Fallback xt-cfgen.sh loaded '$target_mod' successfully."
+    return 0
+  fi
+
+  if is_mod_loaded "$target_mod"; then
+    warn "xt-cfgen.sh returned $rc, but module '$target_mod' appears loaded. Continuing."
+    return 0
+  fi
+
+  error "Fallback xt-cfgen.sh failed to load '$target_mod' (exit $rc)."
+  return 1
 }
 
 load_kernel_module_if_needed() {
@@ -135,6 +193,15 @@ load_kernel_module_if_needed() {
     local kmod="${modules[$idx]}"
     local loader="${loaders[$idx]}"
 
+    if [[ "$kmod" == "bf_fpga" && ! -x "$loader" ]]; then
+      warn "Loader for '$kmod' not found at $loader; trying xt-cfgen.sh fallback."
+      if run_xt_cfgen_fallback "$kmod"; then
+        continue
+      else
+        return 2
+      fi
+    fi
+
     require_exe "$loader"
 
     if is_mod_loaded "$kmod"; then
@@ -152,6 +219,14 @@ load_kernel_module_if_needed() {
       info "Kernel module '$kmod' loaded successfully."
       continue
     fi
+
+    if [[ "$kmod" == "bf_fpga" ]]; then
+      warn "Primary loader for '$kmod' failed (exit $rc); attempting xt-cfgen.sh fallback."
+      if run_xt_cfgen_fallback "$kmod"; then
+        continue
+      fi
+    fi
+
     if is_mod_loaded "$kmod"; then
       warn "Loader returned $rc, but module '$kmod' appears loaded. Continuing."
       continue
@@ -626,6 +701,7 @@ usage() {
 
 main() {
   local cmd="${1:-help}"
+  backup_platform_conf
   case "$cmd" in
     install) cmd_install ;;
     update) cmd_install ;;
