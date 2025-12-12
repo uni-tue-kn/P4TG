@@ -17,6 +17,7 @@
       - Mean and std are renamed from `mean_rtt`, `std_rtt` to `mean` and `std`.
 - Added a rename button for names of tests to make the renaming more intuitive.
 - Added a button to show/hide the percentile annotations for histograms.
+- Added an "undo test deletion" button.
 
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.

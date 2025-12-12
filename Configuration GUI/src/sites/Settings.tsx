@@ -87,6 +87,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const [renamingTab, setRenamingTab] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
+    const [lastDeletedConfig, setLastDeletedConfig] = useState<{ name: string; config: TrafficGenData; index: number } | null>(null);
 
     const maxStreams = p4tg_infos.asic === ASIC.Tofino1 ? 7 : 15;
 
@@ -200,9 +201,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const deleteConfig = (name: string) => {
         const updated = { ...savedConfigs };
+        const deletedConfig = updated[name];
+        const deletedIndex = Object.keys(savedConfigs).indexOf(name);
         delete updated[name];
         setSavedConfigs(updated);
         localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updated));
+        if (deletedConfig) {
+            setLastDeletedConfig({ name, config: deletedConfig, index: deletedIndex });
+        }
 
         if (activeConfigName === name) {
             const first = Object.keys(updated)[0];
@@ -219,6 +225,34 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 set_iat_histogram_settings({});
             }
         }
+    };
+
+    const restoreDeletedConfig = () => {
+        if (!lastDeletedConfig) return;
+
+        const { name, config, index } = lastDeletedConfig;
+        let restoredName = name;
+
+        // Avoid name collisions if a test with the same name was added after deletion
+        if (savedConfigs[restoredName]) {
+            let counter = 1;
+            while (savedConfigs[`${name} (${counter})`]) counter++;
+            restoredName = `${name} (${counter})`;
+        }
+
+        const entries = Object.entries(savedConfigs);
+        const insertIndex = Math.min(Math.max(index, 0), entries.length);
+        const updatedEntries = [
+            ...entries.slice(0, insertIndex),
+            [restoredName, config] as [string, TrafficGenData],
+            ...entries.slice(insertIndex),
+        ];
+
+        const updatedConfigs = Object.fromEntries(updatedEntries) as Record<string, TrafficGenData>;
+        setSavedConfigs(updatedConfigs);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+        setActiveConfigName(restoredName);
+        setLastDeletedConfig(null);
     };
 
 
@@ -881,6 +915,23 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                         <i className="bi bi-plus-circle-fill" /> Add Test
                     </Button>
                 </Nav.Item>
+                {lastDeletedConfig && (
+                    <Nav.Item>
+                        <Button
+                            size="sm"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                restoreDeletedConfig();
+                            }}
+                            variant="outline-secondary"
+                            disabled={running}
+                            style={{ marginLeft: "10px", marginTop: "0px" }}
+                            title="Restore last deleted test"
+                        >
+                            <i className="bi bi-arrow-counterclockwise" />
+                        </Button>
+                    </Nav.Item>
+                )}
             </Nav>
 
             <Tab.Content>

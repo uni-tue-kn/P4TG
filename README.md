@@ -98,23 +98,24 @@ See the full [Changelog](./docs/CHANGELOG.md).
 
 ### Features
 
-| Feature                       | Status         |
-| ----------------------------- | -------------- |
-| Statistics                    | ✅ Available    |
-| Tofino 1 & 2 support          | ✅ Available    |
-| Web frontend (React)          | ✅ Available    |
-| Rust backend                  | ✅ Available    |
-| Ethernet, IPv4, IPv6          | ✅ Available    |
-| VLAN, QinQ, MPLS, VxLAN, SRv6 | ✅ Available    |
-| ARP replies                   | ✅ Available    |
-| Dark mode                     | ✅ Available    |
-| RTT histogram & percentiles   | ✅ Available    |
-| Automated testing             | ✅ Available    |
-| File reporting                | ✅ Available    |
-| Test profiles                 | ⚠️ Experimental |
-| Localization                  | ⚠️ Experimental |
-| NDP                           | ⏳ Planned      |
-| NETCONF                       | ⏳ Planned      |
+| Feature                                       | Status         |
+| --------------------------------------------- | -------------- |
+| Statistics                                    | ✅ Available    |
+| Tofino 1 & 2 support                          | ✅ Available    |
+| Web frontend (React)                          | ✅ Available    |
+| Rust backend                                  | ✅ Available    |
+| Ethernet, IPv4, IPv6                          | ✅ Available    |
+| VLAN, QinQ, MPLS, VxLAN, SRv6                 | ✅ Available    |
+| ARP replies                                   | ✅ Available    |
+| Dark mode                                     | ✅ Available    |
+| IAT+RTT histogram & percentiles               | ✅ Available    |
+| Automated testing                             | ✅ Available    |
+| Line rate traffic patterns (e.g., flashcrowd) | ✅ Available    |
+| File reporting                                | ✅ Available    |
+| Test profiles                                 | ⚠️ Experimental |
+| Localization                                  | ⚠️ Experimental |
+| NDP                                           | ⏳ Planned      |
+| NETCONF                                       | ⏳ Planned      |
 
 ## 🚀 Installation & Quick Start
 
