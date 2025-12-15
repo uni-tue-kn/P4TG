@@ -56,7 +56,6 @@ const StreamElement = ({
 }) => {
     const [show_mpls_dropdown, set_show] = useState(data.encapsulation == Encapsulation.MPLS)
     const [show_sid_config, set_show_sid_config] = useState(data.encapsulation == Encapsulation.SRv6)
-    const [show_batches_config, set_show_batches_config] = useState(data.burst != 1)
     const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
     const [number_of_srv6_sids, set_number_of_srv6_sids] = useState(data.number_of_srv6_sids)
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
@@ -148,7 +147,12 @@ const StreamElement = ({
 
     const handleModeChange = (event: any) => {
         data.burst = parseInt(event.target.value)
-        set_show_batches_config(data.burst != 1)
+        // Toggle burst precision mode off for IAT mode, on for rate mode
+        setFormData((prevData) => ({
+            ...prevData,
+            batches: parseInt(event.target.value) !== 1
+        }));
+        data.batches = parseInt(event.target.value) !== 1;
     }
 
     const update_settings = () => {
@@ -302,35 +306,29 @@ const StreamElement = ({
         </StyledCol>
         <StyledCol>
             <tr>
-                <td className={show_batches_config ? "col-auto" : "col-1"}>
+                <td className={"col-auto"}>
                     <Form.Select disabled={running} required
                         onChange={handleModeChange}>
                         <option selected={100 === data.burst} value="100">Rate Precision</option>
                         <option selected={1 === data.burst} value="1">IAT Precision</option>
                     </Form.Select>
                 </td>
-                {show_batches_config ?
-                    <td className={"col-1"}>
-                        Batches
-                        <Form.Check disabled={running}
-                            type={"switch"}
-                            checked={formData.batches}
-                            onChange={handleBatchesToggle}>
-                        </Form.Check>
-                    </td>
-                    :
-                    null}
-                {show_batches_config ?
-                    <td className={"col-auto"}>
-                        <InfoBox>
-                            <>
-                                <h5>Batches</h5>
-                                <p>Increases the burstiness to fit the configured traffic rate even more precisely. Only has an effect in rate mode.</p>
-                            </>
-                        </InfoBox>
-                    </td>
-                    :
-                    null}
+                <td className={"col-1"}>
+                    Bursts
+                    <Form.Check disabled={running}
+                        type={"switch"}
+                        checked={formData.batches}
+                        onChange={handleBatchesToggle}>
+                    </Form.Check>
+                </td>
+                <td className={"col-auto"}>
+                    <InfoBox>
+                        <>
+                            <h5>Bursts</h5>
+                            <p>Increases the burstiness to fit the configured traffic rate even more precisely. In rate precision mode, this increases the size of the bursts by a constant factor. In IAT precision mode, this toggles the generation on a single or on all pipes.</p>
+                        </>
+                    </InfoBox>
+                </td>
             </tr>
         </StyledCol>
         <StyledCol>

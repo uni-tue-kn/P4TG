@@ -729,3 +729,18 @@ pub fn range_to_prefixes(start: u32, end: u32) -> Vec<(u32, u8)> {
 
     res
 }
+
+/// Determine the number of pipes to use for a stream based on its configuration.
+pub fn get_num_pipes(s: &Stream, max_pipes: u32) -> u32 {
+    if let Some(batches) = s.batches {
+        if !batches && s.burst == 1 {
+            // IAT mode with no batches: Generate on a single pipe only
+            1
+        } else {
+            // In all other cases: use all available pipes
+            max_pipes
+        }
+    } else {
+        max_pipes
+    }
+}

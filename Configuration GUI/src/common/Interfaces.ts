@@ -295,7 +295,7 @@ export const DefaultStream = (id: number) => {
         number_of_srv6_sids: 0,
         srv6_ip_tunneling: true,
         traffic_rate: 1,
-        burst: 1,
+        burst: 100,
         batches: true,
         vxlan: false,
         ip_version: 4,

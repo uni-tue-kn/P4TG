@@ -22,6 +22,7 @@
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
 - Fixed generated traffic exceeding the configured rate if using Poisson generation with Rate Precision mode and batches.
+- Fixed unstable IAT due to generation on multiple pipes in IAT precision mode. The IAT precision mode now has a toggle to switch between generation on a single pipe or an all available pipes. The default mode for a stream is now the rate precision mode.
 - Fixed errors that get thrown after passing the API validation not being propagated to the frontend.
 - Fixed crash for some histogram configs.
 

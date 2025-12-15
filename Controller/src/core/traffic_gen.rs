@@ -36,7 +36,9 @@ use rbfrt::table::{MatchValue, Request};
 use rbfrt::{table, SwitchConnection};
 
 use crate::core::traffic_gen_core::const_definitions::*;
-use crate::core::traffic_gen_core::helper::{calculate_overhead, create_packet, mpps_to_gbps};
+use crate::core::traffic_gen_core::helper::{
+    calculate_overhead, create_packet, get_num_pipes, mpps_to_gbps,
+};
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
 
@@ -688,7 +690,6 @@ impl TrafficGen {
         self.configure_default_forwarding_path(switch, port_mapping)
             .await?;
 
-        // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on multiple pipes
         let total_rate: f32 = streams
             .iter()
             .map(|x| {
@@ -723,12 +724,14 @@ impl TrafficGen {
                 s.traffic_rate = mpps_to_gbps(s.frame_size + encapsulation_overhead, s.traffic_rate);
             }
 
+            let num_pipes = get_num_pipes(&s, self.num_pipes);
+
             // call solver
-            let (n_packets, mut timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / self.num_pipes as f32, s.burst);
-            let rate = self.num_pipes as f64 * ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
+            let (n_packets, mut timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / num_pipes as f32, s.burst);
+            let rate = num_pipes as f64 * ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
             let rate_accuracy = 100f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
 
-            info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, self.num_pipes, rate, rate_accuracy);
+            info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, num_pipes, rate, rate_accuracy);
 
             // More bursty traffic desired. Activate batch mode
             timeout = if s.batches.is_some_and(|b| b && s.burst != 1) {timeout * BATCH_FACTOR} else {timeout};
@@ -737,7 +740,7 @@ impl TrafficGen {
             s.n_packets = Some(n_packets);
             s.timeout = Some(timeout);
             s.generation_accuracy = Some(rate_accuracy);
-            s.n_pipes = Some(self.num_pipes as u8);
+            s.n_pipes = Some(num_pipes as u8);
 
             s
         }).collect();
@@ -751,13 +754,15 @@ impl TrafficGen {
             })?;
             let encap_overhead = 20 + calculate_overhead(stream);
 
+            let num_pipes: u32 = get_num_pipes(stream, self.num_pipes);
+
             let (n_packets, mut timeout) = calculate_send_behaviour(
                 stream.frame_size + encap_overhead,
                 if self.is_tofino2 {
                     TG_MAX_RATE_TF2
                 } else {
                     TG_MAX_RATE
-                } / self.num_pipes as f32,
+                } / num_pipes as f32,
                 25,
             );
 
@@ -836,13 +841,15 @@ impl TrafficGen {
                     encapsulation_overhead + stream.frame_size
                 };
 
+                let num_pipes: u32 = get_num_pipes(stream, self.num_pipes);
+
                 let (period_pkts, entries) = build_pattern_generation_entries(
                     stream.app_id,
                     pattern_config,
                     (stream.traffic_rate * stream.generation_accuracy.unwrap_or(100.0) / 100.0)
                         as f64,
                     total_frame_size,
-                    self.num_pipes as f64,
+                    num_pipes as f64,
                 );
 
                 if pattern_entries.len() + entries.len() > MAX_PATTERN_TABLE_ENTRIES {
@@ -963,7 +970,9 @@ impl TrafficGen {
         };
 
         for s in streams {
-            for port in &generation_ports {
+            let num_pipes = get_num_pipes(s, self.num_pipes);
+
+            for port in &generation_ports[0..num_pipes as usize] {
                 let rand_value = {
                     // compute drop probability for poisson traffic
                     if mode != GenerationMode::Poisson {
