@@ -27,6 +27,8 @@
 - Fixed unstable IAT due to generation on multiple pipes in IAT precision mode. The IAT precision mode now has a toggle to switch between generation on a single pipe or an all available pipes. The default mode for a stream is now the rate precision mode.
 - Fixed errors that get thrown after passing the API validation not being propagated to the frontend.
 - Fixed crash for some histogram configs.
+- Fixed the stream settings enable button to be disabled during traffic generation.
+- Fixed settings export not being available during active traffic generation.
 
 ### Other
 - Rust version bump for CI and docker image to 1.91

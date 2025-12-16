@@ -1012,7 +1012,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                     <i className="bi bi-cloud-arrow-down-fill" /> Import
                                 </Button>
                                 {" "}
-                                <Button onClick={exportSettings} disabled={running} variant={"danger"}>
+                                <Button onClick={exportSettings} variant={"danger"}>
                                     <i className="bi bi-cloud-arrow-up-fill" /> Export
                                 </Button>
                             </Col>
