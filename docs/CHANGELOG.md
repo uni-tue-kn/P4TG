@@ -18,6 +18,8 @@
 - Added a rename button for names of tests to make the renaming more intuitive.
 - Added a button to show/hide the percentile annotations for histograms.
 - Added an "undo test deletion" button.
+- Added the total, non-formatted number of lost / out-of-order frames as hover text to the stat overview.
+- Added the number of lost frames to the Status badge at the top.
 
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.

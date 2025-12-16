@@ -20,7 +20,9 @@
 import React from 'react'
 
 import styled from "styled-components";
+import { OverlayTrigger, Tooltip } from "react-bootstrap";
 import { StatisticsEntry } from "../common/Interfaces";
+import { formatFrameCount } from "../common/Helper";
 
 const StatusIndicator = styled.span<{ error: boolean }>`
     background: ${props => (props.error ? 'var(--color-primary)' : 'var(--color-okay)')};
@@ -32,25 +34,49 @@ const StatusIndicator = styled.span<{ error: boolean }>`
 `
 
 const hasError = (stats: StatisticsEntry) => {
-    const loss =
-        "packet_loss" in stats
-            ? Object.values(stats.packet_loss).reduce(
-                (acc, perCh) => acc + Object.values(perCh).reduce((s, v) => s + (v ?? 0), 0),
-                0
-            )
-            : 0;
+    const loss = getLostPackets(stats);
 
-    const missed =
-        Object.values(stats.rtt_histogram).some(perCh =>
-            Object.values(perCh).some((hist: any) => (hist?.data?.missed_bin_count ?? 0) > 0)
-        );
-
-    return loss > 0 || missed;
+    return loss > 0;
 };
 
-const Status = ({ stats, running }: { stats: StatisticsEntry, running: boolean }) => {
+const getLostPackets = (stats: StatisticsEntry) => (
+    "packet_loss" in stats
+        ? Object.values(stats.packet_loss).reduce(
+            (acc, perCh) => acc + Object.values(perCh).reduce((s, v) => s + (v ?? 0), 0),
+            0
+        )
+        : 0
+);
 
-    return <StatusIndicator error={hasError(stats)}>{hasError(stats) ? "Status: Error" : "Status: Ok"}</StatusIndicator>
+const renderTooltip = (props: any, message: string) => (
+    <Tooltip id="tooltip-status" {...props}>
+        {message}
+    </Tooltip>
+);
+
+const Status = ({ stats, running }: { stats: StatisticsEntry, running: boolean }) => {
+    const lostFrames = getLostPackets(stats);
+    const error = hasError(stats);
+    const hasLoss = lostFrames > 0;
+
+    const statusText = error
+        ? (hasLoss ? `Status: Error. Lost ${formatFrameCount(lostFrames)} frames.` : "Status: Error")
+        : "Status: Ok";
+
+    return (
+        <StatusIndicator error={error}>
+            {hasLoss ? (
+                <OverlayTrigger
+                    placement="top"
+                    overlay={(props) => renderTooltip(props, `${lostFrames}`)}
+                >
+                    <span>{statusText}</span>
+                </OverlayTrigger>
+            ) : (
+                statusText
+            )}
+        </StatusIndicator>
+    );
 }
 
 export default Status

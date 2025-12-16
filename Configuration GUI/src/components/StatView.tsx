@@ -361,11 +361,25 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                     </thead>
                     <tbody>
                         <tr>
-                            <td>{formatFrameCount(lost_packets)}</td>
+                            <td>
+                                <OverlayTrigger
+                                    placement="top"
+                                    overlay={(props) => renderTooltip(props, `${lost_packets}`)}
+                                >
+                                    <span>{formatFrameCount(lost_packets)}</span>
+                                </OverlayTrigger>
+                            </td>
                             <td>{lost_packets > 0 ?
                                 (lost_packets * 100 / (lost_packets + total_rx)).toFixed(2) + " %" : "0.00 %"}
                             </td>
-                            <td>{formatFrameCount(out_of_order_packets)}</td>
+                            <td>
+                                <OverlayTrigger
+                                    placement="top"
+                                    overlay={(props) => renderTooltip(props, `${out_of_order_packets}`)}
+                                >
+                                    <span>{formatFrameCount(out_of_order_packets)}</span>
+                                </OverlayTrigger>
+                            </td>
                         </tr>
                     </tbody>
                 </Table>
