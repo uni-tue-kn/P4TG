@@ -17,17 +17,12 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { HistogramConfig } from "../../common/Interfaces";
+import { HistogramConfig, unitOptions } from "../../common/Interfaces";
 import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
 
 type HistogramType = "rtt" | "iat";
 
-const unitOptions = [
-    { label: "ns", multiplier: 1 },
-    { label: "µs", multiplier: 1_000 },
-    { label: "ms", multiplier: 1_000_000 },
-];
 
 const HistogramModal = ({
     show,

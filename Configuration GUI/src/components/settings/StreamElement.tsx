@@ -222,12 +222,13 @@ const StreamElement = ({
         const selectedType = event.target.value as GenerationPattern;
         const baseConfig: GenerationPatternConfig = patternConfig ?? {
             pattern_type: selectedType,
-            period: 20,
+            period: 20_000_000_000,
             sample_rate: 128,
             fc_quiet_until: null,
             fc_ramp_until: null,
             fc_decay_rate: null,
             square_low: null,
+            square_high_until: null,
         };
 
         const updatedConfig: GenerationPatternConfig = {
@@ -437,12 +438,13 @@ const StreamElement = ({
             hide={() => setShowPatternModal(false)}
             data={patternConfig ?? {
                 pattern_type: GenerationPattern.Sine,
-                period: 20,
+                period: 20_000_000_000,
                 sample_rate: 128,
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,
                 square_low: null,
+                square_high_until: null,
             }}
             disabled={running}
             set_data={(updated) => {

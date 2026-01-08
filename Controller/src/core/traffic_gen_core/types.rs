@@ -343,7 +343,7 @@ pub struct Reset {
 pub struct GenerationPatternConfig {
     // The type of this pattern.
     pub pattern_type: GenerationPattern,
-    // The period of this pattern in seconds.
+    // The period of this pattern in nanoseconds.
     pub period: f64,
     /// The number of samples per period.
     pub sample_rate: u32,
@@ -355,6 +355,8 @@ pub struct GenerationPatternConfig {
     pub fc_decay_rate: Option<f64>,
     /// The minimum value for a square wave in the range of [0,1]
     pub square_low: Option<f64>,
+    /// Fraction of the period spent in the high phase for square waves in the range of [0,1]
+    pub square_high_until: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]

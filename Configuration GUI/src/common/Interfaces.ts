@@ -444,6 +444,7 @@ export interface GenerationPatternConfig {
     fc_ramp_until: number | null,
     fc_decay_rate: number | null,
     square_low: number | null,
+    square_high_until: number | null,
 }
 
 export enum GenerationPattern {
@@ -453,5 +454,12 @@ export enum GenerationPattern {
     Sawtooth = "Sawtooth",
     Flashcrowd = "Flashcrowd",
 }
+
+export const unitOptions = [
+    { label: "ns", multiplier: 1 },
+    { label: "µs", multiplier: 1_000 },
+    { label: "ms", multiplier: 1_000_000 },
+    { label: "s", multiplier: 1_000_000_000 },
+];
 
 export type ToastVariant = "success" | "danger" | "info" | "warning"

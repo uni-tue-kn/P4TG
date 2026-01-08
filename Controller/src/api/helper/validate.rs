@@ -379,13 +379,7 @@ pub fn validate_request(
 pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
     for s in active_streams.iter() {
         if let Some(pattern) = &s.pattern {
-            // Period > 1
-            if pattern.period < 1.0 {
-                return Err(Error::new(format!(
-                    "Pattern period must be greater than one in stream with ID #{}.",
-                    s.stream_id
-                )));
-            }
+            let period_secs = pattern.period / 1e9_f64; // convert from ns to s
 
             // Sample Rate < 1000
             if pattern.sample_rate > 1000 {
@@ -425,6 +419,23 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
                     )));
                 }
             }
+            if let GenerationPattern::Square = pattern.pattern_type {
+                let square_low = pattern.square_low.unwrap_or(0.0);
+                let square_high_until = pattern.square_high_until.unwrap_or(0.5);
+
+                if !(0.0..=1.0).contains(&square_low) {
+                    return Err(Error::new(format!(
+                        "Square low must be within [0, 1] in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if !(0.0..=1.0).contains(&square_high_until) {
+                    return Err(Error::new(format!(
+                        "Square high-until must be within [0, 1] in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+            }
 
             // Period fits into range
             let pps = match s.unit {
@@ -436,7 +447,7 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
                 }
             };
             let period_max = (u32::MAX as f64) / pps as f64;
-            if pattern.period > period_max {
+            if period_secs > period_max {
                 return Err(Error::new(format!(
                     "Pattern period too large in stream with ID #{}. Maximal period for configured traffic rate and frame size {} B is {} seconds.",
                     s.stream_id, s.frame_size + calculate_overhead(s) + 20, period_max as u32

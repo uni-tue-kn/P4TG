@@ -30,9 +30,9 @@ fn sine_factor(k: u32, sampling_rate: u32) -> f64 {
 }
 
 /// Simple square wave factor in {0, 1}.
-fn square_factor(k: u32, low: f64, sampling_rate: u32) -> f64 {
+fn square_factor(k: u32, low: f64, high_until: f64, sampling_rate: u32) -> f64 {
     let x = k as f64 / sampling_rate as f64;
-    if x < 0.5 {
+    if x < high_until {
         1.0
     } else {
         low
@@ -156,8 +156,9 @@ pub fn build_pattern_generation_entries(
     total_frame_size_bytes: u32,
     num_pipes: f64,
 ) -> (u32, Vec<table::Request>) {
-    // 1) Period (seconds) and per-pipe Mpps
-    let period_secs = (pattern_config.period).max(0.001);
+    // 1) The pattern period config is in nanoseconds. Convert it to seconds.
+    let period_ns = pattern_config.period.max(1.0);
+    let period_secs = period_ns / 1e9_f64;
     let sampling_rate = pattern_config.sample_rate;
 
     let gbps_per_pipe = traffic_gbps / num_pipes.max(1.0);
@@ -212,7 +213,8 @@ pub fn build_pattern_generation_entries(
             GenerationPattern::Sine => sine_factor(sample_idx, sampling_rate),
             GenerationPattern::Square => {
                 let low = pattern_config.square_low.unwrap_or(0.0);
-                square_factor(sample_idx, low, sampling_rate)
+                let high_until = pattern_config.square_high_until.unwrap_or(0.5);
+                square_factor(sample_idx, low, high_until, sampling_rate)
             }
             GenerationPattern::Triangle => triangle_factor(sample_idx, sampling_rate),
             GenerationPattern::Sawtooth => sawtooth_factor(sample_idx, sampling_rate),

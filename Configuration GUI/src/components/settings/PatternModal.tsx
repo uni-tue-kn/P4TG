@@ -17,18 +17,19 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { GenerationPattern, GenerationPatternConfig } from "../../common/Interfaces";
+import { GenerationPattern, GenerationPatternConfig, unitOptions } from "../../common/Interfaces";
 import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
 
 const defaultPatternConfig = (config?: GenerationPatternConfig): GenerationPatternConfig => ({
     pattern_type: config?.pattern_type ?? GenerationPattern.Sine,
-    period: config?.period ?? 20,
+    period: config?.period ?? 20_000_000_000,
     sample_rate: config?.sample_rate ?? 128,
     fc_quiet_until: config?.fc_quiet_until ?? 0.2,
     fc_ramp_until: config?.fc_ramp_until ?? 0.25,
     fc_decay_rate: config?.fc_decay_rate ?? 4.0,
     square_low: config?.square_low ?? 0,
+    square_high_until: config?.square_high_until ?? 0.5,
 });
 
 const PatternModal = ({
@@ -47,17 +48,31 @@ const PatternModal = ({
 
     const [tmp_data, set_tmp_data] = useState<GenerationPatternConfig>(defaultPatternConfig(data));
     const [alertMessage, setAlertMessage] = useState<string | null>(null);
+    const [periodUnit, setPeriodUnit] = useState<string>("s");
+    const getPeriodMultiplier = (unit: string) => unitOptions.find(u => u.label === unit)?.multiplier || 1;
 
     useEffect(() => {
         if (show) {
-            set_tmp_data(defaultPatternConfig(data));
+            const unit = "s";
+            const baseConfig = defaultPatternConfig(data);
+            set_tmp_data({
+                ...baseConfig,
+                period: baseConfig.period / getPeriodMultiplier(unit),
+            });
             setAlertMessage(null);
+            setPeriodUnit(unit);
         }
     }, [show, data]);
 
     const hideRestore = () => {
-        set_tmp_data(defaultPatternConfig(data));
+        const unit = "s";
+        const baseConfig = defaultPatternConfig(data);
+        set_tmp_data({
+            ...baseConfig,
+            period: baseConfig.period / getPeriodMultiplier(unit),
+        });
         setAlertMessage(null);
+        setPeriodUnit(unit);
         hide();
     };
 
@@ -72,12 +87,24 @@ const PatternModal = ({
         }));
     };
 
+    const handlePeriodUnitChange = (newUnit: string) => {
+        const currentFactor = getPeriodMultiplier(periodUnit);
+        const newFactor = getPeriodMultiplier(newUnit);
+        const factor = currentFactor / newFactor;
+
+        set_tmp_data(prev => ({
+            ...prev,
+            period: prev.period * factor,
+        }));
+        setPeriodUnit(newUnit);
+    };
+
     const submit = () => {
-        const period = Number(tmp_data.period);
+        const period = Number(tmp_data.period) * getPeriodMultiplier(periodUnit);
         const sampleRate = Number(tmp_data.sample_rate);
 
-        if (period < 1) {
-            setAlertMessage("Pattern period must be at least 1 second.");
+        if (!Number.isFinite(period)) {
+            setAlertMessage("Pattern period must be a valid number.");
             return;
         }
         if (sampleRate <= 0 || sampleRate > 1000) {
@@ -115,12 +142,18 @@ const PatternModal = ({
                 fc_ramp_until: rampUntil,
                 fc_decay_rate: decayRate,
                 square_low: null,
+                square_high_until: null,
             });
         } else if (tmp_data.pattern_type === GenerationPattern.Square) {
             const squareLow = tmp_data.square_low ?? 0;
+            const squareHighUntil = tmp_data.square_high_until ?? 0.5;
 
             if (squareLow < 0 || squareLow > 1) {
                 setAlertMessage("Square low must be within [0, 1].");
+                return;
+            }
+            if (squareHighUntil < 0 || squareHighUntil > 1) {
+                setAlertMessage("Square high-until must be within [0, 1].");
                 return;
             }
 
@@ -129,6 +162,7 @@ const PatternModal = ({
                 period,
                 sample_rate: sampleRate,
                 square_low: squareLow,
+                square_high_until: squareHighUntil,
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,
@@ -142,6 +176,7 @@ const PatternModal = ({
                 fc_ramp_until: null,
                 fc_decay_rate: null,
                 square_low: null,
+                square_high_until: null,
             });
         }
 
@@ -159,7 +194,7 @@ const PatternModal = ({
         <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
             <Modal.Body>
                 <p className="mb-3">
-                    Define the shape of the generated traffic. Set the base period, sampling, and choose a pattern. Flashcrowd exposes additional parameters for the spike profile.
+                    Define the shape of the generated traffic. Set the base period, sampling, and choose a pattern.
                 </p>
 
                 {alertMessage && (
@@ -187,17 +222,28 @@ const PatternModal = ({
                 </Form.Group>
 
                 <Form.Group as={Row} className="mb-3 align-items-center">
-                    <Form.Label column sm={3}>Period (s)</Form.Label>
-                    <Col sm={9}>
+                    <Form.Label column sm={3}>Period</Form.Label>
+                    <Col sm={6}>
                         <Form.Control
                             type="number"
-                            min={1}
+                            min={0}
                             step={"any"}
                             value={tmp_data.period}
                             onChange={(e) => handleNumberChange("period", e.target.value)}
                             required
                             disabled={disabled}
                         />
+                    </Col>
+                    <Col sm={3}>
+                        <Form.Select
+                            disabled={disabled}
+                            value={periodUnit}
+                            onChange={(e) => handlePeriodUnitChange(e.target.value)}
+                        >
+                            {unitOptions.map(u => (
+                                <option key={u.label} value={u.label}>{u.label}</option>
+                            ))}
+                        </Form.Select>
                     </Col>
                 </Form.Group>
 
@@ -233,6 +279,24 @@ const PatternModal = ({
                                 disabled={disabled}
                             />
                             <Form.Text className="text-muted">Relative amplitude during the low phase [0,1].</Form.Text>
+                        </Col>
+                    </Form.Group>
+                )}
+                {isSquare && (
+                    <Form.Group as={Row} className="mb-3 align-items-center">
+                        <Form.Label column sm={3}>High until</Form.Label>
+                        <Col sm={9}>
+                            <Form.Control
+                                type="number"
+                                min={0}
+                                max={1}
+                                step={"any"}
+                                value={tmp_data.square_high_until ?? 0.5}
+                                onChange={(e) => handleNumberChange("square_high_until", e.target.value)}
+                                required
+                                disabled={disabled}
+                            />
+                            <Form.Text className="text-muted">Fraction of period in the high phase [0,1].</Form.Text>
                         </Col>
                     </Form.Group>
                 )}
