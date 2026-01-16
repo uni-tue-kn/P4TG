@@ -831,8 +831,6 @@ impl TrafficGen {
         for stream in &active_streams {
             if let Some(pattern_config) = stream.pattern.clone() {
                 let encapsulation_overhead = calculate_overhead(stream);
-                // preamble + inter frame gap (IFG) = 20 bytes
-                let encapsulation_overhead = encapsulation_overhead + 20;
 
                 // For minimal sized IPv6 frames, the size is 73 bytes + 4 FCS
                 let total_frame_size = if stream.ip_version == Some(6) && stream.frame_size == 64 {
