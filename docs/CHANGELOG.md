@@ -29,6 +29,7 @@
 - Fixed crash for some histogram configs.
 - Fixed the stream settings enable button to be disabled during traffic generation.
 - Fixed settings export not being available during active traffic generation.
+- Fixed the visualization in the frontend degrading due to the limit parameter which derived the number of elements from the time when the experiment started.
 
 ### Other
 - Rust version bump for CI and docker image to 1.91

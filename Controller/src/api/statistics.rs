@@ -29,6 +29,7 @@ use crate::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -358,15 +359,12 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
 
     let limit = params.limit.unwrap_or(usize::MAX);
 
-    // we typically have as many elements as elapsed seconds
-    let elements = state
-        .experiment
-        .lock()
-        .await
-        .start
-        .elapsed()
-        .unwrap_or(Duration::from_secs(0))
-        .as_secs() as usize;
+    let elements = stats
+        .tx_rate_l1
+        .values()
+        .map(|series| series.len())
+        .max()
+        .unwrap_or(0);
 
     let step = {
         if limit < elements {
