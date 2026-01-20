@@ -382,12 +382,14 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
             let period_secs = pattern.period / 1e9_f64; // convert from ns to s
 
             // Sample Rate < 1000
+            /*
             if pattern.sample_rate > 1000 {
                 return Err(Error::new(format!(
                     "Pattern sample rate must be smaller than 1000 in stream with ID #{}.",
                     s.stream_id
                 )));
             }
+             */
 
             if let GenerationPattern::Flashcrowd = pattern.pattern_type {
                 let quiet_until = pattern.fc_quiet_until.unwrap_or(0.2); // 0–20% of period: no load

@@ -158,6 +158,6 @@ pub const PATTERN_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_generation
 pub const PATTERN_CONFIG_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_config";
 
 /// Maximum number of table entries we are allowed to program.
-pub const MAX_PATTERN_TABLE_ENTRIES: usize = 8192;
+pub const MAX_PATTERN_TABLE_ENTRIES: usize = 40000;
 
 pub const PATTERN_INTERVAL_REGISTER: &str = "ingress.p4tg.pattern_shaping.pattern_interval_number";

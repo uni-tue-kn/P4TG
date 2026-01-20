@@ -59,7 +59,7 @@ control PatternShaping (
             pattern_shape;
         }
         meters = pattern_meter;
-        size = 8192;
+        size = 40000;
     }
 
 

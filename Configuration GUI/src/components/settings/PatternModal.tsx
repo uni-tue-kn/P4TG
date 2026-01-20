@@ -147,10 +147,12 @@ const PatternModal = ({
             setAlertMessage("Pattern period must be a valid number.");
             return;
         }
+        /*
         if (sampleRate <= 0 || sampleRate > 1000) {
             setAlertMessage("Sample rate must be between 1 and 1000.");
             return;
         }
+        */
 
         if (tmp_data.pattern_type === GenerationPattern.Flashcrowd) {
             const quietUntil = tmp_data.fc_quiet_until ?? 0.2;
