@@ -29,7 +29,7 @@ const defaultPatternConfig = (config?: GenerationPatternConfig): GenerationPatte
     fc_ramp_until: config?.fc_ramp_until ?? 0.25,
     fc_decay_rate: config?.fc_decay_rate ?? 4.0,
     square_low: config?.square_low ?? 0,
-    square_high_until: config?.square_high_until ?? 0.5,
+    square_high_until: config?.square_high_until ?? ((config?.period ?? 20_000_000_000) / 2),
 });
 
 const PatternModal = ({
@@ -49,30 +49,52 @@ const PatternModal = ({
     const [tmp_data, set_tmp_data] = useState<GenerationPatternConfig>(defaultPatternConfig(data));
     const [alertMessage, setAlertMessage] = useState<string | null>(null);
     const [periodUnit, setPeriodUnit] = useState<string>("s");
+    const [squareHighUntilUnit, setSquareHighUntilUnit] = useState<string>("s");
+    const [unitsReady, setUnitsReady] = useState<boolean>(false);
     const getPeriodMultiplier = (unit: string) => unitOptions.find(u => u.label === unit)?.multiplier || 1;
 
     useEffect(() => {
+        if (typeof window === "undefined") {
+            setUnitsReady(true);
+            return;
+        }
+
+        const storedPeriodUnit = window.localStorage.getItem("p4tg.pattern.period.unit");
+        const storedSquareHighUntilUnit = window.localStorage.getItem("p4tg.pattern.square_high_until.unit");
+
+        if (storedPeriodUnit && unitOptions.some(u => u.label === storedPeriodUnit)) {
+            setPeriodUnit(storedPeriodUnit);
+        }
+        if (storedSquareHighUntilUnit && unitOptions.some(u => u.label === storedSquareHighUntilUnit)) {
+            setSquareHighUntilUnit(storedSquareHighUntilUnit);
+        }
+
+        setUnitsReady(true);
+    }, []);
+
+    useEffect(() => {
+        if (!unitsReady) {
+            return;
+        }
         if (show) {
-            const unit = "s";
             const baseConfig = defaultPatternConfig(data);
             set_tmp_data({
                 ...baseConfig,
-                period: baseConfig.period / getPeriodMultiplier(unit),
+                period: baseConfig.period / getPeriodMultiplier(periodUnit),
+                square_high_until: (baseConfig.square_high_until ?? 0) / getPeriodMultiplier(squareHighUntilUnit),
             });
             setAlertMessage(null);
-            setPeriodUnit(unit);
         }
-    }, [show, data]);
+    }, [show, data, unitsReady]);
 
     const hideRestore = () => {
-        const unit = "s";
         const baseConfig = defaultPatternConfig(data);
         set_tmp_data({
             ...baseConfig,
-            period: baseConfig.period / getPeriodMultiplier(unit),
+            period: baseConfig.period / getPeriodMultiplier(periodUnit),
+            square_high_until: (baseConfig.square_high_until ?? 0) / getPeriodMultiplier(squareHighUntilUnit),
         });
         setAlertMessage(null);
-        setPeriodUnit(unit);
         hide();
     };
 
@@ -97,6 +119,24 @@ const PatternModal = ({
             period: prev.period * factor,
         }));
         setPeriodUnit(newUnit);
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("p4tg.pattern.period.unit", newUnit);
+        }
+    };
+
+    const handleSquareHighUntilUnitChange = (newUnit: string) => {
+        const currentFactor = getPeriodMultiplier(squareHighUntilUnit);
+        const newFactor = getPeriodMultiplier(newUnit);
+        const factor = currentFactor / newFactor;
+
+        set_tmp_data(prev => ({
+            ...prev,
+            square_high_until: (prev.square_high_until ?? 0) * factor,
+        }));
+        setSquareHighUntilUnit(newUnit);
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("p4tg.pattern.square_high_until.unit", newUnit);
+        }
     };
 
     const submit = () => {
@@ -146,14 +186,18 @@ const PatternModal = ({
             });
         } else if (tmp_data.pattern_type === GenerationPattern.Square) {
             const squareLow = tmp_data.square_low ?? 0;
-            const squareHighUntil = tmp_data.square_high_until ?? 0.5;
+            const squareHighUntil = Number(tmp_data.square_high_until ?? 0) * getPeriodMultiplier(squareHighUntilUnit);
 
             if (squareLow < 0 || squareLow > 1) {
                 setAlertMessage("Square low must be within [0, 1].");
                 return;
             }
-            if (squareHighUntil < 0 || squareHighUntil > 1) {
-                setAlertMessage("Square high-until must be within [0, 1].");
+            if (squareHighUntil < 0) {
+                setAlertMessage("Square high-until must be zero or greater.");
+                return;
+            }
+            if (squareHighUntil > period) {
+                setAlertMessage("Square high-until must be smaller than or equal to the period.");
                 return;
             }
 
@@ -285,18 +329,29 @@ const PatternModal = ({
                 {isSquare && (
                     <Form.Group as={Row} className="mb-3 align-items-center">
                         <Form.Label column sm={3}>High until</Form.Label>
-                        <Col sm={9}>
+                        <Col sm={6}>
                             <Form.Control
                                 type="number"
                                 min={0}
-                                max={1}
+                                max={(tmp_data.period * getPeriodMultiplier(periodUnit)) / getPeriodMultiplier(squareHighUntilUnit)}
                                 step={"any"}
-                                value={tmp_data.square_high_until ?? 0.5}
+                                value={tmp_data.square_high_until ?? 0}
                                 onChange={(e) => handleNumberChange("square_high_until", e.target.value)}
                                 required
                                 disabled={disabled}
                             />
-                            <Form.Text className="text-muted">Fraction of period in the high phase [0,1].</Form.Text>
+                            <Form.Text className="text-muted">Time within the period where the high phase ends.</Form.Text>
+                        </Col>
+                        <Col sm={3}>
+                            <Form.Select
+                                disabled={disabled}
+                                value={squareHighUntilUnit}
+                                onChange={(e) => handleSquareHighUntilUnitChange(e.target.value)}
+                            >
+                                {unitOptions.map(u => (
+                                    <option key={u.label} value={u.label}>{u.label}</option>
+                                ))}
+                            </Form.Select>
                         </Col>
                     </Form.Group>
                 )}

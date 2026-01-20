@@ -421,7 +421,7 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
             }
             if let GenerationPattern::Square = pattern.pattern_type {
                 let square_low = pattern.square_low.unwrap_or(0.0);
-                let square_high_until = pattern.square_high_until.unwrap_or(0.5);
+                let square_high_until = pattern.square_high_until.unwrap_or(pattern.period * 0.5);
 
                 if !(0.0..=1.0).contains(&square_low) {
                     return Err(Error::new(format!(
@@ -429,9 +429,9 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
                         s.stream_id
                     )));
                 }
-                if !(0.0..=1.0).contains(&square_high_until) {
+                if square_high_until >= pattern.period {
                     return Err(Error::new(format!(
-                        "Square high-until must be within [0, 1] in stream with ID #{}.",
+                        "Square high-until must be smaller than period in stream with ID #{}.",
                         s.stream_id
                     )));
                 }

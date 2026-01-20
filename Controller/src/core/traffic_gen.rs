@@ -830,7 +830,7 @@ impl TrafficGen {
         let mut pattern_entries = vec![];
         for stream in &active_streams {
             if let Some(pattern_config) = stream.pattern.clone() {
-                let encapsulation_overhead = calculate_overhead(stream);
+                let encapsulation_overhead = calculate_overhead(stream) + 20; // L1 rate
 
                 // For minimal sized IPv6 frames, the size is 73 bytes + 4 FCS
                 let total_frame_size = if stream.ip_version == Some(6) && stream.frame_size == 64 {

@@ -355,7 +355,7 @@ pub struct GenerationPatternConfig {
     pub fc_decay_rate: Option<f64>,
     /// The minimum value for a square wave in the range of [0,1]
     pub square_low: Option<f64>,
-    /// Fraction of the period spent in the high phase for square waves in the range of [0,1]
+    /// Time spent in the high phase for square waves in the range of [0, period]
     pub square_high_until: Option<f64>,
 }
 

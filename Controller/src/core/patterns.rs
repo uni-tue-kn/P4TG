@@ -213,7 +213,10 @@ pub fn build_pattern_generation_entries(
             GenerationPattern::Sine => sine_factor(sample_idx, sampling_rate),
             GenerationPattern::Square => {
                 let low = pattern_config.square_low.unwrap_or(0.0);
-                let high_until = pattern_config.square_high_until.unwrap_or(0.5);
+                let high_until = pattern_config
+                    .square_high_until
+                    .unwrap_or(pattern_config.period * 0.5)
+                    / pattern_config.period;
                 square_factor(sample_idx, low, high_until, sampling_rate)
             }
             GenerationPattern::Triangle => triangle_factor(sample_idx, sampling_rate),
