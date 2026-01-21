@@ -70,6 +70,9 @@ const SummaryView = ({
                 if (v.vxlan) {
                     ret += 50; // VXLAN overhead
                 }
+                if (v.gtpu) {
+                    ret += 36; // GTP-U overhead
+                }
             }
         });
         return ret;

@@ -45,6 +45,10 @@ control Frame_Type_Monitor(
         frame_type_counter.count();
     }
 
+    action gtpu() {
+        frame_type_counter.count();
+    }
+
     table frame_type_monitor {
         key = {
             // Keys are ternary to match either on IPv4 or IPv6 address
@@ -52,12 +56,14 @@ control Frame_Type_Monitor(
             hdr.ipv6.dst_addr: ternary;
             ig_intr_md.ingress_port: exact;
             ig_md.vxlan: exact;
+            ig_md.gtpu: exact;
         }
         actions = {
             unicast;
             multicast;
             broadcast;
             vxlan;
+            gtpu;
         }
         default_action = unicast;
         counters = frame_type_counter;

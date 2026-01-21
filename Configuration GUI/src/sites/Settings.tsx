@@ -1100,10 +1100,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                         </>
                                                     </InfoBox>
                                                 </th>
-                                                <th>VxLAN &nbsp;
+                                                <th>Tunneling &nbsp;
                                                     <InfoBox>
-                                                        <p>VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC
-                                                            7348</a>) adds an additional outer Ethernet, IP and VxLAN header to the packet.
+                                                        <p>Encapsulate packets using VxLAN (<a href={"https://datatracker.ietf.org/doc/html/rfc7348"} target="_blank">RFC
+                                                            7348</a>) or GTP-U to add outer IP/UDP tunneling headers.
                                                         </p>
                                                     </InfoBox>
                                                 </th>

@@ -101,6 +101,29 @@ control Header_Replace(
             eg_md.ip_version = 4;
     }
 
+    action rewrite_gtpu(mac_addr_t src_mac, mac_addr_t dst_mac, bit<32> inner_s_ip, bit<32> inner_d_ip, bit<32> s_mask, bit<32> d_mask, bit<8> inner_tos, 
+                        bit<32> outer_s_ip, bit<32> outer_d_ip, bit<8> outer_tos, bit<16> udp_source,
+                        bit<32> teid) {
+            src_mask = s_mask;
+            dst_mask = d_mask;
+            hdr.ethernet.dst_addr = dst_mac;
+            hdr.ethernet.src_addr = src_mac;
+
+            hdr.inner_ipv4.dst_addr = inner_d_ip;
+            hdr.inner_ipv4.src_addr = inner_s_ip;
+            hdr.inner_ipv4.diffserv = inner_tos;
+
+            hdr.ipv4.dst_addr = outer_d_ip;
+            hdr.ipv4.src_addr = outer_s_ip;
+            hdr.ipv4.diffserv = outer_tos;
+
+            hdr.udp.src_port = udp_source;
+
+            eg_md.ip_version = 4;
+
+            hdr.gtpu.teid = teid;
+    }
+
     table header_replace {
         key = {
             eg_intr_md.egress_port: exact;
@@ -110,6 +133,7 @@ control Header_Replace(
             rewrite;
             rewrite_ipv6;
             rewrite_vxlan;
+            rewrite_gtpu;
         }
         #if __TARGET_TOFINO__ == 2
             size = 650;

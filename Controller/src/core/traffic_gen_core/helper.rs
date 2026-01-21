@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::core::config::PortDescription;
 use crate::core::traffic_gen_core::const_definitions::{
-    P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK, REMOVE_PORT_CHANNEL_MASK_TOFINO_2,
-    VX_LAN_UDP_PORT,
+    GTPU_UDP_PORT, P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK,
+    REMOVE_PORT_CHANNEL_MASK_TOFINO_2, VX_LAN_UDP_PORT,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::{AppState, PortMapping};
@@ -177,8 +177,11 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
         Encapsulation::SRv6 => 40 + 8 + stream.number_of_srv6_sids.unwrap() as u32 * 16, // Base IPv6 Header + SRH + each SID has 16 bytes
     };
 
-    if stream.vxlan {
+    if stream.vxlan || stream.gtpu {
         encapsulation_overhead += 50; // VxLAN has 50 byte overhead
+    }
+    if stream.gtpu {
+        encapsulation_overhead += 36; // GTP-U has 36 byte overhead
     }
 
     encapsulation_overhead
@@ -227,7 +230,7 @@ pub(crate) fn get_base_speed(port_config: &PortDescription, is_tofino2: bool) ->
 ///
 /// `frame_size` is L2 size **WITHOUT** encapsulation and without preamble and IFG.
 /// Therefore the remaining filler bytes take the encapsulation into account.
-pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
+pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
     let frame_size = s.frame_size;
     let encapsulation = s.encapsulation;
     let app_id = s.app_id;
@@ -245,7 +248,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
         let mut stream_copy = s.clone();
         stream_copy.vxlan = false;
 
-        let p4tg_packet = create_packet(&stream_copy);
+        let p4tg_packet = create_packet(&stream_copy, false);
 
         // now we build the VxLAN tunnel
         let mut result = vec![];
@@ -299,6 +302,64 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
         result.extend_from_slice(&vxlan_container);
 
         result
+    } else if s.gtpu {
+        // we tunnel over GTP-U
+        // regular packet without GTP-U tunnel
+        let mut stream_copy = s.clone();
+        stream_copy.gtpu = false;
+
+        let p4tg_packet = create_packet(&stream_copy, true);
+
+        // now we build the GTP-U tunnel
+        let mut result = vec![];
+
+        let pkt = etherparse::Ethernet2Header {
+            source: [0, 0, 0, 0, 0, 0],
+            destination: [0, 0, 0, 0, 0, 0],
+            ether_type: 0x800,
+        };
+
+        pkt.write(&mut result).unwrap();
+
+        // That's the outer ip header; length frame_size + UDP + GTP-U
+        let outer_ip_header = etherparse::Ipv4Header::new(
+            (p4tg_packet.len() as u16) + 8 + 8,
+            64,
+            17,
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+        );
+        outer_ip_header.write(&mut result).unwrap();
+
+        let outer_udp_header = etherparse::UdpHeader {
+            source_port: 0,
+            destination_port: GTPU_UDP_PORT,
+            // length frame size + UDP + GTP-U
+            length: (p4tg_packet.len() as u16) + 8 + 8,
+            checksum: 0,
+        };
+
+        // we use an "udp" header as GTP-U
+        // simply because etherparse has no GTP-U header
+        // TEID will be written by dataplane
+        let gtpu_header = etherparse::UdpHeader {
+            source_port: 0b00110000_11111111, // flags + message type of GTP-U header
+            destination_port: p4tg_packet.len() as u16, // length field of GTP-U header
+            length: 0,                        // First half of TEID
+            checksum: 0,                      // Second half of TEID, will be filled by data plane
+        };
+
+        let mut gtpu_container = vec![];
+
+        gtpu_header.write(&mut gtpu_container).unwrap();
+
+        gtpu_container.extend_from_slice(&p4tg_packet);
+
+        outer_udp_header.write(&mut result).unwrap();
+
+        result.extend_from_slice(&gtpu_container);
+
+        result
     } else {
         // we don't tunnel over VxLAN
         match encapsulation {
@@ -316,9 +377,17 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                         )
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                     // This covers Some(4) | None | _
-                    _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
-                        .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
+                    _ => {
+                        if is_gtpu_payload {
+                            // The GTP-U Payload has no Ethernet header
+                            PacketBuilder::ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
+                                .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT)
+                        } else {
+                            PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                                .ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
+                                .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT)
+                        }
+                    }
                 };
 
                 let size = builder.size(payload.len());

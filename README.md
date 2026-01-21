@@ -105,7 +105,7 @@ See the full [Changelog](./docs/CHANGELOG.md).
 | Web frontend (React)                          | ✅ Available    |
 | Rust backend                                  | ✅ Available    |
 | Ethernet, IPv4, IPv6                          | ✅ Available    |
-| VLAN, QinQ, MPLS, VxLAN, SRv6                 | ✅ Available    |
+| VLAN, QinQ, MPLS, VxLAN, GTP-U, SRv6          | ✅ Available    |
 | ARP replies                                   | ✅ Available    |
 | Dark mode                                     | ✅ Available    |
 | IAT+RTT histogram & percentiles               | ✅ Available    |

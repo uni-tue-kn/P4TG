@@ -221,6 +221,14 @@ export interface StreamSettings {
         udp_source: number,
         vni: number
     }
+    gtpu: {
+        ip_src: string,
+        ip_dst: string,
+        ip_tos: number,
+        udp_source: number,
+        flags: number,
+        teid: number
+    }
 }
 
 export interface IPv4Header {
@@ -264,6 +272,7 @@ export interface Stream {
     frame_size: number,
     encapsulation: Encapsulation,
     vxlan: boolean,
+    gtpu: boolean,
     ip_version: number,
     number_of_lse: number,
     number_of_srv6_sids: number,
@@ -298,6 +307,7 @@ export const DefaultStream = (id: number) => {
         burst: 100,
         batches: true,
         vxlan: false,
+        gtpu: false,
         ip_version: 4,
         unit: GenerationUnit.Gbps,
         pattern: null,
@@ -357,6 +367,14 @@ export const DefaultStreamSettings = (id: number, port: number, channel: number)
             ip_tos: 0,
             udp_source: 49152,
             vni: 1
+        },
+        gtpu: {
+            ip_src: "192.168.178.10",
+            ip_dst: "192.168.178.11",
+            ip_tos: 0,
+            udp_source: 49152,
+            flags: 0x30,
+            teid: 42
         }
     }
 

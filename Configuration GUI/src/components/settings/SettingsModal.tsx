@@ -22,8 +22,8 @@ import { Encapsulation, P4TGInfos, Stream, StreamSettings } from "../../common/I
 import React, { useState } from "react";
 import { Accordion, Button, Modal, Alert } from "react-bootstrap";
 
-import { VLAN, Ethernet, IPv4, QinQ, VxLAN, MPLS, IPv6, SRv6 } from "./protocols";
-import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask } from "../../common/Validators";
+import { VLAN, Ethernet, IPv4, QinQ, VxLAN, GtpU, MPLS, IPv6, SRv6 } from "./protocols";
+import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask, validateTEID } from "../../common/Validators";
 
 export const randomMAC = (allow_multicast = true) => {
     let mac = "XX:XX:XX:XX:XX:XX".replace(/X/g, function () {
@@ -83,32 +83,52 @@ const SettingsModal = ({
     }
 
     const submit = () => {
-        if (!validateMAC(tmp_data.vxlan.eth_src)) {
+        if (stream.vxlan && !validateMAC(tmp_data.vxlan.eth_src)) {
             setAlertMessage("VxLAN Ethernet source not a valid MAC.")
             return
         }
-        else if (!validateMAC(tmp_data.vxlan.eth_dst)) {
+        else if (stream.vxlan && !validateMAC(tmp_data.vxlan.eth_dst)) {
             setAlertMessage("VxLAN Ethernet destination not a valid MAC.")
             return
         }
-        else if (!validateIP(tmp_data.vxlan.ip_src)) {
+        else if (stream.vxlan && !validateIP(tmp_data.vxlan.ip_src)) {
             setAlertMessage("VxLAN source IP not valid.")
             return
         }
-        else if (!validateIP(tmp_data.vxlan.ip_dst)) {
+        else if (stream.vxlan && !validateIP(tmp_data.vxlan.ip_dst)) {
             setAlertMessage("VxLAN destination IP not valid.")
             return
         }
-        else if (!validateToS(tmp_data.vxlan.ip_tos)) {
+        else if (stream.vxlan && !validateToS(tmp_data.vxlan.ip_tos)) {
             setAlertMessage("VxLAN IP ToS not valid.")
             return
         }
-        else if (!validateUdpPort(tmp_data.vxlan.udp_source)) {
+        else if (stream.vxlan && !validateUdpPort(tmp_data.vxlan.udp_source)) {
             setAlertMessage("VxLAN UDP source port not valid.")
             return
         }
-        else if (!validateVNI(tmp_data.vxlan.vni)) {
+        else if (stream.vxlan && !validateVNI(tmp_data.vxlan.vni)) {
             setAlertMessage("VxLAN VNI not valid.")
+            return
+        }
+        else if (stream.gtpu && !validateIP(tmp_data.gtpu.ip_src)) {
+            setAlertMessage("GTP-U source IP not valid.")
+            return
+        }
+        else if (stream.gtpu && !validateIP(tmp_data.gtpu.ip_dst)) {
+            setAlertMessage("GTP-U destination IP not valid.")
+            return
+        }
+        else if (stream.gtpu && !validateToS(tmp_data.gtpu.ip_tos)) {
+            setAlertMessage("GTP-U IP ToS not valid.")
+            return
+        }
+        else if (stream.gtpu && !validateUdpPort(tmp_data.gtpu.udp_source)) {
+            setAlertMessage("GTP-U UDP source port not valid.")
+            return
+        }
+        else if (stream.gtpu && !validateTEID(tmp_data.gtpu.teid)) {
+            setAlertMessage("GTP-U TEID not valid.")
             return
         }
         else if (!validateMAC(tmp_data.ethernet.eth_src)) {
@@ -160,6 +180,7 @@ const SettingsModal = ({
         setAlertMessage(null);
 
         data.vxlan = tmp_data.vxlan
+        data.gtpu = tmp_data.gtpu
         data.ethernet = tmp_data.ethernet
         data.vlan = tmp_data.vlan
         data.ip = tmp_data.ip
@@ -211,6 +232,18 @@ const SettingsModal = ({
                             <Ethernet data={tmp_data} set_data={update_data} running={running} />
                         </Accordion.Body>
                     </Accordion.Item>
+
+                    {stream.gtpu ?
+                        <> <Accordion.Item eventKey="6">
+                            <Accordion.Header>GTP-U</Accordion.Header>
+                            <Accordion.Body>
+                                <GtpU running={running} data={tmp_data} set_data={update_data} />
+                            </Accordion.Body>
+                        </Accordion.Item>
+                        </>
+                        :
+                        null
+                    }
 
                     {stream.encapsulation == Encapsulation.Q ?
                         <>

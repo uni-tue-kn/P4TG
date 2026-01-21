@@ -132,6 +132,9 @@ pub const MAX_NUM_SRV6_SIDS: u8 = 3;
 /// VxLAN UDP port
 pub const VX_LAN_UDP_PORT: u16 = 4789;
 
+/// GTPU UDP port
+pub const GTPU_UDP_PORT: u16 = 2152;
+
 /// Max buffer size in bytes usable with P4TG
 pub const MAX_BUFFER_SIZE: u32 = 12000;
 
@@ -158,6 +161,7 @@ pub const PATTERN_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_generation
 pub const PATTERN_CONFIG_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_config";
 
 /// Maximum number of table entries we are allowed to program.
-pub const MAX_PATTERN_TABLE_ENTRIES: usize = 40000;
+pub const MAX_PATTERN_TABLE_ENTRIES_TOFINO_2: usize = 40000;
+pub const MAX_PATTERN_TABLE_ENTRIES: usize = 8192;
 
 pub const PATTERN_INTERVAL_REGISTER: &str = "ingress.p4tg.pattern_shaping.pattern_interval_number";

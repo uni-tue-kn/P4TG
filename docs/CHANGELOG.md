@@ -20,6 +20,7 @@
 - Added an "undo test deletion" button.
 - Added the total, non-formatted number of lost / out-of-order frames as hover text to the stat overview.
 - Added the number of lost frames to the Status badge at the top.
+- Added support for the GTP-U protocol.
 
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.

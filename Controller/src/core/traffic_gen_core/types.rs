@@ -119,6 +119,31 @@ pub struct VxLAN {
     pub vni: u32,
 }
 
+/// Defines a GTP-U Tunnel
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct GtpU {
+    /// Outer IP src
+    #[schema(example = "192.168.178.10")]
+    #[schema(value_type = String)]
+    pub ip_src: Ipv4Addr,
+    /// Outer IP dst
+    #[schema(example = "192.168.178.5")]
+    #[schema(value_type = String)]
+    pub ip_dst: Ipv4Addr,
+    /// Outer IP tos
+    pub ip_tos: u8,
+    /// Outer UDP source
+    pub udp_source: u16,
+    /// GTP-U flags: bit 0-2: Version, bit 3: Protocol type, bit 4: Reserved, bit 5: Extension header flag, bit 6: Sequence number flag, bit 7: N-PDU number flag
+    pub flags: u8,
+    /// Type of this GTP-U message as per 3GPP TS 29.060 section 7.1
+    pub message_type: u8,
+    /// Length of the GTP-U payload
+    pub length: u16,
+    /// Tunnel Endpoint Identifier
+    pub teid: u32,
+}
+
 /// Defines an MPLS LSE
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct MPLSHeader {
@@ -262,6 +287,9 @@ pub struct StreamSetting {
     /// VxLAN tunnel settings
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vxlan: Option<VxLAN>,
+    /// GTP-U tunnel settings
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gtpu: Option<GtpU>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -311,6 +339,9 @@ pub struct Stream {
     /// Flag that indicates if traffic should be encapsulation in VxLAN
     #[schema(example = false)]
     pub(crate) vxlan: bool,
+    /// Flag that indicates if traffic should be encapsulation in GTP-U
+    #[schema(example = false)]
+    pub(crate) gtpu: bool,
     /// Determines the IP version, either v4 or v6. Option to make it backward compatible
     #[schema(example = 4)]
     #[serde(skip_serializing_if = "Option::is_none")]

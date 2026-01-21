@@ -142,6 +142,13 @@ pub fn validate_request(
     }
 
     for stream in active_streams.iter() {
+        if stream.gtpu && stream.vxlan {
+            return Err(Error::new(format!(
+                "VxLAN and GTP-U are mutually exclusive (Stream with ID #{})",
+                stream.stream_id
+            )));
+        }
+
         // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::Mpls {
             if stream.number_of_lse.is_none() {
@@ -308,6 +315,28 @@ pub fn validate_request(
                 if stream.vxlan && stream.encapsulation == Encapsulation::SRv6 {
                     return Err(Error::new(format!(
                         "Combination of VxLAN and SRv6 is not supported (Stream with ID #{})",
+                        stream.stream_id
+                    )));
+                }
+
+                // Check GTP-U
+                if stream.gtpu && setting.gtpu.is_none() {
+                    return Err(Error::new(format!(
+                        "Stream with ID #{} is a GTP-U stream but no GTP-U settings provided.",
+                        stream.stream_id
+                    )));
+                }
+
+                if stream.gtpu && stream.encapsulation != Encapsulation::None {
+                    return Err(Error::new(format!(
+                        "GTP-U is only supported without encapsulation (Stream with ID #{})",
+                        stream.stream_id
+                    )));
+                }
+
+                if stream.gtpu && stream.ip_version != Some(4) {
+                    return Err(Error::new(format!(
+                        "GTP-U requires inner IPv4 (Stream with ID #{})",
                         stream.stream_id
                     )));
                 }

@@ -815,7 +815,7 @@ impl TrafficGen {
         let packet_bytes: Vec<StreamPacket> = active_streams
             .iter()
             .map(|s| {
-                let packet = create_packet(s);
+                let packet = create_packet(s, false);
                 StreamPacket {
                     app_id: s.app_id,
                     bytes: packet,
@@ -828,6 +828,12 @@ impl TrafficGen {
             .collect();
 
         let mut pattern_entries = vec![];
+        let max_pattern_table_entries = if self.is_tofino2 {
+            MAX_PATTERN_TABLE_ENTRIES_TOFINO_2
+        } else {
+            MAX_PATTERN_TABLE_ENTRIES
+        };
+
         for stream in &active_streams {
             if let Some(pattern_config) = stream.pattern.clone() {
                 let encapsulation_overhead = calculate_overhead(stream) + 20; // L1 rate
@@ -848,9 +854,10 @@ impl TrafficGen {
                         as f64,
                     total_frame_size,
                     num_pipes as f64,
+                    state.tofino2,
                 );
 
-                if pattern_entries.len() + entries.len() > MAX_PATTERN_TABLE_ENTRIES {
+                if pattern_entries.len() + entries.len() > max_pattern_table_entries {
                     return Err(P4TGError::Error {
                     message: format!("Too many pattern table entries required for stream {}. Reduce the number of streams, the rate, or the period for traffic patterns.", stream.app_id),
                 }
@@ -1085,6 +1092,35 @@ impl TrafficGen {
                             .action_data("outer_tos", vxlan.ip_tos)
                             .action_data("udp_source", vxlan.udp_source)
                             .action_data("vni", vxlan.vni),
+                    )
+                } else if s.gtpu {
+                    // we need to rewrite one Ethernet & 2 IP headers
+                    // validation method in API makes sure that setting.gtpu exists if s.gtpu is set
+                    let gtpu = setting.gtpu.as_ref().unwrap();
+
+                    // validation method in API makes sure that setting.ip exists if s.ip_version is set to 4
+                    let ipv4_settings = setting.ip.clone().unwrap();
+
+                    Some(
+                        Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                            .match_key(
+                                "eg_intr_md.egress_port",
+                                MatchValue::exact(port.tx_recirculation),
+                            )
+                            .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                            .action("egress.header_replace.rewrite_gtpu")
+                            .action_data("src_mac", src_mac.as_bytes().to_vec())
+                            .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                            .action_data("s_mask", ipv4_settings.ip_src_mask)
+                            .action_data("d_mask", ipv4_settings.ip_dst_mask)
+                            .action_data("inner_s_ip", ipv4_settings.ip_src)
+                            .action_data("inner_d_ip", ipv4_settings.ip_dst)
+                            .action_data("inner_tos", ipv4_settings.ip_tos)
+                            .action_data("outer_s_ip", gtpu.ip_src)
+                            .action_data("outer_d_ip", gtpu.ip_dst)
+                            .action_data("outer_tos", gtpu.ip_tos)
+                            .action_data("udp_source", gtpu.udp_source)
+                            .action_data("teid", gtpu.teid),
                     )
                 } else {
                     // Only verify if IP Header will actually be used

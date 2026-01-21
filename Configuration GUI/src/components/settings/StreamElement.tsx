@@ -62,27 +62,32 @@ const StreamElement = ({
     const [patternConfig, setPatternConfig] = useState<GenerationPatternConfig | null>(data.pattern ?? null)
     const [showPatternModal, setShowPatternModal] = useState(false);
 
-    // Used to store VxLAN and IP Version setting. VxLAN must be disabled on changing IP version
+    // Used to store tunneling and IP Version setting. Tunneling must be disabled on changing IP version
     const [formData, setFormData] = useState({ ...data });
 
     const handleIPVersionChange = () => {
-        // Toggle IP version and set VxLAN to false
+        // Toggle IP version and set tunneling to none
         const newIPVersion = formData.ip_version === 4 ? 6 : 4;
         setFormData((prevData) => ({
             ...prevData,
             ip_version: newIPVersion,
-            vxlan: false,  // Set VxLAN to false when IP version changes
+            vxlan: false,
+            gtpu: false,
         }));
         data.ip_version = newIPVersion;
         data.vxlan = false;
+        data.gtpu = false;
     };
 
-    const handleVxLANToggle = () => {
+    const handleTunnelingChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = event.target.value;
         setFormData((prevData) => ({
             ...prevData,
-            vxlan: !prevData.vxlan  // Toggle VxLAN
+            vxlan: value === "vxlan",
+            gtpu: value === "gtpu",
         }))
-        data.vxlan = !data.vxlan;
+        data.vxlan = value === "vxlan";
+        data.gtpu = value === "gtpu";
     }
 
     const handleBatchesToggle = () => {
@@ -107,13 +112,15 @@ const StreamElement = ({
             set_show(true);
             set_show_sid_config(false);
             if (p4tg_infos.asic == ASIC.Tofino1) {
-                // Disable VxLAN. Not supported in combination with VxLAN on Tofino 1
+                // Disable tunneling. Not supported in combination with MPLS on Tofino 1
                 setFormData((prevData) => ({
                     ...prevData,
                     vxlan: false,
+                    gtpu: false,
                     encapsulation: Encapsulation.MPLS
                 }));
                 data.vxlan = false;
+                data.gtpu = false;
             } else {
                 setFormData((prevData) => ({
                     ...prevData,
@@ -123,13 +130,15 @@ const StreamElement = ({
         } else if (data.encapsulation === Encapsulation.SRv6) {
             set_show_sid_config(true);
             set_show(false);
-            // Disable VxLAN
+            // Disable tunneling
             setFormData((prevData) => ({
                 ...prevData,
                 vxlan: false,
+                gtpu: false,
                 encapsulation: Encapsulation.SRv6
             }));
             data.vxlan = false;
+            data.gtpu = false;
         } else {
             set_show(false);
             set_show_sid_config(false);
@@ -207,7 +216,7 @@ const StreamElement = ({
     const handleSRv6TunnelingChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         setFormData((prevData) => ({
             ...prevData,
-            srv6_ip_tunneling: !prevData.srv6_ip_tunneling  // Toggle VxLAN
+            srv6_ip_tunneling: !prevData.srv6_ip_tunneling  // Toggle IP tunneling
         }))
         data.srv6_ip_tunneling = !data.srv6_ip_tunneling;
     }
@@ -333,13 +342,15 @@ const StreamElement = ({
             </tr>
         </StyledCol>
         <StyledCol>
-            <Form.Check
-                type={"switch"}
+            <Form.Select
                 disabled={running || formData.ip_version === 6 || (p4tg_infos.asic === ASIC.Tofino1 && formData.encapsulation === Encapsulation.MPLS) || formData.encapsulation === Encapsulation.SRv6}
-                checked={formData.vxlan}
-                onChange={handleVxLANToggle}
+                value={formData.vxlan ? "vxlan" : formData.gtpu ? "gtpu" : "none"}
+                onChange={handleTunnelingChange}
             >
-            </Form.Check>
+                <option value="none">None</option>
+                <option value="vxlan">VxLAN</option>
+                <option value="gtpu">GTP-U</option>
+            </Form.Select>
         </StyledCol>
         <StyledCol>
             <Row>
