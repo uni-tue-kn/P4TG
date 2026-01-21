@@ -59,7 +59,11 @@ control PatternShaping (
             pattern_shape;
         }
         meters = pattern_meter;
-        size = 40000;
+        #if __TARGET_TOFINO__ == 2
+            size = 40000;
+        #else
+            size = 8192;
+        #endif
     }
 
 

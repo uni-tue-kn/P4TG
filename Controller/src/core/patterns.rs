@@ -2,7 +2,10 @@ use log::{info, warn};
 use rbfrt::table::{self, MatchValue};
 
 use crate::core::traffic_gen_core::{
-    const_definitions::{MAX_PATTERN_TABLE_ENTRIES, PATTERN_CONFIG_TABLE, PATTERN_TABLE},
+    const_definitions::{
+        MAX_PATTERN_TABLE_ENTRIES, MAX_PATTERN_TABLE_ENTRIES_TOFINO_2, PATTERN_CONFIG_TABLE,
+        PATTERN_TABLE,
+    },
     helper::range_to_prefixes,
     types::{GenerationPattern, GenerationPatternConfig},
 };
@@ -155,6 +158,7 @@ pub fn build_pattern_generation_entries(
     traffic_gbps: f64,
     total_frame_size_bytes: u32,
     num_pipes: f64,
+    tofino2: bool,
 ) -> (u32, Vec<table::Request>) {
     // 1) The pattern period config is in nanoseconds. Convert it to seconds.
     let period_ns = pattern_config.period.max(1.0);
@@ -251,11 +255,17 @@ pub fn build_pattern_generation_entries(
         // Range-to-prefix (LPM) seems to consume less MAT space than range-to-ternary here.
         let prefixes = range_to_prefixes(start, end);
 
+        let max_pattern_entries = if tofino2 {
+            MAX_PATTERN_TABLE_ENTRIES_TOFINO_2
+        } else {
+            MAX_PATTERN_TABLE_ENTRIES
+        };
+
         for (base, prefix_len) in prefixes {
-            if entries.len() >= MAX_PATTERN_TABLE_ENTRIES {
+            if entries.len() >= max_pattern_entries {
                 warn!(
                     "WARNING: reached MAX_PATTERN_TABLE_ENTRIES ({}) while building pattern table",
-                    MAX_PATTERN_TABLE_ENTRIES
+                    max_pattern_entries
                 );
                 return (period_pkts_u32, entries);
             }
