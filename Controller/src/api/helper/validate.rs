@@ -410,16 +410,6 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
         if let Some(pattern) = &s.pattern {
             let period_secs = pattern.period / 1e9_f64; // convert from ns to s
 
-            // Sample Rate < 1000
-            /*
-            if pattern.sample_rate > 1000 {
-                return Err(Error::new(format!(
-                    "Pattern sample rate must be smaller than 1000 in stream with ID #{}.",
-                    s.stream_id
-                )));
-            }
-             */
-
             if let GenerationPattern::Flashcrowd = pattern.pattern_type {
                 let quiet_until = pattern.fc_quiet_until.unwrap_or(0.2); // 0–20% of period: no load
                 let ramp_until = pattern.fc_ramp_until.unwrap_or(0.25); // 20–25% of period: fast ramp to 1
@@ -465,6 +455,15 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
                         "Square high-until must be smaller than period in stream with ID #{}.",
                         s.stream_id
                     )));
+                }
+                if pattern.sample_rate > 0 {
+                    let min_high_until = pattern.period / pattern.sample_rate as f64;
+                    if square_high_until < min_high_until {
+                        warn!(
+                            "Square high-until below sampling interval (period/sample_rate) in stream with ID #{}.",
+                            s.stream_id
+                        );
+                    }
                 }
             }
 

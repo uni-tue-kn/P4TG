@@ -20,6 +20,7 @@
 import { GenerationPattern, GenerationPatternConfig, unitOptions } from "../../common/Interfaces";
 import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
+import { formatNanoSeconds } from "../../common/Helper";
 
 const defaultPatternConfig = (config?: GenerationPatternConfig): GenerationPatternConfig => ({
     pattern_type: config?.pattern_type ?? GenerationPattern.Sine,
@@ -147,12 +148,6 @@ const PatternModal = ({
             setAlertMessage("Pattern period must be a valid number.");
             return;
         }
-        /*
-        if (sampleRate <= 0 || sampleRate > 1000) {
-            setAlertMessage("Sample rate must be between 1 and 1000.");
-            return;
-        }
-        */
 
         if (tmp_data.pattern_type === GenerationPattern.Flashcrowd) {
             const quietUntil = tmp_data.fc_quiet_until ?? 0.2;
@@ -232,6 +227,19 @@ const PatternModal = ({
 
     const isFlashcrowd = tmp_data.pattern_type === GenerationPattern.Flashcrowd;
     const isSquare = tmp_data.pattern_type === GenerationPattern.Square;
+    const periodInBaseUnit = Number(tmp_data.period) * getPeriodMultiplier(periodUnit);
+    const squareHighUntilInBaseUnit = Number(tmp_data.square_high_until ?? 0) * getPeriodMultiplier(squareHighUntilUnit);
+    const sampleRateValue = Number(tmp_data.sample_rate);
+    const squareHighMinInBaseUnit = Number.isFinite(periodInBaseUnit) && Number.isFinite(sampleRateValue) && sampleRateValue > 0
+        ? (periodInBaseUnit / sampleRateValue)
+        : NaN;
+    const squareHighWarning = isSquare
+        && Number.isFinite(squareHighUntilInBaseUnit)
+        && Number.isFinite(squareHighMinInBaseUnit)
+        && squareHighUntilInBaseUnit < squareHighMinInBaseUnit;
+    const squareHighMinLabel = Number.isFinite(squareHighMinInBaseUnit)
+        ? formatNanoSeconds(squareHighMinInBaseUnit, 2)
+        : "N/A";
 
     return <Modal show={show} size="lg" onHide={hideRestore}>
         <Modal.Header closeButton>
@@ -294,7 +302,7 @@ const PatternModal = ({
                 </Form.Group>
 
                 <Form.Group as={Row} className="mb-3 align-items-center">
-                    <Form.Label column sm={3}>Sample rate</Form.Label>
+                    <Form.Label column sm={3}>Sample factor</Form.Label>
                     <Col sm={9}>
                         <Form.Control
                             type="number"
@@ -306,7 +314,7 @@ const PatternModal = ({
                             required
                             disabled={disabled}
                         />
-                        <Form.Text className="text-muted">Samples per period (max 1000).</Form.Text>
+                        <Form.Text className="text-muted">Samples per period.</Form.Text>
                     </Col>
                 </Form.Group>
 
@@ -329,8 +337,8 @@ const PatternModal = ({
                     </Form.Group>
                 )}
                 {isSquare && (
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                        <Form.Label column sm={3}>High until</Form.Label>
+                    <Form.Group as={Row} className="mb-3 align-items-start">
+                        <Form.Label column sm={3} className="pt-2">High until</Form.Label>
                         <Col sm={6}>
                             <Form.Control
                                 type="number"
@@ -354,6 +362,16 @@ const PatternModal = ({
                                     <option key={u.label} value={u.label}>{u.label}</option>
                                 ))}
                             </Form.Select>
+                        </Col>
+                    </Form.Group>
+                )}
+                {isSquare && squareHighWarning && (
+                    <Form.Group as={Row} className="mb-3">
+                        <Col sm={3}></Col>
+                        <Col sm={9}>
+                            <Form.Text className="text-warning">
+                                ⚠️ Value is too low for the sampling interval (min {squareHighMinLabel}).
+                            </Form.Text>
                         </Col>
                     </Form.Group>
                 )}
