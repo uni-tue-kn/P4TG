@@ -262,7 +262,7 @@ pub fn build_pattern_generation_entries(
         };
 
         for (base, prefix_len) in prefixes {
-            if entries.len() >= max_pattern_entries {
+            if entries.len() > max_pattern_entries {
                 warn!(
                     "WARNING: reached MAX_PATTERN_TABLE_ENTRIES ({}) while building pattern table",
                     max_pattern_entries
