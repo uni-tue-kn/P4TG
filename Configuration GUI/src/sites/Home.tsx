@@ -175,16 +175,20 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     }, [running]);
 
     const serializeSavedConfigs = () => {
+        const withActiveStreamSettingsOnly = (config: TrafficGenData) => ({
+            ...config,
+            stream_settings: config.stream_settings.filter((setting) => setting.active),
+        });
         if (Object.keys(savedConfigs).length === 1) {
             // If there is only one config, return it as an object
             // This triggers the singleTest behaviour in the backend
-            return Object.values(savedConfigs)[0];
+            return withActiveStreamSettingsOnly(Object.values(savedConfigs)[0]);
         } else {
             // Set the name of each config to the key
             // and return an array of objects
             // with the name and the config
             return Object.entries(savedConfigs).map(([key, config]) => {
-                return { ...config, name: key };
+                return { ...withActiveStreamSettingsOnly(config), name: key };
             });
         }
     }
