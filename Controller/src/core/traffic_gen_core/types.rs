@@ -134,12 +134,6 @@ pub struct GtpU {
     pub ip_tos: u8,
     /// Outer UDP source
     pub udp_source: u16,
-    /// GTP-U flags: bit 0-2: Version, bit 3: Protocol type, bit 4: Reserved, bit 5: Extension header flag, bit 6: Sequence number flag, bit 7: N-PDU number flag
-    pub flags: u8,
-    /// Type of this GTP-U message as per 3GPP TS 29.060 section 7.1
-    pub message_type: u8,
-    /// Length of the GTP-U payload
-    pub length: u16,
     /// Tunnel Endpoint Identifier
     pub teid: u32,
 }

@@ -226,7 +226,6 @@ export interface StreamSettings {
         ip_dst: string,
         ip_tos: number,
         udp_source: number,
-        flags: number,
         teid: number
     }
 }
@@ -373,7 +372,6 @@ export const DefaultStreamSettings = (id: number, port: number, channel: number)
             ip_dst: "192.168.178.11",
             ip_tos: 0,
             udp_source: 49152,
-            flags: 0x30,
             teid: 42
         }
     }
