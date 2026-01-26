@@ -180,9 +180,6 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
     if stream.vxlan || stream.gtpu {
         encapsulation_overhead += 50; // VxLAN has 50 byte overhead
     }
-    if stream.gtpu {
-        encapsulation_overhead += 36; // GTP-U has 36 byte overhead
-    }
 
     encapsulation_overhead
 }
@@ -343,10 +340,19 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         // simply because etherparse has no GTP-U header
         // TEID will be written by dataplane
         let gtpu_header = etherparse::UdpHeader {
-            source_port: 0b00110000_11111111, // flags + message type of GTP-U header
+            /*
+            flags + message type of GTP-U header:
+             GTP-U flags: bit 0-2: Version,
+             bit 3: Protocol type,
+             bit 4: Reserved,
+             bit 5: Extension header flag,
+             bit 6: Sequence number flag,
+             bit 7: N-PDU number flag
+             message_type: always 0xff (user data)*/
+            source_port: 0b00110000_11111111,
             destination_port: p4tg_packet.len() as u16, // length field of GTP-U header
-            length: 0,                        // First half of TEID
-            checksum: 0,                      // Second half of TEID, will be filled by data plane
+            length: 0,                                  // First half of TEID
+            checksum: 0, // Second half of TEID, will be filled by data plane
         };
 
         let mut gtpu_container = vec![];
