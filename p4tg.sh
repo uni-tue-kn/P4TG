@@ -18,7 +18,7 @@
 #
 #
 # p4tg.sh — manage kernel module, data plane, and control plane
-# Usage: ./p4tg.sh [install|update|start|stop|restart|status]
+# Usage: ./p4tg.sh [install|update|start|stop|restart|status][--nightly]
 #
 # Exit codes:
 #   0  : success
@@ -48,6 +48,7 @@ TARGET="unknown"
 PROGRAM_NAME="${PROGRAM_NAME:-traffic_gen}"                 # passed to run_switchd.sh via -p
 CONTROLLER_CONTAINER="${CONTROLLER_CONTAINER:-p4tg-controller}"
 READY_PORT="${READY_PORT:-9999}"                            # port bf_switchd listens on when ready
+NIGHTLY_MODE=false                                          # whether to use nightly branch/images
 
 #################
 # Pretty output #
@@ -449,8 +450,12 @@ start_controller_container() {
     error "Controller directory not found: $controller_dir"
     return 5
   fi
-  info "Starting control plane containers via docker compose up -d"
-  if ! (cd "$controller_dir" && docker compose up -d); then
+  local compose_cmd="docker compose up -d"
+  if [[ "$NIGHTLY_MODE" == "true" ]]; then
+    compose_cmd="TAG=nightly docker compose up -d"
+  fi
+  info "Starting control plane containers via $compose_cmd"
+  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
     error "docker compose up failed."
     return 5
   fi
@@ -464,12 +469,16 @@ stop_controller_container() {
     info "Controller directory not found: $controller_dir; nothing to stop."
     return 0
   fi
+  local compose_cmd="docker compose down"
+  if [[ "$NIGHTLY_MODE" == "true" ]]; then
+    compose_cmd="TAG=nightly docker compose down"
+  fi
   if controller_is_running; then
     info "Stopping control plane container: $CONTROLLER_CONTAINER"
   else
-    info "Ensuring control plane containers are stopped via docker compose down."
+    info "Ensuring control plane containers are stopped via $compose_cmd"
   fi
-  if ! (cd "$controller_dir" && docker compose down); then
+  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
     error "docker compose down failed."
     return 5
   fi
@@ -508,8 +517,13 @@ cmd_install() {
   esac
 
   info "Updating repository at $P4TG_DIR"
-  if ! (cd "$P4TG_DIR" && git pull); then
-    error "git pull failed in $P4TG_DIR"
+  local branch="main"
+  if [[ "$NIGHTLY_MODE" == "true" ]]; then
+    branch="nightly"
+  fi
+  info "Checking out branch: $branch"
+  if ! (cd "$P4TG_DIR" && git checkout "$branch" && git pull); then
+    error "git checkout/pull failed for branch '$branch' in $P4TG_DIR"
     return 1
   fi
 
@@ -532,7 +546,11 @@ cmd_install() {
   fi
 
   info "Updating control plane containers with docker compose pull"
-  if ! (cd "$controller_dir" && docker compose pull); then
+  local compose_cmd="docker compose pull"
+  if [[ "$NIGHTLY_MODE" == "true" ]]; then
+    compose_cmd="TAG=nightly docker compose pull"
+  fi
+  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
     error "docker compose pull failed."
     return 1
   fi
@@ -701,11 +719,32 @@ cmd_status() {
 # Entry point
 ########################################
 usage() {
-  echo "Usage: $0 [install|update|start|stop|restart|status]"
+  echo "Usage: $0 [--nightly] [install|update|start|stop|restart|status]"
+  echo ""
+  echo "Options:"
+  echo "  --nightly    Use the nightly branch and nightly Docker images"
+  echo ""
+  echo "Commands:"
+  echo "  install      Install P4TG (build data plane, pull containers, setup service)"
+  echo "  update       Same as install"
+  echo "  start        Start data plane and control plane"
+  echo "  stop         Stop data plane and control plane"
+  echo "  restart      Stop and then start"
+  echo "  status       Show status of kernel modules, data plane, and control plane"
 }
 
 main() {
-  local cmd="${1:-help}"
+  # Parse --nightly flag
+  local -a args=()
+  for arg in "$@"; do
+    if [[ "$arg" == "--nightly" ]]; then
+      NIGHTLY_MODE=true
+    else
+      args+=("$arg")
+    fi
+  done
+
+  local cmd="${args[0]:-help}"
   backup_platform_conf
   case "$cmd" in
     install) cmd_install ;;
