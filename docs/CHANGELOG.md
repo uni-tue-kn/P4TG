@@ -15,12 +15,12 @@
     - `GET:/api/statistics` now contains `rtt_histogram` and `iat_histogram`.
       - Each histogram data collection now contains `rx` and `tx`, where `tx` is always empty for RTT.
       - Mean and std are renamed from `mean_rtt`, `std_rtt` to `mean` and `std`.
+- Added support for the GTP-U protocol.
 - Added a rename button for names of tests to make the renaming more intuitive.
 - Added a button to show/hide the percentile annotations for histograms.
 - Added an "undo test deletion" button.
 - Added the total, non-formatted number of lost / out-of-order frames as hover text to the stat overview.
 - Added the number of lost frames to the Status badge at the top.
-- Added support for the GTP-U protocol.
 
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
@@ -36,6 +36,8 @@
 - Rust version bump for CI and docker image to 1.91
 - Update Controller dependencies
 - Added support to run the `p4tg.sh` management script on Asterfusion based devices.
+- Added `--nightly` flag to `p4tg.sh` management script.
+- Updated SDE install docs.
 
 ## v2.6.2
 ### New features

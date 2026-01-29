@@ -22,14 +22,12 @@
   - [Features](#features)
 - [🚀 Installation \& Quick Start](#-installation--quick-start)
   - [Quick Start](#quick-start)
-  - [Manual Installation](#manual-installation)
-    - [Data Plane](#data-plane)
-    - [Control Plane](#control-plane)
   - [Configuration](#configuration)
     - [Configuration Options](#configuration-options)
     - [64-port Tofino](#64-port-tofino)
 - [🤖 Test Automation](#-test-automation)
 - [🔄 Update Guide](#-update-guide)
+  - [Manually](#manually)
 - [📚 Documentation](#-documentation)
 - [🛠️ Development](#️-development)
 - [🖼️ Preview](#️-preview)
@@ -119,15 +117,15 @@ See the full [Changelog](./docs/CHANGELOG.md).
 
 ## 🚀 Installation & Quick Start
 
-P4TG requires a fully set up [SDE](https://github.com/p4lang/open-p4studio) with `$SDE` and `$SDE_INSTALL` environment variables set.
-A detailed installation guide for **open-p4studio** and P4TG can be found [here](./docs/SDE.md).
+P4TG requires a fully set up bf-SDE with `$SDE` and `$SDE_INSTALL` environment variables set.
+A detailed installation guide for the Intel SDE and P4TG can be found [here](./docs/INSTALL.md).
 
 ### Quick Start
 
 The provided `p4tg.sh` script automates the installation of the data and control plane on Debian- / Ubuntu-based systems, provided that the SDE is installed correctly.
 Make sure that the environment variables `$SDE` and `$SDE_INSTALL` are set. Run with `sudo -E` to pass environment variables.
 ```bash
-Usage: ./p4tg.sh [install|update|start|stop|restart|status]
+Usage: sudo -E ./p4tg.sh [install|update|start|stop|restart|status][--nightly]
 ```
 Clone P4TG into `/opt/P4TG` and simply run `sudo -E ./p4tg.sh install` (tested on Debian-based systems). Change the paths at the top of `p4tg.sh` if needed.
 
@@ -142,38 +140,9 @@ The `start` command will:
 - Start the data plane and wait for it to become ready.
 - Start the control plane docker image.
 
-### Manual Installation
-
-#### Data Plane
-```bash
-cd P4-Implementation
-```
-
-- **Tofino 1:**  
-  ```bash
-  make compile TARGET=tofino
-  make start TARGET=tofino
-  ```
-- **Tofino 2:**  
-  ```bash
-  make compile TARGET=tofino2
-  make start TARGET=tofino2
-  ```
-
-
-
-**Tested on:**
-- SDE 9.9.0 (up to v2.0.0)  
-- SDE 9.13.{0,...,4}  
-
-#### Control Plane
-```bash
-cd Controller
-docker compose up
-```
-
-- Starts a **REST-API server** on port `P4TG_PORT` (default: `8000`) at `/api`  
-- Serves the **React GUI** at `/`  
+The control plane docker image:
+- Starts a REST-API server on port `P4TG_PORT` (default: `8000`) at `/api`  
+- Serves the React GUI at `/`  
 - Access GUI: `http://<tofino-controller-ip>:P4TG_PORT`
 - Access API: `http://<tofino-controller-ip>:P4TG_PORT/api`
 
@@ -268,8 +237,10 @@ See [README](p4tg_test_automation/README.md) for details.
 ---
 
 ## 🔄 Update Guide
+Run `sudo -E p4tg.sh update`.
 
-1. Rebuild the data plane as described [above](#data-plane).  
+### Manually
+1. Rebuild the data plane as described [here](docs/INSTALL.md#data-plane).  
 2. Update controller:  
    ```bash
    docker compose pull
