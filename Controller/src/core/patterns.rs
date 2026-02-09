@@ -130,24 +130,19 @@ fn flashcrowd_factor(
     }
 }
 
-/// Max rate in kbps given traffic rate in Mpps and bytes-per-packet.
-fn max_rate_kbps(traffic_mpps: f64, bytes_per_pkt: u64) -> f64 {
-    let pps = traffic_mpps * 1e6_f64;
-    let bps = pps * bytes_per_pkt as f64 * 8.0;
-    bps / 1000.0
-}
-
 /// Build pattern_generation entries for one app_id, given a bounded phase
 /// counter in [0 .. period_pkts), and a desired sine pattern.
 ///
 /// - app_id: generator/application id (matches hdr.pkt_gen.app_id)
 /// - pattern_config.period: period in seconds
 /// - traffic_gbps: total TX rate of the generator (Gbps)
-/// - total_frame_size_bytes: actual on-wire frame size
+/// - offered_pps_per_pipe: effective configured packet rate per pipe from pktgen timing
+/// - total_frame_size_bytes: on-wire size used by line-rate calculations (L1 model)
+/// - meter_packet_size_bytes: packet size in bytes as seen by ingress meter
 /// - num_pipes: number of active pipes sharing that rate
 ///
 /// This function:
-///  1. Computes per-pipe Mpps from Gbps, frame size, and num_pipes
+///  1. Uses effective per-pipe pps from configured pktgen timing
 ///  2. Computes period_pkts ≈ period_secs * per-pipe-pps
 ///  3. Splits [0..period_pkts) into NUM_SAMPLES segments
 ///  4. For each segment, computes a sine amplitude factor
@@ -156,7 +151,9 @@ pub fn build_pattern_generation_entries(
     app_id: u8,
     pattern_config: GenerationPatternConfig,
     traffic_gbps: f64,
+    offered_pps_per_pipe: f64,
     total_frame_size_bytes: u32,
+    meter_packet_size_bytes: u32,
     num_pipes: f64,
     tofino2: bool,
 ) -> (u32, Vec<table::Request>) {
@@ -166,14 +163,13 @@ pub fn build_pattern_generation_entries(
     let sampling_rate = pattern_config.sample_rate;
 
     let gbps_per_pipe = traffic_gbps / num_pipes.max(1.0);
-    // per-pipe Mpps = (Gbps * 1e3) / (bytes * 8)
-    let mut traffic_mpps = gbps_per_pipe * 1e3 / (total_frame_size_bytes as f64 * 8.0);
+    let mut traffic_mpps = offered_pps_per_pipe / 1e6_f64;
     if traffic_mpps <= 0.0 {
         traffic_mpps = 1.0;
     }
 
     // 2) Packets per period (this drives the bounded modulo in dataplane)
-    let period_pkts_f = period_secs * traffic_mpps * 1e6_f64;
+    let period_pkts_f = period_secs * offered_pps_per_pipe;
     let mut period_pkts = period_pkts_f.round() as u64;
     if period_pkts == 0 {
         period_pkts = 1;
@@ -205,8 +201,10 @@ pub fn build_pattern_generation_entries(
     let total_points = sampling_rate.min(period_pkts_u32);
     let space = period_pkts; // length of phase space for this app_id
 
-    // 4) Max rate used as amplitude (kbps)
-    let max_kbps = max_rate_kbps(traffic_mpps, total_frame_size_bytes as u64);
+    // 4) Max rate used as amplitude (kbps).
+    // Convert configured line-rate target into the byte domain seen by the ingress meter.
+    let meter_to_line_ratio = meter_packet_size_bytes as f64 / total_frame_size_bytes.max(1) as f64;
+    let max_kbps = gbps_per_pipe * 1e6_f64 * meter_to_line_ratio;
 
     let mut entries = Vec::new();
 
@@ -242,9 +240,9 @@ pub fn build_pattern_generation_entries(
 
         let cir_kbps = (factor * max_kbps) as u64;
         let pir_kbps = cir_kbps;
-        // Size the buckets larger enough such that we do not starve the tokens
-        let cbs_kbits = 100 * total_frame_size_bytes * 8 / 1000;
-        let pbs_kbits = 100 * total_frame_size_bytes * 8 / 1000;
+        // Size the buckets large enough such that we do not starve the tokens
+        let cbs_kbits = 100 * meter_packet_size_bytes * 8 / 1000;
+        let pbs_kbits = 100 * meter_packet_size_bytes * 8 / 1000;
 
         // Segment range in [0..period_pkts)
         let (start, end) = point_range_in_space(point_idx, total_points, space);

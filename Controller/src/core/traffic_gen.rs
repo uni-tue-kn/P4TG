@@ -826,6 +826,10 @@ impl TrafficGen {
                 }
             })
             .collect();
+        let packet_size_bytes_by_app: HashMap<u8, u32> = packet_bytes
+            .iter()
+            .map(|p| (p.app_id, p.bytes.len() as u32))
+            .collect();
 
         let mut pattern_entries = vec![];
         let max_pattern_table_entries = if self.is_tofino2 {
@@ -844,15 +848,31 @@ impl TrafficGen {
                 } else {
                     encapsulation_overhead + stream.frame_size
                 };
+                // L1 monitor counters operate on packet bytes without FCS (+20B preamble/IFG).
+                // `total_frame_size` above includes FCS for regular streams, so remove it here.
+                let l1_counter_bytes = total_frame_size.saturating_sub(4);
 
                 let num_pipes: u32 = get_num_pipes(stream, self.num_pipes);
+                let batch_factor = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
+                    BATCH_FACTOR as f64
+                } else {
+                    1.0
+                };
+                let offered_pps_per_pipe =
+                    stream.n_packets.unwrap_or(1) as f64 * batch_factor * 1e9_f64
+                        / stream.timeout.unwrap_or(1) as f64;
 
                 let (period_pkts, entries) = build_pattern_generation_entries(
                     stream.app_id,
                     pattern_config,
                     (stream.traffic_rate * stream.generation_accuracy.unwrap_or(100.0) / 100.0)
                         as f64,
-                    total_frame_size,
+                    offered_pps_per_pipe,
+                    l1_counter_bytes,
+                    *packet_size_bytes_by_app
+                        .get(&stream.app_id)
+                        .unwrap_or(&total_frame_size.saturating_sub(20))
+                        + 6, // Size of the internal packet generation header
                     num_pipes as f64,
                     state.tofino2,
                 );
