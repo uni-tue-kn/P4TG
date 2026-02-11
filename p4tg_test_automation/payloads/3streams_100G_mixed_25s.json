@@ -1,51 +1,6 @@
 [
     {
-        "streams": [
-            {
-                "stream_id": 1,
-                "app_id": 1,
-                "frame_size": 64,
-                "encapsulation": 0,
-                "number_of_lse": 0,
-                "number_of_srv6_sids": 0,
-                "srv6_ip_tunneling": true,
-                "traffic_rate": 50,
-                "burst": 100,
-                "batches": true,
-                "vxlan": false,
-                "ip_version": 4
-            },
-            {
-                "stream_id": 2,
-                "app_id": 2,
-                "frame_size": 512,
-                "encapsulation": 3,
-                "number_of_lse": 3,
-                "number_of_srv6_sids": 0,
-                "srv6_ip_tunneling": true,
-                "traffic_rate": 100,
-                "burst": 100,
-                "batches": true,
-                "vxlan": false,
-                "ip_version": 4
-            },
-            {
-                "stream_id": 3,
-                "app_id": 3,
-                "frame_size": 1518,
-                "encapsulation": 0,
-                "number_of_lse": 0,
-                "number_of_srv6_sids": 0,
-                "srv6_ip_tunneling": true,
-                "traffic_rate": 50,
-                "burst": 100,
-                "batches": true,
-                "vxlan": true,
-                "ip_version": 4
-            }
-        ],
         "mode": 1,
-        "duration": 15,
         "stream_settings": [
             {
                 "port": 1,
@@ -97,6 +52,13 @@
                     "ip_tos": 0,
                     "udp_source": 49152,
                     "vni": 1
+                },
+                "gtpu": {
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "udp_source": 49152,
+                    "teid": 42
                 }
             },
             {
@@ -165,6 +127,13 @@
                     "ip_tos": 0,
                     "udp_source": 49152,
                     "vni": 1
+                },
+                "gtpu": {
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "udp_source": 49152,
+                    "teid": 42
                 }
             },
             {
@@ -217,10 +186,69 @@
                     "ip_tos": 0,
                     "udp_source": 49152,
                     "vni": 1
+                },
+                "gtpu": {
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "udp_source": 49152,
+                    "teid": 42
                 }
             }
         ],
-        "histogram_config": {},
+        "streams": [
+            {
+                "stream_id": 1,
+                "app_id": 1,
+                "frame_size": 64,
+                "encapsulation": 0,
+                "number_of_lse": 0,
+                "traffic_rate": 50,
+                "burst": 100,
+                "batches": true,
+                "vxlan": false,
+                "gtpu": false,
+                "ip_version": 4,
+                "number_of_srv6_sids": 0,
+                "srv6_ip_tunneling": true,
+                "unit": 0,
+                "pattern": null
+            },
+            {
+                "stream_id": 2,
+                "app_id": 2,
+                "frame_size": 512,
+                "encapsulation": 3,
+                "number_of_lse": 3,
+                "traffic_rate": 100,
+                "burst": 100,
+                "batches": true,
+                "vxlan": false,
+                "gtpu": false,
+                "ip_version": 4,
+                "number_of_srv6_sids": 0,
+                "srv6_ip_tunneling": true,
+                "unit": 0,
+                "pattern": null
+            },
+            {
+                "stream_id": 3,
+                "app_id": 3,
+                "frame_size": 1518,
+                "encapsulation": 0,
+                "number_of_lse": 0,
+                "traffic_rate": 50,
+                "burst": 100,
+                "batches": true,
+                "vxlan": true,
+                "gtpu": false,
+                "ip_version": 4,
+                "number_of_srv6_sids": 0,
+                "srv6_ip_tunneling": true,
+                "unit": 0,
+                "pattern": null
+            }
+        ],
         "port_tx_rx_mapping": {
             "1": {
                 "0": {
@@ -235,6 +263,9 @@
                 }
             }
         },
+        "duration": 15,
+        "rtt_histogram_config": {},
+        "iat_histogram_config": {},
         "name": "Test 1"
     },
     {
@@ -251,7 +282,10 @@
                 "burst": 1,
                 "batches": true,
                 "vxlan": false,
-                "ip_version": 4
+                "ip_version": 4,
+                "unit": 0,
+                "pattern": null,
+                "gtpu": false
             },
             {
                 "stream_id": 2,
@@ -265,7 +299,10 @@
                 "burst": 1,
                 "batches": true,
                 "vxlan": false,
-                "ip_version": 4
+                "ip_version": 4,
+                "unit": 0,
+                "pattern": null,
+                "gtpu": false
             },
             {
                 "stream_id": 3,
@@ -279,7 +316,10 @@
                 "burst": 1,
                 "batches": true,
                 "vxlan": true,
-                "ip_version": 4
+                "ip_version": 4,
+                "unit": 0,
+                "pattern": null,
+                "gtpu": false
             }
         ],
         "mode": 1,
@@ -338,6 +378,13 @@
                     "ip_tos": 0,
                     "udp_source": 49152,
                     "vni": 1
+                },
+                "gtpu": {
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "udp_source": 49152,
+                    "teid": 42
                 }
             },
             {
@@ -390,6 +437,13 @@
                     "ip_tos": 0,
                     "udp_source": 49152,
                     "vni": 1
+                },
+                "gtpu": {
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "udp_source": 49152,
+                    "teid": 42
                 }
             },
             {
@@ -442,6 +496,13 @@
                     "ip_tos": 0,
                     "udp_source": 49152,
                     "vni": 1
+                },
+                "gtpu": {
+                    "ip_src": "192.168.178.10",
+                    "ip_dst": "192.168.178.11",
+                    "ip_tos": 0,
+                    "udp_source": 49152,
+                    "teid": 42
                 }
             }
         ],
