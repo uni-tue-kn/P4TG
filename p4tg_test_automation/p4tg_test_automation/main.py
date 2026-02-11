@@ -1,11 +1,14 @@
-import time
 import argparse
-import logging    
+import logging
     
 from .api.client import P4TG, FEC, Speed, AutoNeg
-from .plots.rates import plot_tx_rx_rate
-from .plots.histograms import plot_all_rtt_histograms
-from .utils.helpers import load_payload, sleep_with_progress
+from .plots.rates import plot_tx_rx_rate, plot_packet_loss
+from .plots.histograms import (
+    plot_all_rtt_histograms,
+    plot_all_iat_histograms_tx,
+    plot_all_iat_histograms_rx,
+)
+from .utils.helpers import load_payload, sleep_with_progress, wait_for_ports_up
 
 
 # ------- Test orchestration ---------
@@ -34,19 +37,28 @@ def run_tests(api: P4TG, payload, payload_path, show_plots):
     
     # Plot all results into a single plot
     plot_all_rtt_histograms(stats, payload_path, y="probability", show_plots=show_plots)
-    plot_tx_rx_rate(time_stats, payload_path, show_plots=show_plots, show_loss=True)
+    plot_all_iat_histograms_tx(stats, payload_path, y="probability", show_plots=show_plots)
+    plot_all_iat_histograms_rx(stats, payload_path, y="probability", show_plots=show_plots)
+    plot_tx_rx_rate(time_stats, payload_path, show_plots=show_plots)
+    plot_packet_loss(time_stats, payload_path, show_plots=show_plots)
 
 def configure_ports(api: P4TG):
     # Example to configure port 1 and 2
     api.configure_port(1, 0, Speed.BF_SPEED_100G, AutoNeg.PM_AN_DEFAULT, FEC.BF_FEC_TYP_NONE)
     api.configure_port(2, 0, Speed.BF_SPEED_100G, AutoNeg.PM_AN_DEFAULT, FEC.BF_FEC_TYP_NONE)
-    
+    return [(1, 0), (2, 0)]
+
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--payload", required=True, help="Path to payload JSON")
     ap.add_argument("--base-url", default="http://localhost:8000/api")
-    ap.add_argument("--show-plots", type=lambda x: x.lower()=="true", default=False)    
+    ap.add_argument("--show-plots", type=lambda x: x.lower()=="true", default=False)
+    ap.add_argument(
+        "--configure-ports",
+        action="store_true",
+        help="Configure ports before starting traffic generation.",
+    )
     args = ap.parse_args()
 
     payload_path = args.payload
@@ -54,7 +66,9 @@ def main():
     api = P4TG(args.base_url)
     show_plots = args.show_plots
 
-    configure_ports(api)
+    if args.configure_ports:
+        configured_ports = configure_ports(api)
+        wait_for_ports_up(api, configured_ports)
 
     run_tests(api, payload, payload_path, show_plots)
 
