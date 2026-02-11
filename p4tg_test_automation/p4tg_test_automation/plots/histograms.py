@@ -159,12 +159,15 @@ def plot_all_rtt_histograms(
 
     # Use subfigures if available (Matplotlib >= 3.4). Fallback otherwise.
     use_subfigures = hasattr(fig, "subfigures")
-    subfigs = (
-        fig.subfigures(nrows=len(results), ncols=1) if use_subfigures
-        else [fig.add_subplot(len(results), 1, i + 1) for i in range(len(results))]
-    )
+    if use_subfigures:
+        raw_subfigs = fig.subfigures(nrows=len(results), ncols=1)
+        if isinstance(raw_subfigs, np.ndarray):
+            subfigs = list(raw_subfigs.ravel())
+        else:
+            subfigs = [raw_subfigs]
+    else:
+        subfigs = [fig.add_subplot(len(results), 1, i + 1) for i in range(len(results))]
 
-    sf_idx = 0
     for res_idx, result in enumerate(results):
         name = result.get("name") or f"Entry {res_idx + 1}"
         hists = list(_extract_hist_list(result))
@@ -174,17 +177,16 @@ def plot_all_rtt_histograms(
 
         cols = min(max_cols, n)
         rows = math.ceil(n / cols)
+        container = subfigs[res_idx]
 
         if use_subfigures:
-            subfig = subfigs[sf_idx]
-            sf_idx += 1
+            subfig = container
             subfig.suptitle(name, y=1.02, x=0.01, ha="left", fontsize=12)
             axes = subfig.subplots(rows, cols, squeeze=False)
         else:
             # Fallback: create a gridspec-like area within this axes
             # We’ll just add a small title and create a nested Figure-like grid
-            host_ax = subfigs[sf_idx]
-            sf_idx += 1
+            host_ax = container
             host_ax.axis("off")
             host_ax.set_title(name, loc="left", fontsize=12, pad=14)
             # Create a nested grid of axes in the remaining area
