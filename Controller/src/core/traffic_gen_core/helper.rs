@@ -749,18 +749,17 @@ pub fn range_to_ternary(start: u32, end: u32) -> Vec<(u32, u32)> {
     let mut cur = start;
 
     while cur <= end {
-        let remaining = end - cur;
-        if remaining == 0 {
-            // Handle a single value case explicitly
+        if cur == end {
             requests.push((cur, 0xFFFFFFFF));
             break;
         }
 
-        let max_block_size = 1 << (31 - remaining.leading_zeros()); // largest power of two ≤ remaining
+        let num_remaining = end - cur + 1; // count of values in [cur, end]
+        let max_block_size = 1u32 << (31 - num_remaining.leading_zeros()); // largest power of two ≤ count
         let align_size = if cur == 0 {
-            1
+            1u32 << 31 // cur == 0 is maximally aligned
         } else {
-            1 << cur.trailing_zeros()
+            1u32 << cur.trailing_zeros()
         }; // alignment constraint
         let size = max_block_size.min(align_size);
 

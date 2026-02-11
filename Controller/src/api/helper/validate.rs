@@ -29,7 +29,7 @@ use crate::core::traffic_gen_core::const_definitions::{
     RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
 use crate::core::traffic_gen_core::helper::{
-    calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps,
+    calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps, range_to_ternary,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
@@ -552,7 +552,7 @@ pub fn validate_histogram(
                     end = config.max;
                 }
 
-                let new_requests = count_range_to_ternary_entries(start, end);
+                let new_requests = range_to_ternary(start, end).len() as u32;
 
                 if let HistogramType::Iat = hist_type {
                     // Double the number because we write entries for TX and RX
@@ -570,34 +570,6 @@ pub fn validate_histogram(
     }
 
     Ok(())
-}
-
-/// Applies a lighter version of the range to ternary conversion algorithm.
-/// This version only counts the number of required entries for validation.
-fn count_range_to_ternary_entries(start: u32, end: u32) -> u32 {
-    let mut num_requests = 0;
-    let mut cur = start;
-
-    while cur <= end {
-        let remaining = end - cur;
-        if remaining == 0 {
-            // Handle a single value case explicitly
-            num_requests += 1;
-            break;
-        }
-
-        let max_block_size = 1 << (31 - remaining.leading_zeros()); // largest power of two ≤ remaining
-        let align_size = if cur == 0 {
-            1
-        } else {
-            1 << cur.trailing_zeros()
-        }; // alignment constraint
-        let size = max_block_size.min(align_size);
-
-        num_requests += 1;
-        cur += size;
-    }
-    num_requests
 }
 
 pub fn validate_multiple_test(
