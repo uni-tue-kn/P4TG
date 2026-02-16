@@ -226,6 +226,15 @@ pub fn validate_request(
                 }
 
                 // check SRv6
+                // check that SRv6 base header is set
+                if stream.encapsulation == Encapsulation::SRv6 && setting.srv6_base_header.is_none()
+                {
+                    return Err(Error::new(format!(
+                        "No SRv6 base header provided for stream with ID #{} on port {}.",
+                        stream.stream_id, setting.port
+                    )));
+                }
+
                 // check that SID list is set
                 if stream.encapsulation == Encapsulation::SRv6 && setting.sid_list.is_none() {
                     return Err(Error::new(format!(
@@ -257,7 +266,9 @@ pub fn validate_request(
                         )));
                     }
 
-                    if stream.ip_version == Some(4) && setting.ip.is_none() {
+                    if (stream.ip_version == Some(4) || stream.ip_version.is_none())
+                        && setting.ip.is_none()
+                    {
                         return Err(Error::new(format!(
                             "Missing IPv4 settings for stream with ID #{} on port {}.",
                             stream.stream_id, setting.port
