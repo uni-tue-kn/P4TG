@@ -30,6 +30,7 @@ interface Props {
 }
 
 const GtpU = ({ data, set_data, running }: Props) => {
+    if (!data.gtpu) return null;
     return <>
         <Form.Group as={StyledRow} className="mb-3" controlId="gtpuIPv4Source">
             <Form.Label className={"col-3 text-start"}>

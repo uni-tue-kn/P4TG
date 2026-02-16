@@ -191,11 +191,11 @@ export const TimeStatisticsObject: TimeStatisticsEntry = {
 }
 
 export interface StreamSettings {
-    mpls_stack: MPLSHeader[],
+    mpls_stack?: MPLSHeader[],
     port: number,
     channel: number,
     stream_id: number,
-    vlan: {
+    vlan?: {
         vlan_id: number,
         pcp: number,
         dei: number,
@@ -207,12 +207,12 @@ export interface StreamSettings {
         eth_src: string,
         eth_dst: string,
     },
-    ip: IPv4Header
-    ipv6: IPv6Header
-    srv6_base_header: IPv6Header
-    sid_list: string[]
+    ip?: IPv4Header
+    ipv6?: IPv6Header
+    srv6_base_header?: IPv6Header
+    sid_list?: string[]
     active: boolean
-    vxlan: {
+    vxlan?: {
         eth_src: string,
         eth_dst: string,
         ip_src: string,
@@ -221,7 +221,7 @@ export interface StreamSettings {
         udp_source: number,
         vni: number
     }
-    gtpu: {
+    gtpu?: {
         ip_src: string,
         ip_dst: string,
         ip_tos: number,
@@ -320,24 +320,6 @@ export const DefaultStreamSettings = (id: number, port: number, channel: number)
         port: port,
         channel: channel,
         stream_id: id,
-        vlan: {
-            vlan_id: 1,
-            pcp: 0,
-            dei: 0,
-            inner_vlan_id: 1,
-            inner_pcp: 0,
-            inner_dei: 0
-        },
-        mpls_stack: [],
-        srv6_base_header: {
-            ipv6_src: "ff80::",
-            ipv6_dst: "ff80::",
-            ipv6_traffic_class: 0,
-            ipv6_src_mask: "::",
-            ipv6_dst_mask: "::",
-            ipv6_flow_label: 0
-        },
-        sid_list: [],
         ethernet: {
             eth_src: "32:D5:42:2A:F6:92",
             eth_dst: "81:E7:9D:E3:AD:47"
@@ -349,35 +331,51 @@ export const DefaultStreamSettings = (id: number, port: number, channel: number)
             ip_src_mask: "0.0.0.0",
             ip_dst_mask: "0.0.0.0"
         },
-        ipv6: {
-            ipv6_src: "ff80::",
-            ipv6_dst: "ff80::",
-            ipv6_traffic_class: 0,
-            ipv6_src_mask: "::",
-            ipv6_dst_mask: "::",
-            ipv6_flow_label: 0
-        },
         active: false,
-        vxlan: {
-            eth_src: "32:D5:42:2A:F6:92",
-            eth_dst: "81:E7:9D:E3:AD:47",
-            ip_src: "192.168.178.10",
-            ip_dst: "192.168.178.11",
-            ip_tos: 0,
-            udp_source: 49152,
-            vni: 1
-        },
-        gtpu: {
-            ip_src: "192.168.178.10",
-            ip_dst: "192.168.178.11",
-            ip_tos: 0,
-            udp_source: 49152,
-            teid: 42
-        }
     }
 
     return stream
 }
+
+export const defaultIPv4 = (): IPv4Header => ({
+    ip_src: "192.168.178.10",
+    ip_dst: "192.168.178.11",
+    ip_tos: 0,
+    ip_src_mask: "0.0.0.0",
+    ip_dst_mask: "0.0.0.0"
+});
+
+export const defaultIPv6 = (): IPv6Header => ({
+    ipv6_src: "ff80::",
+    ipv6_dst: "ff80::",
+    ipv6_traffic_class: 0,
+    ipv6_src_mask: "::",
+    ipv6_dst_mask: "::",
+    ipv6_flow_label: 0
+});
+
+export const defaultVlan = () => ({
+    vlan_id: 1, pcp: 0, dei: 0,
+    inner_vlan_id: 1, inner_pcp: 0, inner_dei: 0
+});
+
+export const defaultVxlan = () => ({
+    eth_src: "32:D5:42:2A:F6:92",
+    eth_dst: "81:E7:9D:E3:AD:47",
+    ip_src: "192.168.178.10",
+    ip_dst: "192.168.178.11",
+    ip_tos: 0,
+    udp_source: 49152,
+    vni: 1
+});
+
+export const defaultGtpu = () => ({
+    ip_src: "192.168.178.10",
+    ip_dst: "192.168.178.11",
+    ip_tos: 0,
+    udp_source: 49152,
+    teid: 42
+});
 
 export interface P4TGConfig {
     tg_ports: {

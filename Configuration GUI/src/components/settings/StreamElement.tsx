@@ -167,35 +167,37 @@ const StreamElement = ({
     const update_settings = () => {
         stream_settings_c.map((s, i) => {
             if (s.stream_id == data.stream_id) {
-                if (s.mpls_stack.length > data.number_of_lse) {
+                const mpls_stack = s.mpls_stack ?? [];
+                if (mpls_stack.length > data.number_of_lse) {
                     // Newly set length is smaller than previous length. Remove the excess elements.
-                    s.mpls_stack = s.mpls_stack.slice(0, data.number_of_lse);
+                    s.mpls_stack = mpls_stack.slice(0, data.number_of_lse);
 
-                } else if (s.mpls_stack.length < data.number_of_lse) {
+                } else if (mpls_stack.length < data.number_of_lse) {
                     // Newly set length is larger than previous length. Fill with default MPLS headers
                     let new_mpls_stack: MPLSHeader[] = [];
-                    let elements_to_add = data.number_of_lse - s.mpls_stack.length;
+                    let elements_to_add = data.number_of_lse - mpls_stack.length;
 
                     Array.from({ length: elements_to_add }, (_, index) => {
                         new_mpls_stack.push(DefaultMPLSHeader());
                     })
 
-                    s.mpls_stack = s.mpls_stack.concat(new_mpls_stack);
+                    s.mpls_stack = mpls_stack.concat(new_mpls_stack);
                 }
 
-                if (s.sid_list.length > data.number_of_srv6_sids) {
+                const sid_list = s.sid_list ?? [];
+                if (sid_list.length > data.number_of_srv6_sids) {
                     // Newly set length is smaller than previous length. Remove the excess elements.
-                    s.sid_list = s.sid_list.slice(0, data.number_of_srv6_sids)
-                } else if (s.sid_list.length < data.number_of_srv6_sids) {
+                    s.sid_list = sid_list.slice(0, data.number_of_srv6_sids)
+                } else if (sid_list.length < data.number_of_srv6_sids) {
                     // Newly set length is larger than previous length. Fill with default SIDs
                     let new_sid_list: string[] = [];
-                    let elements_to_add = data.number_of_srv6_sids - s.sid_list.length;
+                    let elements_to_add = data.number_of_srv6_sids - sid_list.length;
 
                     Array.from({ length: elements_to_add }, (_, index) => {
                         new_sid_list.push("fe80::");
                     })
 
-                    s.sid_list = s.sid_list.concat(new_sid_list);
+                    s.sid_list = sid_list.concat(new_sid_list);
                 }
             }
         })

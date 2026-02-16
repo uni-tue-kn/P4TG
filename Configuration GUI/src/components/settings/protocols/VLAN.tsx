@@ -29,6 +29,7 @@ interface Props {
 }
 
 const VLAN = ({ data, set_data, running }: Props) => {
+    if (!data.vlan) return null;
     return <>
         <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
             <Form.Label className={"col-3 text-start"}>

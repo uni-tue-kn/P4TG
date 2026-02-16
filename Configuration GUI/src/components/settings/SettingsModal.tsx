@@ -18,12 +18,84 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { Encapsulation, P4TGInfos, Stream, StreamSettings } from "../../common/Interfaces";
+import { Encapsulation, P4TGInfos, Stream, StreamSettings, defaultIPv6, defaultIPv4, defaultVlan, defaultVxlan, defaultGtpu } from "../../common/Interfaces";
 import React, { useState } from "react";
 import { Accordion, Button, Modal, Alert } from "react-bootstrap";
 
 import { VLAN, Ethernet, IPv4, QinQ, VxLAN, GtpU, MPLS, IPv6, SRv6 } from "./protocols";
 import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask, validateTEID } from "../../common/Validators";
+
+/**
+ * Ensures that the StreamSettings has defaults for all fields
+ * required by the given Stream configuration.
+ */
+export const ensureDefaults = (settings: StreamSettings, stream: Stream): StreamSettings => {
+    const s = { ...settings };
+
+    // IP settings
+    if (stream.ip_version === 6) {
+        if (!s.ipv6) s.ipv6 = defaultIPv6();
+    } else {
+        if (!s.ip) s.ip = defaultIPv4();
+    }
+
+    // Encapsulation-specific
+    if (stream.encapsulation === Encapsulation.Q || stream.encapsulation === Encapsulation.QinQ) {
+        if (!s.vlan) s.vlan = defaultVlan();
+    }
+    if (stream.encapsulation === Encapsulation.MPLS) {
+        if (!s.mpls_stack) s.mpls_stack = [];
+    }
+    if (stream.encapsulation === Encapsulation.SRv6) {
+        if (!s.srv6_base_header) s.srv6_base_header = defaultIPv6();
+        if (!s.sid_list) s.sid_list = [];
+    }
+
+    // Tunneling
+    if (stream.vxlan) {
+        if (!s.vxlan) s.vxlan = defaultVxlan();
+    }
+    if (stream.gtpu) {
+        if (!s.ip) s.ip = defaultIPv4();
+        if (!s.gtpu) s.gtpu = defaultGtpu();
+    }
+
+    return s;
+};
+
+/**
+ * Strips optional fields that are not required by the current Stream config,
+ * so the stored/sent payload stays minimal.
+ */
+export const stripUnusedFields = (settings: StreamSettings, stream: Stream): StreamSettings => {
+    const s = { ...settings };
+
+    if (stream.ip_version === 6) {
+        delete s.ip;
+    } else {
+        delete s.ipv6;
+    }
+
+    if (stream.encapsulation !== Encapsulation.Q && stream.encapsulation !== Encapsulation.QinQ) {
+        delete s.vlan;
+    }
+    if (stream.encapsulation !== Encapsulation.MPLS) {
+        delete s.mpls_stack;
+    }
+    if (stream.encapsulation !== Encapsulation.SRv6) {
+        delete s.srv6_base_header;
+        delete s.sid_list;
+    }
+
+    if (!stream.vxlan) {
+        delete s.vxlan;
+    }
+    if (!stream.gtpu) {
+        delete s.gtpu;
+    }
+
+    return s;
+};
 
 export const randomMAC = (allow_multicast = true) => {
     let mac = "XX:XX:XX:XX:XX:XX".replace(/X/g, function () {
@@ -72,7 +144,7 @@ const SettingsModal = ({
     p4tg_infos: P4TGInfos
 }) => {
 
-    const [tmp_data, set_tmp_data] = useState(data)
+    const [tmp_data, set_tmp_data] = useState(ensureDefaults(data, stream))
     const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
     const update_data = (object: any) => {
@@ -83,51 +155,51 @@ const SettingsModal = ({
     }
 
     const submit = () => {
-        if (stream.vxlan && !validateMAC(tmp_data.vxlan.eth_src)) {
+        if (stream.vxlan && tmp_data.vxlan && !validateMAC(tmp_data.vxlan.eth_src)) {
             setAlertMessage("VxLAN Ethernet source not a valid MAC.")
             return
         }
-        else if (stream.vxlan && !validateMAC(tmp_data.vxlan.eth_dst)) {
+        else if (stream.vxlan && tmp_data.vxlan && !validateMAC(tmp_data.vxlan.eth_dst)) {
             setAlertMessage("VxLAN Ethernet destination not a valid MAC.")
             return
         }
-        else if (stream.vxlan && !validateIP(tmp_data.vxlan.ip_src)) {
+        else if (stream.vxlan && tmp_data.vxlan && !validateIP(tmp_data.vxlan.ip_src)) {
             setAlertMessage("VxLAN source IP not valid.")
             return
         }
-        else if (stream.vxlan && !validateIP(tmp_data.vxlan.ip_dst)) {
+        else if (stream.vxlan && tmp_data.vxlan && !validateIP(tmp_data.vxlan.ip_dst)) {
             setAlertMessage("VxLAN destination IP not valid.")
             return
         }
-        else if (stream.vxlan && !validateToS(tmp_data.vxlan.ip_tos)) {
+        else if (stream.vxlan && tmp_data.vxlan && !validateToS(tmp_data.vxlan.ip_tos)) {
             setAlertMessage("VxLAN IP ToS not valid.")
             return
         }
-        else if (stream.vxlan && !validateUdpPort(tmp_data.vxlan.udp_source)) {
+        else if (stream.vxlan && tmp_data.vxlan && !validateUdpPort(tmp_data.vxlan.udp_source)) {
             setAlertMessage("VxLAN UDP source port not valid.")
             return
         }
-        else if (stream.vxlan && !validateVNI(tmp_data.vxlan.vni)) {
+        else if (stream.vxlan && tmp_data.vxlan && !validateVNI(tmp_data.vxlan.vni)) {
             setAlertMessage("VxLAN VNI not valid.")
             return
         }
-        else if (stream.gtpu && !validateIP(tmp_data.gtpu.ip_src)) {
+        else if (stream.gtpu && tmp_data.gtpu && !validateIP(tmp_data.gtpu.ip_src)) {
             setAlertMessage("GTP-U source IP not valid.")
             return
         }
-        else if (stream.gtpu && !validateIP(tmp_data.gtpu.ip_dst)) {
+        else if (stream.gtpu && tmp_data.gtpu && !validateIP(tmp_data.gtpu.ip_dst)) {
             setAlertMessage("GTP-U destination IP not valid.")
             return
         }
-        else if (stream.gtpu && !validateToS(tmp_data.gtpu.ip_tos)) {
+        else if (stream.gtpu && tmp_data.gtpu && !validateToS(tmp_data.gtpu.ip_tos)) {
             setAlertMessage("GTP-U IP ToS not valid.")
             return
         }
-        else if (stream.gtpu && !validateUdpPort(tmp_data.gtpu.udp_source)) {
+        else if (stream.gtpu && tmp_data.gtpu && !validateUdpPort(tmp_data.gtpu.udp_source)) {
             setAlertMessage("GTP-U UDP source port not valid.")
             return
         }
-        else if (stream.gtpu && !validateTEID(tmp_data.gtpu.teid)) {
+        else if (stream.gtpu && tmp_data.gtpu && !validateTEID(tmp_data.gtpu.teid)) {
             setAlertMessage("GTP-U TEID not valid.")
             return
         }
@@ -137,64 +209,64 @@ const SettingsModal = ({
         } else if (!validateMAC(tmp_data.ethernet.eth_dst)) {
             setAlertMessage("Ethernet destination not a valid MAC.")
             return
-        } else if (stream.ip_version == 4 && !validateIP(tmp_data.ip.ip_src)) {
+        } else if (stream.ip_version == 4 && tmp_data.ip && !validateIP(tmp_data.ip.ip_src)) {
             setAlertMessage("Source IP not valid.")
             return
-        } else if (stream.ip_version == 4 && !validateIP(tmp_data.ip.ip_dst)) {
+        } else if (stream.ip_version == 4 && tmp_data.ip && !validateIP(tmp_data.ip.ip_dst)) {
             setAlertMessage("Destination IP not valid.")
             return
-        } else if (stream.ip_version == 4 && !validateToS(tmp_data.ip.ip_tos)) {
+        } else if (stream.ip_version == 4 && tmp_data.ip && !validateToS(tmp_data.ip.ip_tos)) {
             setAlertMessage("IP ToS not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateIPv6(tmp_data.ipv6.ipv6_src)) {
+        } else if (stream.ip_version == 6 && tmp_data.ipv6 && !validateIPv6(tmp_data.ipv6.ipv6_src)) {
             setAlertMessage("Source IP not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateIPv6(tmp_data.ipv6.ipv6_dst)) {
+        } else if (stream.ip_version == 6 && tmp_data.ipv6 && !validateIPv6(tmp_data.ipv6.ipv6_dst)) {
             setAlertMessage("Destination IP not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateTrafficClass(tmp_data.ipv6.ipv6_traffic_class)) {
+        } else if (stream.ip_version == 6 && tmp_data.ipv6 && !validateTrafficClass(tmp_data.ipv6.ipv6_traffic_class)) {
             setAlertMessage("IP traffic class not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateFlowLabel(tmp_data.ipv6.ipv6_flow_label)) {
+        } else if (stream.ip_version == 6 && tmp_data.ipv6 && !validateFlowLabel(tmp_data.ipv6.ipv6_flow_label)) {
             setAlertMessage("IP flow label not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateIPv6RandomMask(tmp_data.ipv6.ipv6_src_mask, p4tg_infos.asic)) {
+        } else if (stream.ip_version == 6 && tmp_data.ipv6 && !validateIPv6RandomMask(tmp_data.ipv6.ipv6_src_mask, p4tg_infos.asic)) {
             setAlertMessage("IPv6 source mask not valid.")
             return
-        } else if (stream.ip_version == 6 && !validateIPv6RandomMask(tmp_data.ipv6.ipv6_dst_mask, p4tg_infos.asic)) {
+        } else if (stream.ip_version == 6 && tmp_data.ipv6 && !validateIPv6RandomMask(tmp_data.ipv6.ipv6_dst_mask, p4tg_infos.asic)) {
             setAlertMessage("IPv6 destination mask not valid.")
             return
-        } else if (!validateMPLS(tmp_data.mpls_stack)) {
+        } else if (tmp_data.mpls_stack && !validateMPLS(tmp_data.mpls_stack)) {
             setAlertMessage("MPLS stack is not valid.")
             return
-        } else if (!validateSIDList(tmp_data.sid_list)) {
+        } else if (tmp_data.sid_list && !validateSIDList(tmp_data.sid_list)) {
             setAlertMessage("SID list is not valid.")
             return
-        } else if (!validateIPv6(tmp_data.srv6_base_header.ipv6_src)) {
+        } else if (stream.encapsulation == Encapsulation.SRv6 && tmp_data.srv6_base_header && !validateIPv6(tmp_data.srv6_base_header.ipv6_src)) {
             setAlertMessage("SRv6 Source IP not valid.")
             return
-        } else if (!validateIPv6(tmp_data.srv6_base_header.ipv6_dst)) {
+        } else if (stream.encapsulation == Encapsulation.SRv6 && tmp_data.srv6_base_header && !validateIPv6(tmp_data.srv6_base_header.ipv6_dst)) {
             setAlertMessage("SRv6 destination IP not valid.")
         }
 
         setAlertMessage(null);
 
-        data.vxlan = tmp_data.vxlan
-        data.gtpu = tmp_data.gtpu
-        data.ethernet = tmp_data.ethernet
-        data.vlan = tmp_data.vlan
-        data.ip = tmp_data.ip
-        data.ipv6 = tmp_data.ipv6
-        data.srv6_base_header = tmp_data.srv6_base_header
-        data.sid_list = tmp_data.sid_list
-        data.mpls_stack = tmp_data.mpls_stack
-        data.vlan = tmp_data.vlan
+        const stripped = stripUnusedFields(tmp_data, stream);
+        data.vxlan = stripped.vxlan
+        data.gtpu = stripped.gtpu
+        data.ethernet = stripped.ethernet
+        data.vlan = stripped.vlan
+        data.ip = stripped.ip
+        data.ipv6 = stripped.ipv6
+        data.srv6_base_header = stripped.srv6_base_header
+        data.sid_list = stripped.sid_list
+        data.mpls_stack = stripped.mpls_stack
 
         hide()
     }
 
     const hideRestore = () => {
-        set_tmp_data(data)
+        set_tmp_data(ensureDefaults(data, stream))
         setAlertMessage(null);
         hide()
     }

@@ -31,8 +31,9 @@ interface Props {
 }
 
 const SRv6 = ({ stream, data, set_data, running }: Props) => {
+    if (!data.srv6_base_header || !data.sid_list) return null;
     const set_sid = (sid: string, i: number) => {
-        data.sid_list[i] = sid;
+        data.sid_list![i] = sid;
     }
 
     return <>
@@ -91,9 +92,9 @@ const SRv6 = ({ stream, data, set_data, running }: Props) => {
 
         {Array.from({ length: stream.number_of_srv6_sids }, (_, i) => {
 
-            if (data.sid_list[i] === undefined) {
+            if (data.sid_list![i] === undefined) {
                 // Settings were never saved before, initialize with default header
-                data.sid_list[i] = "ff80::"
+                data.sid_list![i] = "ff80::"
             }
 
             return <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
@@ -105,7 +106,7 @@ const SRv6 = ({ stream, data, set_data, running }: Props) => {
                         <Col className={"text-end"}>
                             <Form.Control className={"col-3 text-start"}
                                 onChange={(event: any) => set_sid(event.target.value, i)}
-                                placeholder={data.sid_list[i].toString()}
+                                placeholder={data.sid_list![i].toString()}
                                 disabled={running} type={"string"} />
                         </Col>
                     </Row>
@@ -116,7 +117,7 @@ const SRv6 = ({ stream, data, set_data, running }: Props) => {
                         onClick={() =>
                             set_data({
                                 ...data,
-                                sid_list: data.sid_list.map((item, index) =>
+                                sid_list: data.sid_list!.map((item, index) =>
                                     index === i ? randomIPv6() : item
                                 ),
                             })

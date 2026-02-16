@@ -42,6 +42,7 @@ import InfoBox from "../components/InfoBox";
 import { GitHub } from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
+import { ensureDefaults, stripUnusedFields } from "../components/settings/SettingsModal";
 import { validateIPv6RandomMask, validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
 import HistogramSettings from '../components/settings/HistogramSettings';
 import { PortStatus } from './Ports';
@@ -284,10 +285,22 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             }
         }
 
+        // Reconcile stream_settings: populate defaults for enabled features,
+        // strip fields for disabled features, so the payload is always correct
+        // even if the user never opened the SettingsModal.
+        const reconciledSettings = stream_settings.map(ss => {
+            const matchingStream = streams.find(s => s.stream_id === ss.stream_id);
+            if (!matchingStream) return ss;
+            return stripUnusedFields(ensureDefaults(ss, matchingStream), matchingStream);
+        });
+
+        // Update in-memory state so subsequent operations use reconciled data
+        set_stream_settings(reconciledSettings);
+
         localStorage.setItem("streams", JSON.stringify(streams))
         localStorage.setItem("gen-mode", String(mode))
         localStorage.setItem("duration", String(duration))
-        localStorage.setItem("streamSettings", JSON.stringify(stream_settings))
+        localStorage.setItem("streamSettings", JSON.stringify(reconciledSettings))
         localStorage.setItem("rtt_histogram_config", JSON.stringify(filteredRTTHistogramSettings))
         localStorage.setItem("iat_histogram_config", JSON.stringify(filteredIATHistogramSettings))
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(port_tx_rx_mapping))
@@ -296,7 +309,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             streams: streams,
             mode: mode,
             duration: duration,
-            stream_settings: stream_settings,
+            stream_settings: reconciledSettings,
             rtt_histogram_config: filteredRTTHistogramSettings,
             iat_histogram_config: filteredIATHistogramSettings,
             port_tx_rx_mapping: port_tx_rx_mapping,
@@ -492,8 +505,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
                 const def = DefaultStreamSettings(s.stream_id, p, ch);
                 if (s.encapsulation === Encapsulation.MPLS) {
+                    def.mpls_stack = [];
                     for (let i = 0; i < s.number_of_lse; i++) def.mpls_stack.push(DefaultMPLSHeader());
                 } else if (s.encapsulation === Encapsulation.SRv6) {
+                    def.sid_list = [];
                     for (let i = 0; i < s.number_of_srv6_sids; i++) def.sid_list.push("::");
                 }
                 stream_settings.push(def);
@@ -637,12 +652,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                             let updated = setting;
 
                             if (setting.ipv6) {
+                                const ipv6 = updated.ipv6!;
                                 if (!validateIPv6RandomMask(setting.ipv6.ipv6_src_mask, ASIC.Tofino1)) {
                                     toastMessage = `IPv6 source randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
                                     toastType = "warning" as ToastVariant;
                                     updated = {
                                         ...updated,
-                                        ipv6: { ...updated.ipv6, ipv6_src_mask: "::ffff:ffff" },
+                                        ipv6: { ...ipv6, ipv6_src_mask: "::ffff:ffff" },
                                     };
                                 }
                                 if (!validateIPv6RandomMask(setting.ipv6.ipv6_dst_mask, ASIC.Tofino1)) {
@@ -650,7 +666,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                     toastType = "warning" as ToastVariant;
                                     updated = {
                                         ...updated,
-                                        ipv6: { ...updated.ipv6, ipv6_dst_mask: "::ffff:ffff" },
+                                        ipv6: { ...ipv6, ipv6_dst_mask: "::ffff:ffff" },
                                     };
                                 }
                             }
