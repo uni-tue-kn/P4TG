@@ -222,6 +222,7 @@ pub struct HistogramConfig {
     /// Maximum range for histogram.
     pub max: u32,
     /// Percentiles to calculate from histogram data. Float values between 0 and 1.0
+    #[serde(default)]
     pub percentiles: Option<Vec<f64>>,
 }
 
