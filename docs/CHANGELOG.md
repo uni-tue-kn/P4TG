@@ -31,6 +31,11 @@
 - Fixed the stream settings enable button to be disabled during traffic generation.
 - Fixed settings export not being available during active traffic generation.
 - Fixed the visualization in the frontend degrading due to the limit parameter which derived the number of elements from the time when the experiment started.
+- Fixed optional `StreamSettings` fields (VxLAN, GTP-U, VLAN, IPv6, SRv6, MPLS) requiring all fields to be present in the JSON payload, even when disabled. The Rust `#[serde(untagged)]` enum deserialization now correctly defaults missing `Option<T>` fields to `None` via `#[serde(default)]`.
+- Fixed API validation not catching missing IPv4 settings when `ip_version` is omitted (defaults to IPv4 downstream).
+- Fixed API validation not catching missing `srv6_base_header` for SRv6 encapsulated streams.
+- Fixed frontend always sending default values for disabled protocol fields (e.g., VxLAN, GTP-U). Optional `StreamSettings` fields are now omitted from the payload when not required by the stream configuration.
+- Fixed stream settings not being populated with defaults when enabling a feature (e.g., VxLAN) without opening the settings modal. Settings are now reconciled automatically at save time.
 
 ### Other
 - Rust version bump for CI and docker image to 1.91
