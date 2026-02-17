@@ -18,8 +18,8 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { Encapsulation, P4TGInfos, Stream, StreamSettings, defaultIPv6, defaultIPv4, defaultVlan, defaultVxlan, defaultGtpu } from "../../common/Interfaces";
-import React, { useState } from "react";
+import { Encapsulation, P4TGInfos, Stream, StreamSettings, DefaultMPLSHeader, defaultIPv6, defaultIPv4, defaultVlan, defaultVxlan, defaultGtpu } from "../../common/Interfaces";
+import React, { useState, useEffect } from "react";
 import { Accordion, Button, Modal, Alert } from "react-bootstrap";
 
 import { VLAN, Ethernet, IPv4, QinQ, VxLAN, GtpU, MPLS, IPv6, SRv6 } from "./protocols";
@@ -45,10 +45,18 @@ export const ensureDefaults = (settings: StreamSettings, stream: Stream): Stream
     }
     if (stream.encapsulation === Encapsulation.MPLS) {
         if (!s.mpls_stack) s.mpls_stack = [];
+        // Pad to the configured number of LSEs
+        while (s.mpls_stack.length < stream.number_of_lse) {
+            s.mpls_stack.push(DefaultMPLSHeader());
+        }
     }
     if (stream.encapsulation === Encapsulation.SRv6) {
         if (!s.srv6_base_header) s.srv6_base_header = defaultIPv6();
         if (!s.sid_list) s.sid_list = [];
+        // Pad to the configured number of SIDs
+        while (s.sid_list.length < stream.number_of_srv6_sids) {
+            s.sid_list.push("ff80::");
+        }
     }
 
     // Tunneling
@@ -146,6 +154,14 @@ const SettingsModal = ({
 
     const [tmp_data, set_tmp_data] = useState(ensureDefaults(data, stream))
     const [alertMessage, setAlertMessage] = useState<string | null>(null);
+
+    // Re-populate defaults whenever the modal is opened,
+    // so newly-enabled features get their default values.
+    useEffect(() => {
+        if (show) {
+            set_tmp_data(ensureDefaults(data, stream));
+        }
+    }, [show]);
 
     const update_data = (object: any) => {
         set_tmp_data(tmp_data => ({
