@@ -41,7 +41,7 @@ architectures:
 
 7.  On Ubuntu 20.04, manually install python3-dev and libpython3.8-dev with apt if not installed.
 8.  Start compilation of p4studio: `p4studio/p4studio profile apply my-profile`. Compilation may take several hours.
-9.  When compilation is done, set the env variables: `export SDE= ~/open-p4studio; export SDE_INSTALL=~/open-p4studio/install`. Add them to `/etc/profile` for convenience.
+9.  When compilation is done, set the env variables: `export SDE= /opt/bf-sde-9.13.4; export SDE_INSTALL=/opt/bf-sde-9.13.4/install;`. Add them to `/etc/profile` for convenience.
 10. Load the kernel modules
      - Tofino 1: `cd $SDE_INSTALL/bin; sudo ./bf_kdrv_mod_load $SDE_INSTALL`
      - Tofino 2: `cd $SDE_INSTALL/bin; sudo ./bf_kdrv_mod_load $SDE_INSTALL; sudo ./bf_fpga_mod_load $SDE_INSTALL`
