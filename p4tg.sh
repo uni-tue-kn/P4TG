@@ -31,6 +31,15 @@
 
 set -Eeuo pipefail
 
+# sudo's secure_path overrides PATH even with -E; ensure SDE paths are included.
+if [[ -n "${SDE_INSTALL:-}" ]]; then
+  PATH="$SDE_INSTALL/bin:$PATH"
+fi
+if [[ -n "${SDE:-}" ]]; then
+  PATH="$SDE:$PATH"
+fi
+export PATH
+
 ###########################
 # Configuration (edit me) #
 ###########################
@@ -160,7 +169,8 @@ run_xt_cfgen_fallback() {
 
   info "Attempting fallback loader for '$target_mod' via: $script"
   set +e
-  "$script"
+  # xt-cfgen.sh expects sibling scripts (e.g. xt-setup.sh) to be in PATH
+  PATH="$SDE_INSTALL/bin:$PATH" "$script"
   local rc=$?
   set -e
 
@@ -198,9 +208,14 @@ load_kernel_module_if_needed() {
       warn "Loader for '$kmod' not found at $loader; trying xt-cfgen.sh fallback."
       if run_xt_cfgen_fallback "$kmod"; then
         continue
-      else
-        return 2
       fi
+      # bf_fpga is not available on all platforms (e.g. Asterfusion).
+      # If the module file doesn't exist in the kernel, treat it as optional.
+      if ! modinfo bf_fpga >/dev/null 2>&1; then
+        warn "Kernel module 'bf_fpga' not available on this system; skipping (non-fatal)."
+        continue
+      fi
+      return 2
     fi
 
     require_exe "$loader"
@@ -224,6 +239,11 @@ load_kernel_module_if_needed() {
     if [[ "$kmod" == "bf_fpga" ]]; then
       warn "Primary loader for '$kmod' failed (exit $rc); attempting xt-cfgen.sh fallback."
       if run_xt_cfgen_fallback "$kmod"; then
+        continue
+      fi
+      # bf_fpga is not available on all platforms (e.g. Asterfusion).
+      if ! modinfo bf_fpga >/dev/null 2>&1; then
+        warn "Kernel module 'bf_fpga' not available on this system; skipping (non-fatal)."
         continue
       fi
     fi
@@ -635,6 +655,7 @@ cmd_install() {
 
 cmd_start() {
   info "=== p4tg: START ==="
+  backup_platform_conf
   require_env_dir SDE
   require_env_dir SDE_INSTALL
   load_kernel_module_if_needed || exit $?
@@ -745,7 +766,6 @@ main() {
   done
 
   local cmd="${args[0]:-help}"
-  backup_platform_conf
   case "$cmd" in
     install) cmd_install ;;
     update) cmd_install ;;
