@@ -31,6 +31,7 @@
 - [📚 Documentation](#-documentation)
 - [🛠️ Development](#️-development)
 - [🖼️ Preview](#️-preview)
+- [🏢 Who's Using P4TG](#-whos-using-p4tg)
 - [📖 Cite](#-cite)
 
 ---
@@ -268,6 +269,25 @@ For development instructions, please see [here](./docs/DEVELOPMENT.md)
 <img src="docs/img/preview-3.png" alt="Preview 3" width="600" style="border-radius:10px; border:1px solid #000;"/>
 <img src="docs/img/preview-4.png" alt="Preview 4" width="600" style="border-radius:10px; border:1px solid #000;"/>
 <img src="docs/img/preview-5.png" alt="Preview 5" width="600" style="border-radius:10px; border:1px solid #000;"/>
+
+---
+
+## 🏢 Who's Using P4TG
+
+<div align="center">
+  <a href="#"><img src="docs/img/logos/airbus.png" alt="Airbus" height="80"/></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#"><img src="docs/img/logos/bdbos.png" alt="BDBOS" height="80"/></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#"><img src="docs/img/logos/bell.jpg" alt="Bell" height="80"/></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#"><img src="docs/img/logos/belwue.png" alt="BelWü" height="80"/></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#"><img src="docs/img/logos/eci.png" alt="ECI" height="80"/></a>
+
+  ... and many more!
+
+</div>
 
 ---
 
