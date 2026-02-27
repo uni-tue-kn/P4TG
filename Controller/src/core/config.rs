@@ -1,7 +1,7 @@
 use macaddr::MacAddr;
 use rbfrt::util::{AutoNegotiation, Speed, FEC};
 use serde::{Deserialize, Serialize};
-use std::{error::Error, str::FromStr};
+use std::{collections::HashMap, error::Error, str::FromStr};
 
 /// Custom deserializer for breakout_mode that accepts:
 /// - `true` -> `Some(4)` (backward compatible 4-lane breakout)
@@ -57,6 +57,10 @@ pub struct PortDescription {
     )]
     pub(crate) breakout_mode: Option<u8>,
     arp_reply: Option<bool>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    channel_mac: HashMap<u8, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    channel_arp_reply: HashMap<u8, bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -116,6 +120,8 @@ impl Config {
                     auto_negotiation: Some(AutoNegotiation::PM_AN_DEFAULT),
                     recirculation_ports: None,
                     breakout_mode: None,
+                    channel_mac: HashMap::new(),
+                    channel_arp_reply: HashMap::new(),
                 })
                 .collect(),
         }
@@ -151,11 +157,42 @@ impl Config {
         Ok(())
     }
 
-    pub(crate) fn update_arp_state(&mut self, port: u32, state: bool) {
+    pub(crate) fn update_arp_state(&mut self, port: u32, channel: Option<u8>, state: bool) {
         for p in &mut self.tg_ports {
             if p.port == port {
-                p.arp_reply = Some(state);
+                if let Some(channel) = channel {
+                    p.channel_arp_reply.insert(channel, state);
+                } else {
+                    p.arp_reply = Some(state);
+                    p.channel_arp_reply.clear();
+                }
             }
         }
+    }
+
+    pub(crate) fn update_mac_state(&mut self, port: u32, channel: Option<u8>, mac: String) {
+        for p in &mut self.tg_ports {
+            if p.port == port {
+                if let Some(channel) = channel {
+                    p.channel_mac.insert(channel, mac.clone());
+                } else {
+                    p.mac = mac.clone();
+                    p.channel_mac.clear();
+                }
+            }
+        }
+    }
+
+    pub(crate) fn get_mac_state(&self, port: u32, channel: Option<u8>) -> Option<String> {
+        self.tg_ports.iter().find(|p| p.port == port).map(|p| {
+            if let Some(channel) = channel {
+                p.channel_mac
+                    .get(&channel)
+                    .cloned()
+                    .unwrap_or_else(|| p.mac.clone())
+            } else {
+                p.mac.clone()
+            }
+        })
     }
 }

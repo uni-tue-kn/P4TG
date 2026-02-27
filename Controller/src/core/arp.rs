@@ -18,6 +18,7 @@
  */
 
 use log::info;
+use macaddr::MacAddr;
 use std::collections::HashMap;
 
 use crate::PortMapping;
@@ -71,32 +72,25 @@ impl Arp {
     pub async fn modify_arp(
         &self,
         switch: &SwitchConnection,
-        port: &PortMapping,
+        ports: &[PortMapping],
         active: bool,
-        breakout_mode: Option<u8>,
+        mac: MacAddr,
     ) -> Result<(), RBFRTError> {
-        let channels: Vec<u32> = match breakout_mode {
-            Some(8) => (0..=7).collect(),
-            Some(_) => (0..=3).collect(),
-            None => vec![0],
-        };
-
         let mut requests = vec![];
-        for c in channels {
+        for port in ports {
             let req = table::Request::new(ARP_REPLY_TABLE)
                 .match_key(
                     "ig_intr_md.ingress_port",
-                    MatchValue::exact(port.rx_recirculation + c),
+                    MatchValue::exact(port.rx_recirculation),
                 )
                 .action(&format!("{ACTION_PREFIX}.answer_arp"))
-                .action_data("e_port", port.tx_recirculation + c)
-                .action_data("src_addr", port.mac.as_bytes().to_vec())
+                .action_data("e_port", port.tx_recirculation)
+                .action_data("src_addr", mac.as_bytes().to_vec())
                 .action_data("valid", active);
             requests.push(req);
             info!(
-                "ARP reply rule for rx port {} change to {}.",
-                port.rx_recirculation + c,
-                active
+                "ARP reply rule for front panel port {}/{} (rx recirc {}) changed to {}.",
+                port.front_panel_port, port.channel, port.rx_recirculation, active
             );
         }
 

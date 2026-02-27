@@ -16,6 +16,10 @@
   - `breakout_mode: true` is interpreted as `breakout_mode: 4`
   - `breakout_mode: false` disables breakout mode
 - Added `BF_SPEED_50G` as a supported port speed in controller and frontend port configuration.
+- Added per-channel ARP/MAC runtime configuration in frontend and backend.
+  - `POST:/api/ports/arp` now accepts an optional `channel` field.
+  - If `channel` is set, ARP + MAC updates apply only to that `(port, channel)`.
+  - If `channel` is omitted, ARP + MAC updates apply to all configured channels of that front panel port.
 - Added histogram monitoring for TX/RX IATs similar to RTT histograms.
   - ⚠️ API schema changes
     - `histogram_config` in `POST:/api/trafficgen` is now called `rtt_histogram_config` and `iat_histogram_config`
@@ -31,6 +35,7 @@
 
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
+- Fixed ARP and MAC settings being effectively tied to the base channel in breakout mode.
 - Fixed generated traffic exceeding the configured rate if using Poisson generation with Rate Precision mode and batches.
 - Fixed unstable IAT due to generation on multiple pipes in IAT precision mode. The IAT precision mode now has a toggle to switch between generation on a single pipe or an all available pipes. The default mode for a stream is now the rate precision mode.
 - Fixed errors that get thrown after passing the API validation not being propagated to the frontend.

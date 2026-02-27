@@ -25,6 +25,7 @@ import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
 import { ASIC, FEC, P4TGConfig, P4TGInfos, SPEED } from "../common/Interfaces";
 import { auto_neg_mapping, fec_mapping, loopback_mapping, speed_mapping } from "../common/Definitions";
+import { validateMAC } from "../common/Validators";
 import { GitHub } from "./Home";
 
 const StyledCol = styled.td`
@@ -57,6 +58,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const [loaded, set_loaded] = useState(false)
     const [ports, set_ports] = useState([])
     const [config, set_config] = useState<P4TGConfig>({ tg_ports: [] })
+    const [macInput, setMacInput] = useState<Record<string, string>>({})
 
 
     const loadPorts = async () => {
@@ -87,12 +89,20 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         }
     }
 
-    const updateArp = async (front_panel_port: number, state: boolean, breakout_mode: number | null) => {
+    const updateArp = async (
+        front_panel_port: number,
+        state: boolean,
+        breakout_mode: number | null,
+        mac?: string,
+        channel?: number
+    ) => {
         let update = await post({
             route: "/ports/arp", body: {
                 front_panel_port: front_panel_port,
                 arp_reply: state,
                 breakout_mode: breakout_mode,
+                mac: mac,
+                channel: channel,
             }
         })
 
@@ -101,12 +111,14 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         }
     }
 
-    const getMac = (port: number) => {
+    const toPortChannelKey = (port: number, channel: number) => `${port}/${channel}`
+
+    const getMac = (port: number, channel: number) => {
         let mac = "Unknown"
 
         config.tg_ports.forEach(p => {
             if (p.port == port) {
-                mac = p.mac
+                mac = p.channel_mac?.[channel.toString()] ?? p.mac
             }
         })
 
@@ -148,12 +160,12 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         return baseSpeed
     }
 
-    const getArpReply = (port: number) => {
+    const getArpReply = (port: number, channel: number) => {
         let reply = false
 
         config.tg_ports.forEach(p => {
             if (p.port == port) {
-                reply = p.arp_reply ?? false
+                reply = p.channel_arp_reply?.[channel.toString()] ?? p.arp_reply ?? false
             }
         })
 
@@ -170,6 +182,15 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     }, [])
 
+    useEffect(() => {
+        const values: Record<string, string> = {}
+        ports.forEach((portInfo: any) => {
+            const key = toPortChannelKey(portInfo.port, portInfo.channel)
+            values[key] = getMac(portInfo.port, portInfo.channel)
+        })
+        setMacInput(values)
+    }, [config, ports])
+
 
     return <Loader loaded={loaded}>
         <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
@@ -177,10 +198,6 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                 <tr>
                     <th>PID</th>
                     <th>Port/Channel</th>
-                    <th>MAC &nbsp; <InfoBox>
-                        <p>MAC address that is used to answer ARP requests (if enabled). The address can be changed in the config.json file of the controller.</p>
-                    </InfoBox>
-                    </th>
                     <th>Breakout &nbsp; <InfoBox>
                         <p>In breakout mode, the port is split across multiple channels, e.g., 4x100G or 8x50G. Configure the breakout mode (4 or 8) in config.json and restart the controller.</p>
                     </InfoBox>
@@ -188,6 +205,10 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                     <th>Speed</th>
                     <th>Auto Negotiation</th>
                     <th>FEC</th>
+                    <th>MAC &nbsp; <InfoBox>
+                        <p>MAC address used for ARP replies (if enabled). It can be changed here at runtime; the value from config.json is used as default on startup.</p>
+                    </InfoBox>
+                    </th>
                     <th>ARP Reply &nbsp;
                         <InfoBox>
                             <p>If enabled, the port will answer all received ARP requests.</p></InfoBox>
@@ -201,7 +222,6 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                         return <tr key={i}>
                             <StyledCol className={"col-1"}>{v["pid"]}</StyledCol>
                             <StyledCol className={"col-1"}>{v['port']}/{v["channel"]}</StyledCol>
-                            <StyledCol className={"col-1"}>{getMac(v['port'])}</StyledCol>
                             <StyledCol className={"col-1 align-items-center"}>
                                 <OverlayTrigger
                                     placement="top"
@@ -297,6 +317,16 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                                                     // 400G and 50G require RS
                                                     if (f == SPEED.BF_SPEED_400G || f == SPEED.BF_SPEED_50G) {
+                                                        fec = FEC.BF_FEC_TYP_REED_SOLOMON
+                                                    }
+
+                                                    // 4-lane breakout of 400G (4x100G) requires RS on 100G channels
+                                                    if (
+                                                        breakout != null &&
+                                                        breakout !== 8 &&
+                                                        allowed4LaneSpeed == SPEED.BF_SPEED_100G &&
+                                                        f == SPEED.BF_SPEED_100G
+                                                    ) {
                                                         fec = FEC.BF_FEC_TYP_REED_SOLOMON
                                                     }
 
@@ -416,9 +446,17 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                                     <Dropdown.Menu className="w-100">
                                         {Object.keys(fec_mapping).map(f => {
-                                            // 400G and 50G → only RS allowed
+                                            const breakout = getBreakoutMode(v.port)
+                                            const allowed4LaneSpeed = getAllowed4LaneSpeed(v.port)
+                                            const is4x100Breakout =
+                                                breakout != null &&
+                                                breakout !== 8 &&
+                                                allowed4LaneSpeed == SPEED.BF_SPEED_100G &&
+                                                v.speed == SPEED.BF_SPEED_100G
+
+                                            // 400G, 50G and 4x100G breakout → only RS allowed
                                             if (f != FEC.BF_FEC_TYP_REED_SOLOMON &&
-                                                (v.speed == SPEED.BF_SPEED_400G || v.speed == SPEED.BF_SPEED_50G)) {
+                                                (v.speed == SPEED.BF_SPEED_400G || v.speed == SPEED.BF_SPEED_50G || is4x100Breakout)) {
                                                 return null
                                             }
 
@@ -461,10 +499,68 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                             </StyledCol>
                             <StyledCol className={"col-1"}>
+                                <Form.Control
+                                    size="sm"
+                                    type="text"
+                                    value={macInput[toPortChannelKey(v.port, v.channel)] ?? getMac(v.port, v.channel)}
+                                    isInvalid={
+                                        (macInput[toPortChannelKey(v.port, v.channel)] ?? getMac(v.port, v.channel)).length > 0 &&
+                                        !validateMAC((macInput[toPortChannelKey(v.port, v.channel)] ?? getMac(v.port, v.channel)).trim())
+                                    }
+                                    onChange={(event: any) => {
+                                        const value = event.target.value
+                                        setMacInput(prev => ({ ...prev, [toPortChannelKey(v.port, v.channel)]: value }))
+                                    }}
+                                    onBlur={async () => {
+                                        const current = (macInput[toPortChannelKey(v.port, v.channel)] ?? getMac(v.port, v.channel)).trim()
+                                        const configured = getMac(v.port, v.channel).trim()
+
+                                        if (current == configured || !validateMAC(current)) {
+                                            return
+                                        }
+
+                                        await updateArp(
+                                            v.port,
+                                            getArpReply(v.port, v.channel),
+                                            getBreakoutMode(v.port),
+                                            current,
+                                            v.channel
+                                        )
+                                    }}
+                                    onKeyDown={async (event: any) => {
+                                        if (event.key != "Enter") {
+                                            return
+                                        }
+
+                                        const current = (macInput[toPortChannelKey(v.port, v.channel)] ?? getMac(v.port, v.channel)).trim()
+                                        const configured = getMac(v.port, v.channel).trim()
+
+                                        if (current == configured || !validateMAC(current)) {
+                                            return
+                                        }
+
+                                        await updateArp(
+                                            v.port,
+                                            getArpReply(v.port, v.channel),
+                                            getBreakoutMode(v.port),
+                                            current,
+                                            v.channel
+                                        )
+                                    }}
+                                />
+                            </StyledCol>
+                            <StyledCol className={"col-1"}>
                                 <Form.Check
-                                    defaultChecked={getArpReply(v.port)}
+                                    checked={getArpReply(v.port, v.channel)}
                                     onChange={async (event: any) => {
-                                        await updateArp(v["port"], event.target.checked, getBreakoutMode(v.port))
+                                        const mac = (macInput[toPortChannelKey(v.port, v.channel)] ?? getMac(v.port, v.channel)).trim()
+                                        await updateArp(
+                                            v["port"],
+                                            event.target.checked,
+                                            getBreakoutMode(v.port),
+                                            validateMAC(mac) ? mac : getMac(v.port, v.channel),
+                                            v.channel
+                                        )
                                     }}
                                     type={"switch"}
                                 >
