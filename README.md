@@ -207,6 +207,8 @@ Notes:
 - `breakout_mode: 4` enables 4-lane breakout. Depending on configured base speed this maps to `4x100G` (from `400G`), `4x25G` (from `100G`), or `4x10G` (from `40G`).
 - `breakout_mode: 8` enables 8-lane breakout on Tofino 2 (`400G -> 8x50G`). For this setting, `8x25G/10G` are also configurable.
 - Backward compatibility: `breakout_mode: true` is interpreted as `breakout_mode: 4`; `false` disables breakout.
+- ARP reply and MAC can be changed at runtime per `port/channel` in the Ports GUI or via `POST /api/ports/arp` (optional `channel` field).
+- Runtime ARP/MAC changes are kept in controller memory and are reset to `config.json` values on controller restart.
 
 
 #### 64-port Tofino
