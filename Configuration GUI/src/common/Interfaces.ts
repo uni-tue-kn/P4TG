@@ -382,7 +382,8 @@ export interface P4TGConfig {
         port: number,
         mac: string,
         arp_reply: boolean,
-        breakout_mode: boolean
+        speed?: SPEED,
+        breakout_mode: number | null
     }[]
 }
 

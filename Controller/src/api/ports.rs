@@ -19,7 +19,9 @@
 
 use crate::api::docs;
 use crate::api::server::Error;
-use crate::core::traffic_gen_core::helper::generate_front_panel_to_dev_port_mappings;
+use crate::core::traffic_gen_core::helper::{
+    breakout_mapping, generate_front_panel_to_dev_port_mappings, get_base_speed,
+};
 use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -34,7 +36,7 @@ pub struct PortConfiguration {
     speed: Speed,
     fec: FEC,
     auto_neg: AutoNegotiation,
-    breakout_mode: Option<bool>,
+    breakout_mode: Option<u8>,
     channel: Option<u8>,
 }
 
@@ -81,7 +83,7 @@ impl utoipa::PartialSchema for PortConfiguration {
 pub struct ArpReply {
     front_panel_port: u32,
     arp_reply: bool,
-    breakout_mode: Option<bool>,
+    breakout_mode: Option<u8>,
 }
 
 /// Returns the currently configured ports
@@ -141,19 +143,37 @@ pub async fn add_port(
             .into_response();
     }
 
-    if payload.breakout_mode == Some(true) {
-        match payload.speed {
-            Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => {}
-            _ => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(Error::new(format!(
-                        "Port speed {:?} is not available in breakout mode on port {}.",
-                        payload.speed, payload.front_panel_port
-                    ))),
-                )
-                    .into_response();
-            }
+    let configured_base_speed = {
+        let config = state.config.lock().await;
+        config
+            .tg_ports
+            .iter()
+            .find(|p| p.port == payload.front_panel_port)
+            .map(|p| get_base_speed(p, state.tofino2))
+    };
+
+    if payload.breakout_mode.is_some() {
+        let speed_allowed = if payload.breakout_mode == Some(8) {
+            matches!(
+                payload.speed,
+                Speed::BF_SPEED_10G | Speed::BF_SPEED_25G | Speed::BF_SPEED_50G
+            )
+        } else {
+            configured_base_speed.as_ref().is_some_and(|base_speed| {
+                let (_, per_channel_speed, _) = breakout_mapping(base_speed, Some(4), state.tofino2);
+                payload.speed == per_channel_speed
+            })
+        };
+
+        if !speed_allowed {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(Error::new(format!(
+                    "Port speed {:?} is not available in breakout mode on port {}.",
+                    payload.speed, payload.front_panel_port
+                ))),
+            )
+                .into_response();
         }
     }
 
@@ -163,6 +183,11 @@ pub async fn add_port(
         .speed(payload.speed.clone())
         .fec(payload.fec.clone())
         .auto_negotiation(payload.auto_neg.clone());
+
+    // 50G in breakout mode requires 1 lane (50G-R1)
+    if payload.speed == Speed::BF_SPEED_50G && payload.breakout_mode.is_some() {
+        req = req.n_lanes(1);
+    }
 
     if state.loopback_mode {
         req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);

@@ -32,6 +32,7 @@ export const speed_mapping: { [name: string]: string } = {
     "BF_SPEED_10G": "10G",
     "BF_SPEED_25G": "25G",
     "BF_SPEED_40G": "40G",
+    "BF_SPEED_50G": "50G",
     "BF_SPEED_100G": "100G",
     "BF_SPEED_400G": "400G"
 }

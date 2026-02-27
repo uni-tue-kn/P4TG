@@ -70,7 +70,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         }
     }
 
-    const updatePort = async (front_panel_port: number, speed: string, fec: string, auto_neg: string, breakout_mode: boolean, channel: number) => {
+    const updatePort = async (front_panel_port: number, speed: string, fec: string, auto_neg: string, breakout_mode: number | null, channel: number) => {
         let update = await post({
             route: "/ports", body: {
                 front_panel_port: front_panel_port,
@@ -87,7 +87,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         }
     }
 
-    const updateArp = async (front_panel_port: number, state: boolean, breakout_mode: boolean) => {
+    const updateArp = async (front_panel_port: number, state: boolean, breakout_mode: number | null) => {
         let update = await post({
             route: "/ports/arp", body: {
                 front_panel_port: front_panel_port,
@@ -113,16 +113,39 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         return mac
     }
 
-    const getBreakoutMode = (port: number) => {
-        let breakout = false
+    const getBreakoutMode = (port: number): number | null => {
+        let breakout: number | null = null
 
         config.tg_ports.forEach(p => {
             if (p.port == port) {
-                breakout = p.breakout_mode ?? false
+                breakout = p.breakout_mode ?? null
             }
         })
 
         return breakout
+    }
+
+    const getConfiguredSpeed = (port: number): SPEED => {
+        let speed = SPEED.BF_SPEED_100G
+
+        config.tg_ports.forEach(p => {
+            if (p.port == port && p.speed != null) {
+                speed = p.speed
+            }
+        })
+
+        return speed
+    }
+
+    const getAllowed4LaneSpeed = (port: number): SPEED => {
+        const baseSpeed = getConfiguredSpeed(port)
+
+        if (baseSpeed == SPEED.BF_SPEED_400G) return SPEED.BF_SPEED_100G
+        if (baseSpeed == SPEED.BF_SPEED_100G) return SPEED.BF_SPEED_25G
+        if (baseSpeed == SPEED.BF_SPEED_40G) return SPEED.BF_SPEED_10G
+
+        // Fallback for unsupported breakout base rates: keep single-lane speed.
+        return baseSpeed
     }
 
     const getArpReply = (port: number) => {
@@ -159,7 +182,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                     </InfoBox>
                     </th>
                     <th>Breakout &nbsp; <InfoBox>
-                        <p>In breakout mode, the port is split across 4 channels, e.g., 1x100G to 4x25G. Configure the breakout mode in config.json and restart the controller.</p>
+                        <p>In breakout mode, the port is split across multiple channels, e.g., 4x100G or 8x50G. Configure the breakout mode (4 or 8) in config.json and restart the controller.</p>
                     </InfoBox>
                     </th>
                     <th>Speed</th>
@@ -183,17 +206,14 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                 <OverlayTrigger
                                     placement="top"
                                     overlay={
-                                        (props) => renderTooltip(props, "Breakout mode can be configured in config.json.")
+                                        (props) => renderTooltip(props, "Breakout mode can be configured in config.json (4 = 4-lane, 8 = 8-lane).")
                                     }
                                 >
                                     <span>
-                                        <Form.Check
-                                            type="checkbox"
-                                            id={`breakout-${v.pid}`}
-                                            checked={getBreakoutMode(v.port)}
-                                            disabled={true}
-                                            readOnly
-                                        />
+                                        {getBreakoutMode(v.port) != null
+                                            ? `${getBreakoutMode(v.port)}x`
+                                            : <i className="bi bi-dash" />
+                                        }
                                     </span>
                                 </OverlayTrigger>
                             </StyledCol>
@@ -218,44 +238,56 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                                                 const breakout = getBreakoutMode(v.port)
 
-                                                // In breakout mode show only 10/25/100
-                                                if (breakout) {
+                                                // In breakout mode: show all relevant speeds (some disabled with tooltip)
+                                                if (breakout === 8) {
                                                     return (
-                                                        f == SPEED.BF_SPEED_10G ||
+                                                        f == SPEED.BF_SPEED_50G ||
                                                         f == SPEED.BF_SPEED_25G ||
-                                                        f == SPEED.BF_SPEED_100G
+                                                        f == SPEED.BF_SPEED_10G ||
+                                                        f == SPEED.BF_SPEED_40G ||
+                                                        f == SPEED.BF_SPEED_100G ||
+                                                        f == SPEED.BF_SPEED_400G
                                                     )
                                                 }
 
+                                                if (breakout != null) {
+                                                    return (
+                                                        f == SPEED.BF_SPEED_100G ||
+                                                        f == SPEED.BF_SPEED_50G ||
+                                                        f == SPEED.BF_SPEED_40G ||
+                                                        f == SPEED.BF_SPEED_25G ||
+                                                        f == SPEED.BF_SPEED_10G ||
+                                                        f == SPEED.BF_SPEED_400G
+                                                    )
+                                                }
+
+                                                // No breakout: all speeds
                                                 return true
                                             })
                                             .map(f => {
                                                 const breakout = getBreakoutMode(v.port)
-                                                const current = v.speed
-
-                                                const is10 = f == SPEED.BF_SPEED_10G
-                                                const is25 = f == SPEED.BF_SPEED_25G
-                                                const is100 = f == SPEED.BF_SPEED_100G
-
-                                                const currentIs10or25 =
-                                                    current == SPEED.BF_SPEED_10G || current == SPEED.BF_SPEED_25G
-                                                const currentIs100 = current == SPEED.BF_SPEED_100G
+                                                const allowed4LaneSpeed = getAllowed4LaneSpeed(v.port)
 
                                                 let disabled = false
                                                 let tooltip = ""
 
-                                                // If v.speed is 10G or 25G → show 10/25/100, but disable 100G
-                                                if (breakout && currentIs10or25 && is100) {
+                                                // 8-lane breakout: only 50G, 25G and 10G are selectable
+                                                if (
+                                                    breakout === 8 &&
+                                                    (f == SPEED.BF_SPEED_40G ||
+                                                        f == SPEED.BF_SPEED_100G ||
+                                                        f == SPEED.BF_SPEED_400G)
+                                                ) {
                                                     disabled = true
                                                     tooltip =
-                                                        "100G is disabled while this port is in 10G/25G breakout mode (configurable in config.json)."
+                                                        "This speed is not available in 8-lane breakout mode. Disable or switch to 4-lane breakout mode in config.json and restart the controller."
                                                 }
 
-                                                // If breakout enabled and v.speed is 100G → disable 10G and 25G
-                                                if (breakout && currentIs100 && (is10 || is25)) {
+                                                // 4-lane breakout: selectable rate depends on configured base speed
+                                                if (breakout != null && breakout !== 8 && f != allowed4LaneSpeed) {
                                                     disabled = true
                                                     tooltip =
-                                                        "10G and 25G are disabled while this port is in 100G breakout mode (configurable in config.json)."
+                                                        `This speed is not available in 4-lane breakout mode. For the configured base speed, only ${speed_mapping[allowed4LaneSpeed]} is available.`
                                                 }
 
                                                 const handleClick = async () => {
@@ -263,8 +295,8 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                                                     let fec = v.fec
 
-                                                    // 400G requires RS
-                                                    if (f == SPEED.BF_SPEED_400G) {
+                                                    // 400G and 50G require RS
+                                                    if (f == SPEED.BF_SPEED_400G || f == SPEED.BF_SPEED_50G) {
                                                         fec = FEC.BF_FEC_TYP_REED_SOLOMON
                                                     }
 
@@ -299,7 +331,10 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                                         active={f == v.speed}
                                                         disabled={disabled}
                                                         onClick={handleClick}
-                                                        style={{ cursor: disabled ? "not-allowed" : "pointer" }}
+                                                        style={{
+                                                            cursor: disabled ? "not-allowed" : "pointer",
+                                                            opacity: disabled ? 0.4 : 1,
+                                                        }}
                                                     >
                                                         {speed_mapping[f]}
                                                     </Dropdown.Item>
@@ -381,8 +416,9 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
                                     <Dropdown.Menu className="w-100">
                                         {Object.keys(fec_mapping).map(f => {
-                                            // 400G → only RS allowed
-                                            if (f != FEC.BF_FEC_TYP_REED_SOLOMON && v.speed == SPEED.BF_SPEED_400G) {
+                                            // 400G and 50G → only RS allowed
+                                            if (f != FEC.BF_FEC_TYP_REED_SOLOMON &&
+                                                (v.speed == SPEED.BF_SPEED_400G || v.speed == SPEED.BF_SPEED_50G)) {
                                                 return null
                                             }
 

@@ -49,7 +49,7 @@ pub struct PortMapping {
     pub rx_recirculation: u32,
     pub front_panel_port: u32,
     pub mac: MacAddr,
-    pub breakout_mode: Option<bool>,
+    pub breakout_mode: Option<u8>,
     pub channel: u8,
 }
 

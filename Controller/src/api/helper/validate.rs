@@ -71,9 +71,8 @@ pub fn validate_request(
                 let breakout_mode = available_ports
                     .get(dev_port)
                     .unwrap_or(&default_pm)
-                    .breakout_mode
-                    .unwrap_or(false);
-                if !breakout_mode {
+                    .breakout_mode;
+                if breakout_mode.is_none() {
                     return Err(Error::new(format!("Port {:?} is not configured in breakout mode, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
                 }
             }

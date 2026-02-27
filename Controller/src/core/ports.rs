@@ -34,7 +34,7 @@ fn configure_tg_ports(
         let fec = tg.fec.clone().unwrap_or(
             if is_tofino2
                 && (speed == Speed::BF_SPEED_400G
-                    || tg.breakout_mode == Some(true) && speed == Speed::BF_SPEED_100G)
+                    || tg.breakout_mode.is_some() && speed == Speed::BF_SPEED_100G)
             {
                 FEC::BF_FEC_TYP_REED_SOLOMON
             } else {
@@ -43,11 +43,11 @@ fn configure_tg_ports(
         );
 
         let (channels, per_channel_speed, n_lanes) =
-            breakout_mapping(&speed, tg.breakout_mode.unwrap_or(false), is_tofino2);
+            breakout_mapping(&speed, tg.breakout_mode, is_tofino2);
 
-        if tg.breakout_mode == Some(true) && channels.len() == 1 {
+        if tg.breakout_mode.is_some() && channels.len() == 1 {
             // Invalid speed configured for breakout mode
-            tg.breakout_mode = Some(false);
+            tg.breakout_mode = None;
             warn!("Invalid port speed for breakout mode on port configured. Only 400G (Tofino 2), 100G and 40G are possible. Falling back to single channel.");
         }
 
@@ -167,16 +167,17 @@ pub fn configure_recirculation_ports(
             .expect("internal: missing tg cfg");
 
         let base_speed = get_base_speed(tg_cfg, is_tofino2);
-        let breakout = tg_cfg.breakout_mode.unwrap_or(false);
+        let breakout_lanes = tg_cfg.breakout_mode;
         let (channels, per_channel_speed, n_lanes) =
-            breakout_mapping(&base_speed, breakout, is_tofino2);
+            breakout_mapping(&base_speed, breakout_lanes, is_tofino2);
 
         let choice = recirc_ports_per_tg_choice
             .get(tg_port)
             .expect("internal: missing recirc choice");
 
-        let fec = if breakout {
-            if per_channel_speed == Speed::BF_SPEED_100G {
+        let fec = if breakout_lanes.is_some() {
+            if per_channel_speed == Speed::BF_SPEED_100G || per_channel_speed == Speed::BF_SPEED_50G
+            {
                 FEC::BF_FEC_TYP_REED_SOLOMON
             } else {
                 FEC::BF_FEC_TYP_NONE
@@ -188,12 +189,9 @@ pub fn configure_recirculation_ports(
         };
 
         // Always use maximum possible rate for recirculation ports
-        let speed = if breakout {
-            if per_channel_speed == Speed::BF_SPEED_100G {
-                Speed::BF_SPEED_100G
-            } else {
-                Speed::BF_SPEED_25G
-            }
+        // 8-lane breakout -> 50G, 4-lane breakout -> 100G (or 25G for 100G/40G base)
+        let speed = if breakout_lanes.is_some() {
+            per_channel_speed.clone()
         } else if is_tofino2 {
             Speed::BF_SPEED_400G
         } else {
@@ -249,9 +247,8 @@ fn build_tg_recirc_mapping(
             .expect("internal: missing tg cfg");
 
         let base_speed = get_base_speed(tg_cfg, is_tofino2);
-        let breakout = tg_cfg.breakout_mode.unwrap_or(false);
         let (channels, _per_ch_speed, _n_lanes) =
-            breakout_mapping(&base_speed, breakout, is_tofino2);
+            breakout_mapping(&base_speed, tg_cfg.breakout_mode, is_tofino2);
 
         let choice = recirc_ports_per_tg_choice
             .get(tg_port)

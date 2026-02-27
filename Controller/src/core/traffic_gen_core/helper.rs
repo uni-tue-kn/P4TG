@@ -184,36 +184,48 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
     encapsulation_overhead
 }
 
-/// Maps a configured Speed to its breakout modes, e.g.,400G -> 4x100G
+/// Maps a configured Speed to its breakout modes, e.g., 400G -> 4x100G or 400G -> 8x50G
+/// `breakout_lanes`: None = no breakout, Some(4) = 4-lane, Some(8) = 8-lane (Tofino 2 only)
 /// Returns a tuple of: (vector of channel indices, per-channel speed, optional number of lanes)
 pub(crate) fn breakout_mapping(
     speed: &Speed,
-    breakout: bool,
+    breakout_lanes: Option<u8>,
     is_tofino2: bool,
 ) -> (Vec<u8>, Speed, Option<u32>) {
-    if breakout {
-        match speed {
-            Speed::BF_SPEED_400G => {
-                if is_tofino2 {
-                    (vec![0, 2, 4, 6], Speed::BF_SPEED_100G, Some(2))
-                } else {
-                    // 400G unsupported on Tofino1 breakout → fallback to single-lane
-                    (vec![0], speed.clone(), None)
+    match breakout_lanes {
+        Some(8) => {
+            // 8-lane breakout: Tofino 2 only, 400G -> 8x50G
+            match speed {
+                Speed::BF_SPEED_400G if is_tofino2 => {
+                    ((0..=7).collect(), Speed::BF_SPEED_50G, Some(1))
                 }
+                _ => (vec![0], speed.clone(), None), // unsupported combo → fallback
             }
-            Speed::BF_SPEED_100G => ((0..=3).collect(), Speed::BF_SPEED_25G, None),
-            Speed::BF_SPEED_40G => ((0..=3).collect(), Speed::BF_SPEED_10G, None),
-            _ => (vec![0], speed.clone(), None), // unsupported combo → fallback to single-lane
         }
-    } else {
-        (vec![0], speed.clone(), None)
+        Some(_) => {
+            // 4-lane breakout (default breakout)
+            match speed {
+                Speed::BF_SPEED_400G => {
+                    if is_tofino2 {
+                        (vec![0, 2, 4, 6], Speed::BF_SPEED_100G, Some(2))
+                    } else {
+                        // 400G unsupported on Tofino1 breakout → fallback to single-lane
+                        (vec![0], speed.clone(), None)
+                    }
+                }
+                Speed::BF_SPEED_100G => ((0..=3).collect(), Speed::BF_SPEED_25G, None),
+                Speed::BF_SPEED_40G => ((0..=3).collect(), Speed::BF_SPEED_10G, None),
+                _ => (vec![0], speed.clone(), None), // unsupported combo → fallback to single-lane
+            }
+        }
+        None => (vec![0], speed.clone(), None),
     }
 }
 
 // Returns the base speed for a port_description based on the is_tofino2 flag, and the optionally configured speed setting
 pub(crate) fn get_base_speed(port_config: &PortDescription, is_tofino2: bool) -> Speed {
     port_config.speed.clone().unwrap_or(if is_tofino2 {
-        if port_config.breakout_mode == Some(true) {
+        if port_config.breakout_mode.is_some() {
             Speed::BF_SPEED_100G
         } else {
             Speed::BF_SPEED_400G

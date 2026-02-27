@@ -173,8 +173,14 @@ Example:
     {
       "port": 2,
       "mac": "fa:a6:68:e0:3d:70",
-      "breakout_mode": true,
+      "breakout_mode": 4,
       "speed": "BF_SPEED_100G"
+    },
+    {
+      "port": 4,
+      "mac": "d6:67:75:a1:94:c3",
+      "breakout_mode": 8,
+      "speed": "BF_SPEED_400G"
     },
     {
       "port": 3,
@@ -182,20 +188,25 @@ Example:
       "speed": "BF_SPEED_100G",
       "fec": "BF_FEC_TYP_NONE",
       "auto_negotiation": "PM_AN_FORCE_DISABLE"
-    },
+    }
   ]
 }
 ```
 
 #### Configuration Options
 
-| Option             | Valid Values                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------ |
-| `mac`              | Any valid MAC address                                                                |
-| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
-| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                       |
-| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                      |
-| `breakout_mode`    | `true` · `false` (can be combined with 40G / 100G / 400G (Tofino 2 only) speeds)     |
+| Option             | Valid Values                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `mac`              | Any valid MAC address                                                                                 |
+| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_50G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
+| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                                        |
+| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                                       |
+| `breakout_mode`    | `4` · `8` · `true` · `false`                                                                          |
+
+Notes:
+- `breakout_mode: 4` enables 4-lane breakout. Depending on configured base speed this maps to `4x100G` (from `400G`), `4x25G` (from `100G`), or `4x10G` (from `40G`).
+- `breakout_mode: 8` enables 8-lane breakout on Tofino 2 (`400G -> 8x50G`). For this setting, `8x25G/10G` are also configurable.
+- Backward compatibility: `breakout_mode: true` is interpreted as `breakout_mode: 4`; `false` disables breakout.
 
 
 #### 64-port Tofino

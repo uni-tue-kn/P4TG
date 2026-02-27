@@ -73,12 +73,12 @@ impl Arp {
         switch: &SwitchConnection,
         port: &PortMapping,
         active: bool,
-        breakout_mode: Option<bool>,
+        breakout_mode: Option<u8>,
     ) -> Result<(), RBFRTError> {
-        let channels = if let Some(true) = breakout_mode {
-            (0..=3).collect()
-        } else {
-            vec![0]
+        let channels: Vec<u32> = match breakout_mode {
+            Some(8) => (0..=7).collect(),
+            Some(_) => (0..=3).collect(),
+            None => vec![0],
         };
 
         let mut requests = vec![];

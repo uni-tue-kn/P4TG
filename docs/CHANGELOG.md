@@ -8,7 +8,14 @@
   - Examples:
 
   <img src="./img/shapes.jpeg" alt="Shapes" width="70%"/>
-- Added breakout mode for 400G -> 4x100G on Tofino 2, allowing up to 40x100G customizable traffic generation.
+- Added breakout mode for `400G` -> `4x100G` on Tofino 2, allowing up to 40x100G customizable traffic generation.
+- Extended `breakout_mode` configuration in `Controller/config.json` to support explicit lane counts:
+  - `breakout_mode: 4` for 4-lane breakout
+  - `breakout_mode: 8` for 8-lane breakout on Tofino 2 (`400G -> 8x50G/25G/10G`)
+- Added backward compatibility for legacy boolean breakout configuration:
+  - `breakout_mode: true` is interpreted as `breakout_mode: 4`
+  - `breakout_mode: false` disables breakout mode
+- Added `BF_SPEED_50G` as a supported port speed in controller and frontend port configuration.
 - Added histogram monitoring for TX/RX IATs similar to RTT histograms.
   - ⚠️ API schema changes
     - `histogram_config` in `POST:/api/trafficgen` is now called `rtt_histogram_config` and `iat_histogram_config`

@@ -3,6 +3,41 @@ use rbfrt::util::{AutoNegotiation, Speed, FEC};
 use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr};
 
+/// Custom deserializer for breakout_mode that accepts:
+/// - `true` -> `Some(4)` (backward compatible 4-lane breakout)
+/// - `false` -> `None` (no breakout)
+/// - `4` -> `Some(4)` (4-lane breakout)
+/// - `8` -> `Some(8)` (8-lane breakout, Tofino 2 only)
+/// - absent/null -> `None`
+fn deserialize_breakout_mode<'de, D>(deserializer: D) -> Result<Option<u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Bool(true) => Ok(Some(4)),
+        serde_json::Value::Bool(false) => Ok(None),
+        serde_json::Value::Number(n) => {
+            if let Some(v) = n.as_u64() {
+                match v {
+                    4 | 8 => Ok(Some(v as u8)),
+                    _ => Err(serde::de::Error::custom(format!(
+                        "invalid breakout_mode: {v}, expected 4 or 8"
+                    ))),
+                }
+            } else {
+                Err(serde::de::Error::custom(
+                    "breakout_mode must be a positive integer (4 or 8)",
+                ))
+            }
+        }
+        serde_json::Value::Null => Ok(None),
+        _ => Err(serde::de::Error::custom(
+            "breakout_mode must be a boolean or integer (4 or 8)",
+        )),
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PortDescription {
     pub(crate) port: u32,
@@ -15,8 +50,12 @@ pub struct PortDescription {
     pub auto_negotiation: Option<AutoNegotiation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) recirculation_ports: Option<RecirculationPair>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) breakout_mode: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_breakout_mode",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) breakout_mode: Option<u8>,
     arp_reply: Option<bool>,
 }
 
