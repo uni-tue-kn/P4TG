@@ -36,6 +36,7 @@
 ### Bug fixes
 - Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
 - Fixed ARP and MAC settings being effectively tied to the base channel in breakout mode.
+- Fixed controller startup crash on Tofino 1 when `config.json` contains unsupported port settings (e.g., `BF_SPEED_400G` or `breakout_mode: 8`) by adding ASIC-aware config validation and fallback to defaults.
 - Fixed generated traffic exceeding the configured rate if using Poisson generation with Rate Precision mode and batches.
 - Fixed unstable IAT due to generation on multiple pipes in IAT precision mode. The IAT precision mode now has a toggle to switch between generation on a single pipe or an all available pipes. The default mode for a stream is now the rate precision mode.
 - Fixed errors that get thrown after passing the API validation not being propagated to the frontend.

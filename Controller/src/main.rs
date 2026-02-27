@@ -175,7 +175,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Config::default_tofino(is_tofino2)
             });
 
-            let config = if let Err(err) = config.validate(num_ports) {
+            let config = if let Err(err) = config.validate(num_ports, is_tofino2) {
                 warn!("{err} Using default config.");
                 Config::default_tofino(is_tofino2)
             } else {

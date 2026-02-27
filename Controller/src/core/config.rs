@@ -127,13 +127,35 @@ impl Config {
         }
     }
 
-    pub(crate) fn validate(&self, num_ports: u32) -> Result<(), Box<dyn Error>> {
+    pub(crate) fn validate(&self, num_ports: u32, is_tofino2: bool) -> Result<(), Box<dyn Error>> {
         for port in &self.tg_ports {
             if MacAddr::from_str(&port.mac).is_err() {
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     format!("MAC address for port {port:?} is not valid."),
                 )));
+            }
+
+            if !is_tofino2 {
+                if port.speed == Some(Speed::BF_SPEED_400G) {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!(
+                            "Port {} uses BF_SPEED_400G, which is only supported on Tofino 2.",
+                            port.port
+                        ),
+                    )));
+                }
+
+                if port.breakout_mode == Some(8) {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!(
+                            "Port {} uses 8-lane breakout mode, which is only supported on Tofino 2.",
+                            port.port
+                        ),
+                    )));
+                }
             }
         }
 

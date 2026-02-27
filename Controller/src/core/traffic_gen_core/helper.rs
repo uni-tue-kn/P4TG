@@ -225,7 +225,9 @@ pub(crate) fn breakout_mapping(
 // Returns the base speed for a port_description based on the is_tofino2 flag, and the optionally configured speed setting
 pub(crate) fn get_base_speed(port_config: &PortDescription, is_tofino2: bool) -> Speed {
     port_config.speed.clone().unwrap_or(if is_tofino2 {
-        if port_config.breakout_mode.is_some() {
+        if port_config.breakout_mode == Some(8) {
+            Speed::BF_SPEED_400G
+        } else if port_config.breakout_mode.is_some() {
             Speed::BF_SPEED_100G
         } else {
             Speed::BF_SPEED_400G
