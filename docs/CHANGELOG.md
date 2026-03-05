@@ -49,6 +49,7 @@
 - Fixed API validation not catching missing `srv6_base_header` for SRv6 encapsulated streams.
 - Fixed frontend always sending default values for disabled protocol fields (e.g., VxLAN, GTP-U). Optional `StreamSettings` fields are now omitted from the payload when not required by the stream configuration.
 - Fixed stream settings not being populated with defaults when enabling a feature (e.g., VxLAN) without opening the settings modal. Settings are now reconciled automatically at save time.
+- Fixed RX aggregation in Dashboard Summary to group by RX port/channel instead of TX->RX mapping entries, preventing double counting in RX rate plot and RX rate summary table when multiple TX ports map to the same RX endpoint.
 
 ### Other
 - Rust version bump for CI and docker image to 1.91

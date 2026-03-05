@@ -248,9 +248,20 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         ([txPort, perCh]) => Object.keys(perCh ?? {}).map((txCh) => [txPort, txCh] as [string, string])
     );
 
-    const rxPairs: Array<[string, string]> = Object.values(port_mapping ?? {}).flatMap((perCh) =>
-        Object.values(perCh ?? {}).map((t: any) => [String(t.port), String(t.channel)] as [string, string])
-    );
+    // RX in summary must be grouped by RX endpoint, not by number of TX mappings.
+    const rxPairSet = new Set<string>();
+    const rxPairs: Array<[string, string]> = [];
+    Object.values(port_mapping ?? {}).forEach((perCh) => {
+        Object.values(perCh ?? {}).forEach((t: any) => {
+            const p = String(t.port);
+            const c = String(t.channel);
+            const key = `${p}/${c}`;
+            if (!rxPairSet.has(key)) {
+                rxPairSet.add(key);
+                rxPairs.push([p, c]);
+            }
+        });
+    });
 
     // Sums
     const tx_rate_l1 = addRatesByPairs(stats.tx_rate_l1, txPairs);

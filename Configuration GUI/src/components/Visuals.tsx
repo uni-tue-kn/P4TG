@@ -207,11 +207,15 @@ const generateLineData = (
                 }
             }
         } else {
-            // RX: iterate mapping values (rx target port/channel)
+            // RX: group by RX endpoint to avoid double counting when multiple TX map to the same RX.
+            const rxPairSet = new Set<string>();
             for (const perCh of Object.values(port_mapping ?? {})) {
                 for (const target of Object.values(perCh ?? {})) {
                     const rxPort = String((target as any).port);
                     const rxCh = String((target as any).channel);
+                    const key = `${rxPort}/${rxCh}`;
+                    if (rxPairSet.has(key)) continue;
+                    rxPairSet.add(key);
                     const s = source[rxPort]?.[rxCh];
                     if (s) series.push(s);
                 }
