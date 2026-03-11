@@ -35,6 +35,8 @@ import {
     speedToGbps,
     Stream,
     StreamSettings, ToastVariant, TrafficGenData,
+    defaultIPv4,
+    defaultIPv6,
 } from "../common/Interfaces";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
@@ -47,6 +49,8 @@ import { validateIPv6RandomMask, validatePorts, validateStreams, validateStreamS
 import HistogramSettings from '../components/settings/HistogramSettings';
 import { PortStatus } from './Ports';
 import { getTotalActiveStreamRate, getTotalRatePerPort } from '../common/Helper';
+import IMIXModal from '../components/settings/IMIXModal';
+import { IMIXConfig, IMIX_DESCRIPTION, IMIX_STREAM_COUNT, IMIX_STREAM_SPECS, splitImixRate } from '../common/IMIX';
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -89,6 +93,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const [renamingTab, setRenamingTab] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
     const [lastDeletedConfig, setLastDeletedConfig] = useState<{ name: string; config: TrafficGenData; index: number } | null>(null);
+    const [showIMIXModal, setShowIMIXModal] = useState(false);
 
     const maxStreams = p4tg_infos.asic === ASIC.Tofino1 ? 7 : 15;
 
@@ -97,6 +102,74 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             {message}
         </Tooltip>
     );
+
+    const eligiblePorts = ports.filter((port) => port.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback);
+
+    const setActiveDraftConfig = (config: TrafficGenData) => {
+        set_streams(config.streams);
+        set_stream_settings(config.stream_settings);
+        set_mode(config.mode);
+        set_duration(config.duration);
+        set_port_tx_rx_mapping(config.port_tx_rx_mapping);
+        set_rtt_histogram_settings(config.rtt_histogram_config);
+        set_iat_histogram_settings(config.iat_histogram_config);
+
+        localStorage.setItem("streams", JSON.stringify(config.streams));
+        localStorage.setItem("streamSettings", JSON.stringify(config.stream_settings));
+        localStorage.setItem("gen-mode", String(config.mode));
+        localStorage.setItem("duration", String(config.duration));
+        localStorage.setItem("port_tx_rx_mapping", JSON.stringify(config.port_tx_rx_mapping));
+        localStorage.setItem("rtt_histogram_config", JSON.stringify(config.rtt_histogram_config));
+        localStorage.setItem("iat_histogram_config", JSON.stringify(config.iat_histogram_config));
+
+        if (activeConfigName) {
+            const updatedConfigs = {
+                ...savedConfigs,
+                [activeConfigName]: config,
+            };
+
+            setSavedConfigs(updatedConfigs);
+            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+        }
+    };
+
+    const updateDraftState = (nextStreams: Stream[], nextStreamSettings: StreamSettings[]) => {
+        const nextConfig: TrafficGenData = {
+            ...(savedConfigs[activeConfigName] ?? {
+                mode: GenerationMode.NONE,
+                duration: 0,
+                streams: [],
+                stream_settings: [],
+                port_tx_rx_mapping: {},
+                rtt_histogram_config: {},
+                iat_histogram_config: {},
+            }),
+            streams: nextStreams,
+            stream_settings: nextStreamSettings,
+            mode,
+            duration,
+            port_tx_rx_mapping,
+            rtt_histogram_config: rtt_histogram_settings,
+            iat_histogram_config: iat_histogram_settings,
+        };
+
+        setActiveDraftConfig(nextConfig);
+    };
+
+    const appendStreams = (newStreams: Stream[]) => {
+        if (newStreams.length === 0) {
+            return;
+        }
+
+        const newSettings = eligiblePorts.flatMap((port) =>
+            newStreams.map((stream) => DefaultStreamSettings(stream.stream_id, port.port, port.channel))
+        );
+
+        updateDraftState(
+            [...streams, ...newStreams],
+            [...stream_settings, ...newSettings]
+        );
+    }
 
     const loadPorts = async () => {
         let stats = await get({ route: "/ports" })
@@ -368,15 +441,78 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 id = Math.max(...streams.map(s => s.stream_id))
             }
 
-            set_streams(old => [...old, DefaultStream(id + 1)])
-
-            ports.map((v, i) => {
-                if (v.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                    set_stream_settings(old => [...old, DefaultStreamSettings(id + 1, v.port, v.channel)])
-                }
-            })
+            appendStreams([DefaultStream(id + 1)])
         }
     }
+
+    const addIMIXStreams = (config: IMIXConfig) => {
+        if (streams.length + IMIX_STREAM_COUNT > maxStreams) {
+            showToast(`IMIX requires ${IMIX_STREAM_COUNT} free stream slots.`, "warning");
+            return;
+        }
+
+        const startId = streams.length > 0 ? Math.max(...streams.map((stream) => stream.stream_id)) : 0;
+        const rates = splitImixRate(config.totalRate, config.unit);
+        const newStreams = IMIX_STREAM_SPECS.map((spec, index) => {
+            const stream = DefaultStream(startId + index + 1);
+            stream.frame_size = spec.frameSize;
+            stream.traffic_rate = rates[index];
+            stream.unit = config.unit;
+            stream.ip_version = config.ipVersion;
+            return stream;
+        });
+
+        const newSettings = eligiblePorts.flatMap((port) =>
+            newStreams.map((stream) => {
+                const settings = DefaultStreamSettings(stream.stream_id, port.port, port.channel);
+                if (config.ipVersion === 6) {
+                    delete settings.ip;
+                    settings.ipv6 = defaultIPv6();
+                } else {
+                    settings.ip = defaultIPv4();
+                    delete settings.ipv6;
+                }
+                return settings;
+            })
+        );
+
+        updateDraftState(
+            [...streams, ...newStreams],
+            [...stream_settings, ...newSettings]
+        );
+        showToast(`Added IMIX streams (${IMIX_DESCRIPTION}).`, "success");
+    }
+
+    const handleModeChange = (nextMode: GenerationMode) => {
+        const shouldCreateDefaultStream =
+            nextMode !== GenerationMode.NONE && nextMode !== GenerationMode.ANALYZE;
+
+        const nextStreams = shouldCreateDefaultStream ? [DefaultStream(1)] : [];
+        const nextStreamSettings = shouldCreateDefaultStream
+            ? eligiblePorts.map((port) => DefaultStreamSettings(1, port.port, port.channel))
+            : [];
+
+        const nextConfig: TrafficGenData = {
+            ...(savedConfigs[activeConfigName] ?? {
+                mode: GenerationMode.NONE,
+                duration: 0,
+                streams: [],
+                stream_settings: [],
+                port_tx_rx_mapping: {},
+                rtt_histogram_config: {},
+                iat_histogram_config: {},
+            }),
+            mode: nextMode,
+            duration: 0,
+            streams: nextStreams,
+            stream_settings: nextStreamSettings,
+            port_tx_rx_mapping: {},
+            rtt_histogram_config: {},
+            iat_histogram_config: {},
+        };
+
+        setActiveDraftConfig(nextConfig);
+    };
 
     const getCloneName = (baseName: string): string => {
         let copyName = `${baseName}_copy`;
@@ -448,8 +584,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     };
 
     const removeStream = (id: number) => {
-        set_streams(streams.filter(v => v.stream_id != id))
-        set_stream_settings(stream_settings.filter(v => v.stream_id != id))
+        updateDraftState(
+            streams.filter(v => v.stream_id != id),
+            stream_settings.filter(v => v.stream_id != id)
+        )
     }
 
     const exportSettings = () => {
@@ -956,22 +1094,18 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                         <Row className={"align-items-center"}>
 
                             <Col className={"col-2"}>
-                                <Form.Select disabled={running} required
-                                    onChange={(event: any) => {
-                                        set_streams([]);
-                                        set_stream_settings([]);
-                                        set_rtt_histogram_settings({});
-                                        set_iat_histogram_settings({});
-                                        if (event.target.value != "" && event.target.value != GenerationMode.ANALYZE) {
-                                            addStream();
-                                        }
-                                        set_mode(parseInt(event.target.value));
-                                        set_duration(0);
-                                    }}>
-                                    <option value={GenerationMode.NONE} disabled={mode !== GenerationMode.NONE}>Generation Mode</option>
-                                    <option selected={mode === GenerationMode.CBR} value={GenerationMode.CBR}>CBR</option>
-                                    <option selected={mode === GenerationMode.POISSON} value={GenerationMode.POISSON}>Poisson</option>
-                                    <option selected={mode === GenerationMode.ANALYZE} value={GenerationMode.ANALYZE}>Monitor</option>
+                                <Form.Select
+                                    disabled={running}
+                                    required
+                                    value={mode}
+                                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                                        handleModeChange(parseInt(event.target.value));
+                                    }}
+                                >
+                                    <option value={GenerationMode.NONE}>Generation Mode</option>
+                                    <option value={GenerationMode.CBR}>CBR</option>
+                                    <option value={GenerationMode.POISSON}>Poisson</option>
+                                    <option value={GenerationMode.ANALYZE}>Monitor</option>
                                 </Form.Select>
                             </Col>
                             <Col className={"col-auto"}>
@@ -1151,32 +1285,58 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                 {running ? null : (mode === GenerationMode.CBR) ? (
                                     (() => {
                                         const reachedMax = streams.length >= maxStreams;
+                                        const reachedIMIXLimit = streams.length + IMIX_STREAM_COUNT > maxStreams;
                                         return (
-                                            <OverlayTrigger
-                                                placement="top"
-                                                overlay={
-                                                    reachedMax
-                                                        ? (props) => renderTooltip(props, "Maximum number of streams reached")
-                                                        : <></>
-                                                }
-                                            >
-                                                {/* Disabled buttons don't fire tooltips — wrap them */}
-                                                <span className="d-inline-block" tabIndex={0}>
-                                                    <Button
-                                                        disabled={reachedMax}
-                                                        onClick={addStream}
-                                                        variant="primary"
-                                                        style={reachedMax ? { pointerEvents: "none" } : undefined}
-                                                    >
-                                                        <i className="bi bi-plus" /> Add stream
-                                                    </Button>
-                                                </span>
-                                            </OverlayTrigger>
+                                            <>
+                                                <OverlayTrigger
+                                                    placement="top"
+                                                    overlay={
+                                                        reachedMax
+                                                            ? (props) => renderTooltip(props, "Maximum number of streams reached")
+                                                            : <></>
+                                                    }
+                                                >
+                                                    <span className="d-inline-block me-2" tabIndex={0}>
+                                                        <Button
+                                                            disabled={reachedMax}
+                                                            onClick={addStream}
+                                                            variant="primary"
+                                                            style={reachedMax ? { pointerEvents: "none" } : undefined}
+                                                        >
+                                                            <i className="bi bi-plus" /> Add stream
+                                                        </Button>
+                                                    </span>
+                                                </OverlayTrigger>
+                                                <OverlayTrigger
+                                                    placement="top"
+                                                    overlay={
+                                                        reachedIMIXLimit
+                                                            ? (props) => renderTooltip(props, `IMIX requires ${IMIX_STREAM_COUNT} free stream slots.`)
+                                                            : <></>
+                                                    }
+                                                >
+                                                    <span className="d-inline-block" tabIndex={0}>
+                                                        <Button
+                                                            disabled={reachedIMIXLimit}
+                                                            onClick={() => setShowIMIXModal(true)}
+                                                            variant="primary"
+                                                            style={reachedIMIXLimit ? { pointerEvents: "none" } : undefined}
+                                                        >
+                                                            Add IMIX
+                                                        </Button>
+                                                    </span>
+                                                </OverlayTrigger>
+                                            </>
                                         );
                                     })()
                                 ) : null}
                             </Col>
                         </Row>
+                        <IMIXModal
+                            show={showIMIXModal}
+                            hide={() => setShowIMIXModal(false)}
+                            onConfirm={addIMIXStreams}
+                        />
 
 
                         {streams.length > 0 || mode == GenerationMode.ANALYZE ?
