@@ -28,6 +28,7 @@
       - Each histogram data collection now contains `rx` and `tx`, where `tx` is always empty for RTT.
       - Mean and std are renamed from `mean_rtt`, `std_rtt` to `mean` and `std`.
 - Added support for the GTP-U protocol.
+- Added an "Add IMIX distribution" button for stream configuration to the frontend.
 - Added a rename button for names of tests to make the renaming more intuitive.
 - Added a button to show/hide the percentile annotations for histograms.
 - Added an "undo test deletion" button.
