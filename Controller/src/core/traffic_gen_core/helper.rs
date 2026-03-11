@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::core::config::PortDescription;
 use crate::core::traffic_gen_core::const_definitions::{
     GTPU_UDP_PORT, P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK,
     REMOVE_PORT_CHANNEL_MASK_TOFINO_2, VX_LAN_UDP_PORT,
@@ -10,7 +9,7 @@ use crate::core::traffic_gen_core::types::*;
 use crate::{AppState, PortMapping};
 use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
 use log::error;
-use rbfrt::util::Speed;
+use rbfrt::util::{Speed, FEC};
 
 // Create a HashMap of front_panel -> dev_port from the port_mapping
 pub(crate) fn generate_front_panel_to_dev_port_mappings(
@@ -184,57 +183,151 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
     encapsulation_overhead
 }
 
-/// Maps a configured Speed to its breakout modes, e.g., 400G -> 4x100G or 400G -> 8x50G
-/// `breakout_lanes`: None = no breakout, Some(4) = 4-lane, Some(8) = 8-lane (Tofino 2 only)
-/// Returns a tuple of: (vector of channel indices, per-channel speed, optional number of lanes)
-pub(crate) fn breakout_mapping(
+#[derive(Clone, Debug)]
+pub(crate) struct ResolvedPortMode {
+    pub channels: Vec<u8>,
+    pub speed: Speed,
+    pub n_lanes: Option<u32>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ResolvedPortLayout {
+    pub front_panel: ResolvedPortMode,
+    pub recirculation: ResolvedPortMode,
+}
+
+pub(crate) fn effective_channel_count(channel_count: Option<u8>) -> u8 {
+    channel_count.unwrap_or(1)
+}
+
+pub(crate) fn resolve_front_panel_mode(
     speed: &Speed,
-    breakout_lanes: Option<u8>,
+    channel_count: Option<u8>,
     is_tofino2: bool,
-) -> (Vec<u8>, Speed, Option<u32>) {
-    match breakout_lanes {
-        Some(8) => {
-            // 8-lane breakout: Tofino 2 only, 400G -> 8x50G
-            match speed {
-                Speed::BF_SPEED_400G if is_tofino2 => {
-                    ((0..=7).collect(), Speed::BF_SPEED_50G, Some(1))
-                }
-                _ => (vec![0], speed.clone(), None), // unsupported combo → fallback
+) -> Option<ResolvedPortMode> {
+    match effective_channel_count(channel_count) {
+        1 => {
+            if *speed == Speed::BF_SPEED_400G && !is_tofino2 {
+                None
+            } else {
+                Some(ResolvedPortMode {
+                    channels: vec![0],
+                    speed: speed.clone(),
+                    n_lanes: None,
+                })
             }
         }
-        Some(_) => {
-            // 4-lane breakout (default breakout)
-            match speed {
-                Speed::BF_SPEED_400G => {
-                    if is_tofino2 {
-                        (vec![0, 2, 4, 6], Speed::BF_SPEED_100G, Some(2))
-                    } else {
-                        // 400G unsupported on Tofino1 breakout → fallback to single-lane
-                        (vec![0], speed.clone(), None)
-                    }
-                }
-                Speed::BF_SPEED_100G => ((0..=3).collect(), Speed::BF_SPEED_25G, None),
-                Speed::BF_SPEED_40G => ((0..=3).collect(), Speed::BF_SPEED_10G, None),
-                _ => (vec![0], speed.clone(), None), // unsupported combo → fallback to single-lane
+        4 => match speed {
+            Speed::BF_SPEED_10G => Some(ResolvedPortMode {
+                channels: (0..=3).collect(),
+                speed: Speed::BF_SPEED_10G,
+                n_lanes: None,
+            }),
+            Speed::BF_SPEED_25G => Some(ResolvedPortMode {
+                channels: (0..=3).collect(),
+                speed: Speed::BF_SPEED_25G,
+                n_lanes: None,
+            }),
+            Speed::BF_SPEED_100G if is_tofino2 => Some(ResolvedPortMode {
+                channels: vec![0, 2, 4, 6],
+                speed: Speed::BF_SPEED_100G,
+                n_lanes: Some(2),
+            }),
+            _ => None,
+        },
+        8 => match speed {
+            Speed::BF_SPEED_10G | Speed::BF_SPEED_25G | Speed::BF_SPEED_50G if is_tofino2 => {
+                Some(ResolvedPortMode {
+                    channels: (0..=7).collect(),
+                    speed: speed.clone(),
+                    n_lanes: Some(1),
+                })
             }
-        }
-        None => (vec![0], speed.clone(), None),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
-// Returns the base speed for a port_description based on the is_tofino2 flag, and the optionally configured speed setting
-pub(crate) fn get_base_speed(port_config: &PortDescription, is_tofino2: bool) -> Speed {
-    port_config.speed.clone().unwrap_or(if is_tofino2 {
-        if port_config.breakout_mode == Some(8) {
-            Speed::BF_SPEED_400G
-        } else if port_config.breakout_mode.is_some() {
-            Speed::BF_SPEED_100G
-        } else {
-            Speed::BF_SPEED_400G
+pub(crate) fn resolve_recirculation_mode(
+    speed: &Speed,
+    channel_count: Option<u8>,
+    is_tofino2: bool,
+) -> Option<ResolvedPortMode> {
+    match effective_channel_count(channel_count) {
+        1 => Some(ResolvedPortMode {
+            channels: vec![0],
+            speed: if is_tofino2 {
+                Speed::BF_SPEED_400G
+            } else {
+                Speed::BF_SPEED_100G
+            },
+            n_lanes: None,
+        }),
+        4 => match speed {
+            Speed::BF_SPEED_100G if is_tofino2 => Some(ResolvedPortMode {
+                channels: vec![0, 2, 4, 6],
+                speed: Speed::BF_SPEED_100G,
+                n_lanes: Some(2),
+            }),
+            Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => Some(ResolvedPortMode {
+                channels: (0..=3).collect(),
+                speed: Speed::BF_SPEED_25G,
+                n_lanes: None,
+            }),
+            _ => None,
+        },
+        8 => {
+            if is_tofino2 {
+                Some(ResolvedPortMode {
+                    channels: (0..=7).collect(),
+                    speed: Speed::BF_SPEED_50G,
+                    n_lanes: Some(1),
+                })
+            } else {
+                None
+            }
         }
-    } else {
-        Speed::BF_SPEED_100G
+        _ => None,
+    }
+}
+
+pub(crate) fn resolve_port_layout(
+    speed: &Speed,
+    channel_count: Option<u8>,
+    is_tofino2: bool,
+) -> Option<ResolvedPortLayout> {
+    Some(ResolvedPortLayout {
+        front_panel: resolve_front_panel_mode(speed, channel_count, is_tofino2)?,
+        recirculation: resolve_recirculation_mode(speed, channel_count, is_tofino2)?,
     })
+}
+
+pub(crate) fn default_fec(speed: &Speed, channel_count: Option<u8>) -> FEC {
+    if requires_rs(speed, channel_count) {
+        FEC::BF_FEC_TYP_REED_SOLOMON
+    } else {
+        FEC::BF_FEC_TYP_NONE
+    }
+}
+
+pub(crate) fn sanitize_fec(speed: &Speed, channel_count: Option<u8>, requested: FEC) -> FEC {
+    if requires_rs(speed, channel_count) {
+        FEC::BF_FEC_TYP_REED_SOLOMON
+    } else if matches!(speed, Speed::BF_SPEED_10G | Speed::BF_SPEED_40G)
+        && requested == FEC::BF_FEC_TYP_REED_SOLOMON
+        || (*speed == Speed::BF_SPEED_100G && requested == FEC::BF_FEC_TYP_FC)
+    {
+        FEC::BF_FEC_TYP_NONE
+    } else {
+        requested
+    }
+}
+
+fn requires_rs(speed: &Speed, channel_count: Option<u8>) -> bool {
+    *speed == Speed::BF_SPEED_400G
+        || (*speed == Speed::BF_SPEED_50G && effective_channel_count(channel_count) != 4)
+        || (*speed == Speed::BF_SPEED_100G && effective_channel_count(channel_count) == 4)
 }
 
 /// Creates a packet with `frame_size` bytes and `encapsulation` (e.g., VLAN)

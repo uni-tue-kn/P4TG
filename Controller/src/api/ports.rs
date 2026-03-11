@@ -20,15 +20,17 @@
 use crate::api::docs;
 use crate::api::server::Error;
 use crate::core::traffic_gen_core::helper::{
-    breakout_mapping, generate_front_panel_to_dev_port_mappings, get_base_speed,
+    generate_front_panel_to_dev_port_mappings, resolve_front_panel_mode, sanitize_fec,
 };
 use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
+use log::warn;
 use macaddr::MacAddr;
 use rbfrt::util::{AutoNegotiation, Loopback, Port, Speed, FEC};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -38,7 +40,7 @@ pub struct PortConfiguration {
     speed: Speed,
     fec: FEC,
     auto_neg: AutoNegotiation,
-    breakout_mode: Option<u8>,
+    channel_count: Option<u8>,
     channel: Option<u8>,
 }
 
@@ -59,6 +61,14 @@ impl utoipa::PartialSchema for PortConfiguration {
                     ))),
             )
             .required("id")
+            .property(
+                "channel_count",
+                utoipa::openapi::ObjectBuilder::new()
+                    .schema_type(utoipa::openapi::schema::Type::Integer)
+                    .format(Some(utoipa::openapi::SchemaFormat::KnownFormat(
+                        utoipa::openapi::KnownFormat::Int32,
+                    ))),
+            )
             .property(
                 "speed",
                 utoipa::openapi::ObjectBuilder::new()
@@ -85,7 +95,6 @@ impl utoipa::PartialSchema for PortConfiguration {
 pub struct ArpReply {
     front_panel_port: u32,
     arp_reply: bool,
-    breakout_mode: Option<u8>,
     channel: Option<u8>,
     mac: Option<String>,
 }
@@ -147,61 +156,66 @@ pub async fn add_port(
             .into_response();
     }
 
-    let configured_base_speed = {
-        let config = state.config.lock().await;
-        config
-            .tg_ports
-            .iter()
-            .find(|p| p.port == payload.front_panel_port)
-            .map(|p| get_base_speed(p, state.tofino2))
+    let Some(resolved_mode) =
+        resolve_front_panel_mode(&payload.speed, payload.channel_count, state.tofino2)
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(format!(
+                "Port {} does not support speed {:?} with channel_count {}.",
+                payload.front_panel_port,
+                payload.speed,
+                payload.channel_count.unwrap_or(1)
+            ))),
+        )
+            .into_response();
     };
 
-    if payload.breakout_mode.is_some() {
-        let speed_allowed = if payload.breakout_mode == Some(8) {
-            matches!(
-                payload.speed,
-                Speed::BF_SPEED_10G | Speed::BF_SPEED_25G | Speed::BF_SPEED_50G
-            )
-        } else {
-            configured_base_speed.as_ref().is_some_and(|base_speed| {
-                let (_, per_channel_speed, _) = breakout_mapping(base_speed, Some(4), state.tofino2);
-                payload.speed == per_channel_speed
-            })
-        };
+    let current_channels: BTreeSet<u8> = state
+        .port_mapping
+        .values()
+        .filter(|entry| entry.front_panel_port == payload.front_panel_port)
+        .map(|entry| entry.channel)
+        .collect();
+    let requested_channels: BTreeSet<u8> = resolved_mode.channels.iter().copied().collect();
 
-        if !speed_allowed {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(Error::new(format!(
-                    "Port speed {:?} is not available in breakout mode on port {}.",
-                    payload.speed, payload.front_panel_port
-                ))),
-            )
-                .into_response();
-        }
+    if !current_channels.is_empty() && current_channels != requested_channels {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(format!(
+                "Port {} cannot switch to speed {:?} at runtime because it would change the active channel layout from {:?} to {:?}. Update config.json and restart the controller.",
+                payload.front_panel_port,
+                payload.speed,
+                current_channels,
+                requested_channels
+            ))),
+        )
+            .into_response();
     }
 
     let channel = payload.channel.unwrap_or(0);
-
-    let mut fec = payload.fec.clone();
-    // 4-lane breakout of 400G (4x100G) requires RS FEC.
-    if payload.breakout_mode.is_some()
-        && payload.breakout_mode != Some(8)
-        && payload.speed == Speed::BF_SPEED_100G
-    {
-        fec = FEC::BF_FEC_TYP_REED_SOLOMON;
+    if !resolved_mode.channels.contains(&channel) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(format!(
+                "Channel {} is not available for port {} with channel_count {}.",
+                channel,
+                payload.front_panel_port,
+                payload.channel_count.unwrap_or(1)
+            ))),
+        )
+            .into_response();
     }
+
+    let fec = sanitize_fec(&payload.speed, payload.channel_count, payload.fec.clone());
 
     let mut req = Port::new(payload.front_panel_port, channel)
         .speed(payload.speed.clone())
         .fec(fec)
         .auto_negotiation(payload.auto_neg.clone());
 
-    // Breakout lanes must be explicit for runtime port updates.
-    if payload.breakout_mode == Some(8) {
-        req = req.n_lanes(1);
-    } else if payload.breakout_mode.is_some() && payload.speed == Speed::BF_SPEED_100G {
-        req = req.n_lanes(2);
+    if let Some(n_lanes) = resolved_mode.n_lanes {
+        req = req.n_lanes(n_lanes);
     }
 
     if state.loopback_mode {
@@ -209,12 +223,56 @@ pub async fn add_port(
     }
 
     match pm.update_port(&state.switch, &req).await {
-        Ok(_) => StatusCode::CREATED.into_response(),
+        Ok(_) => {
+            warn_on_mixed_breakout_rates(
+                pm,
+                &state.switch,
+                payload.front_panel_port,
+                payload.channel_count,
+            )
+            .await;
+
+            StatusCode::CREATED.into_response()
+        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(Error::new(format!("{err:#?}"))),
         )
             .into_response(),
+    }
+}
+
+async fn warn_on_mixed_breakout_rates(
+    pm: &rbfrt::util::PortManager,
+    switch: &rbfrt::SwitchConnection,
+    front_panel_port: u32,
+    channel_count: Option<u8>,
+) {
+    let Some(channel_count) = channel_count else {
+        return;
+    };
+
+    if channel_count <= 1 {
+        return;
+    }
+
+    let Ok(ports) = pm.get_ports(switch).await else {
+        return;
+    };
+
+    let mut active_speeds = BTreeSet::new();
+
+    for port in ports.into_iter().filter(|port| {
+        let (port_number, channel) = port.get_frontpanel_port();
+        port_number == front_panel_port && channel < channel_count
+    }) {
+        active_speeds.insert(format!("{:?}", port.get_speed()));
+    }
+
+    if active_speeds.len() > 1 {
+        warn!(
+            "Warning: Mixed breakout rates on a single front-panel port may link up but can cause packet loss under load. Prefer homogeneous breakout operation."
+        );
     }
 }
 
@@ -237,7 +295,11 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
     let mut target_mappings: Vec<_> = mapping
         .values()
         .filter(|entry| entry.front_panel_port == payload.front_panel_port)
-        .filter(|entry| payload.channel.is_none_or(|channel| entry.channel == channel))
+        .filter(|entry| {
+            payload
+                .channel
+                .is_none_or(|channel| entry.channel == channel)
+        })
         .cloned()
         .collect();
 
@@ -286,7 +348,10 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
             .await
             .get_mac_state(payload.front_panel_port, payload.channel);
 
-        match configured_mac.as_deref().and_then(|m| MacAddr::from_str(m).ok()) {
+        match configured_mac
+            .as_deref()
+            .and_then(|m| MacAddr::from_str(m).ok())
+        {
             Some(mac) => mac,
             None => {
                 return (

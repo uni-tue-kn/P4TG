@@ -49,7 +49,7 @@ pub struct PortMapping {
     pub rx_recirculation: u32,
     pub front_panel_port: u32,
     pub mac: MacAddr,
-    pub breakout_mode: Option<u8>,
+    pub channel_count: Option<u8>,
     pub channel: u8,
 }
 
@@ -60,7 +60,7 @@ impl Default for PortMapping {
             rx_recirculation: 0,
             front_panel_port: 0,
             mac: MacAddr::from([0, 0, 0, 0, 0, 0]),
-            breakout_mode: None,
+            channel_count: None,
             channel: 0,
         }
     }
@@ -170,12 +170,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // TG ports either from config or default
     let mut config = match File::open("config.json") {
         Ok(file) => {
-            let config: Config = serde_json::from_reader(file).unwrap_or_else(|_| {
+            let mut config: Config = serde_json::from_reader(file).unwrap_or_else(|_| {
                 warn!("Config file not valid. Using default config.");
                 Config::default_tofino(is_tofino2)
             });
 
-            let config = if let Err(err) = config.validate(num_ports, is_tofino2) {
+            let config = if let Err(err) = config
+                .normalize(is_tofino2)
+                .and_then(|_| config.validate(num_ports, is_tofino2))
+            {
                 warn!("{err} Using default config.");
                 Config::default_tofino(is_tofino2)
             } else {

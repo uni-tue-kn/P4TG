@@ -58,7 +58,7 @@ P4TG combines a **P4 data plane program**, a **Rust-based control plane**, and a
 
 ### Traffic Generation
 - **Tofino 1:** Up to **1 Tb/s** across 10 × 100 Gb/s ports, or 40 × 10/25 Gb/s
-- **Tofino 2:** Up to **4 Tb/s** across 10 × 400 Gb/s ports, or 40 × 10/25/100 Gb/s
+- **Tofino 2:** Up to **4 Tb/s** across 10 × 400 Gb/s ports, or 40 × 10/25/100 Gb/s, or 80 × 10/25/50 Gb/s in channelized mode
 
 Generated packet headers can be fully customized, including:
 - Ethernet
@@ -159,7 +159,7 @@ The control plane docker image:
 
 **Config file:** `Controller/config.json`  
 - Specify ports for traffic generation. Per default, front panel ports 1 - 10 are configured automatically.
-- Configure MAC address for ARP replies, breakout mode, and port settings. Port settings can further be changed during runtime through the API or the GUI.
+- Configure MAC address for ARP replies, `channel_count`, and port settings. Port settings can further be changed during runtime through the API or the GUI.
 
 Example:
 ```json
@@ -173,14 +173,14 @@ Example:
     {
       "port": 2,
       "mac": "fa:a6:68:e0:3d:70",
-      "breakout_mode": 4,
-      "speed": "BF_SPEED_100G"
+      "channel_count": 4,
+      "speed": "BF_SPEED_25G"
     },
     {
       "port": 4,
       "mac": "d6:67:75:a1:94:c3",
-      "breakout_mode": 8,
-      "speed": "BF_SPEED_400G"
+      "channel_count": 8,
+      "speed": "BF_SPEED_50G"
     },
     {
       "port": 3,
@@ -199,16 +199,26 @@ Example:
 | ------------------ | ----------------------------------------------------------------------------------------------------- |
 | `mac`              | Any valid MAC address                                                                                 |
 | `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_50G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
+| `channel_count`    | `4` · `8`                                                                                             |
 | `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                                        |
 | `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                                       |
-| `breakout_mode`    | `4` · `8` · `true` · `false`                                                                          |
+| `breakout_mode`    | Deprecated: `true` · `false`                                                                          |
 
 Notes:
-- `breakout_mode: 4` enables 4-lane breakout. Depending on configured base speed this maps to `4x100G` (from `400G`), `4x25G` (from `100G`), or `4x10G` (from `40G`).
-- `breakout_mode: 8` enables 8-lane breakout on Tofino 2 (`400G -> 8x50G`). For this setting, `8x25G/10G` are also configurable.
-- Backward compatibility: `breakout_mode: true` is interpreted as `breakout_mode: 4`; `false` disables breakout.
+- `speed` always describes the per-channel speed. Without `channel_count`, the port is configured as `1x<speed>`.
+- Valid `channel_count` combinations are:
+  - Tofino 1: `4x10G`, `4x25G`
+  - Tofino 2: `4x10G`, `4x25G`, `4x100G`, `8x10G`, `8x25G`, `8x50G`
+- `channel_count: 4` with `speed: 100G` on Tofino 2 uses channels `0,2,4,6`.
+- `channel_count: 4` with `speed: 10G/25G` uses channels `0,1,2,3`.
+- Runtime speed changes through the GUI or `POST /api/ports` are rejected if they would require a different active channel layout. For example, `4x25G -> 4x100G` requires updating `config.json` and restarting the controller.
+- Backward compatibility: `breakout_mode: true` is deprecated, logs a warning, and is interpreted as legacy 4-channel breakout. `breakout_mode: false` is deprecated, logs a warning, and disables channelization.
 - ARP reply and MAC can be changed at runtime per `port/channel` in the Ports GUI or via `POST /api/ports/arp` (optional `channel` field).
 - Runtime ARP/MAC changes are kept in controller memory and are reset to `config.json` values on controller restart.
+- Default/mandatory FEC rules:
+  - `400G`, `4x100G`, and `8x50G` use `BF_FEC_TYP_REED_SOLOMON`
+  - `4x10G`, `4x25G`, `1x10G`, `1x25G`, `1x40G`, `1x50G`, and `1x100G` default to `BF_FEC_TYP_NONE`
+  - `1x50G` additionally allows `BF_FEC_TYP_REED_SOLOMON` to be configured manually if needed
 
 
 #### 64-port Tofino

@@ -385,7 +385,7 @@ export interface P4TGConfig {
         channel_mac?: { [channel: string]: string },
         channel_arp_reply?: { [channel: string]: boolean },
         speed?: SPEED,
-        breakout_mode: number | null
+        channel_count?: number | null
     }[]
 }
 

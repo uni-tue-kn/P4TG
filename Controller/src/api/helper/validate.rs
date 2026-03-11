@@ -60,20 +60,19 @@ pub fn validate_request(
                 setting.port
             )));
         }
-        // Validate that configured channels are available (i.e., port is in breakout mode, if multiple channels configured)
+        // Validate that configured channels are available when a port is channelized.
         if let Some(x) = setting.channel {
             if x != 0 {
                 let default_pm = PortMapping::default();
-                // Breakout mode
                 let dev_port = front_panel_dev_port_mappings
                     .get(&setting.port)
                     .unwrap_or(&0u32);
-                let breakout_mode = available_ports
+                let channel_count = available_ports
                     .get(dev_port)
                     .unwrap_or(&default_pm)
-                    .breakout_mode;
-                if breakout_mode.is_none() {
-                    return Err(Error::new(format!("Port {:?} is not configured in breakout mode, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
+                    .channel_count;
+                if channel_count.is_none() {
+                    return Err(Error::new(format!("Port {:?} is not configured with channel_count > 1, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
                 }
             }
         }

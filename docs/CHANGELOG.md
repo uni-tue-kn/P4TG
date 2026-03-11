@@ -9,12 +9,13 @@
 
   <img src="./img/shapes.jpeg" alt="Shapes" width="70%"/>
 - Added breakout mode for `400G` -> `4x100G` on Tofino 2, allowing up to 40x100G customizable traffic generation.
-- Extended `breakout_mode` configuration in `Controller/config.json` to support explicit lane counts:
-  - `breakout_mode: 4` for 4-lane breakout
-  - `breakout_mode: 8` for 8-lane breakout on Tofino 2 (`400G -> 8x50G/25G/10G`)
+- Reworked port channelization configuration to use `speed` + `channel_count`.
+  - `speed` now consistently describes the per-channel speed.
+  - `channel_count: 4` and `channel_count: 8` select channelized port modes.
+  - Supported channelized modes are `4x10G`, `4x25G`, `4x100G`, `8x10G`, `8x25G`, and `8x50G` depending on ASIC capabilities.
 - Added backward compatibility for legacy boolean breakout configuration:
-  - `breakout_mode: true` is interpreted as `breakout_mode: 4`
-  - `breakout_mode: false` disables breakout mode
+  - `breakout_mode: true` is deprecated, logs a warning, and is interpreted as legacy 4-channel breakout.
+  - `breakout_mode: false` is deprecated, logs a warning, and disables channelization.
 - Added `BF_SPEED_50G` as a supported port speed in controller and frontend port configuration.
 - Added per-channel ARP/MAC runtime configuration in frontend and backend.
   - `POST:/api/ports/arp` now accepts an optional `channel` field.
