@@ -20,6 +20,7 @@
 #include "./IAT.p4"
 #include "./RTT.p4"
 #include "./ingress/Frame_Type_Monitor.p4"
+#include "./PatternShaping.p4"
 
 control P4TG_Ingress (
     inout header_t hdr,
@@ -30,6 +31,7 @@ control P4TG_Ingress (
     IAT() iat;
     RTT() rtt;
     Frame_Type_Monitor() frame_type;
+    PatternShaping() pattern_shaping;
 
     // poisson
     Random<bit<16>>() rand;
@@ -155,6 +157,8 @@ control P4TG_Ingress (
     }
 
     apply {
+        ig_md.ig_port = ig_intr_md.ingress_port;
+
         // monitor iats and send to controller
         // limited by meter
         if(monitor_iat.apply().hit) {
@@ -166,8 +170,6 @@ control P4TG_Ingress (
 
         // random value used for poisson traffic
         ig_md.rand_value = rand.get();
-
-        ig_md.ig_port = ig_intr_md.ingress_port;
 
         bit<64> dummy = 0;
 
@@ -203,14 +205,13 @@ control P4TG_Ingress (
 
             hdr.monitor.out_of_order = (bit<40>) reordered_packets;
         }
-
-        if(hdr.pkt_gen.isValid() && !hdr.monitor.isValid()) {
+        else if (hdr.pkt_gen.isValid() && !hdr.monitor.isValid()) {
+            pattern_shaping.apply(hdr, ig_md, ig_dprsr_md);
             tg_forward.apply();
         }
-        else {
-            if(!hdr.monitor.isValid()) {
-                forward.apply();
-            }
+
+        if(!hdr.pkt_gen.isValid() && !hdr.monitor.isValid()) {
+            forward.apply();
         }
 
    }

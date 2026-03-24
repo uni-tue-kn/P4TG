@@ -102,7 +102,13 @@ pub const ETHERNET_IP_HEADER_REPLACE_TABLE: &str = "egress.header_replace.header
 pub const RTT_HISTOGRAM_TABLE: &str = "ingress.p4tg.rtt.rtt_histogram";
 
 /// Maximum number of entries in the RTT_HISTOGRAM_TABLE
-pub const RTT_HISTOGRAM_TABLE_SIZE: u32 = 8196;
+pub const RTT_HISTOGRAM_TABLE_SIZE: u32 = 8192;
+
+/// Maximum number of entries in the IAT_HISTOGRAM_TABLE
+pub const IAT_HISTOGRAM_TABLE_SIZE: u32 = 4196;
+
+/// Table used to configure the bins of RTT Histogram
+pub const IAT_HISTOGRAM_TABLE: &str = "ingress.p4tg.iat.iat_histogram";
 
 /// VLAN replace table
 /// This table replaces the header content of QinQ and VLAN frames
@@ -126,6 +132,9 @@ pub const MAX_NUM_SRV6_SIDS: u8 = 3;
 /// VxLAN UDP port
 pub const VX_LAN_UDP_PORT: u16 = 4789;
 
+/// GTPU UDP port
+pub const GTPU_UDP_PORT: u16 = 2152;
+
 /// Max buffer size in bytes usable with P4TG
 pub const MAX_BUFFER_SIZE: u32 = 12000;
 
@@ -142,3 +151,17 @@ pub const BATCH_FACTOR: u32 = 5;
 
 /// Mask to remove the channel number from a dev port
 pub const REMOVE_PORT_CHANNEL_MASK: u32 = 0xFFFFFFFC;
+
+pub const REMOVE_PORT_CHANNEL_MASK_TOFINO_2: u32 = 0xFFFFFFF8;
+
+/// Table used for pattern shaping
+pub const PATTERN_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_generation";
+
+/// Table used to store pattern configuration
+pub const PATTERN_CONFIG_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_config";
+
+/// Maximum number of table entries we are allowed to program.
+pub const MAX_PATTERN_TABLE_ENTRIES_TOFINO_2: usize = 40000;
+pub const MAX_PATTERN_TABLE_ENTRIES: usize = 8192;
+
+pub const PATTERN_INTERVAL_REGISTER: &str = "ingress.p4tg.pattern_shaping.pattern_interval_number";

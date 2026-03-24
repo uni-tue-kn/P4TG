@@ -22,14 +22,14 @@ use log::warn;
 use std::collections::HashMap;
 
 use crate::api::server::Error;
-use crate::core::statistics::RttHistogramConfig;
+use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
-    MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2,
-    MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS, RTT_HISTOGRAM_TABLE,
-    RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
+    IAT_HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
+    MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2, MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS,
+    RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
 use crate::core::traffic_gen_core::helper::{
-    calculate_overhead, generate_front_panel_to_dev_port_mappings,
+    calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps, range_to_ternary,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
@@ -42,7 +42,8 @@ pub fn validate_request(
     available_ports: &HashMap<u32, PortMapping>,
     is_tofino2: bool,
 ) -> Result<Vec<Stream>, Error> {
-    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(available_ports);
+    let front_panel_dev_port_mappings =
+        generate_front_panel_to_dev_port_mappings(available_ports, is_tofino2);
 
     let active_stream_settings: Vec<StreamSetting> = payload
         .stream_settings
@@ -59,21 +60,19 @@ pub fn validate_request(
                 setting.port
             )));
         }
-        // Validate that configured channels are available (i.e., port is in breakout mode, if multiple channels configured)
+        // Validate that configured channels are available when a port is channelized.
         if let Some(x) = setting.channel {
             if x != 0 {
                 let default_pm = PortMapping::default();
-                // Breakout mode
                 let dev_port = front_panel_dev_port_mappings
                     .get(&setting.port)
                     .unwrap_or(&0u32);
-                let breakout_mode = available_ports
+                let channel_count = available_ports
                     .get(dev_port)
                     .unwrap_or(&default_pm)
-                    .breakout_mode
-                    .unwrap_or(false);
-                if !breakout_mode {
-                    return Err(Error::new(format!("Port {:?} is not configured in breakout mode, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
+                    .channel_count;
+                if channel_count.is_none() {
+                    return Err(Error::new(format!("Port {:?} is not configured with channel_count > 1, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
                 }
             }
         }
@@ -105,13 +104,24 @@ pub fn validate_request(
         }
     }
 
-    let histogram_config = &payload.histogram_config;
+    let rtt_histogram_config = &payload.rtt_histogram_config;
     // Validate that front panel port is available
-    if let Some(h_cfg) = histogram_config {
+    if let Some(h_cfg) = rtt_histogram_config {
         for (rx, _) in h_cfg.iter() {
             if !front_panel_dev_port_mappings.contains_key(&rx.parse().unwrap_or(u32::MAX)) {
                 return Err(Error::new(format!(
-                "No mapping for front panel port {rx:?} in histogram config. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
+                "No mapping for front panel port {rx:?} in RTT histogram config. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
+            )));
+            }
+        }
+    }
+    let iat_histogram_config = &payload.iat_histogram_config;
+    // Validate that front panel port is available
+    if let Some(h_cfg) = iat_histogram_config {
+        for (rx, _) in h_cfg.iter() {
+            if !front_panel_dev_port_mappings.contains_key(&rx.parse().unwrap_or(u32::MAX)) {
+                return Err(Error::new(format!(
+                "No mapping for front panel port {rx:?} in IAT histogram config. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
             )));
             }
         }
@@ -130,6 +140,13 @@ pub fn validate_request(
     }
 
     for stream in active_streams.iter() {
+        if stream.gtpu && stream.vxlan {
+            return Err(Error::new(format!(
+                "VxLAN and GTP-U are mutually exclusive (Stream with ID #{})",
+                stream.stream_id
+            )));
+        }
+
         // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::Mpls {
             if stream.number_of_lse.is_none() {
@@ -207,6 +224,15 @@ pub fn validate_request(
                 }
 
                 // check SRv6
+                // check that SRv6 base header is set
+                if stream.encapsulation == Encapsulation::SRv6 && setting.srv6_base_header.is_none()
+                {
+                    return Err(Error::new(format!(
+                        "No SRv6 base header provided for stream with ID #{} on port {}.",
+                        stream.stream_id, setting.port
+                    )));
+                }
+
                 // check that SID list is set
                 if stream.encapsulation == Encapsulation::SRv6 && setting.sid_list.is_none() {
                     return Err(Error::new(format!(
@@ -238,7 +264,9 @@ pub fn validate_request(
                         )));
                     }
 
-                    if stream.ip_version == Some(4) && setting.ip.is_none() {
+                    if (stream.ip_version == Some(4) || stream.ip_version.is_none())
+                        && setting.ip.is_none()
+                    {
                         return Err(Error::new(format!(
                             "Missing IPv4 settings for stream with ID #{} on port {}.",
                             stream.stream_id, setting.port
@@ -299,6 +327,28 @@ pub fn validate_request(
                         stream.stream_id
                     )));
                 }
+
+                // Check GTP-U
+                if stream.gtpu && setting.gtpu.is_none() {
+                    return Err(Error::new(format!(
+                        "Stream with ID #{} is a GTP-U stream but no GTP-U settings provided.",
+                        stream.stream_id
+                    )));
+                }
+
+                if stream.gtpu && stream.encapsulation != Encapsulation::None {
+                    return Err(Error::new(format!(
+                        "GTP-U is only supported without encapsulation (Stream with ID #{})",
+                        stream.stream_id
+                    )));
+                }
+
+                if stream.gtpu && stream.ip_version != Some(4) {
+                    return Err(Error::new(format!(
+                        "GTP-U requires inner IPv4 (Stream with ID #{})",
+                        stream.stream_id
+                    )));
+                }
             }
         }
     }
@@ -330,7 +380,7 @@ pub fn validate_request(
         .iter()
         .map(|x| {
             if x.unit == Some(GenerationUnit::Mpps) || payload.mode == GenerationMode::Mpps {
-                (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate / 1000f32
+                mpps_to_gbps(x.frame_size + calculate_overhead(x) + 20, x.traffic_rate)
             } else {
                 x.traffic_rate
             }
@@ -350,26 +400,135 @@ pub fn validate_request(
         ));
     }
 
-    if let Some(histogram_config) = histogram_config {
+    if let Some(histogram_config) = rtt_histogram_config {
         // Validate histogram configuration
-        validate_histogram(histogram_config, payload.name.clone())?;
+        validate_histogram(histogram_config, payload.name.clone(), HistogramType::Rtt)?;
     }
+    if let Some(histogram_config) = iat_histogram_config {
+        // Validate histogram configuration
+        validate_histogram(histogram_config, payload.name.clone(), HistogramType::Iat)?;
+    }
+
+    validate_patterns(&active_streams)?;
 
     Ok(active_streams)
 }
 
+pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
+    for s in active_streams.iter() {
+        if let Some(pattern) = &s.pattern {
+            let period_secs = pattern.period / 1e9_f64; // convert from ns to s
+
+            if let GenerationPattern::Flashcrowd = pattern.pattern_type {
+                let quiet_until = pattern.fc_quiet_until.unwrap_or(pattern.period * 0.2);
+                let ramp_until = pattern.fc_ramp_until.unwrap_or(pattern.period * 0.25);
+                let decay_rate = pattern.fc_decay_rate.unwrap_or(4.0); // bigger = faster decay in the tail
+
+                if quiet_until < 0.0 {
+                    return Err(Error::new(format!(
+                        "Quiet until parameter for flashcrowd must be zero or greater in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if ramp_until < 0.0 {
+                    return Err(Error::new(format!(
+                        "Ramp until parameter for flashcrowd must be zero or greater in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if quiet_until >= pattern.period {
+                    return Err(Error::new(format!(
+                        "Quiet until parameter for flashcrowd must be smaller than the period in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if ramp_until >= pattern.period {
+                    return Err(Error::new(format!(
+                        "Ramp until parameter for flashcrowd must be smaller than the period in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if quiet_until > ramp_until {
+                    return Err(Error::new(format!(
+                        "Ramp until parameter for flashcrowd must be larger than quiet until parameter in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if decay_rate < 0.0 {
+                    return Err(Error::new(format!(
+                        "Decay rate parameter for flashcrowd must be zero or greater in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+            }
+            if let GenerationPattern::Square = pattern.pattern_type {
+                let square_low = pattern.square_low.unwrap_or(0.0);
+                let square_high_until = pattern.square_high_until.unwrap_or(pattern.period * 0.5);
+
+                if !(0.0..=1.0).contains(&square_low) {
+                    return Err(Error::new(format!(
+                        "Square low must be within [0, 1] in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if square_high_until >= pattern.period {
+                    return Err(Error::new(format!(
+                        "Square high-until must be smaller than period in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if pattern.sample_rate > 0 {
+                    let min_high_until = pattern.period / pattern.sample_rate as f64;
+                    if square_high_until < min_high_until {
+                        warn!(
+                            "Square high-until below sampling interval (period/sample_rate) in stream with ID #{}.",
+                            s.stream_id
+                        );
+                    }
+                }
+            }
+
+            // Period fits into range
+            let pps = match s.unit {
+                Some(GenerationUnit::Mpps) => s.traffic_rate * 1_000_000.0,
+
+                Some(GenerationUnit::Gbps) | None => {
+                    let frame_bits = (s.frame_size + calculate_overhead(s) + 20) as f32 * 8.0;
+                    (s.traffic_rate * 1e9) / frame_bits
+                }
+            };
+            let period_max = (u32::MAX as f64) / pps as f64;
+            if period_secs > period_max {
+                return Err(Error::new(format!(
+                    "Pattern period too large in stream with ID #{}. Maximal period for configured traffic rate and frame size {} B is {} seconds.",
+                    s.stream_id, s.frame_size + calculate_overhead(s) + 20, period_max as u32
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn validate_histogram(
-    request: &HashMap<String, HashMap<String, RttHistogramConfig>>,
+    request: &HashMap<String, HashMap<String, HistogramConfig>>,
     test_name: Option<String>,
+    hist_type: HistogramType,
 ) -> Result<(), Error> {
-    let mut num_requests = 0;
+    let mut num_requests = 1; // 1 for default_action entry
 
     let mut t_name = "".to_string();
     if let Some(name) = test_name {
         t_name = format!(", Test: {name:?},");
     }
 
+    let max_table_size = match hist_type {
+        HistogramType::Rtt => RTT_HISTOGRAM_TABLE_SIZE,
+        HistogramType::Iat => IAT_HISTOGRAM_TABLE_SIZE,
+    };
+
     for (port, channel_map) in request.iter() {
+        num_requests += 1; // Missed bin action for this port.
         for config in channel_map.values() {
             let port: u32 = match port.parse() {
                 Ok(p) => p,
@@ -414,8 +573,17 @@ pub fn validate_histogram(
                     end = config.max;
                 }
 
-                num_requests += count_range_to_ternary_entries(start, end);
-                if num_requests > RTT_HISTOGRAM_TABLE_SIZE {
+                let new_requests = range_to_ternary(start, end).len() as u32;
+
+                if let HistogramType::Iat = hist_type {
+                    // Double the number because we write entries for TX and RX
+                    num_requests += 2 * new_requests;
+                } else {
+                    // Only RX
+                    num_requests += new_requests;
+                }
+
+                if num_requests > max_table_size {
                     return Err(Error::new(format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")));
                 }
             }
@@ -423,30 +591,6 @@ pub fn validate_histogram(
     }
 
     Ok(())
-}
-
-/// Applies a ligher version of the range to ternary conversion algorithm.
-/// This version only counts the number of required entries for validation.
-fn count_range_to_ternary_entries(start: u32, end: u32) -> u32 {
-    let mut num_requests = 0;
-    let mut cur = start;
-
-    while cur <= end {
-        let remaining = end - cur;
-        if remaining == 0 {
-            // Handle a single value case explicitly
-            num_requests += 1;
-            break;
-        }
-
-        let max_block_size = 1 << (31 - remaining.leading_zeros()); // largest power of two ≤ remaining
-        let align_size = 1 << cur.trailing_zeros(); // alignment constraint
-        let size = max_block_size.min(align_size);
-
-        num_requests += 1;
-        cur += size;
-    }
-    num_requests
 }
 
 pub fn validate_multiple_test(

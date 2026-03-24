@@ -18,7 +18,7 @@
 #
 #
 # p4tg.sh — manage kernel module, data plane, and control plane
-# Usage: ./p4tg.sh [install|update|start|stop|restart|status]
+# Usage: ./p4tg.sh [install|update|start|stop|restart|status][--nightly]
 #
 # Exit codes:
 #   0  : success
@@ -31,10 +31,29 @@
 
 set -Eeuo pipefail
 
+# sudo's secure_path overrides PATH even with -E; ensure SDE paths are included.
+if [[ -n "${SDE_INSTALL:-}" ]]; then
+  PATH="$SDE_INSTALL/bin:$PATH"
+fi
+if [[ -n "${SDE:-}" ]]; then
+  PATH="$SDE:$PATH"
+fi
+export PATH
+
 ###########################
 # Configuration (edit me) #
 ###########################
-P4TG_DIR="${P4TG_DIR:-/opt/P4TG}"                           # root of repository checkout
+# Resolve default repo root from the script location (handles symlinked invocations).
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+  SCRIPT_SOURCE="$(readlink -f "$SCRIPT_SOURCE" 2>/dev/null || echo "$SCRIPT_SOURCE")"
+fi
+SCRIPT_DIR="$(cd -P -- "$(dirname -- "$SCRIPT_SOURCE")" 2>/dev/null && pwd || pwd)"
+
+P4TG_DIR="${P4TG_DIR:-$SCRIPT_DIR}"                         # root of repository checkout
+if [[ -d "$P4TG_DIR" ]]; then
+  P4TG_DIR="$(cd -P -- "$P4TG_DIR" && pwd)"
+fi
 LOG_DIR="${LOG_DIR:-/var/log/traffic_gen}"                  # where to store logs
 SWITCHD_LOG="${SWITCHD_LOG:-$LOG_DIR/switchd.log}"
 
@@ -48,6 +67,7 @@ TARGET="unknown"
 PROGRAM_NAME="${PROGRAM_NAME:-traffic_gen}"                 # passed to run_switchd.sh via -p
 CONTROLLER_CONTAINER="${CONTROLLER_CONTAINER:-p4tg-controller}"
 READY_PORT="${READY_PORT:-9999}"                            # port bf_switchd listens on when ready
+NIGHTLY_MODE=false                                          # whether to use nightly branch/images
 
 #################
 # Pretty output #
@@ -111,12 +131,71 @@ ensure_runtime_dir() {
   fi
 }
 
+backup_platform_conf() {
+  local conf="/etc/platform.conf"
+  local bak="/etc/platform.conf.bak"
+
+  if [[ ! -e "$conf" ]]; then
+    return 0
+  fi
+
+  local dest="$bak"
+  if [[ -e "$bak" ]]; then
+    dest="${bak}.$(date +%s)"
+    warn "$bak already exists; backing up to $dest instead."
+  fi
+
+  info "Backing up $conf to $dest before running."
+  if mv "$conf" "$dest" 2>/dev/null; then
+    return 0
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    if sudo mv "$conf" "$dest"; then
+      return 0
+    fi
+  fi
+
+  error "Failed to move $conf to $dest (insufficient permissions?)."
+  exit 1
+}
+
 ########################################
 # Kernel module handling
 ########################################
 is_mod_loaded() {
   local name="$1"
   lsmod | awk '{print $1}' | grep -qx "$name"
+}
+
+run_xt_cfgen_fallback() {
+  local target_mod="$1"
+  local script="$SDE_INSTALL/bin/xt-cfgen.sh"
+
+  if [[ ! -x "$script" ]]; then
+    warn "Fallback loader for '$target_mod' not found or not executable: $script"
+    return 1
+  fi
+
+  info "Attempting fallback loader for '$target_mod' via: $script"
+  set +e
+  # xt-cfgen.sh expects sibling scripts (e.g. xt-setup.sh) to be in PATH
+  PATH="$SDE_INSTALL/bin:$PATH" "$script"
+  local rc=$?
+  set -e
+
+  if [[ $rc -eq 0 ]] && is_mod_loaded "$target_mod"; then
+    info "Fallback xt-cfgen.sh loaded '$target_mod' successfully."
+    return 0
+  fi
+
+  if is_mod_loaded "$target_mod"; then
+    warn "xt-cfgen.sh returned $rc, but module '$target_mod' appears loaded. Continuing."
+    return 0
+  fi
+
+  error "Fallback xt-cfgen.sh failed to load '$target_mod' (exit $rc)."
+  return 1
 }
 
 load_kernel_module_if_needed() {
@@ -135,6 +214,20 @@ load_kernel_module_if_needed() {
     local kmod="${modules[$idx]}"
     local loader="${loaders[$idx]}"
 
+    if [[ "$kmod" == "bf_fpga" && ! -x "$loader" ]]; then
+      warn "Loader for '$kmod' not found at $loader; trying xt-cfgen.sh fallback."
+      if run_xt_cfgen_fallback "$kmod"; then
+        continue
+      fi
+      # bf_fpga is not available on all platforms (e.g. Asterfusion).
+      # If the module file doesn't exist in the kernel, treat it as optional.
+      if ! modinfo bf_fpga >/dev/null 2>&1; then
+        warn "Kernel module 'bf_fpga' not available on this system; skipping (non-fatal)."
+        continue
+      fi
+      return 2
+    fi
+
     require_exe "$loader"
 
     if is_mod_loaded "$kmod"; then
@@ -152,6 +245,19 @@ load_kernel_module_if_needed() {
       info "Kernel module '$kmod' loaded successfully."
       continue
     fi
+
+    if [[ "$kmod" == "bf_fpga" ]]; then
+      warn "Primary loader for '$kmod' failed (exit $rc); attempting xt-cfgen.sh fallback."
+      if run_xt_cfgen_fallback "$kmod"; then
+        continue
+      fi
+      # bf_fpga is not available on all platforms (e.g. Asterfusion).
+      if ! modinfo bf_fpga >/dev/null 2>&1; then
+        warn "Kernel module 'bf_fpga' not available on this system; skipping (non-fatal)."
+        continue
+      fi
+    fi
+
     if is_mod_loaded "$kmod"; then
       warn "Loader returned $rc, but module '$kmod' appears loaded. Continuing."
       continue
@@ -193,17 +299,22 @@ start_dataplane_background() {
   esac
 
   local -a runner_cmd=("$runner" "--arch" "$arch" "-p" "$PROGRAM_NAME")
+  # run_switchd.sh uses sudo and manipulates tty; wrap with nohup and detach stdin to avoid SIGHUP/stty errors on non-interactive shells.
+  local -a runner_wrapper=("nohup")
+  if ! command -v nohup >/dev/null 2>&1; then
+    runner_wrapper=()
+  fi
 
   info "Starting data plane in background: $runner --arch $arch -p $PROGRAM_NAME"
   if command -v stdbuf >/dev/null 2>&1; then
-    if stdbuf -oL -eL "${runner_cmd[@]}" >>"$SWITCHD_LOG" 2>&1 & then :; else
+    if "${runner_wrapper[@]}" stdbuf -oL -eL "${runner_cmd[@]}" </dev/null >>"$SWITCHD_LOG" 2>&1 & then :; else
       warn "Direct write to $SWITCHD_LOG failed; attempting via sudo tee."
-      stdbuf -oL -eL "${runner_cmd[@]}" 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
+      "${runner_wrapper[@]}" stdbuf -oL -eL "${runner_cmd[@]}" </dev/null 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
     fi
   else
-    if "${runner_cmd[@]}" >>"$SWITCHD_LOG" 2>&1 & then :; else
+    if "${runner_wrapper[@]}" "${runner_cmd[@]}" </dev/null >>"$SWITCHD_LOG" 2>&1 & then :; else
       warn "Direct write to $SWITCHD_LOG failed; attempting via sudo tee."
-      "${runner_cmd[@]}" 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
+      "${runner_wrapper[@]}" "${runner_cmd[@]}" </dev/null 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
     fi
   fi
 
@@ -369,8 +480,12 @@ start_controller_container() {
     error "Controller directory not found: $controller_dir"
     return 5
   fi
-  info "Starting control plane containers via docker compose up -d"
-  if ! (cd "$controller_dir" && docker compose up -d); then
+  local compose_cmd="docker compose up -d"
+  if [[ "$NIGHTLY_MODE" == "true" ]]; then
+    compose_cmd="TAG=nightly docker compose up -d"
+  fi
+  info "Starting control plane containers via $compose_cmd"
+  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
     error "docker compose up failed."
     return 5
   fi
@@ -384,12 +499,16 @@ stop_controller_container() {
     info "Controller directory not found: $controller_dir; nothing to stop."
     return 0
   fi
+  local compose_cmd="docker compose down"
+  if [[ "$NIGHTLY_MODE" == "true" ]]; then
+    compose_cmd="TAG=nightly docker compose down"
+  fi
   if controller_is_running; then
     info "Stopping control plane container: $CONTROLLER_CONTAINER"
   else
-    info "Ensuring control plane containers are stopped via docker compose down."
+    info "Ensuring control plane containers are stopped via $compose_cmd"
   fi
-  if ! (cd "$controller_dir" && docker compose down); then
+  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
     error "docker compose down failed."
     return 5
   fi
@@ -428,8 +547,13 @@ cmd_install() {
   esac
 
   info "Updating repository at $P4TG_DIR"
-  if ! (cd "$P4TG_DIR" && git pull); then
-    error "git pull failed in $P4TG_DIR"
+  local branch="main"
+  if [[ "$NIGHTLY_MODE" == "true" ]]; then
+    branch="nightly"
+  fi
+  info "Checking out branch: $branch"
+  if ! (cd "$P4TG_DIR" && git checkout "$branch" && git pull); then
+    error "git checkout/pull failed for branch '$branch' in $P4TG_DIR"
     return 1
   fi
 
@@ -452,7 +576,11 @@ cmd_install() {
   fi
 
   info "Updating control plane containers with docker compose pull"
-  if ! (cd "$controller_dir" && docker compose pull); then
+  local compose_cmd="docker compose pull"
+  if [[ "$NIGHTLY_MODE" == "true" ]]; then
+    compose_cmd="TAG=nightly docker compose pull"
+  fi
+  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
     error "docker compose pull failed."
     return 1
   fi
@@ -537,6 +665,7 @@ cmd_install() {
 
 cmd_start() {
   info "=== p4tg: START ==="
+  backup_platform_conf
   require_env_dir SDE
   require_env_dir SDE_INSTALL
   load_kernel_module_if_needed || exit $?
@@ -621,11 +750,32 @@ cmd_status() {
 # Entry point
 ########################################
 usage() {
-  echo "Usage: $0 [install|update|start|stop|restart|status]"
+  echo "Usage: $0 [--nightly] [install|update|start|stop|restart|status]"
+  echo ""
+  echo "Options:"
+  echo "  --nightly    Use the nightly branch and nightly Docker images"
+  echo ""
+  echo "Commands:"
+  echo "  install      Install P4TG (build data plane, pull containers, setup service)"
+  echo "  update       Same as install"
+  echo "  start        Start data plane and control plane"
+  echo "  stop         Stop data plane and control plane"
+  echo "  restart      Stop and then start"
+  echo "  status       Show status of kernel modules, data plane, and control plane"
 }
 
 main() {
-  local cmd="${1:-help}"
+  # Parse --nightly flag
+  local -a args=()
+  for arg in "$@"; do
+    if [[ "$arg" == "--nightly" ]]; then
+      NIGHTLY_MODE=true
+    else
+      args+=("$arg")
+    fi
+  done
+
+  local cmd="${args[0]:-help}"
   case "$cmd" in
     install) cmd_install ;;
     update) cmd_install ;;

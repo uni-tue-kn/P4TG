@@ -477,6 +477,24 @@ table {
     }
 }
 
+.pattern-light {
+    display: block;
+}
+
+.pattern-dark {
+    display: none;
+}
+
+[data-theme="dark"] {
+    .pattern-light {
+        display: none;
+    }
+
+    .pattern-dark {
+        display: block;
+    }
+}
+
 @media only screen and (max-width: 450px) {
     .sidebar-nav .nav-link i {
         font-size: 20px;

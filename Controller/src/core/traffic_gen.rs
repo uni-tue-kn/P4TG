@@ -22,10 +22,11 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
-use crate::core::create_simple_multicast_group;
 use crate::core::multicast::delete_simple_multicast_group;
+use crate::core::patterns::build_pattern_config_entry;
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::core::traffic_gen_core::types::{Stream, StreamSetting};
+use crate::core::{build_pattern_generation_entries, create_simple_multicast_group};
 use crate::error::P4TGError;
 use crate::{AppState, PortMapping};
 use log::info;
@@ -35,11 +36,13 @@ use rbfrt::table::{MatchValue, Request};
 use rbfrt::{table, SwitchConnection};
 
 use crate::core::traffic_gen_core::const_definitions::*;
-use crate::core::traffic_gen_core::helper::{calculate_overhead, create_packet};
+use crate::core::traffic_gen_core::helper::{
+    calculate_overhead, create_packet, get_num_pipes, mpps_to_gbps,
+};
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
 
-use super::statistics::RttHistogramConfig;
+use super::statistics::HistogramConfig;
 
 /// A Traffic Generator object.
 /// The traffic generator controls the main configuration of P4TG.
@@ -71,8 +74,10 @@ pub struct TrafficGen {
     pub num_pipes: u32,
     /// Duration of this test in seconds. 0 for unlimited
     pub duration: Option<u32>,
-    /// Mapping between RX port and histogram config. The first index is the front panel port, the second is the channel.
-    pub(crate) histogram_config: HashMap<String, HashMap<String, RttHistogramConfig>>,
+    /// Mapping between RX port and RTT histogram config. The first index is the front panel port, the second is the channel.
+    pub(crate) rtt_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
+    /// Mapping between RX port and IAT histogram config. The first index is the front panel port, the second is the channel.
+    pub(crate) iat_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
     /// Name of the current test
     pub(crate) name: Option<String>,
 }
@@ -89,7 +94,8 @@ impl TrafficGen {
             is_tofino2,
             num_pipes,
             duration: None,
-            histogram_config: HashMap::new(),
+            rtt_histogram_config: HashMap::new(),
+            iat_histogram_config: HashMap::new(),
             name: None,
         }
     }
@@ -637,6 +643,12 @@ impl TrafficGen {
             .await
             .on_reset(switch)
             .await?;
+        state
+            .iat_histogram_monitor
+            .lock()
+            .await
+            .on_reset(switch)
+            .await?;
 
         // call the on_start routine on all relevant parts
         state
@@ -663,6 +675,12 @@ impl TrafficGen {
             .await
             .on_start(switch, &mode)
             .await?;
+        state
+            .iat_histogram_monitor
+            .lock()
+            .await
+            .on_start(switch, &mode)
+            .await?;
 
         // configure tg mode
         self.configure_traffic_gen_mode_table(switch, &mode).await?;
@@ -672,13 +690,11 @@ impl TrafficGen {
         self.configure_default_forwarding_path(switch, port_mapping)
             .await?;
 
-        // if rate is higher than [TWO_PIPE_GENERATION_THRESHOLD] we generate on multiple pipes
         let total_rate: f32 = streams
             .iter()
             .map(|x| {
                 if x.unit == Some(GenerationUnit::Mpps) || mode == GenerationMode::Mpps {
-                    (x.frame_size + calculate_overhead(x) + 20) as f32 * 8f32 * x.traffic_rate
-                        / 1000f32
+                    mpps_to_gbps(x.frame_size + calculate_overhead(x) + 20, x.traffic_rate)
                 } else {
                     x.traffic_rate
                 }
@@ -697,6 +713,7 @@ impl TrafficGen {
 
             // For minimal sized IPv6 frames, the size is 73 bytes + 4 FCS
             if s.ip_version == Some(6) && s.frame_size == 64 {
+                // TODO do we need FCS + IFG here again?
                 s.frame_size = 73 + 4;
             }
 
@@ -704,15 +721,17 @@ impl TrafficGen {
             // rewrite traffic rate to reflect MPPS in Gbps
             if s.unit == Some(GenerationUnit::Mpps) || mode == GenerationMode::Mpps {
                 // recompute "correct" traffic rate in Gbps
-                s.traffic_rate = (s.frame_size + encapsulation_overhead) as f32 * 8f32 * s.traffic_rate / 1000f32;
+                s.traffic_rate = mpps_to_gbps(s.frame_size + encapsulation_overhead, s.traffic_rate);
             }
 
+            let num_pipes = get_num_pipes(&s, self.num_pipes);
+
             // call solver
-            let (n_packets, mut timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / self.num_pipes as f32, s.burst);
-            let rate = self.num_pipes as f64 * ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
+            let (n_packets, mut timeout) = calculate_send_behaviour(s.frame_size + encapsulation_overhead, s.traffic_rate / num_pipes as f32, s.burst);
+            let rate = num_pipes as f64 * ((n_packets as u32) * (s.frame_size + encapsulation_overhead) * 8) as f64 / timeout as f64;
             let rate_accuracy = 100f32 * (1f32 - ((s.traffic_rate - (rate as f32)).abs() / s.traffic_rate));
 
-            info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, self.num_pipes, rate, rate_accuracy);
+            info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, num_pipes, rate, rate_accuracy);
 
             // More bursty traffic desired. Activate batch mode
             timeout = if s.batches.is_some_and(|b| b && s.burst != 1) {timeout * BATCH_FACTOR} else {timeout};
@@ -721,7 +740,7 @@ impl TrafficGen {
             s.n_packets = Some(n_packets);
             s.timeout = Some(timeout);
             s.generation_accuracy = Some(rate_accuracy);
-            s.n_pipes = Some(self.num_pipes as u8);
+            s.n_pipes = Some(num_pipes as u8);
 
             s
         }).collect();
@@ -735,15 +754,25 @@ impl TrafficGen {
             })?;
             let encap_overhead = 20 + calculate_overhead(stream);
 
-            let (n_packets, timeout) = calculate_send_behaviour(
+            let num_pipes: u32 = get_num_pipes(stream, self.num_pipes);
+
+            let (n_packets, mut timeout) = calculate_send_behaviour(
                 stream.frame_size + encap_overhead,
                 if self.is_tofino2 {
                     TG_MAX_RATE_TF2
                 } else {
                     TG_MAX_RATE
-                } / self.num_pipes as f32,
+                } / num_pipes as f32,
                 25,
             );
+
+            // More bursty traffic desired. Activate batch mode
+            timeout = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
+                timeout * BATCH_FACTOR
+            } else {
+                timeout
+            };
+
             active_streams
                 .get_mut(0)
                 .ok_or(P4TGError::Error {
@@ -786,7 +815,7 @@ impl TrafficGen {
         let packet_bytes: Vec<StreamPacket> = active_streams
             .iter()
             .map(|s| {
-                let packet = create_packet(s);
+                let packet = create_packet(s, false);
                 StreamPacket {
                     app_id: s.app_id,
                     bytes: packet,
@@ -797,6 +826,75 @@ impl TrafficGen {
                 }
             })
             .collect();
+        let packet_size_bytes_by_app: HashMap<u8, u32> = packet_bytes
+            .iter()
+            .map(|p| (p.app_id, p.bytes.len() as u32))
+            .collect();
+
+        let mut pattern_entries = vec![];
+        let max_pattern_table_entries = if self.is_tofino2 {
+            MAX_PATTERN_TABLE_ENTRIES_TOFINO_2
+        } else {
+            MAX_PATTERN_TABLE_ENTRIES
+        };
+
+        for stream in &active_streams {
+            if let Some(pattern_config) = stream.pattern.clone() {
+                let encapsulation_overhead = calculate_overhead(stream) + 20; // L1 rate
+
+                // For minimal sized IPv6 frames, the size is 73 bytes + 4 FCS
+                let total_frame_size = if stream.ip_version == Some(6) && stream.frame_size == 64 {
+                    encapsulation_overhead + 73 + 4
+                } else {
+                    encapsulation_overhead + stream.frame_size
+                };
+                // L1 monitor counters operate on packet bytes without FCS (+20B preamble/IFG).
+                // `total_frame_size` above includes FCS for regular streams, so remove it here.
+                let l1_counter_bytes = total_frame_size.saturating_sub(4);
+
+                let num_pipes: u32 = get_num_pipes(stream, self.num_pipes);
+                let batch_factor = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
+                    BATCH_FACTOR as f64
+                } else {
+                    1.0
+                };
+                let offered_pps_per_pipe =
+                    stream.n_packets.unwrap_or(1) as f64 * batch_factor * 1e9_f64
+                        / stream.timeout.unwrap_or(1) as f64;
+
+                let (period_pkts, entries) = build_pattern_generation_entries(
+                    stream.app_id,
+                    pattern_config,
+                    (stream.traffic_rate * stream.generation_accuracy.unwrap_or(100.0) / 100.0)
+                        as f64,
+                    offered_pps_per_pipe,
+                    l1_counter_bytes,
+                    *packet_size_bytes_by_app
+                        .get(&stream.app_id)
+                        .unwrap_or(&total_frame_size.saturating_sub(20))
+                        + 6, // Size of the internal packet generation header
+                    num_pipes as f64,
+                    state.tofino2,
+                );
+
+                if pattern_entries.len() + entries.len() > max_pattern_table_entries {
+                    return Err(P4TGError::Error {
+                    message: format!("Too many pattern table entries required for stream {}. Reduce the number of streams, the rate, or the period for traffic patterns.", stream.app_id),
+                }
+                .into());
+                } else {
+                    let config_req = build_pattern_config_entry(stream.app_id, period_pkts);
+                    pattern_entries.push(config_req);
+                    pattern_entries.extend(entries);
+                }
+            }
+        }
+
+        info!("Writing {} pattern table entries.", pattern_entries.len());
+
+        if !pattern_entries.is_empty() {
+            switch.write_table_entries(pattern_entries).await?;
+        }
 
         // configure egress table rules
         // we dont want to rewrite tx seq and timestamp of potential
@@ -897,7 +995,9 @@ impl TrafficGen {
         };
 
         for s in streams {
-            for port in &generation_ports {
+            let num_pipes = get_num_pipes(s, self.num_pipes);
+
+            for port in &generation_ports[0..num_pipes as usize] {
                 let rand_value = {
                     // compute drop probability for poisson traffic
                     if mode != GenerationMode::Poisson {
@@ -1012,6 +1112,35 @@ impl TrafficGen {
                             .action_data("outer_tos", vxlan.ip_tos)
                             .action_data("udp_source", vxlan.udp_source)
                             .action_data("vni", vxlan.vni),
+                    )
+                } else if s.gtpu {
+                    // we need to rewrite one Ethernet & 2 IP headers
+                    // validation method in API makes sure that setting.gtpu exists if s.gtpu is set
+                    let gtpu = setting.gtpu.as_ref().unwrap();
+
+                    // validation method in API makes sure that setting.ip exists if s.ip_version is set to 4
+                    let ipv4_settings = setting.ip.clone().unwrap();
+
+                    Some(
+                        Request::new(ETHERNET_IP_HEADER_REPLACE_TABLE)
+                            .match_key(
+                                "eg_intr_md.egress_port",
+                                MatchValue::exact(port.tx_recirculation),
+                            )
+                            .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                            .action("egress.header_replace.rewrite_gtpu")
+                            .action_data("src_mac", src_mac.as_bytes().to_vec())
+                            .action_data("dst_mac", dst_mac.as_bytes().to_vec())
+                            .action_data("s_mask", ipv4_settings.ip_src_mask)
+                            .action_data("d_mask", ipv4_settings.ip_dst_mask)
+                            .action_data("inner_s_ip", ipv4_settings.ip_src)
+                            .action_data("inner_d_ip", ipv4_settings.ip_dst)
+                            .action_data("inner_tos", ipv4_settings.ip_tos)
+                            .action_data("outer_s_ip", gtpu.ip_src)
+                            .action_data("outer_d_ip", gtpu.ip_dst)
+                            .action_data("outer_tos", gtpu.ip_tos)
+                            .action_data("udp_source", gtpu.udp_source)
+                            .action_data("teid", gtpu.teid),
                     )
                 } else {
                     // Only verify if IP Header will actually be used
@@ -1196,7 +1325,7 @@ impl TrafficGen {
             let pkt_len = p.bytes.len() as u32;
 
             // 16B alignment for buffer_offset
-            if buffer_offset % 16 != 0 {
+            if !buffer_offset.is_multiple_of(16) {
                 buffer_offset += 16 - (buffer_offset % 16);
             }
 
@@ -1253,6 +1382,9 @@ impl TrafficGen {
                     SRV6_HEADER_REPLACE_TABLE,
                     ETHERNET_IP_HEADER_REPLACE_TABLE,
                     DEFAULT_FORWARD_TABLE,
+                    PATTERN_TABLE,
+                    PATTERN_CONFIG_TABLE,
+                    PATTERN_INTERVAL_REGISTER,
                 ])
                 .await?;
         } else {
@@ -1265,6 +1397,9 @@ impl TrafficGen {
                     MPLS_HEADER_REPLACE_TABLE,
                     ETHERNET_IP_HEADER_REPLACE_TABLE,
                     DEFAULT_FORWARD_TABLE,
+                    PATTERN_TABLE,
+                    PATTERN_CONFIG_TABLE,
+                    PATTERN_INTERVAL_REGISTER,
                 ])
                 .await?;
         }

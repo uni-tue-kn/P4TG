@@ -1,26 +1,33 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::core::config::PortDescription;
 use crate::core::traffic_gen_core::const_definitions::{
-    P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK, VX_LAN_UDP_PORT,
+    GTPU_UDP_PORT, P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK,
+    REMOVE_PORT_CHANNEL_MASK_TOFINO_2, VX_LAN_UDP_PORT,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::{AppState, PortMapping};
 use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
 use log::error;
-use rbfrt::util::Speed;
+use rbfrt::util::{Speed, FEC};
 
 // Create a HashMap of front_panel -> dev_port from the port_mapping
 pub(crate) fn generate_front_panel_to_dev_port_mappings(
     port_mapping: &HashMap<u32, PortMapping>,
+    is_tofino2: bool,
 ) -> HashMap<u32, u32> {
+    let remove_port_channel_mask = if is_tofino2 {
+        REMOVE_PORT_CHANNEL_MASK_TOFINO_2
+    } else {
+        REMOVE_PORT_CHANNEL_MASK
+    };
+
     port_mapping
         .iter()
         .map(|(dev_port, mapping)| {
             (
                 mapping.front_panel_port,
-                *dev_port & REMOVE_PORT_CHANNEL_MASK, // Remove the last two bits to always store channel ID 0 for a front panel port
+                *dev_port & remove_port_channel_mask, // Remove the last three bits to always store channel ID 0 for a front panel port
             )
         })
         .collect()
@@ -36,24 +43,28 @@ pub(crate) fn generate_dev_port_to_front_panel_mappings(
         .collect()
 }
 
-/// Build dev_port -> (front_panel, channel) by grouping the dev ports of each
-/// front-panel and assigning channel indices in ascending dev_port order.
+/// Build dev_port -> (front_panel, channel) where the channel is encoded in the
+/// least-significant 2/3 bits of the dev port.
 ///
-/// Example: if fp=1 has dev ports [144,145,146,147], channels become 0,1,2,3.
-pub(crate) fn derive_fpch(dev_to_fp: &HashMap<u32, u32>) -> HashMap<u32, (u32, u8)> {
-    // fp -> sorted set of dev ports (use BTreeMap/BTreeSet-like behavior)
-    let mut per_fp: HashMap<u32, BTreeMap<u32, ()>> = HashMap::new();
+/// Example: if dev_port == 0b..._000 then channel = 0,
+///          if dev_port == 0b..._101 then channel = 5, etc.
+pub(crate) fn derive_fpch(
+    dev_to_fp: &HashMap<u32, u32>,
+    is_tofino2: bool,
+) -> HashMap<u32, (u32, u8)> {
+    let mut dev_to_fpch = HashMap::with_capacity(dev_to_fp.len());
+
+    let channel_mask = if is_tofino2 {
+        !REMOVE_PORT_CHANNEL_MASK_TOFINO_2
+    } else {
+        !REMOVE_PORT_CHANNEL_MASK
+    };
+
     for (&dev, &fp) in dev_to_fp {
-        per_fp.entry(fp).or_default().insert(dev, ());
+        let ch = (dev & channel_mask) as u8; // LSB 2/3 (Tofino2) bits encode the channel (0..7)
+        dev_to_fpch.insert(dev, (fp, ch));
     }
 
-    // Assign channel = index in sorted order
-    let mut dev_to_fpch = HashMap::new();
-    for (fp, devs_sorted) in per_fp {
-        for (ch_idx, (&dev, _)) in devs_sorted.iter().enumerate() {
-            dev_to_fpch.insert(dev, (fp, ch_idx as u8));
-        }
-    }
     dev_to_fpch
 }
 
@@ -165,45 +176,165 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
         Encapsulation::SRv6 => 40 + 8 + stream.number_of_srv6_sids.unwrap() as u32 * 16, // Base IPv6 Header + SRH + each SID has 16 bytes
     };
 
-    if stream.vxlan {
+    if stream.vxlan || stream.gtpu {
         encapsulation_overhead += 50; // VxLAN has 50 byte overhead
     }
 
     encapsulation_overhead
 }
 
-// Maps a configured Speed to its breakout modes, e.g.,400G -> 4x100G
-pub(crate) fn breakout_mapping(speed: &Speed, breakout: bool) -> (Vec<u8>, Speed) {
-    if breakout {
-        match speed {
-            //Speed::BF_SPEED_400G => ((0..=3).collect(), Speed::BF_SPEED_100G),
-            Speed::BF_SPEED_100G => ((0..=3).collect(), Speed::BF_SPEED_25G),
-            Speed::BF_SPEED_40G => ((0..=3).collect(), Speed::BF_SPEED_10G),
-            _ => (vec![0], speed.clone()), // unsupported combo → fallback to single-lane
+#[derive(Clone, Debug)]
+pub(crate) struct ResolvedPortMode {
+    pub channels: Vec<u8>,
+    pub speed: Speed,
+    pub n_lanes: Option<u32>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ResolvedPortLayout {
+    pub front_panel: ResolvedPortMode,
+    pub recirculation: ResolvedPortMode,
+}
+
+pub(crate) fn effective_channel_count(channel_count: Option<u8>) -> u8 {
+    channel_count.unwrap_or(1)
+}
+
+pub(crate) fn resolve_front_panel_mode(
+    speed: &Speed,
+    channel_count: Option<u8>,
+    is_tofino2: bool,
+) -> Option<ResolvedPortMode> {
+    match effective_channel_count(channel_count) {
+        1 => {
+            if *speed == Speed::BF_SPEED_400G && !is_tofino2 {
+                None
+            } else {
+                Some(ResolvedPortMode {
+                    channels: vec![0],
+                    speed: speed.clone(),
+                    n_lanes: None,
+                })
+            }
         }
-    } else {
-        (vec![0], speed.clone())
+        4 => match speed {
+            Speed::BF_SPEED_10G => Some(ResolvedPortMode {
+                channels: (0..=3).collect(),
+                speed: Speed::BF_SPEED_10G,
+                n_lanes: None,
+            }),
+            Speed::BF_SPEED_25G => Some(ResolvedPortMode {
+                channels: (0..=3).collect(),
+                speed: Speed::BF_SPEED_25G,
+                n_lanes: None,
+            }),
+            Speed::BF_SPEED_100G if is_tofino2 => Some(ResolvedPortMode {
+                channels: vec![0, 2, 4, 6],
+                speed: Speed::BF_SPEED_100G,
+                n_lanes: Some(2),
+            }),
+            _ => None,
+        },
+        8 => match speed {
+            Speed::BF_SPEED_10G | Speed::BF_SPEED_25G | Speed::BF_SPEED_50G if is_tofino2 => {
+                Some(ResolvedPortMode {
+                    channels: (0..=7).collect(),
+                    speed: speed.clone(),
+                    n_lanes: Some(1),
+                })
+            }
+            _ => None,
+        },
+        _ => None,
     }
 }
 
-// Returns the base speed for a port_description based on the is_tofino2 flag, and the optionally configured speed setting
-pub(crate) fn get_base_speed(port_config: &PortDescription, is_tofino2: bool) -> Speed {
-    port_config.speed.clone().unwrap_or(if is_tofino2 {
-        if port_config.breakout_mode == Some(true) {
-            Speed::BF_SPEED_100G
-        } else {
-            Speed::BF_SPEED_400G
+pub(crate) fn resolve_recirculation_mode(
+    speed: &Speed,
+    channel_count: Option<u8>,
+    is_tofino2: bool,
+) -> Option<ResolvedPortMode> {
+    match effective_channel_count(channel_count) {
+        1 => Some(ResolvedPortMode {
+            channels: vec![0],
+            speed: if is_tofino2 {
+                Speed::BF_SPEED_400G
+            } else {
+                Speed::BF_SPEED_100G
+            },
+            n_lanes: None,
+        }),
+        4 => match speed {
+            Speed::BF_SPEED_100G if is_tofino2 => Some(ResolvedPortMode {
+                channels: vec![0, 2, 4, 6],
+                speed: Speed::BF_SPEED_100G,
+                n_lanes: Some(2),
+            }),
+            Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => Some(ResolvedPortMode {
+                channels: (0..=3).collect(),
+                speed: Speed::BF_SPEED_25G,
+                n_lanes: None,
+            }),
+            _ => None,
+        },
+        8 => {
+            if is_tofino2 {
+                Some(ResolvedPortMode {
+                    channels: (0..=7).collect(),
+                    speed: Speed::BF_SPEED_50G,
+                    n_lanes: Some(1),
+                })
+            } else {
+                None
+            }
         }
-    } else {
-        Speed::BF_SPEED_100G
+        _ => None,
+    }
+}
+
+pub(crate) fn resolve_port_layout(
+    speed: &Speed,
+    channel_count: Option<u8>,
+    is_tofino2: bool,
+) -> Option<ResolvedPortLayout> {
+    Some(ResolvedPortLayout {
+        front_panel: resolve_front_panel_mode(speed, channel_count, is_tofino2)?,
+        recirculation: resolve_recirculation_mode(speed, channel_count, is_tofino2)?,
     })
+}
+
+pub(crate) fn default_fec(speed: &Speed, channel_count: Option<u8>) -> FEC {
+    if requires_rs(speed, channel_count) {
+        FEC::BF_FEC_TYP_REED_SOLOMON
+    } else {
+        FEC::BF_FEC_TYP_NONE
+    }
+}
+
+pub(crate) fn sanitize_fec(speed: &Speed, channel_count: Option<u8>, requested: FEC) -> FEC {
+    if requires_rs(speed, channel_count) {
+        FEC::BF_FEC_TYP_REED_SOLOMON
+    } else if matches!(speed, Speed::BF_SPEED_10G | Speed::BF_SPEED_40G)
+        && requested == FEC::BF_FEC_TYP_REED_SOLOMON
+        || (*speed == Speed::BF_SPEED_100G && requested == FEC::BF_FEC_TYP_FC)
+    {
+        FEC::BF_FEC_TYP_NONE
+    } else {
+        requested
+    }
+}
+
+fn requires_rs(speed: &Speed, channel_count: Option<u8>) -> bool {
+    *speed == Speed::BF_SPEED_400G
+        || (*speed == Speed::BF_SPEED_50G && effective_channel_count(channel_count) != 4)
+        || (*speed == Speed::BF_SPEED_100G && effective_channel_count(channel_count) == 4)
 }
 
 /// Creates a packet with `frame_size` bytes and `encapsulation` (e.g., VLAN)
 ///
 /// `frame_size` is L2 size **WITHOUT** encapsulation and without preamble and IFG.
 /// Therefore the remaining filler bytes take the encapsulation into account.
-pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
+pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
     let frame_size = s.frame_size;
     let encapsulation = s.encapsulation;
     let app_id = s.app_id;
@@ -221,7 +352,7 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
         let mut stream_copy = s.clone();
         stream_copy.vxlan = false;
 
-        let p4tg_packet = create_packet(&stream_copy);
+        let p4tg_packet = create_packet(&stream_copy, false);
 
         // now we build the VxLAN tunnel
         let mut result = vec![];
@@ -275,6 +406,73 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
         result.extend_from_slice(&vxlan_container);
 
         result
+    } else if s.gtpu {
+        // we tunnel over GTP-U
+        // regular packet without GTP-U tunnel
+        let mut stream_copy = s.clone();
+        stream_copy.gtpu = false;
+
+        let p4tg_packet = create_packet(&stream_copy, true);
+
+        // now we build the GTP-U tunnel
+        let mut result = vec![];
+
+        let pkt = etherparse::Ethernet2Header {
+            source: [0, 0, 0, 0, 0, 0],
+            destination: [0, 0, 0, 0, 0, 0],
+            ether_type: 0x800,
+        };
+
+        pkt.write(&mut result).unwrap();
+
+        // That's the outer ip header; length frame_size + UDP + GTP-U
+        let outer_ip_header = etherparse::Ipv4Header::new(
+            (p4tg_packet.len() as u16) + 8 + 8,
+            64,
+            17,
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+        );
+        outer_ip_header.write(&mut result).unwrap();
+
+        let outer_udp_header = etherparse::UdpHeader {
+            source_port: 0,
+            destination_port: GTPU_UDP_PORT,
+            // length frame size + UDP + GTP-U
+            length: (p4tg_packet.len() as u16) + 8 + 8,
+            checksum: 0,
+        };
+
+        // we use an "udp" header as GTP-U
+        // simply because etherparse has no GTP-U header
+        // TEID will be written by dataplane
+        let gtpu_header = etherparse::UdpHeader {
+            /*
+            flags + message type of GTP-U header:
+             GTP-U flags: bit 0-2: Version,
+             bit 3: Protocol type,
+             bit 4: Reserved,
+             bit 5: Extension header flag,
+             bit 6: Sequence number flag,
+             bit 7: N-PDU number flag
+             message_type: always 0xff (user data)*/
+            source_port: 0b00110000_11111111,
+            destination_port: p4tg_packet.len() as u16, // length field of GTP-U header
+            length: 0,                                  // First half of TEID
+            checksum: 0, // Second half of TEID, will be filled by data plane
+        };
+
+        let mut gtpu_container = vec![];
+
+        gtpu_header.write(&mut gtpu_container).unwrap();
+
+        gtpu_container.extend_from_slice(&p4tg_packet);
+
+        outer_udp_header.write(&mut result).unwrap();
+
+        result.extend_from_slice(&gtpu_container);
+
+        result
     } else {
         // we don't tunnel over VxLAN
         match encapsulation {
@@ -292,9 +490,17 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                         )
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                     // This covers Some(4) | None | _
-                    _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
-                        .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
+                    _ => {
+                        if is_gtpu_payload {
+                            // The GTP-U Payload has no Ethernet header
+                            PacketBuilder::ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
+                                .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT)
+                        } else {
+                            PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
+                                .ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
+                                .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT)
+                        }
+                    }
                 };
 
                 let size = builder.size(payload.len());
@@ -636,5 +842,86 @@ pub(crate) fn create_packet(s: &Stream) -> Vec<u8> {
                 result
             }
         }
+    }
+}
+
+pub fn mpps_to_gbps(total_frame_size: u32, rate_gbps: f32) -> f32 {
+    total_frame_size as f32 * 8f32 * rate_gbps / 1000f32
+}
+
+/// Decomposes a [start, end] range into a set of ternary (value, mask) entries.
+/// Uses bitmask covering similar to prefix expansion.
+pub fn range_to_ternary(start: u32, end: u32) -> Vec<(u32, u32)> {
+    let mut requests = Vec::new();
+    let mut cur = start;
+
+    while cur <= end {
+        if cur == end {
+            requests.push((cur, 0xFFFFFFFF));
+            break;
+        }
+
+        let num_remaining = end - cur + 1; // count of values in [cur, end]
+        let max_block_size = 1u32 << (31 - num_remaining.leading_zeros()); // largest power of two ≤ count
+        let align_size = if cur == 0 {
+            1u32 << 31 // cur == 0 is maximally aligned
+        } else {
+            1u32 << cur.trailing_zeros()
+        }; // alignment constraint
+        let size = max_block_size.min(align_size);
+
+        let mask = !(size - 1);
+
+        requests.push((cur, mask));
+
+        cur += size;
+    }
+
+    requests
+}
+
+/// Convert a closed integer range [start, end] into a minimal set of LPM prefixes over u32.
+pub fn range_to_prefixes(start: u32, end: u32) -> Vec<(u32, u8)> {
+    let mut res = Vec::new();
+    let mut cur = start as u64;
+    let end_u64 = end as u64;
+
+    while cur <= end_u64 {
+        let remaining = end_u64 - cur + 1;
+
+        // Start from largest possible block and shrink until:
+        //  - it's aligned at `cur`
+        //  - it fits within `remaining`
+        let mut block_size: u64 = 1 << 31;
+
+        loop {
+            let aligned = (cur & (block_size - 1)) == 0;
+            if aligned && block_size <= remaining {
+                break;
+            }
+            block_size >>= 1;
+        }
+
+        let prefix_len = 32 - block_size.trailing_zeros();
+        res.push((cur as u32, prefix_len as u8));
+
+        cur += block_size;
+    }
+
+    res
+}
+
+/// Determine the number of pipes to use for a stream based on its configuration.
+pub fn get_num_pipes(s: &Stream, max_pipes: u32) -> u32 {
+    if let Some(batches) = s.batches {
+        if !batches && s.burst == 1 {
+            // IAT mode with no batches: Generate on a single pipe only
+            1
+        } else {
+            // In all other cases: use all available pipes
+            max_pipes
+        }
+    } else {
+        max_pipes
     }
 }

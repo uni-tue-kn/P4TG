@@ -56,6 +56,9 @@ const calculateOverhead = (stream: Stream): number => {
     if (stream.vxlan) {
         encapsulation_overhead += 50;
     }
+    if (stream.gtpu) {
+        encapsulation_overhead += 36;
+    }
 
     return encapsulation_overhead;
 }

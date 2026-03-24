@@ -1,5 +1,65 @@
 # Changelog 
 
+## v2.7.0
+### New features
+- Added periodic pattern shaping options: Sine, Triangle, Sawtooth, Square, Flashcrowd.
+  - Pattern shaping is applied entirely in the data plane.
+  - The period is configurable.
+  - Examples:
+
+  <img src="./img/shapes.jpeg" alt="Shapes" width="70%"/>
+- Added breakout mode for `400G` -> `4x100G` on Tofino 2, allowing up to 40x100G customizable traffic generation.
+- Reworked port channelization configuration to use `speed` + `channel_count`.
+  - `speed` now consistently describes the per-channel speed.
+  - `channel_count: 4` and `channel_count: 8` select channelized port modes.
+  - Supported channelized modes are `4x10G`, `4x25G`, `4x100G`, `8x10G`, `8x25G`, and `8x50G` depending on ASIC capabilities.
+- Added backward compatibility for legacy boolean breakout configuration:
+  - `breakout_mode: true` is deprecated, logs a warning, and is interpreted as legacy 4-channel breakout.
+  - `breakout_mode: false` is deprecated, logs a warning, and disables channelization.
+- Added `BF_SPEED_50G` as a supported port speed in controller and frontend port configuration.
+- Added per-channel ARP/MAC runtime configuration in frontend and backend.
+  - `POST:/api/ports/arp` now accepts an optional `channel` field.
+  - If `channel` is set, ARP + MAC updates apply only to that `(port, channel)`.
+  - If `channel` is omitted, ARP + MAC updates apply to all configured channels of that front panel port.
+- Added histogram monitoring for TX/RX IATs similar to RTT histograms.
+  - ⚠️ API schema changes
+    - `histogram_config` in `POST:/api/trafficgen` is now called `rtt_histogram_config` and `iat_histogram_config`
+    - `GET:/api/statistics` now contains `rtt_histogram` and `iat_histogram`.
+      - Each histogram data collection now contains `rx` and `tx`, where `tx` is always empty for RTT.
+      - Mean and std are renamed from `mean_rtt`, `std_rtt` to `mean` and `std`.
+- Added support for the GTP-U protocol.
+- Added an "Add IMIX distribution" button for stream configuration to the frontend.
+- Added a rename button for names of tests to make the renaming more intuitive.
+- Added a button to show/hide the percentile annotations for histograms.
+- Added an "undo test deletion" button.
+- Added the total, non-formatted number of lost / out-of-order frames as hover text to the stat overview.
+- Added the number of lost frames to the Status badge at the top.
+
+### Bug fixes
+- Fixed calculation of channel ID from dev port which may lead to crashes in breakout mode.
+- Fixed ARP and MAC settings being effectively tied to the base channel in breakout mode.
+- Fixed controller startup crash on Tofino 1 when `config.json` contains unsupported port settings (e.g., `BF_SPEED_400G` or `breakout_mode: 8`) by adding ASIC-aware config validation and fallback to defaults.
+- Fixed generated traffic exceeding the configured rate if using Poisson generation with Rate Precision mode and batches.
+- Fixed unstable IAT due to generation on multiple pipes in IAT precision mode. The IAT precision mode now has a toggle to switch between generation on a single pipe or an all available pipes. The default mode for a stream is now the rate precision mode.
+- Fixed errors that get thrown after passing the API validation not being propagated to the frontend.
+- Fixed crash for some histogram configs.
+- Fixed the stream settings enable button to be disabled during traffic generation.
+- Fixed settings export not being available during active traffic generation.
+- Fixed the visualization in the frontend degrading due to the limit parameter which derived the number of elements from the time when the experiment started.
+- Fixed optional `StreamSettings` fields (VxLAN, GTP-U, VLAN, IPv6, SRv6, MPLS) requiring all fields to be present in the JSON payload, even when disabled. The Rust `#[serde(untagged)]` enum deserialization now correctly defaults missing `Option<T>` fields to `None` via `#[serde(default)]`.
+- Fixed API validation not catching missing IPv4 settings when `ip_version` is omitted (defaults to IPv4 downstream).
+- Fixed API validation not catching missing `srv6_base_header` for SRv6 encapsulated streams.
+- Fixed frontend always sending default values for disabled protocol fields (e.g., VxLAN, GTP-U). Optional `StreamSettings` fields are now omitted from the payload when not required by the stream configuration.
+- Fixed stream settings not being populated with defaults when enabling a feature (e.g., VxLAN) without opening the settings modal. Settings are now reconciled automatically at save time.
+- Fixed RX aggregation in Dashboard Summary to group by RX port/channel instead of TX->RX mapping entries, preventing double counting in RX rate plot and RX rate summary table when multiple TX ports map to the same RX endpoint.
+
+### Other
+- Rust version bump for CI and docker image to 1.91
+- Update Controller dependencies
+- Added support to run the `p4tg.sh` management script on Asterfusion based devices.
+- Added `--nightly` flag to `p4tg.sh` management script.
+- Updated SDE install docs.
+
 ## v2.6.2
 ### New features
 - Moved the Mpps mode into the CBR mode. The unit for traffic generation (Gbps / Mpps) can now be selected on a per-stream basis. For backward compatibility, the Mpps mode is still supported by the REST API.
@@ -11,7 +71,7 @@
 
 ## v2.6.1
 - Fix breakout mode if `speed` is not manually configured in `config.json`.
-
+GET:/api/statistics`
 ## v2.6.0
 - Breakout mode: P4TG now supports traffic generation via breakout channels, i.e., 1x100G -> 4x25G and 1x40G -> 4x10G. Each channel can be configured individually. Breakout mode for a port must be configured in `config.json`:
 ```json

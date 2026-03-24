@@ -101,6 +101,10 @@ export const validateVNI = (vni: number) => {
     return !isNaN(vni) && (0 <= vni) && vni <= (2 ** 24 - 1)
 }
 
+export const validateTEID = (value: number) => {
+    return !isNaN(value) && (0 <= value) && value <= 0xffffffff
+}
+
 export const validateStreams = (s: Stream[]) => {
     const defaultStream = DefaultStream(1)
     if (!s) {
@@ -167,7 +171,7 @@ export const validateStreamSettings = (setting: StreamSettings[]) => {
                 }
             });
 
-            // Validate and add missing keys in specific nested properties (e.g., vlan, ethernet, ip, vxlan)
+            // Validate and add missing keys in specific nested properties (e.g., vlan, ethernet, ip, vxlan, gtpu)
             Object.keys(defaultStreamSetting).every(key => {
                 // @ts-ignore
                 if (!streamSetting[key]) {

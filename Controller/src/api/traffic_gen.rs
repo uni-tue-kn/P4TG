@@ -26,12 +26,14 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
+use rbfrt::error::RBFRTError;
 use serde::Deserialize;
+use serde_json::json;
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::api::server::Error;
-use crate::core::statistics::{RttHistogram, RttHistogramData};
+use crate::core::statistics::{Histogram, HistogramPacketPath};
 use crate::AppState;
 
 use crate::api::docs::traffic_gen::{
@@ -80,7 +82,8 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             streams: tg.streams.clone(),
             port_tx_rx_mapping: tg.port_mapping.clone(),
             duration: tg.duration,
-            histogram_config: Some(tg.histogram_config.clone()),
+            rtt_histogram_config: Some(tg.rtt_histogram_config.clone()),
+            iat_histogram_config: Some(tg.iat_histogram_config.clone()),
             name: tg.name.clone(),
         };
 
@@ -146,10 +149,22 @@ pub async fn configure_traffic_gen(
             // Just start a single test.
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
             match validate_request(&traffic_gen_data, port_mapping, is_tofino2) {
-                Ok(r) => {
+                Ok(_) => {
                     info!("Test validation successful.");
-                    start_single_test(&state, traffic_gen_data).await;
-                    (StatusCode::OK, Json(r)).into_response()
+                    match start_single_test(&state, traffic_gen_data).await {
+                        Ok(streams) => (StatusCode::OK, Json(streams)).into_response(),
+                        Err(e) => {
+                            let body = match &e {
+                                RBFRTError::GenericError { message } => {
+                                    info!("{message}");
+                                    json!({ "message": message })
+                                }
+                                _ => json!({ "message": e.to_string() }),
+                            };
+
+                            (StatusCode::BAD_REQUEST, Json(body)).into_response()
+                        }
+                    }
                 }
                 Err(e) => (StatusCode::BAD_REQUEST, Json(e)).into_response(),
             }
@@ -181,10 +196,14 @@ pub async fn configure_traffic_gen(
     }
 }
 
-pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -> Response {
+pub async fn start_single_test(
+    state: &Arc<AppState>,
+    payload: TrafficGenData,
+) -> Result<Vec<Stream>, RBFRTError> {
     let port_mapping = &state.port_mapping;
 
-    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(port_mapping);
+    let front_panel_dev_port_mappings =
+        generate_front_panel_to_dev_port_mappings(port_mapping, state.tofino2);
 
     // contains the description of the stream, i.e., packet size and rate
     // only look at active stream settings
@@ -218,14 +237,72 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
         &front_panel_dev_port_mappings,
     );
 
-    // Clear histogram config state and release lock when out of scope
+    // Clear RTT histogram config state and release lock when out of scope
     {
         let mut histogram_configs = state.rtt_histogram_monitor.lock().await;
         histogram_configs.histogram.clear();
     }
 
-    // Write histogram config into state. The tables will be later populated by init_histogram_config
-    let histogram_config_cloned = payload.histogram_config.clone();
+    // Clear IAT histogram config state and release lock when out of scope
+    {
+        let mut histogram_configs = state.iat_histogram_monitor.lock().await;
+        histogram_configs.histogram.clear();
+    }
+
+    // Write IAT histogram config into state. The tables will be later populated by init_histogram_config
+    let histogram_config_cloned = payload.iat_histogram_config.clone();
+    for (rx, channel_map) in histogram_config_cloned.unwrap_or_default() {
+        let front_panel_port = rx.parse::<u32>().unwrap_or(0);
+        for (channel, config) in channel_map {
+            let histogram_monitor = &mut state.iat_histogram_monitor.lock().await;
+            let channel_num = channel.parse::<u32>().unwrap_or(0);
+            let dev_port = front_panel_dev_port_mappings
+                .get(&front_panel_port)
+                .unwrap()
+                + channel_num;
+            // Create new histogram config with empty data from payload
+            histogram_monitor.histogram.insert(
+                dev_port,
+                Histogram {
+                    config: config.clone(),
+                    data: HistogramPacketPath::default(),
+                },
+            );
+
+            // For IAT histograms, also write an entry for the mapped TX front panel port
+            let tx_dev_port = tx_rx_port_mapping
+                .iter()
+                .find_map(|(k, &v)| (v == dev_port).then(|| k.clone()));
+            if let Some(tx_dev_port) = tx_dev_port {
+                let tx_dev_port_int = tx_dev_port.parse::<u32>().unwrap_or(0);
+                histogram_monitor.histogram.insert(
+                    tx_dev_port_int,
+                    Histogram {
+                        config,
+                        data: HistogramPacketPath::default(),
+                    },
+                );
+            }
+        }
+    }
+    // Write default IAT histogram config for active tx/rx ports that do not have a histogram config set
+    for (tx, rx) in tx_rx_port_mapping.clone() {
+        let histogram_monitor = &mut state.iat_histogram_monitor.lock().await;
+        if histogram_monitor.histogram.get_mut(&rx).is_none() {
+            info!("Adding default IAT histogram config for rx port {rx}");
+            histogram_monitor.histogram.insert(rx, Histogram::default());
+        }
+        let tx_int = tx.parse::<u32>().unwrap_or(0);
+        if histogram_monitor.histogram.get_mut(&tx_int).is_none() {
+            info!("Adding default IAT histogram config for tx port {tx_int}");
+            histogram_monitor
+                .histogram
+                .insert(tx_int, Histogram::default());
+        }
+    }
+
+    // Write RTT histogram config into state. The tables will be later populated by init_histogram_config
+    let histogram_config_cloned = payload.rtt_histogram_config.clone();
     for (rx, channel_map) in histogram_config_cloned.unwrap_or_default() {
         let front_panel_port = rx.parse::<u32>().unwrap_or(0);
         for (channel, config) in channel_map {
@@ -238,22 +315,19 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
             // Create new histogram config with empty data from payload
             histogram_monitor.histogram.insert(
                 dev_port,
-                RttHistogram {
+                Histogram {
                     config,
-                    data: RttHistogramData::default(),
+                    data: HistogramPacketPath::default(),
                 },
             );
         }
     }
-
-    // Write default histogram config for active rx ports that do not have a histogram config set
+    // Write default RTT histogram config for active rx ports that do not have a histogram config set
     for &rx in tx_rx_port_mapping.values() {
         let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
         if histogram_monitor.histogram.get_mut(&rx).is_none() {
-            info!("Adding default histogram config for rx port {rx}");
-            histogram_monitor
-                .histogram
-                .insert(rx, RttHistogram::default());
+            info!("Adding default RTT histogram config for rx port {rx}");
+            histogram_monitor.histogram.insert(rx, Histogram::default());
         }
     }
 
@@ -275,7 +349,8 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
             tg.stream_settings = payload.stream_settings.clone();
             tg.streams = payload.streams.clone();
-            tg.histogram_config = payload.histogram_config.unwrap_or_default();
+            tg.rtt_histogram_config = payload.rtt_histogram_config.unwrap_or_default();
+            tg.iat_histogram_config = payload.iat_histogram_config.unwrap_or_default();
             tg.mode = payload.mode;
             tg.duration = payload.duration;
             tg.name = payload.name;
@@ -293,13 +368,9 @@ pub async fn start_single_test(state: &Arc<AppState>, payload: TrafficGenData) -
             }
 
             info!("Traffic generation started.");
-            (StatusCode::OK, Json(streams)).into_response()
+            Ok(streams)
         }
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(Error::new(format!("{err:#?}"))),
-        )
-            .into_response(),
+        Err(err) => Err(err),
     }
 }
 

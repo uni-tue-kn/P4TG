@@ -18,7 +18,7 @@
  */
 
 use crate::AppState;
-use crate::{api::docs::histogram::EXAMPLE_GET_1, core::statistics::RttHistogramConfig};
+use crate::{api::docs::histogram::EXAMPLE_GET_1, core::statistics::HistogramConfig};
 use axum::debug_handler;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -34,13 +34,13 @@ use std::{collections::HashMap, sync::Arc};
     responses(
         (status = 200,
         description = "Returns the histogram configuration of all RX ports.",
-        body = HashMap<u32, RttHistogramConfig>,
+        body = HashMap<u32, HistogramConfig>,
         example = json!(*EXAMPLE_GET_1)
         ))
 )]
 pub async fn config(State(state): State<Arc<AppState>>) -> Response {
     let histogram_monitor = state.rtt_histogram_monitor.lock().await;
-    let mut port_config_map: HashMap<u32, RttHistogramConfig> = HashMap::new();
+    let mut port_config_map: HashMap<u32, HistogramConfig> = HashMap::new();
 
     for (port, hist) in histogram_monitor.histogram.iter() {
         port_config_map.insert(*port, hist.config.clone());

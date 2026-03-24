@@ -6,7 +6,7 @@
   ![License](https://img.shields.io/badge/licence-Apache%202.0-blue)
   ![Language](https://img.shields.io/badge/lang-rust-darkred)
   ![Built with P4](https://img.shields.io/badge/built%20with-P4-orange)
-  ![Version](https://img.shields.io/badge/v-2.6.2-yellow)
+  ![Version](https://img.shields.io/badge/v-2.7.1-yellow)
   [![Controller Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-image.yml)
   [![Data Plane Build](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/docker-sde-image.yml)
 </div>
@@ -22,17 +22,16 @@
   - [Features](#features)
 - [🚀 Installation \& Quick Start](#-installation--quick-start)
   - [Quick Start](#quick-start)
-  - [Manual Installation](#manual-installation)
-    - [Data Plane](#data-plane)
-    - [Control Plane](#control-plane)
   - [Configuration](#configuration)
     - [Configuration Options](#configuration-options)
     - [64-port Tofino](#64-port-tofino)
 - [🤖 Test Automation](#-test-automation)
 - [🔄 Update Guide](#-update-guide)
+  - [Manually](#manually)
 - [📚 Documentation](#-documentation)
 - [🛠️ Development](#️-development)
 - [🖼️ Preview](#️-preview)
+- [🏢 Who's Using P4TG](#-whos-using-p4tg)
 - [📖 Cite](#-cite)
 
 ---
@@ -59,7 +58,7 @@ P4TG combines a **P4 data plane program**, a **Rust-based control plane**, and a
 
 ### Traffic Generation
 - **Tofino 1:** Up to **1 Tb/s** across 10 × 100 Gb/s ports, or 40 × 10/25 Gb/s
-- **Tofino 2:** Up to **4 Tb/s** across 10 × 400 Gb/s ports, or 40 × 10/25 Gb/s
+- **Tofino 2:** Up to **4 Tb/s** across 10 × 400 Gb/s ports, or 40 × 10/25/100 Gb/s, or 80 × 10/25/50 Gb/s in channelized mode
 
 Generated packet headers can be fully customized, including:
 - Ethernet
@@ -98,35 +97,36 @@ See the full [Changelog](./docs/CHANGELOG.md).
 
 ### Features
 
-| Feature                       | Status         |
-| ----------------------------- | -------------- |
-| Statistics                    | ✅ Available    |
-| Tofino 1 & 2 support          | ✅ Available    |
-| Web frontend (React)          | ✅ Available    |
-| Rust backend                  | ✅ Available    |
-| Ethernet, IPv4, IPv6          | ✅ Available    |
-| VLAN, QinQ, MPLS, VxLAN, SRv6 | ✅ Available    |
-| ARP replies                   | ✅ Available    |
-| Dark mode                     | ✅ Available    |
-| RTT histogram & percentiles   | ✅ Available    |
-| Automated testing             | ✅ Available    |
-| File reporting                | ✅ Available    |
-| Test profiles                 | ⚠️ Experimental |
-| Localization                  | ⚠️ Experimental |
-| NDP                           | ⏳ Planned      |
-| NETCONF                       | ⏳ Planned      |
+| Feature                                       | Status         |
+| --------------------------------------------- | -------------- |
+| Statistics                                    | ✅ Available    |
+| Tofino 1 & 2 support                          | ✅ Available    |
+| Web frontend (React)                          | ✅ Available    |
+| Rust backend                                  | ✅ Available    |
+| Ethernet, IPv4, IPv6                          | ✅ Available    |
+| VLAN, QinQ, MPLS, VxLAN, GTP-U, SRv6          | ✅ Available    |
+| ARP replies                                   | ✅ Available    |
+| Dark mode                                     | ✅ Available    |
+| IAT+RTT histogram & percentiles               | ✅ Available    |
+| Automated testing                             | ✅ Available    |
+| Line rate traffic patterns (e.g., flashcrowd) | ✅ Available    |
+| File reporting                                | ✅ Available    |
+| Test profiles                                 | ⚠️ Experimental |
+| Localization                                  | ⚠️ Experimental |
+| NDP                                           | ⏳ Planned      |
+| NETCONF                                       | ⏳ Planned      |
 
 ## 🚀 Installation & Quick Start
 
-P4TG requires a fully set up [SDE](https://github.com/p4lang/open-p4studio) with `$SDE` and `$SDE_INSTALL` environment variables set.
-A detailed installation guide for **open-p4studio** and P4TG can be found [here](./docs/SDE.md).
+P4TG requires a fully set up bf-SDE with `$SDE` and `$SDE_INSTALL` environment variables set.
+A detailed installation guide for the Intel SDE and P4TG can be found [here](./docs/INSTALL.md).
 
 ### Quick Start
 
 The provided `p4tg.sh` script automates the installation of the data and control plane on Debian- / Ubuntu-based systems, provided that the SDE is installed correctly.
 Make sure that the environment variables `$SDE` and `$SDE_INSTALL` are set. Run with `sudo -E` to pass environment variables.
 ```bash
-Usage: ./p4tg.sh [install|update|start|stop|restart|status]
+Usage: sudo -E ./p4tg.sh [install|update|start|stop|restart|status][--nightly]
 ```
 Clone P4TG into `/opt/P4TG` and simply run `sudo -E ./p4tg.sh install` (tested on Debian-based systems). Change the paths at the top of `p4tg.sh` if needed.
 
@@ -141,38 +141,9 @@ The `start` command will:
 - Start the data plane and wait for it to become ready.
 - Start the control plane docker image.
 
-### Manual Installation
-
-#### Data Plane
-```bash
-cd P4-Implementation
-```
-
-- **Tofino 1:**  
-  ```bash
-  make compile TARGET=tofino
-  make start TARGET=tofino
-  ```
-- **Tofino 2:**  
-  ```bash
-  make compile TARGET=tofino2
-  make start TARGET=tofino2
-  ```
-
-
-
-**Tested on:**
-- SDE 9.9.0 (up to v2.0.0)  
-- SDE 9.13.{0,...,4}  
-
-#### Control Plane
-```bash
-cd Controller
-docker compose up
-```
-
-- Starts a **REST-API server** on port `P4TG_PORT` (default: `8000`) at `/api`  
-- Serves the **React GUI** at `/`  
+The control plane docker image:
+- Starts a REST-API server on port `P4TG_PORT` (default: `8000`) at `/api`  
+- Serves the React GUI at `/`  
 - Access GUI: `http://<tofino-controller-ip>:P4TG_PORT`
 - Access API: `http://<tofino-controller-ip>:P4TG_PORT/api`
 
@@ -188,7 +159,7 @@ docker compose up
 
 **Config file:** `Controller/config.json`  
 - Specify ports for traffic generation. Per default, front panel ports 1 - 10 are configured automatically.
-- Configure MAC address for ARP replies, breakout mode, and port settings. Port settings can further be changed during runtime through the API or the GUI.
+- Configure MAC address for ARP replies, `channel_count`, and port settings. Port settings can further be changed during runtime through the API or the GUI.
 
 Example:
 ```json
@@ -202,8 +173,14 @@ Example:
     {
       "port": 2,
       "mac": "fa:a6:68:e0:3d:70",
-      "breakout_mode": true,
-      "speed": "BF_SPEED_100G"
+      "channel_count": 4,
+      "speed": "BF_SPEED_25G"
+    },
+    {
+      "port": 4,
+      "mac": "d6:67:75:a1:94:c3",
+      "channel_count": 8,
+      "speed": "BF_SPEED_50G"
     },
     {
       "port": 3,
@@ -211,20 +188,37 @@ Example:
       "speed": "BF_SPEED_100G",
       "fec": "BF_FEC_TYP_NONE",
       "auto_negotiation": "PM_AN_FORCE_DISABLE"
-    },
+    }
   ]
 }
 ```
 
 #### Configuration Options
 
-| Option             | Valid Values                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------ |
-| `mac`              | Any valid MAC address                                                                |
-| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
-| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                       |
-| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                      |
-| `breakout_mode`    | `true` · `false` (can be combined with 40G / 100G speeds)                            |
+| Option             | Valid Values                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `mac`              | Any valid MAC address                                                                                 |
+| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_50G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
+| `channel_count`    | `4` · `8`                                                                                             |
+| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                                        |
+| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                                       |
+| `breakout_mode`    | Deprecated: `true` · `false`                                                                          |
+
+Notes:
+- `speed` always describes the per-channel speed. Without `channel_count`, the port is configured as `1x<speed>`.
+- Valid `channel_count` combinations are:
+  - Tofino 1: `4x10G`, `4x25G`
+  - Tofino 2: `4x10G`, `4x25G`, `4x100G`, `8x10G`, `8x25G`, `8x50G`
+- `channel_count: 4` with `speed: 100G` on Tofino 2 uses channels `0,2,4,6`.
+- `channel_count: 4` with `speed: 10G/25G` uses channels `0,1,2,3`.
+- Runtime speed changes through the GUI or `POST /api/ports` are rejected if they would require a different active channel layout. For example, `4x25G -> 4x100G` requires updating `config.json` and restarting the controller.
+- Backward compatibility: `breakout_mode: true` is deprecated, logs a warning, and is interpreted as legacy 4-channel breakout. `breakout_mode: false` is deprecated, logs a warning, and disables channelization.
+- ARP reply and MAC can be changed at runtime per `port/channel` in the Ports GUI or via `POST /api/ports/arp` (optional `channel` field).
+- Runtime ARP/MAC changes are kept in controller memory and are reset to `config.json` values on controller restart.
+- Default/mandatory FEC rules:
+  - `400G`, `4x100G`, and `8x50G` use `BF_FEC_TYP_REED_SOLOMON`
+  - `4x10G`, `4x25G`, `1x10G`, `1x25G`, `1x40G`, `1x50G`, and `1x100G` default to `BF_FEC_TYP_NONE`
+  - `1x50G` additionally allows `BF_FEC_TYP_REED_SOLOMON` to be configured manually if needed
 
 
 #### 64-port Tofino
@@ -267,8 +261,10 @@ See [README](p4tg_test_automation/README.md) for details.
 ---
 
 ## 🔄 Update Guide
+Run `sudo -E p4tg.sh update`.
 
-1. Rebuild the data plane as described [above](#data-plane).  
+### Manually
+1. Rebuild the data plane as described [here](docs/INSTALL.md#data-plane).  
 2. Update controller:  
    ```bash
    docker compose pull
@@ -296,6 +292,25 @@ For development instructions, please see [here](./docs/DEVELOPMENT.md)
 <img src="docs/img/preview-3.png" alt="Preview 3" width="600" style="border-radius:10px; border:1px solid #000;"/>
 <img src="docs/img/preview-4.png" alt="Preview 4" width="600" style="border-radius:10px; border:1px solid #000;"/>
 <img src="docs/img/preview-5.png" alt="Preview 5" width="600" style="border-radius:10px; border:1px solid #000;"/>
+
+---
+
+## 🏢 Who's Using P4TG
+
+<div align="center">
+  <a href="#"><img src="docs/img/logos/airbus.png" alt="Airbus" height="80"/></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#"><img src="docs/img/logos/bdbos.png" alt="BDBOS" height="80"/></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#"><img src="docs/img/logos/bell.jpg" alt="Bell" height="80"/></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#"><img src="docs/img/logos/belwue.png" alt="BelWü" height="80"/></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#"><img src="docs/img/logos/eci.png" alt="ECI" height="80"/></a>
+
+  ... and many more!
+
+</div>
 
 ---
 

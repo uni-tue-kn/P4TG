@@ -19,6 +19,11 @@
 
 use crate::api::docs;
 use crate::api::server::Error;
+use crate::core::traffic_gen_core::const_definitions::{
+    DEFAULT_FORWARD_TABLE, ETHERNET_IP_HEADER_REPLACE_TABLE, IAT_HISTOGRAM_TABLE, IS_EGRESS_TABLE,
+    IS_TX_EGRESS_TABLE, MONITORING_FORWARD_TABLE, MPLS_HEADER_REPLACE_TABLE, PATTERN_CONFIG_TABLE,
+    PATTERN_TABLE, RTT_HISTOGRAM_TABLE, STREAM_FORWARD_TABLE, VLAN_HEADER_REPLACE_TABLE,
+};
 use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -73,20 +78,22 @@ pub struct Value {
 /// Returns the content of the P4 tables
 pub async fn tables(State(state): State<Arc<AppState>>) -> Response {
     let mut table_names = vec![
-        "ingress.p4tg.monitor_forward",
-        "ingress.p4tg.forward",
+        MONITORING_FORWARD_TABLE,
+        DEFAULT_FORWARD_TABLE,
         "ingress.p4tg.frame_type.frame_type_monitor",
         "ingress.p4tg.frame_type.ethernet_type_monitor",
-        "ingress.p4tg.tg_forward",
+        STREAM_FORWARD_TABLE,
         "ingress.arp.arp_reply",
         "egress.frame_size_monitor",
-        "egress.is_egress",
-        "egress.is_tx_recirc",
-        "egress.header_replace.header_replace",
-        "egress.header_replace.vlan_header_replace",
-        "egress.header_replace.mpls_replace_c.mpls_header_replace",
-        "ingress.p4tg.rtt.rtt_histogram",
-        "egress.is_egress",
+        IS_EGRESS_TABLE,
+        IS_TX_EGRESS_TABLE,
+        ETHERNET_IP_HEADER_REPLACE_TABLE,
+        VLAN_HEADER_REPLACE_TABLE,
+        MPLS_HEADER_REPLACE_TABLE,
+        RTT_HISTOGRAM_TABLE,
+        IAT_HISTOGRAM_TABLE,
+        PATTERN_TABLE,
+        PATTERN_CONFIG_TABLE,
     ];
 
     if state.tofino2 {

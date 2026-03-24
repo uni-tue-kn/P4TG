@@ -17,139 +17,275 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { RttHistogramConfig } from "../../common/Interfaces";
+import { HistogramConfig, unitOptions } from "../../common/Interfaces";
 import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
 
-const units = [
-    { label: "ns", multiplier: 1 },
-    { label: "µs", multiplier: 1_000 },
-    { label: "ms", multiplier: 1_000_000 },
-];
+type HistogramType = "rtt" | "iat";
+
 
 const HistogramModal = ({
     show,
     hide,
-    data,
+    rtt_data,
+    iat_data,
     disabled,
     pid,
     channel,
-    set_data
+    set_rtt_data,
+    set_iat_data
 }: {
     show: boolean,
     hide: () => void,
-    data: RttHistogramConfig,
+    rtt_data: HistogramConfig,
+    iat_data: HistogramConfig,
     disabled: boolean,
     pid: number,
     channel: number
-    set_data: (pid: number, channel: number, updated: RttHistogramConfig) => void,
+    set_rtt_data: (pid: number, channel: number, updated: HistogramConfig) => void,
+    set_iat_data: (pid: number, channel: number, updated: HistogramConfig) => void,
 }) => {
 
-    const [tmp_data, set_tmp_data] = useState(data || [])
+    const defaultPercentiles = [0.25, 0.5, 0.75, 0.9];
+    const buildConfig = (cfg?: HistogramConfig): HistogramConfig => ({
+        min: cfg?.min ?? 1500,
+        max: cfg?.max ?? 2500,
+        num_bins: cfg?.num_bins ?? 10,
+        percentiles: cfg?.percentiles ?? defaultPercentiles,
+    });
+
+    const [tmpConfigs, setTmpConfigs] = useState<{ rtt: HistogramConfig; iat: HistogramConfig }>(() => ({
+        rtt: buildConfig(rtt_data),
+        iat: buildConfig(iat_data),
+    }));
     const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
-    const [unit, setUnit] = useState("ns");
-    const getMultiplier = (unit: string) => units.find(u => u.label === unit)?.multiplier || 1;
+    const [unitSelection, setUnitSelection] = useState<Record<HistogramType, string>>({ rtt: "ns", iat: "ns" });
+    const getMultiplier = (unit: string) => unitOptions.find(u => u.label === unit)?.multiplier || 1;
+
+    const [percentileInput, setPercentileInput] = useState<{ rtt: string; iat: string }>({
+        rtt: (rtt_data?.percentiles ?? defaultPercentiles).join(", "),
+        iat: (iat_data?.percentiles ?? defaultPercentiles).join(", "),
+    });
 
     // useEffect to reset tmp_data when data changes
     useEffect(() => {
         if (show) {
-            const percentiles = data?.percentiles ?? [0.25, 0.5, 0.75, 0.9];
-            set_tmp_data({
-                min: data?.min ?? 1500,
-                max: data?.max ?? 2500,
-                num_bins: data?.num_bins ?? 10,
-                percentiles: data?.percentiles ?? percentiles,
+            const rttConfig = buildConfig(rtt_data);
+            const iatConfig = buildConfig(iat_data);
+            setTmpConfigs({
+                rtt: rttConfig,
+                iat: iatConfig,
             });
-            setPercentileInput(percentiles.join(", "));
-            setUnit("ns");
+            setPercentileInput({
+                rtt: (rttConfig.percentiles ?? defaultPercentiles).join(", "),
+                iat: (iatConfig.percentiles ?? defaultPercentiles).join(", "),
+            });
+            setUnitSelection({ rtt: "ns", iat: "ns" });
             setAlertMessage(null);
         }
-    }, [show]); // This will run whenever `data` prop changes
+    }, [show, rtt_data, iat_data]);
 
     const hideRestore = () => {
-        set_tmp_data({ ...data });
-        setUnit("ns");
+        const rttConfig = buildConfig(rtt_data);
+        const iatConfig = buildConfig(iat_data);
+        setTmpConfigs({
+            rtt: rttConfig,
+            iat: iatConfig,
+        });
+        setPercentileInput({
+            rtt: (rttConfig.percentiles ?? defaultPercentiles).join(", "),
+            iat: (iatConfig.percentiles ?? defaultPercentiles).join(", "),
+        });
+        setUnitSelection({ rtt: "ns", iat: "ns" });
         setAlertMessage(null);
         hide();
     };
 
-    const [percentileInput, setPercentileInput] = useState(
-        tmp_data.percentiles?.join(", ") || ""
-    );
-
-    const handleUnit = (newUnit: string) => {
+    const handleUnit = (type: HistogramType, newUnit: string) => {
         // Changes the displayed value for min and max if the unit is changed in the dropdown, e.g., 2500 ns -> 2.5 us
-        const unitMap = Object.fromEntries(units.map(u => [u.label, u.multiplier]));
+        const unitMap = Object.fromEntries(unitOptions.map(u => [u.label, u.multiplier]));
 
-        const currentFactor = unitMap[unit];
+        const currentFactor = unitMap[unitSelection[type]];
         const newFactor = unitMap[newUnit];
         const factor = currentFactor / newFactor;
 
-        setUnit(newUnit);
-        tmp_data.min *= factor;
-        tmp_data.max *= factor;
+        setTmpConfigs(prev => ({
+            ...prev,
+            [type]: {
+                ...prev[type],
+                min: prev[type].min * factor,
+                max: prev[type].max * factor,
+            },
+        }));
+
+        setUnitSelection(prev => ({ ...prev, [type]: newUnit }));
     };
 
-    const submit = () => {
-        const min = tmp_data.min * getMultiplier(unit);
-        const max = tmp_data.max * getMultiplier(unit);
+    const validateConfig = (config: HistogramConfig, unit: string, label: string): HistogramConfig | null => {
+        const min = config.min * getMultiplier(unit);
+        const max = config.max * getMultiplier(unit);
+        const percentiles = (config.percentiles && config.percentiles.length > 0 ? config.percentiles : defaultPercentiles);
+
+        if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(config.num_bins)) {
+            setAlertMessage(`${label}: All fields must be valid numbers.`);
+            return null;
+        }
 
         if (min >= max) {
-            setAlertMessage("Minimum value must be less than maximum value of range.");
-            return;
+            setAlertMessage(`${label}: Minimum value must be less than maximum value of range.`);
+            return null;
         }
-        if (tmp_data.num_bins > 500) {
-            setAlertMessage("500 bins per port are supported at maximum.");
-            return;
+        if (config.num_bins > 500) {
+            setAlertMessage(`${label}: 500 bins per port are supported at maximum.`);
+            return null;
         }
-        if (tmp_data.num_bins > (max - min)) {
-            setAlertMessage("Too many bins for too less of range. Increase range, or decrease number of bins.");
-            return;
+        if (config.num_bins > (max - min)) {
+            setAlertMessage(`${label}: Too many bins for too less of range. Increase range, or decrease number of bins.`);
+            return null;
         }
         if (min > 2 ** 32 - 1) {
-            setAlertMessage("Minimum range exceeds range of 32-bit.");
-            return;
+            setAlertMessage(`${label}: Minimum range exceeds range of 32-bit.`);
+            return null;
         }
         if (max > 2 ** 32 - 1) {
-            setAlertMessage("Maximum range exceeds range of 32-bit.");
-            return;
+            setAlertMessage(`${label}: Maximum range exceeds range of 32-bit.`);
+            return null;
         }
-        let percentiles: number[];
-        if (tmp_data.percentiles) {
-            const invalid = tmp_data.percentiles.some(
-                (p: number) => typeof p !== "number" || p <= 0.0 || p >= 1.0
-            );
-            if (invalid) {
-                setAlertMessage("All percentiles must be numbers between 0.0 and 1.0.");
-                return;
-            }
-            if (tmp_data.percentiles.length > 10) {
-                setAlertMessage("Too many percentiles. At most 10 percentiles are supported.");
-                return;
-            }
-            percentiles = tmp_data.percentiles;
-        } else {
-            percentiles = [0.25, 0.5, 0.75, 0.9];
+        const invalid = percentiles.some(
+            (p: number) => typeof p !== "number" || p <= 0.0 || p >= 1.0
+        );
+        if (invalid) {
+            setAlertMessage(`${label}: All percentiles must be numbers between 0.0 and 1.0.`);
+            return null;
+        }
+        if (percentiles.length > 10) {
+            setAlertMessage(`${label}: Too many percentiles. At most 10 percentiles are supported.`);
+            return null;
         }
 
-        setAlertMessage(null);
-
-        set_data(pid, channel, {
-            num_bins: tmp_data.num_bins,
+        return {
+            num_bins: config.num_bins,
             min,
             max,
             percentiles: percentiles,
-        });
+        };
+    };
+
+    const submit = () => {
+        const validatedRTT = validateConfig(tmpConfigs.rtt, unitSelection.rtt, "RTT histogram");
+        if (!validatedRTT) return;
+
+        const validatedIAT = validateConfig(tmpConfigs.iat, unitSelection.iat, "IAT histogram");
+        if (!validatedIAT) return;
+
+        setAlertMessage(null);
+
+        set_rtt_data(pid, channel, validatedRTT);
+        set_iat_data(pid, channel, validatedIAT);
 
         hide();
 
         //updateConfig(pid, min, max, tmp_data.num_bins)
     }
 
-    const handleChange = (field: keyof RttHistogramConfig, value: string) => {
-        set_tmp_data(prev => ({ ...prev, [field]: Number(value) }));
+    const handleChange = (type: HistogramType, field: keyof HistogramConfig, value: string) => {
+        setTmpConfigs(prev => ({
+            ...prev,
+            [type]: { ...prev[type], [field]: Number(value) },
+        }));
     };
+
+    const renderHistogramControls = (type: HistogramType, label: string, description: string) => {
+        const config = tmpConfigs[type];
+
+        return <>
+            <h5 className="mb-2">{label}</h5>
+            <p className="mb-3">{description}</p>
+
+            <Form.Group as={Row} className=" mb-3 align-items-center">
+                <Form.Label className={"col-3 text-start"} column sm={2}>Range</Form.Label>
+
+                <Col sm={3}>
+                    <Form.Control
+                        type="number"
+                        value={config.min}
+                        onChange={(e) => handleChange(type, "min", e.target.value)}
+                        required
+                        disabled={disabled}
+                    />
+                </Col>
+                <Col sm={1} className="text-center">
+                    —
+                </Col>
+                <Col sm={3}>
+                    <Form.Control
+                        type="number"
+                        value={config.max}
+                        onChange={(e) => handleChange(type, "max", e.target.value)}
+                        required
+                        disabled={disabled}
+                    />
+                </Col>
+                <Col sm={3}>
+                    <Form.Select value={unitSelection[type]} disabled={disabled}
+                        onChange={(e) => handleUnit(type, e.target.value)}>
+                        {unitOptions.map(u => (
+                            <option key={u.label} value={u.label}>{u.label}</option>
+                        ))}
+                    </Form.Select>
+                </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3">
+                <Form.Label column sm={2}>Number of bins</Form.Label>
+                <Col sm={8}>
+                    <Form.Control
+                        type="number"
+                        value={config.num_bins}
+                        onChange={(e) => handleChange(type, "num_bins", e.target.value)}
+                        min={1}
+                        required
+                        disabled={disabled}
+                    />
+                </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-4">
+                <Form.Label column sm={2}>Percentiles</Form.Label>
+                <Col sm={8}>
+                    <Form.Control
+                        type="text"
+                        value={percentileInput[type]}
+                        onChange={e => {
+                            const input = e.target.value;
+                            setPercentileInput(prev => ({ ...prev, [type]: input }));
+
+                            const values = input
+                                .split(",")
+                                .map(v => v.trim())
+                                .filter(v => v.length > 0)
+                                .map(Number)
+                                .filter(v => !isNaN(v));
+
+                            setTmpConfigs(prev => ({
+                                ...prev,
+                                [type]: {
+                                    ...prev[type],
+                                    percentiles: values
+                                }
+                            }));
+                        }}
+                        placeholder="e.g. 0.25, 0.5, 0.9"
+                        disabled={disabled}
+                    />
+                    <Form.Text className="text-muted">
+                        Enter percentiles as comma-separated values between 0.0 and 1.0.
+                    </Form.Text>
+                </Col>
+            </Form.Group>
+        </>
+    }
 
     return <Modal show={show} size="lg" onHide={hideRestore}>
         <Modal.Header closeButton>
@@ -157,96 +293,25 @@ const HistogramModal = ({
         </Modal.Header>
         <form onSubmit={submit}>
             <Modal.Body>
-                <p className="mb-3">
-                    Configure how the incoming data on this RX port will be processed in the RTT histogram. Adjust the range, unit, and bin count to tailor the output.
-                </p>
-
                 {alertMessage && (
                     <Alert variant="danger" onClose={() => setAlertMessage(null)} dismissible>
                         {alertMessage}
                     </Alert>
                 )}
 
+                {renderHistogramControls(
+                    "rtt",
+                    "RTT Histogram",
+                    "Configure how the incoming data on this RX port will be processed in the RTT histogram. Adjust the range, unit, and bin count to tailor the output."
+                )}
 
+                <hr />
 
-                <Form.Group as={Row} className=" mb-3 align-items-center">
-                    <Form.Label className={"col-3 text-start"} column sm={2}>Range</Form.Label>
-
-                    <Col sm={3}>
-                        <Form.Control
-                            type="number"
-                            value={tmp_data.min}
-                            onChange={(e) => handleChange("min", e.target.value)}
-                            required
-                            disabled={disabled}
-                        />
-                    </Col>
-                    <Col sm={1} className="text-center">
-                        —
-                    </Col>
-                    <Col sm={3}>
-                        <Form.Control
-                            type="number"
-                            value={tmp_data.max}
-                            onChange={(e) => handleChange("max", e.target.value)}
-                            required
-                            disabled={disabled}
-                        />
-                    </Col>
-                    <Col sm={3}>
-                        <Form.Select value={unit} disabled={disabled}
-                            onChange={(e) => handleUnit(e.target.value)}>
-                            {units.map(u => (
-                                <option key={u.label} value={u.label}>{u.label}</option>
-                            ))}
-                        </Form.Select>
-                    </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3">
-                    <Form.Label column sm={2}>Number of bins</Form.Label>
-                    <Col sm={8}>
-                        <Form.Control
-                            type="number"
-                            value={tmp_data.num_bins}
-                            onChange={(e) => handleChange("num_bins", e.target.value)}
-                            min={1}
-                            required
-                            disabled={disabled}
-                        />
-                    </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3">
-                    <Form.Label column sm={2}>Percentiles</Form.Label>
-                    <Col sm={8}>
-                        <Form.Control
-                            type="text"
-                            value={percentileInput}
-                            onChange={e => {
-                                const input = e.target.value;
-                                setPercentileInput(input);
-
-                                const values = input
-                                    .split(",")
-                                    .map(v => v.trim())
-                                    .filter(v => v.length > 0)
-                                    .map(Number)
-                                    .filter(v => !isNaN(v));
-
-                                set_tmp_data(prev => ({
-                                    ...prev,
-                                    percentiles: values
-                                }));
-                            }}
-                            placeholder="e.g. 0.25, 0.5, 0.9"
-                            disabled={disabled}
-                        />
-                        <Form.Text className="text-muted">
-                            Enter percentiles as comma-separated values between 0.0 and 1.0.
-                        </Form.Text>
-                    </Col>
-                </Form.Group>
+                {renderHistogramControls(
+                    "iat",
+                    "IAT Histogram",
+                    "Configure the inter-arrival time histogram for this RX port. Use the same controls to tailor the range and resolution. The IAT histogram will be measured for TX/RX ports."
+                )}
             </Modal.Body>
 
             <Modal.Footer>
@@ -259,8 +324,6 @@ const HistogramModal = ({
             </Modal.Footer>
         </form>
     </Modal>
-
-
 }
 
 export default HistogramModal

@@ -46,6 +46,7 @@ const bit<8> IP_PROTOCOL_IPV6 = 41;
 const bit<8> IP_PROTOCOL_SRH = 43;
 const bit<8> IP_PROTOCOL_P4TG = 110;
 const bit<16> UDP_VxLAN_PORT = 4789;
+const bit<16> UDP_GTPU_PORT = 2152;
 const bit<16> UDP_P4TG_PORT = 50083;
 
 const bit<8> TG_MODE_ANALYZE = 4;
@@ -198,6 +199,13 @@ header vxlan_header_t {
     bit<8> vxlan_reserved2;
 }
 
+header gtpu_t {
+    bit<8> flags;
+    bit<8> message_type;
+    bit<16> length;
+    bit<32> teid;
+}
+
 struct header_t {
     ethernet_h ethernet;
     ipv6_t sr_ipv6;
@@ -217,6 +225,7 @@ struct header_t {
     vlan_t vlan;
     q_in_q_t q_in_q;
     vxlan_header_t vxlan;
+    gtpu_t gtpu;
     arp_t arp;
 }
 
@@ -234,9 +243,13 @@ struct ingress_metadata_t {
     bit<32> mean_iat_diff;
     PortId_t ig_port;
     bit<1> vxlan;
+    bit<1> gtpu;
     bit<1> arp_reply;
     bit<8> tg_mode;
     bit<16> bin_index;
+    bit<16> bin_index_iat;
+    bit<8> pattern_color;
+    bit<32> pattern_interval_number;
 }
 
 struct egress_metadata_t {

@@ -25,5 +25,7 @@ use std::sync::Arc;
 
 /// Config endpoint
 pub async fn config(State(state): State<Arc<AppState>>) -> Response {
-    Json(state.config.lock().await.clone()).into_response()
+    let mut config = state.config.lock().await.clone();
+    config.materialize_channel_macs(state.tofino2);
+    Json(config).into_response()
 }

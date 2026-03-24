@@ -31,6 +31,7 @@ interface Props {
 }
 
 const IPv6 = ({ data, set_data, running }: Props) => {
+    if (!data.ipv6) return null;
     return <>
         <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
             <Form.Label className={"col-3 text-start"}>

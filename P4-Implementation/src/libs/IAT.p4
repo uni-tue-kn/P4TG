@@ -108,6 +108,29 @@ control IAT(inout header_t hdr,
         iat = (bit<32>)(ig_intr_md.ingress_mac_tstamp - last_rx);
     }
 
+    DirectCounter<bit<64>>(CounterType_t.PACKETS) histogram_counter;
+
+    action count_histogram_bin(bit<16> bin_index) {
+        histogram_counter.count();
+        ig_md.bin_index_iat = bin_index;
+    }
+
+    action count_missed_bin(){
+        histogram_counter.count();
+    }
+    table iat_histogram {
+        key = {
+            ig_md.ig_port: exact;
+            ig_md.iat: ternary;
+        }
+        actions = {
+            count_histogram_bin;
+            count_missed_bin;
+        } 
+        counters = histogram_counter;
+        default_action = count_missed_bin;
+        size = 4196;
+    }
 
 
     apply {
@@ -131,6 +154,18 @@ control IAT(inout header_t hdr,
             else { // mean overflow; reset
                 reset_mae_iat.execute(ig_intr_md.ingress_port);
             }
+
+            /*
+            The iat_histogram table models the bins of the histogram.
+            Because we cannot use the range match type here, a bin is modelled by multiple ternary entries.
+            Those entries are mapped to a single bin using the bin_index action parameter.
+            The ternary entries to model a single histogram bin are computed in the control plane.
+            */
+            iat_histogram.apply();
+            if (ig_md.bin_index_iat != 65535) {
+                // bin_index is not used in the data plane. It is included in a condition, to avoid removal by compiler optimization
+                ig_md.bin_index_iat = 0;
+            }            
 
             // packet is not colored red
             // this limits the digest rate to a control plane specified value

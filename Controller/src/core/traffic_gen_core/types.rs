@@ -25,7 +25,7 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use utoipa::ToSchema;
 
-use crate::core::statistics::RttHistogramConfig;
+use crate::core::statistics::HistogramConfig;
 
 /// Describes the supported encapsulations of P4TG.
 /// Currently, MPLS, VLAN, QinQ, and SRv6 are supported.
@@ -119,6 +119,25 @@ pub struct VxLAN {
     pub vni: u32,
 }
 
+/// Defines a GTP-U Tunnel
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct GtpU {
+    /// Outer IP src
+    #[schema(example = "192.168.178.10")]
+    #[schema(value_type = String)]
+    pub ip_src: Ipv4Addr,
+    /// Outer IP dst
+    #[schema(example = "192.168.178.5")]
+    #[schema(value_type = String)]
+    pub ip_dst: Ipv4Addr,
+    /// Outer IP tos
+    pub ip_tos: u8,
+    /// Outer UDP source
+    pub udp_source: u16,
+    /// Tunnel Endpoint Identifier
+    pub teid: u32,
+}
+
 /// Defines an MPLS LSE
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct MPLSHeader {
@@ -151,11 +170,16 @@ pub struct TrafficGenData {
     /// Mapping from TX-front_panel/channel to RX-front-panel/channel
     pub(crate) port_tx_rx_mapping: HashMap<String, HashMap<String, RxTarget>>,
     /// The duration of this test in seconds.
+    #[serde(default)]
     pub(crate) duration: Option<u32>,
-    /// Mapping between RX port and histogram config.
-    pub(crate) histogram_config: Option<HashMap<String, HashMap<String, RttHistogramConfig>>>,
+    /// Mapping between RX port and RTT histogram config.
+    #[serde(default)]
+    pub(crate) rtt_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,
+    /// Mapping between RX port and IAT histogram config.
+    #[serde(default)]
+    pub(crate) iat_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,
     /// The name of the test. This is used to identify the test in the UI.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,
 }
 
@@ -237,29 +261,33 @@ pub struct StreamSetting {
     /// Egress port to which the stream should be sent.
     pub port: u32,
     /// Channel of the egress port to which the stream should be sent
+    #[serde(default)]
     pub channel: Option<u8>,
     /// ID of the stream. This stream_id maps to the stream_id in the Stream description.
     pub stream_id: u8,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vlan: Option<Vlan>,
     /// An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mpls_stack: Option<Vec<MPLSHeader>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub srv6_base_header: Option<IPv6>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Vec<String>, format = "ipv6", example="ff80::1")]
     pub sid_list: Option<Vec<Ipv6Addr>>,
     pub ethernet: Ethernet,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ip: Option<IPv4>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ipv6: Option<IPv6>,
     /// Indicates if this stream setting is active.
     pub active: bool,
     /// VxLAN tunnel settings
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vxlan: Option<VxLAN>,
+    /// GTP-U tunnel settings
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gtpu: Option<GtpU>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -278,7 +306,7 @@ pub struct Stream {
     pub(crate) encapsulation: Encapsulation,
     /// Number of MPLS LSEs in this stream. The value has to equal the length of the MPLS stack in a stream setting.
     #[schema(example = 2)]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) number_of_lse: Option<u8>,
     /// Traffic rate in Gbps that should be generated.
     #[schema(example = 100)]
@@ -288,40 +316,47 @@ pub struct Stream {
     pub(crate) burst: u16,
     /// Sends more bursty traffic resulting in a more accurate rate
     #[schema(example = true)]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) batches: Option<bool>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
     #[schema(example = 11)]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) n_packets: Option<u16>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
     #[schema(example = 81)]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) timeout: Option<u32>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
     #[schema(example = 99.95)]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) generation_accuracy: Option<f32>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
     #[schema(example = 2)]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) n_pipes: Option<u8>,
     /// Flag that indicates if traffic should be encapsulation in VxLAN
     #[schema(example = false)]
     pub(crate) vxlan: bool,
+    /// Flag that indicates if traffic should be encapsulation in GTP-U
+    #[schema(example = false)]
+    pub(crate) gtpu: bool,
     /// Determines the IP version, either v4 or v6. Option to make it backward compatible
     #[schema(example = 4)]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) ip_version: Option<u8>,
     /// Number of SIDs in SRv6 header. At maximum 4 can be used.
     #[schema(example = 2)]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     /// A flag to indicate if there is another IP tunnel following the SRv6 headers
     pub(crate) number_of_srv6_sids: Option<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub srv6_ip_tunneling: Option<bool>,
     /// Unit for stream generation, e.g., Gbps, Mbps, Mpps
+    #[serde(default)]
     pub unit: Option<GenerationUnit>,
+    /// Traffic shaping pattern applied to this stream
+    #[serde(default)]
+    pub pattern: Option<GenerationPatternConfig>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -333,4 +368,46 @@ pub struct EmptyResponse {
 #[derive(Serialize, ToSchema)]
 pub struct Reset {
     pub(crate) message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct GenerationPatternConfig {
+    // The type of this pattern.
+    pub pattern_type: GenerationPattern,
+    // The period of this pattern in nanoseconds.
+    pub period: f64,
+    /// The number of samples per period.
+    pub sample_rate: u32,
+    /// Flash-crowd specific setting: time in nanoseconds within the period
+    /// until the quiet phase ends.
+    #[serde(default)]
+    pub fc_quiet_until: Option<f64>,
+    /// Flash-crowd specific setting: time in nanoseconds within the period
+    /// until the ramp phase ends.
+    #[serde(default)]
+    pub fc_ramp_until: Option<f64>,
+    #[serde(default)]
+    pub fc_decay_rate: Option<f64>,
+    /// The minimum value for a square wave in the range of [0,1]
+    #[serde(default)]
+    pub square_low: Option<f64>,
+    /// Time spent in the high phase for square waves in the range of [0, period]
+    #[serde(default)]
+    pub square_high_until: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub enum GenerationPattern {
+    Sine,
+    Square,
+    Triangle,
+    Sawtooth,
+    Flashcrowd,
+    CatWave,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub enum HistogramType {
+    Rtt,
+    Iat,
 }

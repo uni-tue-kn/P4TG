@@ -188,6 +188,7 @@ parser SwitchIngressParser(
         transition select(ip_udp.protocol, ip_udp.dst_port) {
             (IP_PROTOCOL_UDP, UDP_P4TG_PORT): parse_path;
             (IP_PROTOCOL_UDP, UDP_VxLAN_PORT): parse_vxlan;
+            (IP_PROTOCOL_UDP, UDP_GTPU_PORT): parse_gtpu;
             default: parse_only_ipv4;
         }
     }
@@ -221,6 +222,14 @@ parser SwitchIngressParser(
         }
     }
 
+    state parse_gtpu {
+        pkt.extract(hdr.ipv4);
+        pkt.extract(hdr.udp);
+        pkt.extract(hdr.gtpu);
+        ig_md.gtpu = 1;
+        // Assume inner IPv4 only
+        transition parse_path;        
+    }
 
     state parse_monitor {
         pkt.extract(hdr.monitor);
@@ -300,6 +309,7 @@ control SwitchIngressDeparser(
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
         pkt.emit(hdr.vxlan);
+        pkt.emit(hdr.gtpu);
         pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
         pkt.emit(hdr.vlan);
@@ -466,6 +476,7 @@ parser SwitchEgressParser(
         transition select(ip_udp.protocol, ip_udp.dst_port) {
             (IP_PROTOCOL_UDP, UDP_P4TG_PORT): parse_path;
             (IP_PROTOCOL_UDP, UDP_VxLAN_PORT): parse_vxlan;
+            (IP_PROTOCOL_UDP, UDP_GTPU_PORT): parse_gtpu;
             default: parse_only_ipv4;
         }
     }
@@ -499,6 +510,14 @@ parser SwitchEgressParser(
                #endif
                default: accept;
            }
+    }
+
+    state parse_gtpu {
+        pkt.extract(hdr.ipv4);
+        pkt.extract(hdr.udp);
+        pkt.extract(hdr.gtpu);
+        // Assume inner IPv4 only
+        transition parse_path;        
     }
 
     state parse_monitor {
@@ -639,6 +658,7 @@ control SwitchEgressDeparser(
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.udp);
         pkt.emit(hdr.vxlan);
+        pkt.emit(hdr.gtpu);
         pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
         pkt.emit(hdr.vlan);

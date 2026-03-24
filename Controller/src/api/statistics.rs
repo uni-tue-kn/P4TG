@@ -18,7 +18,7 @@
  */
 
 use crate::core::statistics::{
-    IATStatistics, IATValues, RTTStatistics, RangeCount, RttHistogram, Statistics, TimeStatistics,
+    Histogram, IATStatistics, IATValues, RTTStatistics, RangeCount, Statistics, TimeStatistics,
     TypeCount,
 };
 use crate::core::traffic_gen_core::helper::{
@@ -29,6 +29,7 @@ use crate::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -56,7 +57,8 @@ pub struct StatisticsApi {
     pub packet_loss: HashMap<u32, HashMap<u8, u64>>,
     pub out_of_order: HashMap<u32, HashMap<u8, u64>>,
     pub elapsed_time: u32,
-    pub rtt_histogram: HashMap<u32, HashMap<u8, RttHistogram>>,
+    pub rtt_histogram: HashMap<u32, HashMap<u8, Histogram>>,
+    pub iat_histogram: HashMap<u32, HashMap<u8, Histogram>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
@@ -65,8 +67,10 @@ impl StatisticsApi {
     pub fn to_api_statistics(
         core: &Statistics,             // core struct, contains only dev ports
         dev_to_fp: &HashMap<u32, u32>, // dev_port -> front_panel
+        is_tofino2: bool,
     ) -> StatisticsApi {
-        let dev_to_fpch = derive_fpch(dev_to_fp);
+        // Deriving this mapping once would actually be nicer .....
+        let dev_to_fpch = derive_fpch(dev_to_fp, is_tofino2);
 
         StatisticsApi {
             sample_mode: core.sample_mode,
@@ -84,6 +88,7 @@ impl StatisticsApi {
             out_of_order: remap_port_map(&core.out_of_order, &dev_to_fpch),
             elapsed_time: core.elapsed_time,
             rtt_histogram: remap_port_map(&core.rtt_histogram, &dev_to_fpch),
+            iat_histogram: remap_port_map(&core.iat_histogram, &dev_to_fpch),
             name: core.name.clone(),
         }
     }
@@ -104,6 +109,7 @@ impl StatisticsApi {
         filter_map_for_keys(&mut stats.packet_loss, &used_ports);
         filter_map_for_keys(&mut stats.out_of_order, &used_ports);
         filter_map_for_keys(&mut stats.rtt_histogram, &used_ports);
+        filter_map_for_keys(&mut stats.iat_histogram, &used_ports);
 
         stats
     }
@@ -127,8 +133,9 @@ impl TimeStatisticsApi {
     fn to_api_time_statistics(
         core: &TimeStatistics,
         dev_to_fp: &HashMap<u32, u32>, // dev_port -> front_panel
+        is_tofino2: bool,
     ) -> TimeStatisticsApi {
-        let dev_to_fpch = derive_fpch(dev_to_fp);
+        let dev_to_fpch = derive_fpch(dev_to_fp, is_tofino2);
 
         TimeStatisticsApi {
             tx_rate_l1: remap_port_map(&core.tx_rate_l1, &dev_to_fpch),
@@ -178,6 +185,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
     let frame_type_monitor = &state.frame_type_monitor;
     let rate_monitor = &state.rate_monitor;
     let rtt_histogram_monitor = &state.rtt_histogram_monitor;
+    let iat_histogram_monitor = &state.iat_histogram_monitor;
 
     let mut stats = Statistics {
         sample_mode: state.sample_mode,
@@ -195,6 +203,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
         out_of_order: Default::default(),
         elapsed_time: 0,
         rtt_histogram: Default::default(),
+        iat_histogram: Default::default(),
         name: None,
     };
 
@@ -212,6 +221,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
             .frame_type_data
             .clone();
         stats.rtt_histogram = rtt_histogram_monitor.lock().await.histogram.clone();
+        stats.iat_histogram = iat_histogram_monitor.lock().await.histogram.clone();
         stats.name = state.traffic_generator.lock().await.name.clone();
     }
 
@@ -296,7 +306,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
     let dev_to_fp = generate_dev_port_to_front_panel_mappings(port_mapping);
 
     // We get dev-port <-> stats from core. Translate it to front_panel/channel <-> stats and give this to API
-    let stats = StatisticsApi::to_api_statistics(&stats, &dev_to_fp);
+    let stats = StatisticsApi::to_api_statistics(&stats, &dev_to_fp, state.tofino2);
 
     // Filter for inactive ports
     let used_ports: HashSet<u32> = get_used_ports(state).await;
@@ -349,15 +359,12 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
 
     let limit = params.limit.unwrap_or(usize::MAX);
 
-    // we typically have as many elements as elapsed seconds
-    let elements = state
-        .experiment
-        .lock()
-        .await
-        .start
-        .elapsed()
-        .unwrap_or(Duration::from_secs(0))
-        .as_secs() as usize;
+    let elements = stats
+        .tx_rate_l1
+        .values()
+        .map(|series| series.len())
+        .max()
+        .unwrap_or(0);
 
     let step = {
         if limit < elements {
@@ -452,7 +459,8 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
 
     // Translate to API view (front_panel -> channel)
     // We get dev-port <-> stats from core. Translate it to front_panel/channel <-> stats and give this to API
-    let new_time_stats = TimeStatisticsApi::to_api_time_statistics(&new_time_stats, &dev_to_fp);
+    let new_time_stats =
+        TimeStatisticsApi::to_api_time_statistics(&new_time_stats, &dev_to_fp, state.tofino2);
 
     // Filter for inactive ports
     let used_ports: HashSet<u32> = get_used_ports(state).await;

@@ -1,6 +1,6 @@
 
 # P4TG Test Automation with Python
-This python module lets you launch P4TG tests, wait for them to finish, pull stats from the REST API, and plot time-series rates and RTT histograms—fully automated from the command line.
+This python module lets you launch P4TG tests, wait for them to finish, pull stats from the REST API, and plot time-series rates plus RTT/IAT histograms—fully automated from the command line.
 
 ## Setup
 ```bash
@@ -27,10 +27,13 @@ python run.py --payload payloads/your_test.json \
 2. Waits for the test(s) to complete (or auto-stops after 20s if a test has duration: 0).
 3. Fetches:
    - `/time_statistics` → TX/RX rate, packet loss, out-of-order packets over time
-   - `/statistics` → RTT histograms per RX port/channel
+   - `/statistics` → RTT and IAT histograms (IAT TX/RX)
 4. Saves plots under `results/`:
-    - `<payload_stem>_histogram_all.pdf` — all histogram subplots
-    - `<payload_stem>_txrx_rates.pdf` — time series of rates (and optionally loss/out-of-order)
+    - `<payload_stem>_histogram_rtt.pdf` — RTT histograms
+    - `<payload_stem>_histogram_iat_tx.pdf` — IAT TX histograms
+    - `<payload_stem>_histogram_iat_rx.pdf` — IAT RX histograms
+    - `<payload_stem>_rates.pdf` — time series of TX/RX rates
+    - `<payload_stem>_packet_loss.pdf` — packet loss (and optional out-of-order) time series
 
 
 ## Building Payloads
@@ -57,7 +60,7 @@ The `payloads/` folder contains some ready-to-run examples:
 
 ### Output
 - Results are written to the `results/` directory.
-- Filenames are derived from your payload path (e.g., `payloads/my_test.json` → `results/my_test_histogram_all.pdf`).
+- Filenames are derived from your payload path (e.g., `payloads/my_test.json` → `results/my_test_histogram_rtt.pdf`).
 
 ### Preview
 The plots below are generated from the `3streams_120G_histogramConfig_30s` payload.

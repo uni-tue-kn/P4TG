@@ -28,12 +28,18 @@ import {
     StreamSettings,
     P4TGInfos,
     ASIC,
-    GenerationUnit
+    GenerationUnit,
+    GenerationPattern,
+    GenerationPatternConfig
 } from "../../common/Interfaces";
 import React, { useState } from "react";
 import { Button, Col, Form, InputGroup, Row } from "react-bootstrap";
 import InfoBox from "../InfoBox";
 import { StyledCol, StyledRow } from "../../sites/Settings";
+import PatternModal from "./PatternModal";
+
+const getDefaultFlashcrowdQuietUntil = (period: number) => period * 0.2;
+const getDefaultFlashcrowdRampUntil = (period: number) => period * 0.25;
 
 
 const StreamElement = ({
@@ -53,32 +59,38 @@ const StreamElement = ({
 }) => {
     const [show_mpls_dropdown, set_show] = useState(data.encapsulation == Encapsulation.MPLS)
     const [show_sid_config, set_show_sid_config] = useState(data.encapsulation == Encapsulation.SRv6)
-    const [show_batches_config, set_show_batches_config] = useState(data.burst != 1)
     const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
     const [number_of_srv6_sids, set_number_of_srv6_sids] = useState(data.number_of_srv6_sids)
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
+    const [patternConfig, setPatternConfig] = useState<GenerationPatternConfig | null>(data.pattern ?? null)
+    const [showPatternModal, setShowPatternModal] = useState(false);
 
-    // Used to store VxLAN and IP Version setting. VxLAN must be disabled on changing IP version
+    // Used to store tunneling and IP Version setting. Tunneling must be disabled on changing IP version
     const [formData, setFormData] = useState({ ...data });
 
     const handleIPVersionChange = () => {
-        // Toggle IP version and set VxLAN to false
+        // Toggle IP version and set tunneling to none
         const newIPVersion = formData.ip_version === 4 ? 6 : 4;
         setFormData((prevData) => ({
             ...prevData,
             ip_version: newIPVersion,
-            vxlan: false,  // Set VxLAN to false when IP version changes
+            vxlan: false,
+            gtpu: false,
         }));
         data.ip_version = newIPVersion;
         data.vxlan = false;
+        data.gtpu = false;
     };
 
-    const handleVxLANToggle = () => {
+    const handleTunnelingChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = event.target.value;
         setFormData((prevData) => ({
             ...prevData,
-            vxlan: !prevData.vxlan  // Toggle VxLAN
+            vxlan: value === "vxlan",
+            gtpu: value === "gtpu",
         }))
-        data.vxlan = !data.vxlan;
+        data.vxlan = value === "vxlan";
+        data.gtpu = value === "gtpu";
     }
 
     const handleBatchesToggle = () => {
@@ -103,13 +115,15 @@ const StreamElement = ({
             set_show(true);
             set_show_sid_config(false);
             if (p4tg_infos.asic == ASIC.Tofino1) {
-                // Disable VxLAN. Not supported in combination with VxLAN on Tofino 1
+                // Disable tunneling. Not supported in combination with MPLS on Tofino 1
                 setFormData((prevData) => ({
                     ...prevData,
                     vxlan: false,
+                    gtpu: false,
                     encapsulation: Encapsulation.MPLS
                 }));
                 data.vxlan = false;
+                data.gtpu = false;
             } else {
                 setFormData((prevData) => ({
                     ...prevData,
@@ -119,13 +133,15 @@ const StreamElement = ({
         } else if (data.encapsulation === Encapsulation.SRv6) {
             set_show_sid_config(true);
             set_show(false);
-            // Disable VxLAN
+            // Disable tunneling
             setFormData((prevData) => ({
                 ...prevData,
                 vxlan: false,
+                gtpu: false,
                 encapsulation: Encapsulation.SRv6
             }));
             data.vxlan = false;
+            data.gtpu = false;
         } else {
             set_show(false);
             set_show_sid_config(false);
@@ -143,41 +159,48 @@ const StreamElement = ({
 
     const handleModeChange = (event: any) => {
         data.burst = parseInt(event.target.value)
-        set_show_batches_config(data.burst != 1)
+        // Toggle burst precision mode off for IAT mode, on for rate mode
+        setFormData((prevData) => ({
+            ...prevData,
+            batches: parseInt(event.target.value) !== 1
+        }));
+        data.batches = parseInt(event.target.value) !== 1;
     }
 
     const update_settings = () => {
         stream_settings_c.map((s, i) => {
             if (s.stream_id == data.stream_id) {
-                if (s.mpls_stack.length > data.number_of_lse) {
+                const mpls_stack = s.mpls_stack ?? [];
+                if (mpls_stack.length > data.number_of_lse) {
                     // Newly set length is smaller than previous length. Remove the excess elements.
-                    s.mpls_stack = s.mpls_stack.slice(0, data.number_of_lse);
+                    s.mpls_stack = mpls_stack.slice(0, data.number_of_lse);
 
-                } else if (s.mpls_stack.length < data.number_of_lse) {
+                } else if (mpls_stack.length < data.number_of_lse) {
                     // Newly set length is larger than previous length. Fill with default MPLS headers
                     let new_mpls_stack: MPLSHeader[] = [];
-                    let elements_to_add = data.number_of_lse - s.mpls_stack.length;
+                    let elements_to_add = data.number_of_lse - mpls_stack.length;
 
                     Array.from({ length: elements_to_add }, (_, index) => {
                         new_mpls_stack.push(DefaultMPLSHeader());
                     })
 
-                    s.mpls_stack = s.mpls_stack.concat(new_mpls_stack);
+                    s.mpls_stack = mpls_stack.concat(new_mpls_stack);
                 }
 
-                if (s.sid_list.length > data.number_of_srv6_sids) {
+                const sid_list = s.sid_list ?? [];
+                if (sid_list.length > data.number_of_srv6_sids) {
                     // Newly set length is smaller than previous length. Remove the excess elements.
-                    s.sid_list = s.sid_list.slice(0, data.number_of_srv6_sids)
-                } else if (s.sid_list.length < data.number_of_srv6_sids) {
+                    s.sid_list = sid_list.slice(0, data.number_of_srv6_sids)
+                } else if (sid_list.length < data.number_of_srv6_sids) {
                     // Newly set length is larger than previous length. Fill with default SIDs
                     let new_sid_list: string[] = [];
-                    let elements_to_add = data.number_of_srv6_sids - s.sid_list.length;
+                    let elements_to_add = data.number_of_srv6_sids - sid_list.length;
 
                     Array.from({ length: elements_to_add }, (_, index) => {
                         new_sid_list.push("fe80::");
                     })
 
-                    s.sid_list = s.sid_list.concat(new_sid_list);
+                    s.sid_list = sid_list.concat(new_sid_list);
                 }
             }
         })
@@ -198,9 +221,44 @@ const StreamElement = ({
     const handleSRv6TunnelingChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         setFormData((prevData) => ({
             ...prevData,
-            srv6_ip_tunneling: !prevData.srv6_ip_tunneling  // Toggle VxLAN
+            srv6_ip_tunneling: !prevData.srv6_ip_tunneling  // Toggle IP tunneling
         }))
         data.srv6_ip_tunneling = !data.srv6_ip_tunneling;
+    }
+
+    const handlePatternTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        if (event.target.value === "") {
+            setPatternConfig(null);
+            data.pattern = null;
+            return;
+        }
+
+        const selectedType = event.target.value as GenerationPattern;
+        const baseConfig: GenerationPatternConfig = patternConfig ?? {
+            pattern_type: selectedType,
+            period: 20_000_000_000,
+            sample_rate: 128,
+            fc_quiet_until: null,
+            fc_ramp_until: null,
+            fc_decay_rate: null,
+            square_low: null,
+            square_high_until: null,
+        };
+
+        const updatedConfig: GenerationPatternConfig = {
+            ...baseConfig,
+            pattern_type: selectedType,
+            fc_quiet_until: selectedType === GenerationPattern.Flashcrowd
+                ? (baseConfig.fc_quiet_until ?? getDefaultFlashcrowdQuietUntil(baseConfig.period))
+                : null,
+            fc_ramp_until: selectedType === GenerationPattern.Flashcrowd
+                ? (baseConfig.fc_ramp_until ?? getDefaultFlashcrowdRampUntil(baseConfig.period))
+                : null,
+            fc_decay_rate: selectedType === GenerationPattern.Flashcrowd ? (baseConfig.fc_decay_rate ?? 4.0) : null,
+        };
+
+        setPatternConfig(updatedConfig);
+        data.pattern = updatedConfig;
     }
 
     return <tr>
@@ -244,46 +302,64 @@ const StreamElement = ({
             </InputGroup>
         </StyledCol>
         <StyledCol>
+            <div className="d-flex align-items-center gap-2">
+                <Form.Select disabled={running} required style={{ maxWidth: "150px" }}
+                    onChange={handlePatternTypeChange}>
+                    <option selected={patternConfig == null} value={""}>None</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Sine} value={GenerationPattern.Sine}>Sine</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Sawtooth} value={GenerationPattern.Sawtooth}>Sawtooth</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Triangle} value={GenerationPattern.Triangle}>Triangle</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Square} value={GenerationPattern.Square}>Square</option>
+                    <option selected={patternConfig?.pattern_type === GenerationPattern.Flashcrowd} value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
+                </Form.Select>
+                <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    disabled={running || patternConfig == null}
+                    onClick={() => setShowPatternModal(true)}
+                    title="Configure pattern"
+                >
+                    <i className="bi bi-gear-wide-connected" />
+                </Button>
+            </div>
+        </StyledCol>
+        <StyledCol>
             <tr>
-                <td className={show_batches_config ? "col-auto" : "col-1"}>
+                <td className={"col-auto"}>
                     <Form.Select disabled={running} required
                         onChange={handleModeChange}>
                         <option selected={100 === data.burst} value="100">Rate Precision</option>
                         <option selected={1 === data.burst} value="1">IAT Precision</option>
                     </Form.Select>
                 </td>
-                {show_batches_config ?
-                    <td className={"col-1"}>
-                        Batches
-                        <Form.Check disabled={running}
-                            type={"switch"}
-                            checked={formData.batches}
-                            onChange={handleBatchesToggle}>
-                        </Form.Check>
-                    </td>
-                    :
-                    null}
-                {show_batches_config ?
-                    <td className={"col-auto"}>
-                        <InfoBox>
-                            <>
-                                <h5>Batches</h5>
-                                <p>Increases the burstiness to fit the configured traffic rate even more precisely. Only has an effect in rate mode.</p>
-                            </>
-                        </InfoBox>
-                    </td>
-                    :
-                    null}
+                <td className={"col-1"}>
+                    Bursts
+                    <Form.Check disabled={running}
+                        type={"switch"}
+                        checked={formData.batches}
+                        onChange={handleBatchesToggle}>
+                    </Form.Check>
+                </td>
+                <td className={"col-auto"}>
+                    <InfoBox>
+                        <>
+                            <h5>Bursts</h5>
+                            <p>Increases the burstiness to fit the configured traffic rate even more precisely. In rate precision mode, this increases the size of the bursts by a constant factor. In IAT precision mode, this toggles the generation on a single or on all pipes.</p>
+                        </>
+                    </InfoBox>
+                </td>
             </tr>
         </StyledCol>
         <StyledCol>
-            <Form.Check
-                type={"switch"}
+            <Form.Select
                 disabled={running || formData.ip_version === 6 || (p4tg_infos.asic === ASIC.Tofino1 && formData.encapsulation === Encapsulation.MPLS) || formData.encapsulation === Encapsulation.SRv6}
-                checked={formData.vxlan}
-                onChange={handleVxLANToggle}
+                value={formData.vxlan ? "vxlan" : formData.gtpu ? "gtpu" : "none"}
+                onChange={handleTunnelingChange}
             >
-            </Form.Check>
+                <option value="none">None</option>
+                <option value="vxlan">VxLAN</option>
+                <option value="gtpu">GTP-U</option>
+            </Form.Select>
         </StyledCol>
         <StyledCol>
             <Row>
@@ -372,11 +448,30 @@ const StreamElement = ({
                 }
             </StyledCol>
             <StyledCol className={"text-end"}>
-                <Button disabled={running} className={"btn-sm"} variant={"dark"}
+                <Button size={"sm"} disabled={running} variant={"outline-secondary"}
                     onClick={() => remove(data.stream_id)}>
                     <i className="bi bi-trash2-fill" /></Button>
             </StyledCol>
         </StyledRow>
+        <PatternModal
+            show={showPatternModal}
+            hide={() => setShowPatternModal(false)}
+            data={patternConfig ?? {
+                pattern_type: GenerationPattern.Sine,
+                period: 20_000_000_000,
+                sample_rate: 128,
+                fc_quiet_until: null,
+                fc_ramp_until: null,
+                fc_decay_rate: null,
+                square_low: null,
+                square_high_until: null,
+            }}
+            disabled={running}
+            set_data={(updated) => {
+                setPatternConfig(updated);
+                data.pattern = updated;
+            }}
+        />
     </tr>
 }
 

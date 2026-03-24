@@ -79,6 +79,7 @@ use crate::core::traffic_gen_core::types::*;
         IPv6,
         Vlan,
         VxLAN,
+        GtpU,
         MPLSHeader,
         tables::TableDescriptor,
         crate::core::statistics::Statistics,

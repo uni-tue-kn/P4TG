@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
-import { PortTxRxMap, StatisticsEntry } from "../common/Interfaces";
+import { Histogram, PortTxRxMap } from "../common/Interfaces";
 
 import styled from 'styled-components'
 import { formatNanoSeconds, formatFrameCount } from '../common/Helper';
@@ -28,16 +28,20 @@ const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: StatisticsEntry, port_mapping: PortTxRxMap, rx_port: number }) => {
+const StatViewHistogram = ({ stats, port_mapping, rx_port, type, includeTx = true }: { stats: { [port: string]: { [channel: string]: Histogram } }, port_mapping: PortTxRxMap, rx_port: number, type: string, includeTx?: boolean }) => {
     const [minValue, set_min_value] = useState(0);
     const [maxValue, set_max_value] = useState(0);
     const [numBins, set_num_bins] = useState(0);
     const [binWidth, set_bin_width] = useState(0);
-    const [meanRtt, set_mean_rtt] = useState(0);
-    const [stdRtt, set_std_rtt] = useState(0);
-    const [missedBinCount, set_missed_bin_count] = useState(0);
-    const [totalPacketCount, set_total_packet_count] = useState(0);
-    const [percentileData, setPercentileData] = useState<Record<string, number>>({});
+    const [mean, set_mean] = useState<{ tx: number; rx: number }>({ tx: 0, rx: 0 });
+    const [std, set_std] = useState<{ tx: number; rx: number }>({ tx: 0, rx: 0 });
+    const [missedBinCount, set_missed_bin_count] = useState<{ tx: number; rx: number }>({ tx: 0, rx: 0 });
+    const [totalPacketCount, set_total_packet_count] = useState<{ tx: number; rx: number }>({ tx: 0, rx: 0 });
+    const [percentileData, setPercentileData] = useState<{ tx: Record<string, number>; rx: Record<string, number> }>({ tx: {}, rx: {} });
+    const [hasTxData, set_has_tx_data] = useState(false);
+    const [hasRxData, set_has_rx_data] = useState(false);
+    const [txLabel, set_tx_label] = useState("TX");
+    const [rxLabel, set_rx_label] = useState("RX");
 
     const renderTooltip = (props: any, message: string) => (
         <Tooltip id="tooltip-disabled" {...props}>
@@ -46,46 +50,69 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
     );
 
     useEffect(() => {
-        // find the first RX channel that maps to this rx_port
-        const matches =
-            Object.values(port_mapping ?? {})
-                .flatMap((perCh) => Object.values(perCh ?? {}))
-                .filter((t: any) => t?.port === rx_port);
-
-        if (matches.length === 0) return;
-
+        let txPortKey: string | undefined;
+        let txChKey: string | undefined;
+        let rxChKey: string | undefined;
         const rxPortKey = String(rx_port);
-        const rxChKey = String(matches[0].channel); // pick first matching channel
 
-        const rttHistogram = stats.rtt_histogram?.[rxPortKey]?.[rxChKey];
-        if (!rttHistogram) return;
+        // find the TX->RX mapping entry for this rx_port
+        outer: for (const [port, perCh] of Object.entries(port_mapping ?? {})) {
+            for (const [ch, target] of Object.entries(perCh ?? {})) {
+                if ((target as any)?.port === rx_port) {
+                    txPortKey = String(port);
+                    txChKey = String(ch);
+                    rxChKey = String((target as any).channel);
+                    break outer;
+                }
+            }
+        }
 
-        const { config, data } = rttHistogram;
+        if (rxChKey == null) return;
+
+        const histTx = includeTx ? stats?.[txPortKey!]?.[txChKey!] : undefined;
+        const histRx = stats?.[rxPortKey]?.[rxChKey];
+
+        const config = histRx?.config ?? histTx?.config;
+        if (!config) return;
+
+        const txData = includeTx ? histTx?.data?.tx : undefined;
+        const rxData = histRx?.data?.rx;
+
+        set_tx_label(txPortKey && txChKey ? `TX ${txPortKey}/${txChKey}` : "TX");
+        set_rx_label(`RX ${rxPortKey}/${rxChKey}`);
 
         set_min_value(config.min);
         set_max_value(config.max);
         set_num_bins(config.num_bins);
         set_bin_width(calculateBinWidth(config.min, config.max, config.num_bins));
 
-        set_mean_rtt(data.mean_rtt);
-        set_std_rtt(data.std_dev_rtt);
-        set_total_packet_count(data.total_pkt_count);
-        set_missed_bin_count(data.missed_bin_count);
+        set_has_tx_data(includeTx && !!txData);
+        set_has_rx_data(!!rxData);
 
-        setPercentileData(() => {
-            const p: Record<string, number> = {};
-            if (data.percentiles) {
-                for (const [k, v] of Object.entries(data.percentiles)) {
-                    p[k] = v as number;
-                }
-            }
-            return p;
+        set_mean({ tx: txData?.mean ?? 0, rx: rxData?.mean ?? 0 });
+        set_std({ tx: txData?.std_dev ?? 0, rx: rxData?.std_dev ?? 0 });
+        set_total_packet_count({ tx: txData?.total_pkt_count ?? 0, rx: rxData?.total_pkt_count ?? 0 });
+        set_missed_bin_count({ tx: txData?.missed_bin_count ?? 0, rx: rxData?.missed_bin_count ?? 0 });
+
+        setPercentileData({
+            tx: txData?.percentiles ? { ...txData.percentiles } : {},
+            rx: rxData?.percentiles ? { ...rxData.percentiles } : {},
         });
-    }, [stats.rtt_histogram]);
+    }, [stats, port_mapping, rx_port, includeTx]);
 
     const calculateBinWidth = (minValue: number, maxValue: number, numBins: number) => {
         return (maxValue - minValue) / numBins;
     }
+
+    const percentileKeys = Array.from(
+        new Set([
+            ...Object.keys(percentileData.tx ?? {}),
+            ...Object.keys(percentileData.rx ?? {}),
+        ])
+    ).sort((a, b) => Number(a) - Number(b));
+
+    const formatDirectionalNs = (value: number, available: boolean) => available ? formatNanoSeconds(value) : "-";
+    const formatDirectionalCount = (value: number, available: boolean) => available ? formatFrameCount(value) : "-";
 
 
     return <>
@@ -115,8 +142,9 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
                     <thead className="table-dark">
                         <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, "Values calculated from histogram data")}>
                             <tr>
-                                <th><Overline>RTT</Overline></th>
-                                <th>σ(RTT)</th>
+                                <th>Dir</th>
+                                <th><Overline>{type}</Overline></th>
+                                <th>σ({type})</th>
                                 <th>Outlier</th>
                                 <th>Total #Packets</th>
                             </tr>
@@ -124,11 +152,21 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
 
                     </thead>
                     <tbody>
+                        {includeTx &&
+                            <tr>
+                                <td>{txLabel}</td>
+                                <td>{formatDirectionalNs(mean.tx, hasTxData)}</td>
+                                <td>{formatDirectionalNs(std.tx, hasTxData)}</td>
+                                <td>{formatDirectionalCount(missedBinCount.tx, hasTxData)}</td>
+                                <td>{formatDirectionalCount(totalPacketCount.tx, hasTxData)}</td>
+                            </tr>
+                        }
                         <tr>
-                            <td>{formatNanoSeconds(meanRtt)}</td>
-                            <td>{formatNanoSeconds(stdRtt)}</td>
-                            <td>{formatFrameCount(missedBinCount)}</td>
-                            <td>{formatFrameCount(totalPacketCount)}</td>
+                            <td>{rxLabel}</td>
+                            <td>{formatDirectionalNs(mean.rx, hasRxData)}</td>
+                            <td>{formatDirectionalNs(std.rx, hasRxData)}</td>
+                            <td>{formatDirectionalCount(missedBinCount.rx, hasRxData)}</td>
+                            <td>{formatDirectionalCount(totalPacketCount.rx, hasRxData)}</td>
                         </tr>
                     </tbody>
                 </Table>
@@ -138,16 +176,26 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port }: { stats: Statistics
                     <thead className="table-dark">
                         <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, "Percentiles")}>
                             <tr>
-                                {Object.keys(percentileData).map((key) => (
+                                <th>Dir</th>
+                                {percentileKeys.map((key) => (
                                     <th key={key}>{`p${key}`}</th>
                                 ))}
                             </tr>
                         </OverlayTrigger>
                     </thead>
                     <tbody>
+                        {includeTx &&
+                            <tr>
+                                <td>{txLabel}</td>
+                                {percentileKeys.map((key) => (
+                                    <td key={`tx-${key}`}>{percentileData.tx[key] !== undefined ? formatNanoSeconds(percentileData.tx[key]) : "-"}</td>
+                                ))}
+                            </tr>
+                        }
                         <tr>
-                            {Object.keys(percentileData).map((key) => (
-                                <td key={key}>{formatNanoSeconds(percentileData[key])}</td>
+                            <td>{rxLabel}</td>
+                            {percentileKeys.map((key) => (
+                                <td key={`rx-${key}`}>{percentileData.rx[key] !== undefined ? formatNanoSeconds(percentileData.rx[key]) : "-"}</td>
                             ))}
                         </tr>
                     </tbody>

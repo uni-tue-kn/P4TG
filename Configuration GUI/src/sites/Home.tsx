@@ -34,7 +34,8 @@ import {
     TimeStatistics,
     TimeStatisticsObject,
     ToastVariant,
-    TrafficGenData
+    TrafficGenData,
+    HistogramConfig
 } from '../common/Interfaces'
 import styled from "styled-components";
 import SummaryView from '../components/SummaryView';
@@ -93,7 +94,9 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
     // @ts-ignore
-    const [histogram_settings, set_histogram_settings] = useState<Record<string, RttHistogramConfig>>(JSON.parse(localStorage.getItem("histogram_config")) || {})
+    const [rtt_histogram_settings, set_rtt_histogram_settings] = useState<Record<string, HistogramConfig>>(JSON.parse(localStorage.getItem("rtt_histogram_config")) || {})
+    // @ts-ignore
+    const [iat_histogram_settings, set_iat_histogram_settings] = useState<Record<string, HistogramConfig>>(JSON.parse(localStorage.getItem("iat_histogram_config")) || {})
 
     const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>(
         JSON.parse(localStorage.getItem("saved_configs") || '{}') as Record<string, TrafficGenData>
@@ -172,16 +175,20 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     }, [running]);
 
     const serializeSavedConfigs = () => {
+        const withActiveStreamSettingsOnly = (config: TrafficGenData) => ({
+            ...config,
+            stream_settings: config.stream_settings.filter((setting) => setting.active),
+        });
         if (Object.keys(savedConfigs).length === 1) {
             // If there is only one config, return it as an object
             // This triggers the singleTest behaviour in the backend
-            return Object.values(savedConfigs)[0];
+            return withActiveStreamSettingsOnly(Object.values(savedConfigs)[0]);
         } else {
             // Set the name of each config to the key
             // and return an array of objects
             // with the name and the config
             return Object.entries(savedConfigs).map(([key, config]) => {
-                return { ...config, name: key };
+                return { ...withActiveStreamSettingsOnly(config), name: key };
             });
         }
     }
@@ -272,14 +279,16 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
             set_stream_settings(stats.data.stream_settings)
             set_streams(stats.data.streams)
-            set_histogram_settings(stats.data.histogram_config)
+            set_rtt_histogram_settings(stats.data.rtt_histogram_config)
+            set_iat_histogram_settings(stats.data.iat_histogram_config)
 
             localStorage.setItem("streams", JSON.stringify(stats.data.streams))
             localStorage.setItem("gen-mode", String(stats.data.mode))
             localStorage.setItem("duration", String(stats.data.duration))
             localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
-            localStorage.setItem("histogram_config", JSON.stringify(stats.data.histogram_config))
+            localStorage.setItem("rtt_histogram_config", JSON.stringify(stats.data.rtt_histogram_config))
+            localStorage.setItem("iat_histogram_config", JSON.stringify(stats.data.iat_histogram_config))
 
             // This copies TrafficGenData from the GET response into localStorage and config.
             // It's needed to keep the state consistent if multiple tests were started directly via the REST API

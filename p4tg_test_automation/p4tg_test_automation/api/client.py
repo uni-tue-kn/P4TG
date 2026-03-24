@@ -62,6 +62,14 @@ class P4TG:
         else:
             save_stats("stats", response.text, payload_path)
             return json.loads(response.text)
+
+    def get_ports(self):
+        url = f"{self.base_url}/ports"
+        response = requests.get(url)
+        if response.status_code != 200:
+            print(f"Error {response.status_code}, {response.reason}: ", response.text)
+            return ""
+        return json.loads(response.text)
             
         
     def configure_port(

@@ -41,9 +41,9 @@ const ACTION_PREFIX: &str = "ingress.p4tg.frame_type";
 /// that counts the different frame sizes that are received/sent
 pub struct FrameTypeMonitor {
     port_mapping: HashMap<u32, PortMapping>,
-    /// (IP adress, LPM, VxLAN flag, action)
-    ip_ternary_entries: Vec<([u8; 4], u32, u8, String)>,
-    ipv6_ternary_entries: Vec<([u16; 8], u128, u8, String)>,
+    /// (IP adress, LPM, VxLAN flag, GTP-U action)
+    ip_ternary_entries: Vec<([u8; 4], u32, u8, u8, String)>,
+    ipv6_ternary_entries: Vec<([u16; 8], u128, u8, u8, String)>,
     /// (Ethertype, Action)
     ethernet_types: Vec<(u16, String)>,
     pub statistics: FrameTypeStatistics,
@@ -53,12 +53,18 @@ impl FrameTypeMonitor {
     pub fn new(port_mapping: HashMap<u32, PortMapping>) -> FrameTypeMonitor {
         // IP address as ternary to either match on IPv4 or IPv6
         let ip_ternary_entries = vec![
-            ([224, 0, 0, 0], 8, 0, "multicast".to_owned()),
-            ([0, 0, 0, 0], 0, 0, "unicast".to_owned()),
-            ([0, 0, 0, 0], 0, 1, "vxlan".to_owned()),
+            ([224, 0, 0, 0], 8, 0, 0, "multicast".to_owned()),
+            ([0, 0, 0, 0], 0, 0, 0, "unicast".to_owned()),
+            ([0, 0, 0, 0], 0, 1, 0, "vxlan".to_owned()),
+            ([0, 0, 0, 0], 0, 0, 1, "gtpu".to_owned()),
         ];
-        let ipv6_ternary_entries =
-            vec![([65280, 0, 0, 0, 0, 0, 0, 0], 8, 0, "multicast".to_owned())]; // Only multicast needed here, other cases are handled implicitly through ternary
+        let ipv6_ternary_entries = vec![(
+            [65280, 0, 0, 0, 0, 0, 0, 0],
+            8,
+            0,
+            0,
+            "multicast".to_owned(),
+        )]; // Only multicast needed here, other cases are handled implicitly through ternary
         let ethernet_types = vec![
             (0x800, "ipv4".to_owned()),
             (0x86DD, "ipv6".to_owned()),
@@ -89,7 +95,7 @@ impl FrameTypeMonitor {
         // we used batched execution
         for (_, mapping) in self.port_mapping.iter().by_ref() {
             // frame type (IPv4)
-            for (base, lpm, vxlan, action) in &self.ip_ternary_entries {
+            for (base, lpm, vxlan, gtpu, action) in &self.ip_ternary_entries {
                 // Represent LPM as ternary mask
                 let mask = if *lpm == 0u32 {
                     0
@@ -109,6 +115,7 @@ impl FrameTypeMonitor {
                     )
                     .match_key("hdr.ipv6.dst_addr", MatchValue::ternary(0, 0)) // Ignore IPv6 address in this case
                     .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
+                    .match_key("ig_md.gtpu", MatchValue::exact(*gtpu))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(priority))
                     .action(&format!("{ACTION_PREFIX}.{action}"));
 
@@ -124,6 +131,7 @@ impl FrameTypeMonitor {
                     )
                     .match_key("hdr.ipv6.dst_addr", MatchValue::ternary(0, 0)) // Ignore IPv6 address in this case
                     .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
+                    .match_key("ig_md.gtpu", MatchValue::exact(*gtpu))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(priority))
                     .action(&format!("{ACTION_PREFIX}.{action}"));
 
@@ -132,7 +140,7 @@ impl FrameTypeMonitor {
             }
 
             // frame type (IPv6)
-            for (base, lpm, vxlan, action) in &self.ipv6_ternary_entries {
+            for (base, lpm, vxlan, gtpu, action) in &self.ipv6_ternary_entries {
                 let mask = if *lpm == 0u128 {
                     0
                 } else {
@@ -152,6 +160,7 @@ impl FrameTypeMonitor {
                         MatchValue::ternary(Ipv6Addr::from(*base), Ipv6Addr::from(mask)),
                     )
                     .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
+                    .match_key("ig_md.gtpu", MatchValue::exact(*gtpu))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(priority))
                     .action(&format!("{ACTION_PREFIX}.{action}"));
 
@@ -167,6 +176,7 @@ impl FrameTypeMonitor {
                         MatchValue::ternary(Ipv6Addr::from(*base), Ipv6Addr::from(mask)),
                     )
                     .match_key("ig_md.vxlan", MatchValue::exact(*vxlan))
+                    .match_key("ig_md.gtpu", MatchValue::exact(*gtpu))
                     .match_key("$MATCH_PRIORITY", MatchValue::exact(priority))
                     .action(&format!("{ACTION_PREFIX}.{action}"));
 

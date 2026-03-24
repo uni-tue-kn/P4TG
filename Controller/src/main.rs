@@ -18,16 +18,12 @@
  */
 use log::{info, warn};
 use macaddr::MacAddr;
-use rbfrt::error::RBFRTError;
 use rbfrt::table::ActionData;
 use rbfrt::util::PortManager;
-use rbfrt::util::{AutoNegotiation, Loopback, Port, Speed, FEC};
 use rbfrt::{table, SwitchConnection};
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
 use std::fs::File;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -37,15 +33,14 @@ mod error;
 
 use crate::api::statistics::StatisticsApi;
 use crate::api::statistics::TimeStatisticsApi;
-use crate::core::config::RecirculationPair;
 use crate::core::traffic_gen_core::const_definitions::{
     DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2, PORT_CFG_TF2,
 };
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
-use crate::core::traffic_gen_core::helper::{breakout_mapping, get_base_speed};
+use crate::core::traffic_gen_core::types::HistogramType;
 use crate::core::{
-    Arp, Config, DurationMonitorTask, FrameSizeMonitor, FrameTypeMonitor, HistogramMonitor,
-    RateMonitor, TrafficGen,
+    configure_ports, Arp, Config, DurationMonitorTask, FrameSizeMonitor, FrameTypeMonitor,
+    HistogramMonitor, RateMonitor, TrafficGen,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -54,7 +49,7 @@ pub struct PortMapping {
     pub rx_recirculation: u32,
     pub front_panel_port: u32,
     pub mac: MacAddr,
-    pub breakout_mode: Option<bool>,
+    pub channel_count: Option<u8>,
     pub channel: u8,
 }
 
@@ -65,7 +60,7 @@ impl Default for PortMapping {
             rx_recirculation: 0,
             front_panel_port: 0,
             mac: MacAddr::from([0, 0, 0, 0, 0, 0]),
-            breakout_mode: None,
+            channel_count: None,
             channel: 0,
         }
     }
@@ -92,6 +87,7 @@ pub struct AppState {
     pub(crate) port_mapping: HashMap<u32, PortMapping>,
     pub(crate) rate_monitor: Mutex<RateMonitor>,
     pub(crate) rtt_histogram_monitor: Mutex<HistogramMonitor>,
+    pub(crate) iat_histogram_monitor: Mutex<HistogramMonitor>,
     pub(crate) switch: SwitchConnection,
     pub(crate) pm: PortManager,
     pub(crate) experiment: Mutex<Experiment>,
@@ -102,234 +98,6 @@ pub struct AppState {
     pub(crate) loopback_mode: bool,
     pub(crate) monitor_task: Mutex<DurationMonitorTask>,
     pub(crate) multiple_tests: MultiTest,
-}
-
-async fn configure_ports(
-    switch: &mut SwitchConnection,
-    pm: &PortManager,
-    config: &mut Config,
-    recirculation_ports: &[u32],
-    port_mapping: &mut HashMap<u32, PortMapping>,
-    is_tofino2: bool,
-    loopback_mode: bool,
-) -> Result<(), RBFRTError> {
-    // Reset
-    switch.clear_table("$PORT").await?;
-
-    let mut port_requests = Vec::new();
-    let mut auto_tg_ports = Vec::new();
-    let mut manual_tg_ports = Vec::new();
-
-    // --- TG ports ---
-    for tg in &mut config.tg_ports {
-        let speed = get_base_speed(tg, is_tofino2);
-        let fec = tg
-            .fec
-            .clone()
-            .unwrap_or(if is_tofino2 && speed == Speed::BF_SPEED_400G {
-                FEC::BF_FEC_TYP_REED_SOLOMON
-            } else {
-                FEC::BF_FEC_TYP_NONE
-            });
-
-        let (channels, per_channel_speed) =
-            breakout_mapping(&speed, tg.breakout_mode.unwrap_or(false));
-
-        if tg.breakout_mode == Some(true) && channels.len() == 1 {
-            // Invalid speed configured for breakout mode
-            tg.breakout_mode = Some(false);
-            warn!("Invalid port speed for breakout mode on port configured. Only 100G and 40G are possible. Falling back to single channel.");
-        }
-
-        for c in channels {
-            let mut req = Port::new(tg.port, c)
-                .speed(per_channel_speed.clone())
-                .fec(fec.clone())
-                .auto_negotiation(
-                    tg.auto_negotiation
-                        .clone()
-                        .unwrap_or(AutoNegotiation::PM_AN_DEFAULT),
-                );
-
-            if loopback_mode {
-                req = req.loopback(Loopback::BF_LPBK_MAC_NEAR);
-            }
-
-            port_requests.push(req);
-        }
-
-        let mac = MacAddr::from_str(&tg.mac).unwrap(); // validated earlier
-        if tg.recirculation_ports.is_some() {
-            manual_tg_ports.push((tg.port, mac));
-        } else {
-            auto_tg_ports.push((tg.port, mac));
-        }
-    }
-
-    // --- Build choices for each TG: config-first, then auto from remaining pool ---
-    let mut per_tg_choice: HashMap<u32, RecirculationPair> = HashMap::new();
-    let mut used_recirc: HashSet<u32> = HashSet::new();
-
-    // Reserve manual mappings and enforce uniqueness up-front
-    for tg in &config.tg_ports {
-        if let Some(rec) = &tg.recirculation_ports {
-            for &p in &[rec.tx_port, rec.rx_port] {
-                if !used_recirc.insert(p) {
-                    panic!("Recirculation port {p} is used more than once in config.");
-                }
-                if used_recirc.contains(&tg.port) {
-                    panic!("Recirculation port {p} is also used as front panel TG port.");
-                }
-            }
-            per_tg_choice.insert(
-                tg.port,
-                RecirculationPair {
-                    tx_port: rec.tx_port,
-                    rx_port: rec.rx_port,
-                },
-            );
-        }
-    }
-
-    // Free pool = recirculation_ports minus manually used
-    let free: Vec<u32> = recirculation_ports
-        .iter()
-        .copied()
-        .filter(|p| !used_recirc.contains(p))
-        .collect();
-
-    let needed = auto_tg_ports.len() * 2;
-    if free.len() < needed {
-        panic!(
-            "Not enough recirculation ports: need {}, have {} (after reserving manual mappings).",
-            needed,
-            free.len()
-        );
-    }
-
-    // Assign pairs (2*i, 2*i+1) from the filtered pool
-    for (i, (tg_port, _)) in auto_tg_ports.iter().enumerate() {
-        per_tg_choice.insert(
-            *tg_port,
-            RecirculationPair {
-                tx_port: free[2 * i],
-                rx_port: free[2 * i + 1],
-            },
-        );
-        used_recirc.insert(free[2 * i]);
-        used_recirc.insert(free[2 * i + 1]);
-    }
-
-    // --- Configure recirc ports actually used ---
-    let mut added_recirc_once: HashSet<(u32, u32)> = HashSet::new();
-
-    for (tg_port, _) in manual_tg_ports.iter().chain(auto_tg_ports.iter()) {
-        let tg_cfg = config
-            .tg_ports
-            .iter()
-            .find(|p| &p.port == tg_port)
-            .expect("internal: missing tg cfg");
-
-        let base_speed = get_base_speed(tg_cfg, is_tofino2);
-        let breakout = tg_cfg.breakout_mode.unwrap_or(false);
-        let (channels, _) = breakout_mapping(&base_speed, breakout);
-
-        let choice = per_tg_choice
-            .get(tg_port)
-            .expect("internal: missing recirc choice");
-
-        let fec = if breakout {
-            FEC::BF_FEC_TYP_NONE
-        } else if is_tofino2 {
-            FEC::BF_FEC_TYP_REED_SOLOMON
-        } else {
-            FEC::BF_FEC_TYP_NONE
-        };
-
-        // Always use maximum possible rate for recirculation ports
-        let speed = if breakout {
-            Speed::BF_SPEED_25G
-        } else if is_tofino2 {
-            Speed::BF_SPEED_400G
-        } else {
-            Speed::BF_SPEED_100G
-        };
-
-        for &ch in &channels {
-            if added_recirc_once.insert((choice.tx_port, ch as u32)) {
-                port_requests.push(
-                    Port::new(choice.tx_port, ch)
-                        .speed(speed.clone())
-                        .fec(fec.clone())
-                        .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
-                        .loopback(Loopback::BF_LPBK_MAC_NEAR),
-                );
-            }
-        }
-
-        for &ch in &channels {
-            if added_recirc_once.insert((choice.rx_port, ch as u32)) {
-                port_requests.push(
-                    Port::new(choice.rx_port, ch)
-                        .speed(speed.clone())
-                        .fec(fec.clone())
-                        .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
-                        .loopback(Loopback::BF_LPBK_MAC_NEAR),
-                );
-            }
-        }
-    }
-
-    // Push to hardware
-    pm.add_ports(switch, &port_requests).await?;
-    info!("Ports of device configured.");
-
-    // --- Build mapping (TG dev_port(+ch) -> recirc dev_ports(+ch)) ---
-    port_mapping.clear();
-
-    for (tg_port, mac) in manual_tg_ports.iter().chain(auto_tg_ports.iter()) {
-        let tg_cfg = config
-            .tg_ports
-            .iter()
-            .find(|p| &p.port == tg_port)
-            .expect("internal: missing tg cfg");
-
-        let base_speed = get_base_speed(tg_cfg, is_tofino2);
-        let breakout = tg_cfg.breakout_mode.unwrap_or(false);
-        let (channels, _per_ch_speed) = breakout_mapping(&base_speed, breakout);
-
-        let choice = per_tg_choice
-            .get(tg_port)
-            .expect("internal: missing recirc choice");
-
-        for &ch in &channels {
-            let tx_dev = pm.dev_port(choice.tx_port, ch)?;
-            let rx_dev = pm.dev_port(choice.rx_port, ch)?;
-            let dev_port = pm.dev_port(*tg_port, ch)?;
-
-            port_mapping.insert(
-                dev_port,
-                PortMapping {
-                    tx_recirculation: tx_dev,
-                    rx_recirculation: rx_dev,
-                    mac: *mac,
-                    front_panel_port: *tg_port,
-                    breakout_mode: tg_cfg.breakout_mode,
-                    channel: ch,
-                },
-            );
-        }
-    }
-
-    // --- Final uniqueness assertion (dev_port-level) ---
-    let mut seen_dev: HashSet<u32> = HashSet::new();
-    for m in port_mapping.values() {
-        if !seen_dev.insert(m.tx_recirculation) || !seen_dev.insert(m.rx_recirculation) {
-            panic!("Recirculation ports not unique.");
-        }
-    }
-
-    Ok(())
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -402,12 +170,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // TG ports either from config or default
     let mut config = match File::open("config.json") {
         Ok(file) => {
-            let config: Config = serde_json::from_reader(file).unwrap_or_else(|_| {
+            let mut config: Config = serde_json::from_reader(file).unwrap_or_else(|_| {
                 warn!("Config file not valid. Using default config.");
                 Config::default_tofino(is_tofino2)
             });
 
-            let config = if let Err(err) = config.validate(num_ports) {
+            let config = if let Err(err) = config
+                .normalize(is_tofino2)
+                .and_then(|_| config.validate(num_ports, is_tofino2))
+            {
                 warn!("{err} Using default config.");
                 Config::default_tofino(is_tofino2)
             } else {
@@ -460,7 +231,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     rate_monitor.init_iat_meter(&switch, sample_mode).await?;
     rate_monitor.on_reset(&switch).await?;
 
-    let rtt_histogram_monitor = HistogramMonitor::new(port_mapping.clone());
+    let rtt_histogram_monitor = HistogramMonitor::new(port_mapping.clone(), HistogramType::Rtt);
+    let iat_histogram_monitor = HistogramMonitor::new(port_mapping.clone(), HistogramType::Iat);
 
     let mut traffic_generator = TrafficGen::new(is_tofino2, num_pipes);
     traffic_generator.stop(&switch).await?;
@@ -479,6 +251,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         port_mapping,
         rate_monitor: Mutex::new(rate_monitor),
         rtt_histogram_monitor: Mutex::new(rtt_histogram_monitor),
+        iat_histogram_monitor: Mutex::new(iat_histogram_monitor),
         switch,
         pm,
         sample_mode,
@@ -550,7 +323,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         let local_state = monitoring_state;
 
-        HistogramMonitor::monitor_histogram(local_state).await;
+        HistogramMonitor::monitor_histogram(local_state, HistogramType::Rtt).await;
+    });
+
+    let monitoring_state = Arc::clone(&state);
+
+    // start IAT histogram monitoring
+    tokio::spawn(async move {
+        let local_state = monitoring_state;
+
+        HistogramMonitor::monitor_histogram(local_state, HistogramType::Iat).await;
     });
 
     let monitoring_state = Arc::clone(&state);

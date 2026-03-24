@@ -25,33 +25,38 @@ export interface MPLSHeader {
     ttl: number
 }
 
-export type RttHistogramConfig = {
+export type HistogramConfig = {
     min: number;
     max: number;
     num_bins: number;
     percentiles?: Array<number>;
 };
 
-// nested map: { [rxPort]: { [rxChannel]: RttHistogramConfig } }
-export type HistogramConfigMap = Record<string, Record<string, RttHistogramConfig>>;
+// nested map: { [rxPort]: { [rxChannel]: HistogramConfig } }
+export type HistogramConfigMap = Record<string, Record<string, HistogramConfig>>;
 
-export type RttHistogramBinEntry = {
+export type HistogramBinEntry = {
     count: bigint,
     probability: number,
 }
 
-export type RttHistogramData = {
-    data_bins: Record<string, RttHistogramBinEntry>;
+export type HistogramData = {
+    data_bins: Record<string, HistogramBinEntry>;
     percentiles: Record<string, number>;
-    mean_rtt: number;
-    std_dev_rtt: number;
+    mean: number;
+    std_dev: number;
     missed_bin_count: number;
     total_pkt_count: number;
 };
 
-export type RttHistogram = {
-    config: RttHistogramConfig;
-    data: RttHistogramData;
+export type HistogramPacketPath = {
+    tx: HistogramData,
+    rx: HistogramData
+}
+
+export type Histogram = {
+    config: HistogramConfig;
+    data: HistogramPacketPath;
 };
 
 export type Statistics = Array<StatisticsEntry>;
@@ -131,8 +136,9 @@ export type StatisticsEntry = {
 
     elapsed_time: number;
 
-    // now per port -> channel
-    rtt_histogram: { [port: string]: { [channel: string]: RttHistogram } };
+    // per port -> channel
+    rtt_histogram: { [port: string]: { [channel: string]: Histogram } };
+    iat_histogram: { [port: string]: { [channel: string]: Histogram } };
 
     name?: string;
 };
@@ -154,6 +160,7 @@ export const StatisticsObject: StatisticsEntry = {
     out_of_order: {},
     elapsed_time: 0,
     rtt_histogram: {},
+    iat_histogram: {},
 }
 
 export type TimeStatistics = Array<TimeStatisticsEntry>;
@@ -184,11 +191,11 @@ export const TimeStatisticsObject: TimeStatisticsEntry = {
 }
 
 export interface StreamSettings {
-    mpls_stack: MPLSHeader[],
+    mpls_stack?: MPLSHeader[],
     port: number,
     channel: number,
     stream_id: number,
-    vlan: {
+    vlan?: {
         vlan_id: number,
         pcp: number,
         dei: number,
@@ -200,12 +207,12 @@ export interface StreamSettings {
         eth_src: string,
         eth_dst: string,
     },
-    ip: IPv4Header
-    ipv6: IPv6Header
-    srv6_base_header: IPv6Header
-    sid_list: string[]
+    ip?: IPv4Header
+    ipv6?: IPv6Header
+    srv6_base_header?: IPv6Header
+    sid_list?: string[]
     active: boolean
-    vxlan: {
+    vxlan?: {
         eth_src: string,
         eth_dst: string,
         ip_src: string,
@@ -213,6 +220,13 @@ export interface StreamSettings {
         ip_tos: number,
         udp_source: number,
         vni: number
+    }
+    gtpu?: {
+        ip_src: string,
+        ip_dst: string,
+        ip_tos: number,
+        udp_source: number,
+        teid: number
     }
 }
 
@@ -257,6 +271,7 @@ export interface Stream {
     frame_size: number,
     encapsulation: Encapsulation,
     vxlan: boolean,
+    gtpu: boolean,
     ip_version: number,
     number_of_lse: number,
     number_of_srv6_sids: number,
@@ -266,6 +281,7 @@ export interface Stream {
     burst: number,
     batches: boolean,
     unit: GenerationUnit,
+    pattern: GenerationPatternConfig | null,
 }
 
 export const DefaultMPLSHeader = () => {
@@ -287,11 +303,13 @@ export const DefaultStream = (id: number) => {
         number_of_srv6_sids: 0,
         srv6_ip_tunneling: true,
         traffic_rate: 1,
-        burst: 1,
+        burst: 100,
         batches: true,
         vxlan: false,
+        gtpu: false,
         ip_version: 4,
-        unit: GenerationUnit.Gbps
+        unit: GenerationUnit.Gbps,
+        pattern: null,
     }
 
     return stream
@@ -302,24 +320,6 @@ export const DefaultStreamSettings = (id: number, port: number, channel: number)
         port: port,
         channel: channel,
         stream_id: id,
-        vlan: {
-            vlan_id: 1,
-            pcp: 0,
-            dei: 0,
-            inner_vlan_id: 1,
-            inner_pcp: 0,
-            inner_dei: 0
-        },
-        mpls_stack: [],
-        srv6_base_header: {
-            ipv6_src: "ff80::",
-            ipv6_dst: "ff80::",
-            ipv6_traffic_class: 0,
-            ipv6_src_mask: "::",
-            ipv6_dst_mask: "::",
-            ipv6_flow_label: 0
-        },
-        sid_list: [],
         ethernet: {
             eth_src: "32:D5:42:2A:F6:92",
             eth_dst: "81:E7:9D:E3:AD:47"
@@ -331,35 +331,61 @@ export const DefaultStreamSettings = (id: number, port: number, channel: number)
             ip_src_mask: "0.0.0.0",
             ip_dst_mask: "0.0.0.0"
         },
-        ipv6: {
-            ipv6_src: "ff80::",
-            ipv6_dst: "ff80::",
-            ipv6_traffic_class: 0,
-            ipv6_src_mask: "::",
-            ipv6_dst_mask: "::",
-            ipv6_flow_label: 0
-        },
         active: false,
-        vxlan: {
-            eth_src: "32:D5:42:2A:F6:92",
-            eth_dst: "81:E7:9D:E3:AD:47",
-            ip_src: "192.168.178.10",
-            ip_dst: "192.168.178.11",
-            ip_tos: 0,
-            udp_source: 49152,
-            vni: 1
-        }
     }
 
     return stream
 }
+
+export const defaultIPv4 = (): IPv4Header => ({
+    ip_src: "192.168.178.10",
+    ip_dst: "192.168.178.11",
+    ip_tos: 0,
+    ip_src_mask: "0.0.0.0",
+    ip_dst_mask: "0.0.0.0"
+});
+
+export const defaultIPv6 = (): IPv6Header => ({
+    ipv6_src: "ff80::",
+    ipv6_dst: "ff80::",
+    ipv6_traffic_class: 0,
+    ipv6_src_mask: "::",
+    ipv6_dst_mask: "::",
+    ipv6_flow_label: 0
+});
+
+export const defaultVlan = () => ({
+    vlan_id: 1, pcp: 0, dei: 0,
+    inner_vlan_id: 1, inner_pcp: 0, inner_dei: 0
+});
+
+export const defaultVxlan = () => ({
+    eth_src: "32:D5:42:2A:F6:92",
+    eth_dst: "81:E7:9D:E3:AD:47",
+    ip_src: "192.168.178.10",
+    ip_dst: "192.168.178.11",
+    ip_tos: 0,
+    udp_source: 49152,
+    vni: 1
+});
+
+export const defaultGtpu = () => ({
+    ip_src: "192.168.178.10",
+    ip_dst: "192.168.178.11",
+    ip_tos: 0,
+    udp_source: 49152,
+    teid: 42
+});
 
 export interface P4TGConfig {
     tg_ports: {
         port: number,
         mac: string,
         arp_reply: boolean,
-        breakout_mode: boolean
+        channel_mac?: { [channel: string]: string },
+        channel_arp_reply?: { [channel: string]: boolean },
+        speed?: SPEED,
+        channel_count?: number | null
     }[]
 }
 
@@ -411,7 +437,8 @@ export interface TrafficGenData {
     stream_settings: StreamSettings[],
     port_tx_rx_mapping: PortTxRxMap,
     duration: number,
-    histogram_config: HistogramConfigMap,
+    rtt_histogram_config: HistogramConfigMap,
+    iat_histogram_config: HistogramConfigMap,
     name?: string,
 }
 
@@ -425,5 +452,31 @@ export interface PortInfo {
     enable: boolean,
     fec: FEC,
 }
+
+export interface GenerationPatternConfig {
+    pattern_type: GenerationPattern,
+    period: number,
+    sample_rate: number,
+    fc_quiet_until: number | null,
+    fc_ramp_until: number | null,
+    fc_decay_rate: number | null,
+    square_low: number | null,
+    square_high_until: number | null,
+}
+
+export enum GenerationPattern {
+    Sine = "Sine",
+    Square = "Square",
+    Triangle = "Triangle",
+    Sawtooth = "Sawtooth",
+    Flashcrowd = "Flashcrowd",
+}
+
+export const unitOptions = [
+    { label: "ns", multiplier: 1 },
+    { label: "µs", multiplier: 1_000 },
+    { label: "ms", multiplier: 1_000_000 },
+    { label: "s", multiplier: 1_000_000_000 },
+];
 
 export type ToastVariant = "success" | "danger" | "info" | "warning"

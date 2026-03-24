@@ -1,4 +1,4 @@
-use crate::core::statistics::RttHistogramConfig;
+use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::types::*;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -30,6 +30,7 @@ lazy_static! {
             srv6_base_header: None,
             sid_list: None,
             vxlan: None,
+            gtpu: None,
             vlan: Some(Vlan {
                 pcp: 1,
                 dei: 0,
@@ -48,6 +49,7 @@ lazy_static! {
             burst: 100,
             batches: Some(true),
             vxlan: false,
+            gtpu: false,
             ip_version: Some(4),
             n_packets: Some(5),
             timeout: Some(88),
@@ -57,6 +59,7 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
+            pattern: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -69,11 +72,11 @@ lazy_static! {
             )])
         )]),
         duration: Some(10),
-        histogram_config: Some(HashMap::from([(
+        rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
                 "0".to_string(),
-                RttHistogramConfig {
+                HistogramConfig {
                     min: 1000,
                     max: 2000,
                     num_bins: 100,
@@ -81,6 +84,7 @@ lazy_static! {
                 }
             )])
         )])),
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
@@ -111,6 +115,7 @@ lazy_static! {
                 udp_source: 49152,
                 vni: 1
             }),
+            gtpu: None,
             mpls_stack: None,
             srv6_base_header: None,
             sid_list: None,
@@ -125,6 +130,7 @@ lazy_static! {
             burst: 100,
             batches: Some(true),
             vxlan: true,
+            gtpu: false,
             ip_version: Some(4),
             n_packets: Some(5),
             timeout: Some(876),
@@ -134,6 +140,7 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
+            pattern: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -146,11 +153,11 @@ lazy_static! {
             )])
         )]),
         duration: None,
-        histogram_config: Some(HashMap::from([(
+        rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
                 "0".to_string(),
-                RttHistogramConfig {
+                HistogramConfig {
                     min: 1000,
                     max: 2000,
                     num_bins: 100,
@@ -158,6 +165,7 @@ lazy_static! {
                 }
             )])
         )])),
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_POST_1_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -173,10 +181,12 @@ lazy_static! {
         generation_accuracy: Some(99.908676f32),
         n_pipes: Some(2),
         vxlan: true,
+        gtpu: false,
         ip_version: Some(4),
         number_of_srv6_sids: None,
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
+        pattern: None,
     }];
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
@@ -207,6 +217,7 @@ lazy_static! {
                 udp_source: 49152,
                 vni: 1
             }),
+            gtpu: None,
             mpls_stack: None,
             srv6_base_header: None,
             sid_list: None,
@@ -221,6 +232,7 @@ lazy_static! {
             burst: 100,
             batches: Some(true),
             vxlan: true,
+            gtpu: false,
             generation_accuracy: None,
             n_packets: None,
             n_pipes: None,
@@ -230,6 +242,7 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
+            pattern: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -242,11 +255,11 @@ lazy_static! {
             )])
         )]),
         duration: None,
-        histogram_config: Some(HashMap::from([(
+        rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
                 "0".to_string(),
-                RttHistogramConfig {
+                HistogramConfig {
                     min: 1000,
                     max: 2000,
                     num_bins: 100,
@@ -254,6 +267,7 @@ lazy_static! {
                 }
             )])
         )])),
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
@@ -279,6 +293,7 @@ lazy_static! {
             srv6_base_header: None,
             sid_list: None,
             vxlan: None,
+            gtpu: None,
             vlan: Some(Vlan {
                 pcp: 1,
                 dei: 0,
@@ -297,6 +312,7 @@ lazy_static! {
             burst: 100,
             batches: Some(true),
             vxlan: false,
+            gtpu: false,
             generation_accuracy: None,
             n_packets: None,
             n_pipes: None,
@@ -306,6 +322,7 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
+            pattern: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -318,11 +335,11 @@ lazy_static! {
             )])
         )]),
         duration: None,
-        histogram_config: Some(HashMap::from([(
+        rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
                 "0".to_string(),
-                RttHistogramConfig {
+                HistogramConfig {
                     min: 1000,
                     max: 2000,
                     num_bins: 100,
@@ -330,6 +347,7 @@ lazy_static! {
                 }
             )])
         )])),
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -345,10 +363,12 @@ lazy_static! {
         generation_accuracy: Some(100f32),
         n_pipes: Some(2),
         vxlan: false,
+        gtpu: false,
         ip_version: Some(4),
         number_of_srv6_sids: None,
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
+        pattern: None,
     }];
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Poisson,
@@ -383,6 +403,7 @@ lazy_static! {
             stream_id: 1,
             vlan: None,
             vxlan: None,
+            gtpu: None,
             srv6_base_header: None,
             sid_list: None,
         }],
@@ -395,6 +416,7 @@ lazy_static! {
             batches: Some(true),
             encapsulation: Encapsulation::None,
             vxlan: false,
+            gtpu: false,
             number_of_lse: None,
             timeout: None,
             n_packets: None,
@@ -404,9 +426,11 @@ lazy_static! {
             number_of_srv6_sids: None,
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
+            pattern: None,
         }],
         duration: None,
-        histogram_config: None,
+        rtt_histogram_config: None,
+        iat_histogram_config: None,
     };
     pub static ref EXAMPLE_POST_3_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -422,10 +446,12 @@ lazy_static! {
         generation_accuracy: Some(100f32),
         n_pipes: Some(2),
         vxlan: false,
+        gtpu: false,
         ip_version: Some(4),
         number_of_srv6_sids: None,
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
+        pattern: None,
     }];
     pub static ref EXAMPLE_POST_4_REQUEST: Vec<TrafficGenData> = vec![
         TrafficGenData {
@@ -449,6 +475,7 @@ lazy_static! {
                 }),
                 active: true,
                 vxlan: None,
+                gtpu: None,
                 mpls_stack: None,
                 srv6_base_header: Some(IPv6 {
                     ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
@@ -473,6 +500,7 @@ lazy_static! {
                 burst: 100,
                 batches: Some(true),
                 vxlan: false,
+                gtpu: false,
                 generation_accuracy: None,
                 n_packets: None,
                 n_pipes: None,
@@ -482,6 +510,7 @@ lazy_static! {
                 number_of_srv6_sids: Some(2),
                 srv6_ip_tunneling: Some(true),
                 unit: Some(GenerationUnit::Gbps),
+                pattern: None,
             }],
             port_tx_rx_mapping: HashMap::from([(
                 "1".to_string(),
@@ -494,11 +523,11 @@ lazy_static! {
                 )])
             )]),
             duration: Some(10),
-            histogram_config: Some(HashMap::from([(
+            rtt_histogram_config: Some(HashMap::from([(
                 "2".to_string(),
                 HashMap::from([(
                     "0".to_string(),
-                    RttHistogramConfig {
+                    HistogramConfig {
                         min: 1000,
                         max: 2000,
                         num_bins: 100,
@@ -506,6 +535,7 @@ lazy_static! {
                     }
                 )])
             )])),
+            iat_histogram_config: None,
             name: Some("Test 1".to_string())
         },
         TrafficGenData {
@@ -529,6 +559,7 @@ lazy_static! {
                 }),
                 active: true,
                 vxlan: None,
+                gtpu: None,
                 mpls_stack: None,
                 srv6_base_header: Some(IPv6 {
                     ipv6_src: Ipv6Addr::from_str("ff80::").unwrap(),
@@ -553,6 +584,7 @@ lazy_static! {
                 burst: 100,
                 batches: Some(true),
                 vxlan: false,
+                gtpu: false,
                 generation_accuracy: None,
                 n_packets: None,
                 n_pipes: None,
@@ -562,6 +594,7 @@ lazy_static! {
                 number_of_srv6_sids: Some(2),
                 srv6_ip_tunneling: Some(true),
                 unit: Some(GenerationUnit::Gbps),
+                pattern: None,
             }],
             port_tx_rx_mapping: HashMap::from([(
                 "1".to_string(),
@@ -574,11 +607,11 @@ lazy_static! {
                 )])
             )]),
             duration: Some(15),
-            histogram_config: Some(HashMap::from([(
+            rtt_histogram_config: Some(HashMap::from([(
                 "2".to_string(),
                 HashMap::from([(
                     "0".to_string(),
-                    RttHistogramConfig {
+                    HistogramConfig {
                         min: 1000,
                         max: 2000,
                         num_bins: 100,
@@ -586,6 +619,7 @@ lazy_static! {
                     }
                 )])
             )])),
+            iat_histogram_config: None,
             name: Some("Another test".to_string())
         }
     ];
@@ -604,10 +638,12 @@ lazy_static! {
             generation_accuracy: Some(99.91111f32),
             n_pipes: Some(4),
             vxlan: false,
+            gtpu: false,
             ip_version: Some(6),
             number_of_srv6_sids: Some(2),
             srv6_ip_tunneling: Some(true),
             unit: Some(GenerationUnit::Gbps),
+            pattern: None,
         },
         Stream {
             stream_id: 1,
@@ -623,10 +659,12 @@ lazy_static! {
             generation_accuracy: Some(99.91111f32),
             n_pipes: Some(4),
             vxlan: false,
+            gtpu: false,
             ip_version: Some(6),
             number_of_srv6_sids: Some(2),
             srv6_ip_tunneling: Some(true),
             unit: Some(GenerationUnit::Gbps),
+            pattern: None,
         }
     ];
 }

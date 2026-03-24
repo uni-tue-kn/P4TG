@@ -50,7 +50,8 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
     let tg = &mut state.traffic_generator.lock().await;
 
     let port_mapping = &state.port_mapping;
-    let front_panel_dev_port_mappings = generate_front_panel_to_dev_port_mappings(port_mapping);
+    let front_panel_dev_port_mappings =
+        generate_front_panel_to_dev_port_mappings(port_mapping, state.tofino2);
     let tx_rx_port_mapping =
         translate_fp_channel_to_dev_port_mapping(&tg.port_mapping, &front_panel_dev_port_mappings);
 

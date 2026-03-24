@@ -19,7 +19,7 @@ RUN npm run build
 
 
 ### === Stage 2: Build Controller === ###
-FROM rust:1.84-bookworm AS controller-builder
+FROM rust:1.91-bookworm AS controller-builder
 
 ARG path="/Controller"
 WORKDIR /app
@@ -30,18 +30,18 @@ RUN apt update && \
 
 # Cache Rust dependencies
 COPY ${path}/Cargo.toml .
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release || true  # Pre-cache dependencies
+# BREAKS THE CONTROLLER IMAGE SINCE VERSION 2.7.0 :(
+#RUN mkdir src && echo "fn main() {}" > src/main.rs
+#RUN cargo build --release || true  # Pre-cache dependencies
 
 # Copy actual Rust source
 COPY ${path}/src ./src
 
-# Copy GUI build output into Rust project if needed
+# Copy GUI build output into Rust project
 COPY --from=gui-builder /app/build ./gui_build
 
 # Build Rust app
 RUN cargo build --release
-
 
 ### === Stage 3: Runtime Image === ###
 FROM debian:bookworm
@@ -51,5 +51,8 @@ WORKDIR /app
 # Copy the compiled binary from the builder
 COPY --from=controller-builder /app/target/release/p4tg-controller /app
 
-# Entrypoint for the app with logging
-ENTRYPOINT ["/bin/bash", "-c", "RUST_LOG=none,p4tg_controller=info,rbfrt=info /app/p4tg-controller"]
+# Default logging configuration
+ENV RUST_LOG="none,p4tg_controller=info,rbfrt=info"
+
+# Entrypoint for the app (no shell indirection)
+ENTRYPOINT ["/app/p4tg-controller"]

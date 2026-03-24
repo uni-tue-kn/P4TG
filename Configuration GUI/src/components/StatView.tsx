@@ -248,9 +248,20 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         ([txPort, perCh]) => Object.keys(perCh ?? {}).map((txCh) => [txPort, txCh] as [string, string])
     );
 
-    const rxPairs: Array<[string, string]> = Object.values(port_mapping ?? {}).flatMap((perCh) =>
-        Object.values(perCh ?? {}).map((t: any) => [String(t.port), String(t.channel)] as [string, string])
-    );
+    // RX in summary must be grouped by RX endpoint, not by number of TX mappings.
+    const rxPairSet = new Set<string>();
+    const rxPairs: Array<[string, string]> = [];
+    Object.values(port_mapping ?? {}).forEach((perCh) => {
+        Object.values(perCh ?? {}).forEach((t: any) => {
+            const p = String(t.port);
+            const c = String(t.channel);
+            const key = `${p}/${c}`;
+            if (!rxPairSet.has(key)) {
+                rxPairSet.add(key);
+                rxPairs.push([p, c]);
+            }
+        });
+    });
 
     // Sums
     const tx_rate_l1 = addRatesByPairs(stats.tx_rate_l1, txPairs);
@@ -361,11 +372,25 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                     </thead>
                     <tbody>
                         <tr>
-                            <td>{formatFrameCount(lost_packets)}</td>
+                            <td>
+                                <OverlayTrigger
+                                    placement="top"
+                                    overlay={(props) => renderTooltip(props, `${lost_packets}`)}
+                                >
+                                    <span>{formatFrameCount(lost_packets)}</span>
+                                </OverlayTrigger>
+                            </td>
                             <td>{lost_packets > 0 ?
                                 (lost_packets * 100 / (lost_packets + total_rx)).toFixed(2) + " %" : "0.00 %"}
                             </td>
-                            <td>{formatFrameCount(out_of_order_packets)}</td>
+                            <td>
+                                <OverlayTrigger
+                                    placement="top"
+                                    overlay={(props) => renderTooltip(props, `${out_of_order_packets}`)}
+                                >
+                                    <span>{formatFrameCount(out_of_order_packets)}</span>
+                                </OverlayTrigger>
+                            </td>
                         </tr>
                     </tbody>
                 </Table>
@@ -408,18 +433,18 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                         </tr>
                     </thead>
                     <tbody>
-                        {["Multicast", "Broadcast", "Unicast", "VxLAN", "Non-Unicast", " ", "Total"].map((v, i) => {
+                        {["Multicast", "Broadcast", "Unicast", "VxLAN", "GTPU", "Non-Unicast", " ", "Total"].map((v, i) => {
                             let key = v.toLowerCase()
                             let data = get_frame_types(key)
 
                             if (key == "total") {
-                                data.tx = ["multicast", "broadcast", "unicast", "vxlan"].reduce((acc, curr) => {
+                                data.tx = ["multicast", "broadcast", "unicast", "vxlan", "gtpu"].reduce((acc, curr) => {
                                     acc += get_frame_types(curr).tx
 
                                     return acc
                                 }, 0)
 
-                                data.rx = ["multicast", "broadcast", "unicast", "vxlan"].reduce((acc, curr) => {
+                                data.rx = ["multicast", "broadcast", "unicast", "vxlan", "gtpu"].reduce((acc, curr) => {
                                     acc += get_frame_types(curr).rx
 
                                     return acc

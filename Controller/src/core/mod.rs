@@ -26,8 +26,8 @@ pub use frame_type_monitor::FrameTypeMonitor;
 pub mod duration_monitor;
 pub use duration_monitor::DurationMonitorTask;
 
-pub mod rtt_histogram_monitor;
-pub use rtt_histogram_monitor::HistogramMonitor;
+pub mod histogram_monitor;
+pub use histogram_monitor::HistogramMonitor;
 
 mod rate_monitor;
 pub mod statistics;
@@ -47,3 +47,9 @@ pub mod traffic_gen_core;
 pub use config::Config;
 
 pub use arp::Arp;
+
+pub mod patterns;
+pub use patterns::build_pattern_generation_entries;
+
+pub mod ports;
+pub use ports::configure_ports;

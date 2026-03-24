@@ -32,16 +32,17 @@ interface Props {
 
 
 const MPLS = ({ stream, data, set_data, running }: Props) => {
+    if (!data.mpls_stack) return null;
     const set_label = (label: number, i: number) => {
-        data.mpls_stack[i].label = label;
+        data.mpls_stack![i].label = label;
     }
 
     const set_tc = (tc: number, i: number) => {
-        data.mpls_stack[i].tc = tc;
+        data.mpls_stack![i].tc = tc;
     }
 
     const set_ttl = (ttl: number, i: number) => {
-        data.mpls_stack[i].ttl = ttl;
+        data.mpls_stack![i].ttl = ttl;
     }
 
     return <>
@@ -73,9 +74,9 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
 
         {Array.from({ length: stream.number_of_lse }, (_, i) => {
 
-            if (data.mpls_stack[i] === undefined) {
+            if (data.mpls_stack![i] === undefined) {
                 // Settings were never saved before, initialize with default header
-                data.mpls_stack[i] = DefaultMPLSHeader()
+                data.mpls_stack![i] = DefaultMPLSHeader()
             }
 
             return <Form.Group as={StyledRow} className="mb-3" controlId="formPlaintextEmail">
@@ -91,7 +92,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                                 min={0}
                                 max={2 ** 20 - 1}
                                 step={1}
-                                placeholder={data.mpls_stack[i].label.toString()}
+                                placeholder={data.mpls_stack![i].label.toString()}
                                 disabled={running} type={"number"} />
                         </Col>
                         <Col className={"text-end"}>
@@ -100,7 +101,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                                 min={0}
                                 max={7}
                                 step={1}
-                                placeholder={data.mpls_stack[i].tc.toString()}
+                                placeholder={data.mpls_stack![i].tc.toString()}
                                 disabled={running} type={"number"} />
                         </Col>
                         <Col className={"text-end"}>
@@ -109,7 +110,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                                 min={0}
                                 max={255}
                                 step={1}
-                                placeholder={data.mpls_stack[i].ttl.toString()}
+                                placeholder={data.mpls_stack![i].ttl.toString()}
                                 disabled={running} type={"number"} />
                         </Col>
                     </Row>

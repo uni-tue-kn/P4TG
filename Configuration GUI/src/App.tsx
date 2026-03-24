@@ -157,7 +157,7 @@ const App = () => {
                 <Modal.Title>Update available</Modal.Title>
             </Modal.Header>
             <Modal.Body>
-                A new P4TG release is available. Visit the releases page to download the latest version.
+                A new stable P4TG release is available. Visit the releases page to download the latest version.
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={() => setShowUpdateModal(false)}>

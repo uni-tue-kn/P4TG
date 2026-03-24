@@ -30,17 +30,17 @@ def _as_float(v):
         return float(v.get("parsedValue", v.get("source", 0.0)))
     return float(v)
 
-def _extract_hist_list(result):
-    """Yield (rx_port, ch, cfg, dat) for each available histogram in one result entry."""
-    rh = result.get("rtt_histogram", {}) or {}
-    for p_str, per_ch in rh.items():
+def _extract_hist_list(result, hist_key="rtt_histogram", packet_path="rx"):
+    """Yield (port, ch, cfg, dat) for each available histogram in one result entry."""
+    hist_map = result.get(hist_key, {}) or {}
+    for p_str, per_ch in hist_map.items():
         for ch_str, h in (per_ch or {}).items():
             cfg = (h or {}).get("config")
-            dat = (h or {}).get("data")
+            dat = ((h or {}).get("data") or {}).get(packet_path)
             if cfg and dat:
                 yield int(p_str), int(ch_str), cfg, dat
 
-def _plot_one_hist(ax, cfg, dat, y="probability", title_suffix=""):
+def _plot_one_hist(ax, cfg, dat, y="probability", title_suffix="", metric_label="RTT"):
     num_bins = int(cfg.get("num_bins", 0))
     vmin_ns = float(cfg.get("min", 0))
     vmax_ns = float(cfg.get("max", 0))
@@ -79,8 +79,8 @@ def _plot_one_hist(ax, cfg, dat, y="probability", title_suffix=""):
         ymax_for_labels = max(probs) if probs else 1.0
 
     # Mean / std shown in the same unit
-    mean_ns = dat.get("mean_rtt")
-    std_ns = dat.get("std_dev_rtt")
+    mean_ns = dat.get("mean", dat.get("mean_rtt"))
+    std_ns = dat.get("std_dev", dat.get("std_dev_rtt"))
     if isinstance(mean_ns, (int, float)):
         mean_u = mean_ns / denom
         ax.axvline(mean_u, linestyle="--", linewidth=1)
@@ -93,7 +93,7 @@ def _plot_one_hist(ax, cfg, dat, y="probability", title_suffix=""):
         ax.set_title(title_suffix, pad=8)
 
     ax.grid(True, axis="y", alpha=0.3)
-    ax.set_xlabel(f"RTT [{unit}]")
+    ax.set_xlabel(f"{metric_label} [{unit}]")
 
     # Percentiles (convert to same unit)
     percs = dat.get("percentiles", {}) or {}
@@ -117,17 +117,18 @@ def _plot_one_hist(ax, cfg, dat, y="probability", title_suffix=""):
                 transform=ax.transAxes, ha="right", va="bottom", fontsize=8, alpha=0.8)
 
 
-def plot_all_rtt_histograms(
+def _plot_all_histograms(
     results: list[dict],
     payload_path: str,
+    hist_key: str,
+    packet_path: str,
+    metric_label: str,
+    file_suffix: str,
     y: str = "probability",
     max_cols: int = 3,
     show_plots: bool = False,
 ):
-    """
-    One figure that contains *all* results.
-    Each result gets a subfigure (row), and inside it a grid of histograms (port/channel).
-    """
+    """One figure containing all requested histograms across all result entries."""
 
     if not results:
         print("No results.")
@@ -137,7 +138,7 @@ def plot_all_rtt_histograms(
     rows_per_result = []
     cols_used_per_result = []
     for result in results:
-        n = sum(1 for _ in _extract_hist_list(result))
+        n = sum(1 for _ in _extract_hist_list(result, hist_key=hist_key, packet_path=packet_path))
         if n == 0:
             rows_per_result.append(0)
             cols_used_per_result.append(0)
@@ -159,32 +160,34 @@ def plot_all_rtt_histograms(
 
     # Use subfigures if available (Matplotlib >= 3.4). Fallback otherwise.
     use_subfigures = hasattr(fig, "subfigures")
-    subfigs = (
-        fig.subfigures(nrows=len(results), ncols=1) if use_subfigures
-        else [fig.add_subplot(len(results), 1, i + 1) for i in range(len(results))]
-    )
+    if use_subfigures:
+        raw_subfigs = fig.subfigures(nrows=len(results), ncols=1)
+        if isinstance(raw_subfigs, np.ndarray):
+            subfigs = list(raw_subfigs.ravel())
+        else:
+            subfigs = [raw_subfigs]
+    else:
+        subfigs = [fig.add_subplot(len(results), 1, i + 1) for i in range(len(results))]
 
-    sf_idx = 0
     for res_idx, result in enumerate(results):
         name = result.get("name") or f"Entry {res_idx + 1}"
-        hists = list(_extract_hist_list(result))
+        hists = list(_extract_hist_list(result, hist_key=hist_key, packet_path=packet_path))
         n = len(hists)
         if n == 0:
             continue
 
         cols = min(max_cols, n)
         rows = math.ceil(n / cols)
+        container = subfigs[res_idx]
 
         if use_subfigures:
-            subfig = subfigs[sf_idx]
-            sf_idx += 1
+            subfig = container
             subfig.suptitle(name, y=1.02, x=0.01, ha="left", fontsize=12)
             axes = subfig.subplots(rows, cols, squeeze=False)
         else:
             # Fallback: create a gridspec-like area within this axes
             # We’ll just add a small title and create a nested Figure-like grid
-            host_ax = subfigs[sf_idx]
-            sf_idx += 1
+            host_ax = container
             host_ax.axis("off")
             host_ax.set_title(name, loc="left", fontsize=12, pad=14)
             # Create a nested grid of axes in the remaining area
@@ -194,11 +197,18 @@ def plot_all_rtt_histograms(
                                              bottom=(1 - (res_idx + 1) / len(results)) + 0.01)
             axes = [[fig.add_subplot(gs[r, c]) for c in range(cols)] for r in range(rows)]
 
-        for k, (rx_port, ch, cfg, dat) in enumerate(hists):
+        for k, (port, ch, cfg, dat) in enumerate(hists):
             r = k // cols
             c = k % cols
             ax = axes[r][c]
-            _plot_one_hist(ax, cfg, dat, y=y, title_suffix=f"RX port {rx_port}/{ch}")
+            _plot_one_hist(
+                ax,
+                cfg,
+                dat,
+                y=y,
+                title_suffix=f"Port {port}/{ch}",
+                metric_label=metric_label,
+            )
 
         # Hide any unused axes in the last row
         for k in range(n, rows * cols):
@@ -209,8 +219,68 @@ def plot_all_rtt_histograms(
     # Save one combined PDF
     out_dir = Path("results"); out_dir.mkdir(parents=True, exist_ok=True)
     p = Path(payload_path)
-    out_path = out_dir / f"{p.stem}_histogram_all.pdf"
+    out_path = out_dir / f"{p.stem}_{file_suffix}.pdf"
     fig.savefig(out_path, bbox_inches="tight", pad_inches=0.2)
     if show_plots:
         plt.show()
     plt.close(fig)
+
+
+def plot_all_rtt_histograms(
+    results: list[dict],
+    payload_path: str,
+    y: str = "probability",
+    max_cols: int = 3,
+    show_plots: bool = False,
+):
+    _plot_all_histograms(
+        results=results,
+        payload_path=payload_path,
+        hist_key="rtt_histogram",
+        packet_path="rx",
+        metric_label="RTT",
+        file_suffix="histogram_rtt",
+        y=y,
+        max_cols=max_cols,
+        show_plots=show_plots,
+    )
+
+
+def plot_all_iat_histograms_tx(
+    results: list[dict],
+    payload_path: str,
+    y: str = "probability",
+    max_cols: int = 3,
+    show_plots: bool = False,
+):
+    _plot_all_histograms(
+        results=results,
+        payload_path=payload_path,
+        hist_key="iat_histogram",
+        packet_path="tx",
+        metric_label="IAT (TX)",
+        file_suffix="histogram_iat_tx",
+        y=y,
+        max_cols=max_cols,
+        show_plots=show_plots,
+    )
+
+
+def plot_all_iat_histograms_rx(
+    results: list[dict],
+    payload_path: str,
+    y: str = "probability",
+    max_cols: int = 3,
+    show_plots: bool = False,
+):
+    _plot_all_histograms(
+        results=results,
+        payload_path=payload_path,
+        hist_key="iat_histogram",
+        packet_path="rx",
+        metric_label="IAT (RX)",
+        file_suffix="histogram_iat_rx",
+        y=y,
+        max_cols=max_cols,
+        show_plots=show_plots,
+    )
