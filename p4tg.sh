@@ -43,7 +43,17 @@ export PATH
 ###########################
 # Configuration (edit me) #
 ###########################
-P4TG_DIR="${P4TG_DIR:-/opt/P4TG}"                           # root of repository checkout
+# Resolve default repo root from the script location (handles symlinked invocations).
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+  SCRIPT_SOURCE="$(readlink -f "$SCRIPT_SOURCE" 2>/dev/null || echo "$SCRIPT_SOURCE")"
+fi
+SCRIPT_DIR="$(cd -P -- "$(dirname -- "$SCRIPT_SOURCE")" 2>/dev/null && pwd || pwd)"
+
+P4TG_DIR="${P4TG_DIR:-$SCRIPT_DIR}"                         # root of repository checkout
+if [[ -d "$P4TG_DIR" ]]; then
+  P4TG_DIR="$(cd -P -- "$P4TG_DIR" && pwd)"
+fi
 LOG_DIR="${LOG_DIR:-/var/log/traffic_gen}"                  # where to store logs
 SWITCHD_LOG="${SWITCHD_LOG:-$LOG_DIR/switchd.log}"
 

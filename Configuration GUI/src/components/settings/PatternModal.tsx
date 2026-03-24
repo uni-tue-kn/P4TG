@@ -22,12 +22,15 @@ import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
 import { formatNanoSeconds } from "../../common/Helper";
 
+const getDefaultFlashcrowdQuietUntil = (period: number) => period * 0.2;
+const getDefaultFlashcrowdRampUntil = (period: number) => period * 0.25;
+
 const defaultPatternConfig = (config?: GenerationPatternConfig): GenerationPatternConfig => ({
     pattern_type: config?.pattern_type ?? GenerationPattern.Sine,
     period: config?.period ?? 20_000_000_000,
     sample_rate: config?.sample_rate ?? 128,
-    fc_quiet_until: config?.fc_quiet_until ?? 0.2,
-    fc_ramp_until: config?.fc_ramp_until ?? 0.25,
+    fc_quiet_until: config?.fc_quiet_until ?? getDefaultFlashcrowdQuietUntil(config?.period ?? 20_000_000_000),
+    fc_ramp_until: config?.fc_ramp_until ?? getDefaultFlashcrowdRampUntil(config?.period ?? 20_000_000_000),
     fc_decay_rate: config?.fc_decay_rate ?? 4.0,
     square_low: config?.square_low ?? 0,
     square_high_until: config?.square_high_until ?? ((config?.period ?? 20_000_000_000) / 2),
@@ -51,6 +54,8 @@ const PatternModal = ({
     const [alertMessage, setAlertMessage] = useState<string | null>(null);
     const [periodUnit, setPeriodUnit] = useState<string>("s");
     const [squareHighUntilUnit, setSquareHighUntilUnit] = useState<string>("s");
+    const [flashcrowdQuietUntilUnit, setFlashcrowdQuietUntilUnit] = useState<string>("s");
+    const [flashcrowdRampUntilUnit, setFlashcrowdRampUntilUnit] = useState<string>("s");
     const [unitsReady, setUnitsReady] = useState<boolean>(false);
     const getPeriodMultiplier = (unit: string) => unitOptions.find(u => u.label === unit)?.multiplier || 1;
 
@@ -62,12 +67,20 @@ const PatternModal = ({
 
         const storedPeriodUnit = window.localStorage.getItem("p4tg.pattern.period.unit");
         const storedSquareHighUntilUnit = window.localStorage.getItem("p4tg.pattern.square_high_until.unit");
+        const storedFlashcrowdQuietUntilUnit = window.localStorage.getItem("p4tg.pattern.fc_quiet_until.unit");
+        const storedFlashcrowdRampUntilUnit = window.localStorage.getItem("p4tg.pattern.fc_ramp_until.unit");
 
         if (storedPeriodUnit && unitOptions.some(u => u.label === storedPeriodUnit)) {
             setPeriodUnit(storedPeriodUnit);
         }
         if (storedSquareHighUntilUnit && unitOptions.some(u => u.label === storedSquareHighUntilUnit)) {
             setSquareHighUntilUnit(storedSquareHighUntilUnit);
+        }
+        if (storedFlashcrowdQuietUntilUnit && unitOptions.some(u => u.label === storedFlashcrowdQuietUntilUnit)) {
+            setFlashcrowdQuietUntilUnit(storedFlashcrowdQuietUntilUnit);
+        }
+        if (storedFlashcrowdRampUntilUnit && unitOptions.some(u => u.label === storedFlashcrowdRampUntilUnit)) {
+            setFlashcrowdRampUntilUnit(storedFlashcrowdRampUntilUnit);
         }
 
         setUnitsReady(true);
@@ -82,6 +95,8 @@ const PatternModal = ({
             set_tmp_data({
                 ...baseConfig,
                 period: baseConfig.period / getPeriodMultiplier(periodUnit),
+                fc_quiet_until: (baseConfig.fc_quiet_until ?? 0) / getPeriodMultiplier(flashcrowdQuietUntilUnit),
+                fc_ramp_until: (baseConfig.fc_ramp_until ?? 0) / getPeriodMultiplier(flashcrowdRampUntilUnit),
                 square_high_until: (baseConfig.square_high_until ?? 0) / getPeriodMultiplier(squareHighUntilUnit),
             });
             setAlertMessage(null);
@@ -93,6 +108,8 @@ const PatternModal = ({
         set_tmp_data({
             ...baseConfig,
             period: baseConfig.period / getPeriodMultiplier(periodUnit),
+            fc_quiet_until: (baseConfig.fc_quiet_until ?? 0) / getPeriodMultiplier(flashcrowdQuietUntilUnit),
+            fc_ramp_until: (baseConfig.fc_ramp_until ?? 0) / getPeriodMultiplier(flashcrowdRampUntilUnit),
             square_high_until: (baseConfig.square_high_until ?? 0) / getPeriodMultiplier(squareHighUntilUnit),
         });
         setAlertMessage(null);
@@ -107,6 +124,15 @@ const PatternModal = ({
         set_tmp_data(prev => ({
             ...prev,
             pattern_type: value as GenerationPattern,
+            fc_quiet_until: value === GenerationPattern.Flashcrowd && prev.pattern_type !== GenerationPattern.Flashcrowd
+                ? getDefaultFlashcrowdQuietUntil(Number(prev.period) * getPeriodMultiplier(periodUnit)) / getPeriodMultiplier(flashcrowdQuietUntilUnit)
+                : prev.fc_quiet_until,
+            fc_ramp_until: value === GenerationPattern.Flashcrowd && prev.pattern_type !== GenerationPattern.Flashcrowd
+                ? getDefaultFlashcrowdRampUntil(Number(prev.period) * getPeriodMultiplier(periodUnit)) / getPeriodMultiplier(flashcrowdRampUntilUnit)
+                : prev.fc_ramp_until,
+            fc_decay_rate: value === GenerationPattern.Flashcrowd && prev.pattern_type !== GenerationPattern.Flashcrowd
+                ? (prev.fc_decay_rate ?? 4.0)
+                : prev.fc_decay_rate,
         }));
     };
 
@@ -140,6 +166,36 @@ const PatternModal = ({
         }
     };
 
+    const handleFlashcrowdQuietUntilUnitChange = (newUnit: string) => {
+        const currentFactor = getPeriodMultiplier(flashcrowdQuietUntilUnit);
+        const newFactor = getPeriodMultiplier(newUnit);
+        const factor = currentFactor / newFactor;
+
+        set_tmp_data(prev => ({
+            ...prev,
+            fc_quiet_until: (prev.fc_quiet_until ?? 0) * factor,
+        }));
+        setFlashcrowdQuietUntilUnit(newUnit);
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("p4tg.pattern.fc_quiet_until.unit", newUnit);
+        }
+    };
+
+    const handleFlashcrowdRampUntilUnitChange = (newUnit: string) => {
+        const currentFactor = getPeriodMultiplier(flashcrowdRampUntilUnit);
+        const newFactor = getPeriodMultiplier(newUnit);
+        const factor = currentFactor / newFactor;
+
+        set_tmp_data(prev => ({
+            ...prev,
+            fc_ramp_until: (prev.fc_ramp_until ?? 0) * factor,
+        }));
+        setFlashcrowdRampUntilUnit(newUnit);
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("p4tg.pattern.fc_ramp_until.unit", newUnit);
+        }
+    };
+
     const submit = () => {
         const period = Number(tmp_data.period) * getPeriodMultiplier(periodUnit);
         const sampleRate = Number(tmp_data.sample_rate);
@@ -150,20 +206,32 @@ const PatternModal = ({
         }
 
         if (tmp_data.pattern_type === GenerationPattern.Flashcrowd) {
-            const quietUntil = tmp_data.fc_quiet_until ?? 0.2;
-            const rampUntil = tmp_data.fc_ramp_until ?? 0.25;
+            const quietUntil = Number(tmp_data.fc_quiet_until ?? 0) * getPeriodMultiplier(flashcrowdQuietUntilUnit);
+            const rampUntil = Number(tmp_data.fc_ramp_until ?? 0) * getPeriodMultiplier(flashcrowdRampUntilUnit);
             const decayRate = tmp_data.fc_decay_rate ?? 4.0;
 
-            if (quietUntil < 0 || quietUntil > 1) {
-                setAlertMessage("Quiet until must be within [0, 1].");
+            if (!Number.isFinite(quietUntil)) {
+                setAlertMessage("Quiet until must be a valid number.");
                 return;
             }
-            if (rampUntil < 0 || rampUntil > 1) {
-                setAlertMessage("Ramp until must be within [0, 1].");
+            if (!Number.isFinite(rampUntil)) {
+                setAlertMessage("Ramp until must be a valid number.");
+                return;
+            }
+            if (quietUntil < 0) {
+                setAlertMessage("Quiet until must be zero or greater.");
+                return;
+            }
+            if (rampUntil < 0) {
+                setAlertMessage("Ramp until must be zero or greater.");
                 return;
             }
             if (quietUntil > rampUntil) {
                 setAlertMessage("Ramp until must be larger than or equal to quiet until.");
+                return;
+            }
+            if (rampUntil >= period) {
+                setAlertMessage("Ramp until must be smaller than the period.");
                 return;
             }
             if (decayRate < 0) {
@@ -228,6 +296,8 @@ const PatternModal = ({
     const isFlashcrowd = tmp_data.pattern_type === GenerationPattern.Flashcrowd;
     const isSquare = tmp_data.pattern_type === GenerationPattern.Square;
     const periodInBaseUnit = Number(tmp_data.period) * getPeriodMultiplier(periodUnit);
+    const flashcrowdQuietUntilMax = periodInBaseUnit / getPeriodMultiplier(flashcrowdQuietUntilUnit);
+    const flashcrowdRampUntilMax = periodInBaseUnit / getPeriodMultiplier(flashcrowdRampUntilUnit);
     const squareHighUntilInBaseUnit = Number(tmp_data.square_high_until ?? 0) * getPeriodMultiplier(squareHighUntilUnit);
     const sampleRateValue = Number(tmp_data.sample_rate);
     const squareHighMinInBaseUnit = Number.isFinite(periodInBaseUnit) && Number.isFinite(sampleRateValue) && sampleRateValue > 0
@@ -378,37 +448,59 @@ const PatternModal = ({
 
                 {isFlashcrowd && (
                     <>
-                        <Form.Group as={Row} className="mb-3 align-items-center">
-                            <Form.Label column sm={3}>Quiet until</Form.Label>
-                            <Col sm={9}>
+                        <Form.Group as={Row} className="mb-3 align-items-start">
+                            <Form.Label column sm={3} className="pt-2">Quiet until</Form.Label>
+                            <Col sm={6}>
                                 <Form.Control
                                     type="number"
                                     min={0}
-                                    max={1}
+                                    max={flashcrowdQuietUntilMax}
                                     step={"any"}
                                     value={tmp_data.fc_quiet_until ?? 0}
                                     onChange={(e) => handleNumberChange("fc_quiet_until", e.target.value)}
                                     required
                                     disabled={disabled}
                                 />
-                                <Form.Text className="text-muted">Fraction of period with no load [0,1].</Form.Text>
+                                <Form.Text className="text-muted">Time within the period where the quiet phase ends.</Form.Text>
+                            </Col>
+                            <Col sm={3}>
+                                <Form.Select
+                                    disabled={disabled}
+                                    value={flashcrowdQuietUntilUnit}
+                                    onChange={(e) => handleFlashcrowdQuietUntilUnitChange(e.target.value)}
+                                >
+                                    {unitOptions.map(u => (
+                                        <option key={u.label} value={u.label}>{u.label}</option>
+                                    ))}
+                                </Form.Select>
                             </Col>
                         </Form.Group>
 
-                        <Form.Group as={Row} className="mb-3 align-items-center">
-                            <Form.Label column sm={3}>Ramp until</Form.Label>
-                            <Col sm={9}>
+                        <Form.Group as={Row} className="mb-3 align-items-start">
+                            <Form.Label column sm={3} className="pt-2">Ramp until</Form.Label>
+                            <Col sm={6}>
                                 <Form.Control
                                     type="number"
                                     min={0}
-                                    max={1}
+                                    max={flashcrowdRampUntilMax}
                                     step={"any"}
                                     value={tmp_data.fc_ramp_until ?? 0}
                                     onChange={(e) => handleNumberChange("fc_ramp_until", e.target.value)}
                                     required
                                     disabled={disabled}
                                 />
-                                <Form.Text className="text-muted">Fraction of period to reach peak load [0,1].</Form.Text>
+                                <Form.Text className="text-muted">Time within the period where the ramp phase reaches peak load.</Form.Text>
+                            </Col>
+                            <Col sm={3}>
+                                <Form.Select
+                                    disabled={disabled}
+                                    value={flashcrowdRampUntilUnit}
+                                    onChange={(e) => handleFlashcrowdRampUntilUnitChange(e.target.value)}
+                                >
+                                    {unitOptions.map(u => (
+                                        <option key={u.label} value={u.label}>{u.label}</option>
+                                    ))}
+                                </Form.Select>
                             </Col>
                         </Form.Group>
 

@@ -13,4 +13,4 @@ services:
       - P4_NAME=traffic_gen
       - NUM_PORTS=32
     volumes:
-      - ./config.json:/app/config.json
+      - /opt/P4TG/config.json:/app/config.json

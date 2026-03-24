@@ -378,11 +378,12 @@ pub struct GenerationPatternConfig {
     pub period: f64,
     /// The number of samples per period.
     pub sample_rate: u32,
-    /// Flash-crowd specific settings.
-    /// t_0 in the range of [0,1]
+    /// Flash-crowd specific setting: time in nanoseconds within the period
+    /// until the quiet phase ends.
     #[serde(default)]
     pub fc_quiet_until: Option<f64>,
-    /// t_1 in the range of [0,1]
+    /// Flash-crowd specific setting: time in nanoseconds within the period
+    /// until the ramp phase ends.
     #[serde(default)]
     pub fc_ramp_until: Option<f64>,
     #[serde(default)]

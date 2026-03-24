@@ -108,6 +108,30 @@ fn sawtooth_factor(k: u32, sampling_rate: u32) -> f64 {
     k as f64 / sampling_rate as f64
 }
 
+fn default_flashcrowd_quiet_until(period_ns: f64) -> f64 {
+    period_ns * 0.2
+}
+
+fn default_flashcrowd_ramp_until(period_ns: f64) -> f64 {
+    period_ns * 0.25
+}
+
+fn resolve_flashcrowd_timings(pattern_config: &GenerationPatternConfig) -> (f64, f64, f64) {
+    let quiet_until_ns = pattern_config
+        .fc_quiet_until
+        .unwrap_or(default_flashcrowd_quiet_until(pattern_config.period));
+    let ramp_until_ns = pattern_config
+        .fc_ramp_until
+        .unwrap_or(default_flashcrowd_ramp_until(pattern_config.period));
+    let decay_rate = pattern_config.fc_decay_rate.unwrap_or(4.0);
+
+    (
+        quiet_until_ns / pattern_config.period,
+        ramp_until_ns / pattern_config.period,
+        decay_rate,
+    )
+}
+
 fn flashcrowd_factor(
     k: u32,
     sampling_rate: u32,
@@ -225,9 +249,8 @@ pub fn build_pattern_generation_entries(
             GenerationPattern::Sawtooth => sawtooth_factor(sample_idx, sampling_rate),
             GenerationPattern::CatWave => cat_factor(sample_idx, sampling_rate),
             GenerationPattern::Flashcrowd => {
-                let quiet_until = pattern_config.fc_quiet_until.unwrap_or(0.2); // 0–20% of period: no load
-                let ramp_until = pattern_config.fc_ramp_until.unwrap_or(0.25); // 20–25% of period: fast ramp to 1
-                let decay_rate = pattern_config.fc_decay_rate.unwrap_or(4.0); // bigger = faster decay in the tail
+                let (quiet_until, ramp_until, decay_rate) =
+                    resolve_flashcrowd_timings(&pattern_config);
                 flashcrowd_factor(
                     sample_idx,
                     sampling_rate,

@@ -316,7 +316,8 @@ impl Config {
     pub(crate) fn materialize_channel_macs(&mut self, is_tofino2: bool) {
         for port in &mut self.tg_ports {
             let speed = port.speed_or_default(is_tofino2);
-            let Some(mode) = resolve_front_panel_mode(&speed, port.channel_count, is_tofino2) else {
+            let Some(mode) = resolve_front_panel_mode(&speed, port.channel_count, is_tofino2)
+            else {
                 continue;
             };
 

@@ -420,19 +420,31 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
             let period_secs = pattern.period / 1e9_f64; // convert from ns to s
 
             if let GenerationPattern::Flashcrowd = pattern.pattern_type {
-                let quiet_until = pattern.fc_quiet_until.unwrap_or(0.2); // 0–20% of period: no load
-                let ramp_until = pattern.fc_ramp_until.unwrap_or(0.25); // 20–25% of period: fast ramp to 1
+                let quiet_until = pattern.fc_quiet_until.unwrap_or(pattern.period * 0.2);
+                let ramp_until = pattern.fc_ramp_until.unwrap_or(pattern.period * 0.25);
                 let decay_rate = pattern.fc_decay_rate.unwrap_or(4.0); // bigger = faster decay in the tail
 
-                if quiet_until > 1.0 {
+                if quiet_until < 0.0 {
                     return Err(Error::new(format!(
-                        "Quiet until parameter for flashcrowd must be in the range of [1,0] in stream with ID #{}.",
+                        "Quiet until parameter for flashcrowd must be zero or greater in stream with ID #{}.",
                         s.stream_id
                     )));
                 }
-                if ramp_until > 1.0 {
+                if ramp_until < 0.0 {
                     return Err(Error::new(format!(
-                        "Ramp until parameter for flashcrowd must be in the range of [1,0] in stream with ID #{}.",
+                        "Ramp until parameter for flashcrowd must be zero or greater in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if quiet_until >= pattern.period {
+                    return Err(Error::new(format!(
+                        "Quiet until parameter for flashcrowd must be smaller than the period in stream with ID #{}.",
+                        s.stream_id
+                    )));
+                }
+                if ramp_until >= pattern.period {
+                    return Err(Error::new(format!(
+                        "Ramp until parameter for flashcrowd must be smaller than the period in stream with ID #{}.",
                         s.stream_id
                     )));
                 }
@@ -444,7 +456,7 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
                 }
                 if decay_rate < 0.0 {
                     return Err(Error::new(format!(
-                        "Decay rate parameter for flashcrowd must be larger than zero in stream with ID #{}.",
+                        "Decay rate parameter for flashcrowd must be zero or greater in stream with ID #{}.",
                         s.stream_id
                     )));
                 }

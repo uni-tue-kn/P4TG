@@ -38,6 +38,9 @@ import InfoBox from "../InfoBox";
 import { StyledCol, StyledRow } from "../../sites/Settings";
 import PatternModal from "./PatternModal";
 
+const getDefaultFlashcrowdQuietUntil = (period: number) => period * 0.2;
+const getDefaultFlashcrowdRampUntil = (period: number) => period * 0.25;
+
 
 const StreamElement = ({
     running,
@@ -245,8 +248,12 @@ const StreamElement = ({
         const updatedConfig: GenerationPatternConfig = {
             ...baseConfig,
             pattern_type: selectedType,
-            fc_quiet_until: selectedType === GenerationPattern.Flashcrowd ? (baseConfig.fc_quiet_until ?? 0.2) : null,
-            fc_ramp_until: selectedType === GenerationPattern.Flashcrowd ? (baseConfig.fc_ramp_until ?? 0.25) : null,
+            fc_quiet_until: selectedType === GenerationPattern.Flashcrowd
+                ? (baseConfig.fc_quiet_until ?? getDefaultFlashcrowdQuietUntil(baseConfig.period))
+                : null,
+            fc_ramp_until: selectedType === GenerationPattern.Flashcrowd
+                ? (baseConfig.fc_ramp_until ?? getDefaultFlashcrowdRampUntil(baseConfig.period))
+                : null,
             fc_decay_rate: selectedType === GenerationPattern.Flashcrowd ? (baseConfig.fc_decay_rate ?? 4.0) : null,
         };
 
