@@ -11,7 +11,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "2.6.2"
+    "version": "2.7.1"
   },
   "paths": {
     "/api/histogram": {
@@ -29,7 +29,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/RttHistogramConfig"
+                    "$ref": "#/components/schemas/HistogramConfig"
                   },
                   "propertyNames": {
                     "type": "integer",
@@ -166,9 +166,11 @@
                     "encapsulation": 0,
                     "frame_size": 1024,
                     "generation_accuracy": 99.90867614746094,
+                    "gtpu": false,
                     "ip_version": 4,
                     "n_packets": 5,
                     "n_pipes": 2,
+                    "pattern": null,
                     "stream_id": 1,
                     "timeout": 876,
                     "traffic_rate": 100.0,
@@ -298,7 +300,17 @@
                     "summary": "First example",
                     "value": {
                       "duration": 10,
-                      "histogram_config": {
+                      "iat_histogram_config": null,
+                      "mode": 1,
+                      "port_tx_rx_mapping": {
+                        "1": {
+                          "0": {
+                            "channel": 0,
+                            "port": 2
+                          }
+                        }
+                      },
+                      "rtt_histogram_config": {
                         "2": {
                           "0": {
                             "max": 2000,
@@ -310,15 +322,6 @@
                               0.75,
                               0.9
                             ]
-                          }
-                        }
-                      },
-                      "mode": 1,
-                      "port_tx_rx_mapping": {
-                        "1": {
-                          "0": {
-                            "channel": 0,
-                            "port": 2
                           }
                         }
                       },
@@ -357,9 +360,11 @@
                           "encapsulation": 1,
                           "frame_size": 64,
                           "generation_accuracy": 100.0,
+                          "gtpu": false,
                           "ip_version": 4,
                           "n_packets": 5,
                           "n_pipes": 2,
+                          "pattern": null,
                           "stream_id": 1,
                           "timeout": 88,
                           "traffic_rate": 80.0,
@@ -373,7 +378,17 @@
                     "summary": "Second example",
                     "value": {
                       "duration": null,
-                      "histogram_config": {
+                      "iat_histogram_config": null,
+                      "mode": 1,
+                      "port_tx_rx_mapping": {
+                        "1": {
+                          "0": {
+                            "channel": 0,
+                            "port": 2
+                          }
+                        }
+                      },
+                      "rtt_histogram_config": {
                         "2": {
                           "0": {
                             "max": 2000,
@@ -385,15 +400,6 @@
                               0.75,
                               0.9
                             ]
-                          }
-                        }
-                      },
-                      "mode": 1,
-                      "port_tx_rx_mapping": {
-                        "1": {
-                          "0": {
-                            "channel": 0,
-                            "port": 2
                           }
                         }
                       },
@@ -433,9 +439,11 @@
                           "encapsulation": 0,
                           "frame_size": 1024,
                           "generation_accuracy": 99.90867614746094,
+                          "gtpu": false,
                           "ip_version": 4,
                           "n_packets": 5,
                           "n_pipes": 2,
+                          "pattern": null,
                           "stream_id": 1,
                           "timeout": 876,
                           "traffic_rate": 100.0,
@@ -478,7 +486,17 @@
                   "summary": "VxLAN 1024 (+50) byte @ 100 Gbps",
                   "value": {
                     "duration": null,
-                    "histogram_config": {
+                    "iat_histogram_config": null,
+                    "mode": 1,
+                    "port_tx_rx_mapping": {
+                      "1": {
+                        "0": {
+                          "channel": 0,
+                          "port": 2
+                        }
+                      }
+                    },
+                    "rtt_histogram_config": {
                       "2": {
                         "0": {
                           "max": 2000,
@@ -490,15 +508,6 @@
                             0.75,
                             0.9
                           ]
-                        }
-                      }
-                    },
-                    "mode": 1,
-                    "port_tx_rx_mapping": {
-                      "1": {
-                        "0": {
-                          "channel": 0,
-                          "port": 2
                         }
                       }
                     },
@@ -537,7 +546,9 @@
                         "burst": 100,
                         "encapsulation": 0,
                         "frame_size": 1024,
+                        "gtpu": false,
                         "ip_version": 4,
+                        "pattern": null,
                         "stream_id": 1,
                         "traffic_rate": 100.0,
                         "unit": 0,
@@ -550,7 +561,17 @@
                   "summary": "VLAN 64 (+4) byte @ 80 Gbps",
                   "value": {
                     "duration": null,
-                    "histogram_config": {
+                    "iat_histogram_config": null,
+                    "mode": 1,
+                    "port_tx_rx_mapping": {
+                      "1": {
+                        "0": {
+                          "channel": 0,
+                          "port": 2
+                        }
+                      }
+                    },
+                    "rtt_histogram_config": {
                       "2": {
                         "0": {
                           "max": 2000,
@@ -562,15 +583,6 @@
                             0.75,
                             0.9
                           ]
-                        }
-                      }
-                    },
-                    "mode": 1,
-                    "port_tx_rx_mapping": {
-                      "1": {
-                        "0": {
-                          "channel": 0,
-                          "port": 2
                         }
                       }
                     },
@@ -608,7 +620,9 @@
                         "burst": 100,
                         "encapsulation": 1,
                         "frame_size": 64,
+                        "gtpu": false,
                         "ip_version": 4,
+                        "pattern": null,
                         "stream_id": 1,
                         "traffic_rate": 80.0,
                         "unit": 0,
@@ -621,7 +635,7 @@
                   "summary": "Poisson @ 30 Gbps",
                   "value": {
                     "duration": null,
-                    "histogram_config": null,
+                    "iat_histogram_config": null,
                     "mode": 3,
                     "name": "Poisson",
                     "port_tx_rx_mapping": {
@@ -632,6 +646,7 @@
                         }
                       }
                     },
+                    "rtt_histogram_config": null,
                     "stream_settings": [
                       {
                         "active": true,
@@ -658,7 +673,9 @@
                         "burst": 100,
                         "encapsulation": 0,
                         "frame_size": 64,
+                        "gtpu": false,
                         "ip_version": 4,
+                        "pattern": null,
                         "stream_id": 1,
                         "traffic_rate": 30.0,
                         "unit": 0,
@@ -672,21 +689,7 @@
                   "value": [
                     {
                       "duration": 10,
-                      "histogram_config": {
-                        "2": {
-                          "0": {
-                            "max": 2000,
-                            "min": 1000,
-                            "num_bins": 100,
-                            "percentiles": [
-                              0.25,
-                              0.5,
-                              0.75,
-                              0.9
-                            ]
-                          }
-                        }
-                      },
+                      "iat_histogram_config": null,
                       "mode": 1,
                       "name": "Test 1",
                       "port_tx_rx_mapping": {
@@ -697,58 +700,7 @@
                           }
                         }
                       },
-                      "stream_settings": [
-                        {
-                          "active": true,
-                          "channel": null,
-                          "ethernet": {
-                            "eth_dst": "81:E7:9D:E3:AD:47",
-                            "eth_src": "32:D5:42:2A:F6:92"
-                          },
-                          "ipv6": {
-                            "ipv6_dst": "ff80::",
-                            "ipv6_dst_mask": "::ff:ffff:ffff",
-                            "ipv6_flow_label": 3,
-                            "ipv6_src": "ff80::",
-                            "ipv6_src_mask": "::",
-                            "ipv6_traffic_class": 5
-                          },
-                          "port": 1,
-                          "sid_list": [
-                            "ff80::",
-                            "abc::"
-                          ],
-                          "srv6_base_header": {
-                            "ipv6_dst": "ff80::",
-                            "ipv6_dst_mask": "::ff:ffff:ffff",
-                            "ipv6_flow_label": 3,
-                            "ipv6_src": "ff80::",
-                            "ipv6_src_mask": "::",
-                            "ipv6_traffic_class": 5
-                          },
-                          "stream_id": 1
-                        }
-                      ],
-                      "streams": [
-                        {
-                          "app_id": 1,
-                          "batches": true,
-                          "burst": 100,
-                          "encapsulation": 0,
-                          "frame_size": 1024,
-                          "ip_version": 6,
-                          "number_of_srv6_sids": 2,
-                          "srv6_ip_tunneling": true,
-                          "stream_id": 1,
-                          "traffic_rate": 100.0,
-                          "unit": 0,
-                          "vxlan": false
-                        }
-                      ]
-                    },
-                    {
-                      "duration": 15,
-                      "histogram_config": {
+                      "rtt_histogram_config": {
                         "2": {
                           "0": {
                             "max": 2000,
@@ -763,6 +715,60 @@
                           }
                         }
                       },
+                      "stream_settings": [
+                        {
+                          "active": true,
+                          "channel": null,
+                          "ethernet": {
+                            "eth_dst": "81:E7:9D:E3:AD:47",
+                            "eth_src": "32:D5:42:2A:F6:92"
+                          },
+                          "ipv6": {
+                            "ipv6_dst": "ff80::",
+                            "ipv6_dst_mask": "::ff:ffff:ffff",
+                            "ipv6_flow_label": 3,
+                            "ipv6_src": "ff80::",
+                            "ipv6_src_mask": "::",
+                            "ipv6_traffic_class": 5
+                          },
+                          "port": 1,
+                          "sid_list": [
+                            "ff80::",
+                            "abc::"
+                          ],
+                          "srv6_base_header": {
+                            "ipv6_dst": "ff80::",
+                            "ipv6_dst_mask": "::ff:ffff:ffff",
+                            "ipv6_flow_label": 3,
+                            "ipv6_src": "ff80::",
+                            "ipv6_src_mask": "::",
+                            "ipv6_traffic_class": 5
+                          },
+                          "stream_id": 1
+                        }
+                      ],
+                      "streams": [
+                        {
+                          "app_id": 1,
+                          "batches": true,
+                          "burst": 100,
+                          "encapsulation": 0,
+                          "frame_size": 1024,
+                          "gtpu": false,
+                          "ip_version": 6,
+                          "number_of_srv6_sids": 2,
+                          "pattern": null,
+                          "srv6_ip_tunneling": true,
+                          "stream_id": 1,
+                          "traffic_rate": 100.0,
+                          "unit": 0,
+                          "vxlan": false
+                        }
+                      ]
+                    },
+                    {
+                      "duration": 15,
+                      "iat_histogram_config": null,
                       "mode": 1,
                       "name": "Another test",
                       "port_tx_rx_mapping": {
@@ -770,6 +776,21 @@
                           "0": {
                             "channel": 0,
                             "port": 2
+                          }
+                        }
+                      },
+                      "rtt_histogram_config": {
+                        "2": {
+                          "0": {
+                            "max": 2000,
+                            "min": 1000,
+                            "num_bins": 100,
+                            "percentiles": [
+                              0.25,
+                              0.5,
+                              0.75,
+                              0.9
+                            ]
                           }
                         }
                       },
@@ -812,8 +833,10 @@
                           "burst": 100,
                           "encapsulation": 0,
                           "frame_size": 1024,
+                          "gtpu": false,
                           "ip_version": 6,
                           "number_of_srv6_sids": 2,
+                          "pattern": null,
                           "srv6_ip_tunneling": true,
                           "stream_id": 1,
                           "traffic_rate": 100.0,
@@ -851,9 +874,11 @@
                         "encapsulation": 0,
                         "frame_size": 1024,
                         "generation_accuracy": 99.90867614746094,
+                        "gtpu": false,
                         "ip_version": 4,
                         "n_packets": 5,
                         "n_pipes": 2,
+                        "pattern": null,
                         "stream_id": 1,
                         "timeout": 876,
                         "traffic_rate": 100.0,
@@ -872,9 +897,11 @@
                         "encapsulation": 0,
                         "frame_size": 1024,
                         "generation_accuracy": 99.90867614746094,
+                        "gtpu": false,
                         "ip_version": 4,
                         "n_packets": 5,
                         "n_pipes": 2,
+                        "pattern": null,
                         "stream_id": 1,
                         "timeout": 876,
                         "traffic_rate": 100.0,
@@ -893,9 +920,11 @@
                         "encapsulation": 1,
                         "frame_size": 64,
                         "generation_accuracy": 100.0,
+                        "gtpu": false,
                         "ip_version": 4,
                         "n_packets": 5,
                         "n_pipes": 2,
+                        "pattern": null,
                         "stream_id": 1,
                         "timeout": 88,
                         "traffic_rate": 30.0,
@@ -914,10 +943,12 @@
                         "encapsulation": 4,
                         "frame_size": 1024,
                         "generation_accuracy": 99.9111099243164,
+                        "gtpu": false,
                         "ip_version": 6,
                         "n_packets": 1,
                         "n_pipes": 4,
                         "number_of_srv6_sids": 2,
+                        "pattern": null,
                         "srv6_ip_tunneling": true,
                         "stream_id": 1,
                         "timeout": 360,
@@ -932,10 +963,12 @@
                         "encapsulation": 4,
                         "frame_size": 1024,
                         "generation_accuracy": 99.9111099243164,
+                        "gtpu": false,
                         "ip_version": 6,
                         "n_packets": 1,
                         "n_pipes": 4,
                         "number_of_srv6_sids": 2,
+                        "pattern": null,
                         "srv6_ip_tunneling": true,
                         "stream_id": 1,
                         "timeout": 360,
@@ -1037,6 +1070,79 @@
           "Analyze"
         ]
       },
+      "GenerationPattern": {
+        "type": "string",
+        "enum": [
+          "Sine",
+          "Square",
+          "Triangle",
+          "Sawtooth",
+          "Flashcrowd",
+          "CatWave"
+        ]
+      },
+      "GenerationPatternConfig": {
+        "type": "object",
+        "required": [
+          "pattern_type",
+          "period",
+          "sample_rate"
+        ],
+        "properties": {
+          "fc_decay_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "fc_quiet_until": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Flash-crowd specific setting: time in nanoseconds within the period\nuntil the quiet phase ends."
+          },
+          "fc_ramp_until": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Flash-crowd specific setting: time in nanoseconds within the period\nuntil the ramp phase ends."
+          },
+          "pattern_type": {
+            "$ref": "#/components/schemas/GenerationPattern"
+          },
+          "period": {
+            "type": "number",
+            "format": "double"
+          },
+          "sample_rate": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The number of samples per period.",
+            "minimum": 0
+          },
+          "square_high_until": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Time spent in the high phase for square waves in the range of [0, period]"
+          },
+          "square_low": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The minimum value for a square wave in the range of [0,1]"
+          }
+        }
+      },
       "GenerationUnit": {
         "type": "string",
         "description": "Describes the unit for a generated traffic stream",
@@ -1044,6 +1150,192 @@
           "Gbps",
           "Mpps"
         ]
+      },
+      "GtpU": {
+        "type": "object",
+        "description": "Defines a GTP-U Tunnel",
+        "required": [
+          "ip_src",
+          "ip_dst",
+          "ip_tos",
+          "udp_source",
+          "teid"
+        ],
+        "properties": {
+          "ip_dst": {
+            "type": "string",
+            "description": "Outer IP dst",
+            "example": "192.168.178.5"
+          },
+          "ip_src": {
+            "type": "string",
+            "description": "Outer IP src",
+            "example": "192.168.178.10"
+          },
+          "ip_tos": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Outer IP tos",
+            "minimum": 0
+          },
+          "teid": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Tunnel Endpoint Identifier",
+            "minimum": 0
+          },
+          "udp_source": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Outer UDP source",
+            "minimum": 0
+          }
+        }
+      },
+      "Histogram": {
+        "type": "object",
+        "required": [
+          "config",
+          "data"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/HistogramConfig"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HistogramPacketPath"
+          }
+        }
+      },
+      "HistogramBinEntry": {
+        "type": "object",
+        "required": [
+          "count",
+          "probability"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Number of packets in this bin.",
+            "minimum": 0
+          },
+          "probability": {
+            "type": "number",
+            "format": "double",
+            "description": "Probability for this bin based on total_pkt_count."
+          }
+        }
+      },
+      "HistogramConfig": {
+        "type": "object",
+        "required": [
+          "num_bins",
+          "min",
+          "max"
+        ],
+        "properties": {
+          "max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum range for histogram.",
+            "minimum": 0
+          },
+          "min": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Minimum range for histogram.",
+            "minimum": 0
+          },
+          "num_bins": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "percentiles": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "number",
+              "format": "double"
+            },
+            "description": "Percentiles to calculate from histogram data. Float values between 0 and 1.0"
+          }
+        }
+      },
+      "HistogramData": {
+        "type": "object",
+        "required": [
+          "data_bins",
+          "percentiles",
+          "mean",
+          "std_dev",
+          "total_pkt_count",
+          "missed_bin_count"
+        ],
+        "properties": {
+          "data_bins": {
+            "type": "object",
+            "description": "HashMap with bin index as key and bin count with probability as value.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HistogramBinEntry"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "mean": {
+            "type": "number",
+            "format": "double",
+            "description": "Mean calculated from the histogram data."
+          },
+          "missed_bin_count": {
+            "type": "integer",
+            "description": "Number of packets not matched to any bin.",
+            "minimum": 0
+          },
+          "percentiles": {
+            "type": "object",
+            "description": "HashMap with percentiles and their values.",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "std_dev": {
+            "type": "number",
+            "format": "double",
+            "description": "Standard deviation calculated from the histogram data."
+          },
+          "total_pkt_count": {
+            "type": "integer",
+            "description": "Total number of packets matched to bins.",
+            "minimum": 0
+          }
+        }
+      },
+      "HistogramPacketPath": {
+        "type": "object",
+        "required": [
+          "tx",
+          "rx"
+        ],
+        "properties": {
+          "rx": {
+            "$ref": "#/components/schemas/HistogramData"
+          },
+          "tx": {
+            "$ref": "#/components/schemas/HistogramData"
+          }
+        }
       },
       "IATStatistics": {
         "type": "object",
@@ -1240,6 +1532,10 @@
           "auto_neg": {
             "type": "string"
           },
+          "channel_count": {
+            "type": "integer",
+            "format": "int32"
+          },
           "fec": {
             "type": "string"
           },
@@ -1353,136 +1649,6 @@
           }
         }
       },
-      "RttHistogram": {
-        "type": "object",
-        "required": [
-          "config",
-          "data"
-        ],
-        "properties": {
-          "config": {
-            "$ref": "#/components/schemas/RttHistogramConfig"
-          },
-          "data": {
-            "$ref": "#/components/schemas/RttHistogramData"
-          }
-        }
-      },
-      "RttHistogramBinEntry": {
-        "type": "object",
-        "required": [
-          "count",
-          "probability"
-        ],
-        "properties": {
-          "count": {
-            "type": "integer",
-            "description": "Number of packets in this bin.",
-            "minimum": 0
-          },
-          "probability": {
-            "type": "number",
-            "format": "double",
-            "description": "Probability for this bin based on total_pkt_count."
-          }
-        }
-      },
-      "RttHistogramConfig": {
-        "type": "object",
-        "required": [
-          "num_bins",
-          "min",
-          "max"
-        ],
-        "properties": {
-          "max": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Maximum range for histogram.",
-            "minimum": 0
-          },
-          "min": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Minimum range for histogram.",
-            "minimum": 0
-          },
-          "num_bins": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "percentiles": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "number",
-              "format": "double"
-            },
-            "description": "Percentiles to calculate from histogram data. Float values between 0 and 1.0"
-          }
-        }
-      },
-      "RttHistogramData": {
-        "type": "object",
-        "required": [
-          "data_bins",
-          "percentiles",
-          "mean_rtt",
-          "std_dev_rtt",
-          "total_pkt_count",
-          "missed_bin_count"
-        ],
-        "properties": {
-          "data_bins": {
-            "type": "object",
-            "description": "HashMap with bin index as key and bin count with probability as value.",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/RttHistogramBinEntry"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "mean_rtt": {
-            "type": "number",
-            "format": "double",
-            "description": "Mean RTT calculated from the histogram data."
-          },
-          "missed_bin_count": {
-            "type": "integer",
-            "description": "Number of packets not matched to any bin.",
-            "minimum": 0
-          },
-          "percentiles": {
-            "type": "object",
-            "description": "HashMap with percentiles and their values.",
-            "additionalProperties": {
-              "type": "number",
-              "format": "double"
-            },
-            "propertyNames": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          "std_dev_rtt": {
-            "type": "number",
-            "format": "double",
-            "description": "Standard deviation calculated from the histogram data."
-          },
-          "total_pkt_count": {
-            "type": "integer",
-            "description": "Total number of packets matched to bins.",
-            "minimum": 0
-          }
-        }
-      },
       "RxTarget": {
         "type": "object",
         "required": [
@@ -1519,7 +1685,8 @@
           "packet_loss",
           "out_of_order",
           "elapsed_time",
-          "rtt_histogram"
+          "rtt_histogram",
+          "iat_histogram"
         ],
         "properties": {
           "app_rx_l2": {
@@ -1594,6 +1761,18 @@
               "minimum": 0
             }
           },
+          "iat_histogram": {
+            "type": "object",
+            "description": "IAT histogram data per port and per bin.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Histogram"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
           "iats": {
             "type": "object",
             "description": "Statistics of the inter arrival times per port.",
@@ -1644,7 +1823,7 @@
             "type": "object",
             "description": "RTT histogram data per port and per bin.",
             "additionalProperties": {
-              "$ref": "#/components/schemas/RttHistogram"
+              "$ref": "#/components/schemas/Histogram"
             },
             "propertyNames": {
               "type": "integer",
@@ -1731,7 +1910,8 @@
           "encapsulation",
           "traffic_rate",
           "burst",
-          "vxlan"
+          "vxlan",
+          "gtpu"
         ],
         "properties": {
           "app_id": {
@@ -1774,6 +1954,11 @@
             "format": "float",
             "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
             "example": 99.95
+          },
+          "gtpu": {
+            "type": "boolean",
+            "description": "Flag that indicates if traffic should be encapsulation in GTP-U",
+            "example": false
           },
           "ip_version": {
             "type": [
@@ -1824,6 +2009,17 @@
             "description": "Number of SIDs in SRv6 header. At maximum 4 can be used.\nA flag to indicate if there is another IP tunnel following the SRv6 headers",
             "example": 2,
             "minimum": 0
+          },
+          "pattern": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GenerationPatternConfig",
+                "description": "Traffic shaping pattern applied to this stream"
+              }
+            ]
           },
           "srv6_ip_tunneling": {
             "type": [
@@ -1895,6 +2091,17 @@
           },
           "ethernet": {
             "$ref": "#/components/schemas/Ethernet"
+          },
+          "gtpu": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GtpU",
+                "description": "GTP-U tunnel settings"
+              }
+            ]
           },
           "ip": {
             "oneOf": [
@@ -2151,16 +2358,16 @@
             "description": "The duration of this test in seconds.",
             "minimum": 0
           },
-          "histogram_config": {
+          "iat_histogram_config": {
             "type": [
               "object",
               "null"
             ],
-            "description": "Mapping between RX port and histogram config.",
+            "description": "Mapping between RX port and IAT histogram config.",
             "additionalProperties": {
               "type": "object",
               "additionalProperties": {
-                "$ref": "#/components/schemas/RttHistogramConfig"
+                "$ref": "#/components/schemas/HistogramConfig"
               },
               "propertyNames": {
                 "type": "string"
@@ -2188,6 +2395,25 @@
               "type": "object",
               "additionalProperties": {
                 "$ref": "#/components/schemas/RxTarget"
+              },
+              "propertyNames": {
+                "type": "string"
+              }
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "rtt_histogram_config": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Mapping between RX port and RTT histogram config.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/components/schemas/HistogramConfig"
               },
               "propertyNames": {
                 "type": "string"
