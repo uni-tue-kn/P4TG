@@ -523,6 +523,7 @@ cmd_install() {
 
   require_cmd git
   require_cmd make
+  require_cmd cmake
   require_cmd docker
   require_cmd ln
 
