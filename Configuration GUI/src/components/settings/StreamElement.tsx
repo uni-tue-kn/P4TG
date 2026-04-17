@@ -101,6 +101,14 @@ const StreamElement = ({
         }));
     };
 
+    const clearMNASettings = () => {
+        data.mna_in_stack = false;
+        setFormData((prevData) => ({
+            ...prevData,
+            mna_in_stack: false,
+        }));
+    };
+
     const enforceDetNetConstraints = (detnetEnabled: boolean) => {
         if (p4tg_infos.asic === ASIC.Tofino1 && data.encapsulation === Encapsulation.MPLS && detnetEnabled) {
             data.ip_version = 4;
@@ -178,6 +186,7 @@ const StreamElement = ({
             set_show_sid_config(true);
             set_show(false);
             clearDetNetSettings();
+            clearMNASettings();
             // Disable tunneling
             setFormData((prevData) => ({
                 ...prevData,
@@ -191,6 +200,7 @@ const StreamElement = ({
             set_show(false);
             set_show_sid_config(false);
             clearDetNetSettings();
+            clearMNASettings();
             data.number_of_lse = 0;
             data.number_of_srv6_sids = 0;
             set_number_of_srv6_sids(0);
@@ -564,10 +574,12 @@ const StreamElement = ({
                     data.detnet_seq_num_length = updated.detnet_cw
                         ? (updated.detnet_seq_num_length ?? DetNetSeqNumLength.TwentyEight)
                         : null;
+                    data.mna_in_stack = updated.mna_in_stack;
                     setFormData((prevData) => ({
                         ...prevData,
                         detnet_cw: data.detnet_cw,
                         detnet_seq_num_length: data.detnet_seq_num_length,
+                        mna_in_stack: data.mna_in_stack,
                         ip_version: p4tg_infos.asic === ASIC.Tofino1 && data.detnet_cw && data.encapsulation === Encapsulation.MPLS
                             ? 4
                             : prevData.ip_version,

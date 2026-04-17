@@ -45,6 +45,11 @@
     /* Selector Colors */
     --color-selector: #ffffff;
 
+    /* MNA sub-stack container */
+    --color-nas-bg: #f0f9ff;
+    --color-nas-border: #0284c7;
+    --color-nas-header: #0369a1;
+
 }
 
 [data-theme="dark"] {
@@ -78,6 +83,28 @@
     /* Selector Colors */
     --color-selector: var(--color-light-grey);
 
+    /* MNA sub-stack container */
+    --color-nas-bg: rgba(14, 165, 233, 0.08);
+    --color-nas-border: #0ea5e9;
+    --color-nas-header: #38bdf8;
+
+}
+
+.mna-nas-container {
+    background-color: var(--color-nas-bg);
+    border-left: 4px solid var(--color-nas-border);
+    border-radius: 6px;
+    padding: 10px 14px 4px 14px;
+    margin-bottom: 16px;
+}
+
+.mna-nas-header {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-nas-header);
+    margin-bottom: 8px;
 }
 
 body {

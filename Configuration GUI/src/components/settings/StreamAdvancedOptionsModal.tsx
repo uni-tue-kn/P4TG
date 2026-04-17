@@ -26,11 +26,13 @@ import {
 type StreamAdvancedOptions = {
     detnet_cw: boolean;
     detnet_seq_num_length: DetNetSeqNumLength | null;
+    mna_in_stack: boolean;
 };
 
 const defaultAdvancedOptions = (stream: Stream): StreamAdvancedOptions => ({
     detnet_cw: stream.detnet_cw ?? false,
     detnet_seq_num_length: stream.detnet_seq_num_length ?? null,
+    mna_in_stack: stream.mna_in_stack ?? false,
 });
 
 const StreamAdvancedOptionsModal = ({
@@ -68,6 +70,7 @@ const StreamAdvancedOptionsModal = ({
 
     const handleDetNetToggle = () => {
         set_tmp_data((prev) => ({
+            ...prev,
             detnet_cw: !prev.detnet_cw,
             detnet_seq_num_length: !prev.detnet_cw
                 ? (prev.detnet_seq_num_length ?? DetNetSeqNumLength.TwentyEight)
@@ -81,6 +84,7 @@ const StreamAdvancedOptionsModal = ({
             detnet_seq_num_length: tmp_data.detnet_cw
                 ? (tmp_data.detnet_seq_num_length ?? DetNetSeqNumLength.TwentyEight)
                 : null,
+            mna_in_stack: tmp_data.mna_in_stack,
         });
 
         hide();
@@ -102,12 +106,7 @@ const StreamAdvancedOptionsModal = ({
                 }}
             >
                 <Modal.Body>
-                    <p className="mb-3">
-                        Configure uncommon stream-level options here. Additional features such as MNA
-                        can later share this space.
-                    </p>
-
-                    <Accordion defaultActiveKey={["0"]} alwaysOpen>
+                    <Accordion alwaysOpen>
                         <Accordion.Item eventKey="0">
                             <Accordion.Header>DetNet</Accordion.Header>
                             <Accordion.Body>
@@ -162,6 +161,38 @@ const StreamAdvancedOptionsModal = ({
                                         The first 4 bits of the d-CW remain zero; the sequence number uses
                                         8, 16, or 28 bits within the 32-bit field.
                                     </Form.Text>
+                                </Form.Group>
+                            </Accordion.Body>
+                        </Accordion.Item>
+                        <Accordion.Item eventKey="1">
+                            <Accordion.Header>MNA</Accordion.Header>
+                            <Accordion.Body>
+                                <p className="text-muted mb-3">
+                                    MPLS Network Actions (MNA) in-stack data uses dedicated MPLS LSE
+                                    encodings inside the stack. See{" "}
+                                    <a
+                                        href="https://datatracker.ietf.org/doc/html/draft-ietf-mpls-mna-hdr-21"
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        draft-ietf-mpls-mna-hdr-21
+                                    </a>{" "}
+                                    for the in-stack sub-stack format.
+                                </p>
+
+                                <Form.Group>
+                                    <Form.Check
+                                        type="switch"
+                                        label="Enable MPLS Network Actions (In-Stack)"
+                                        checked={tmp_data.mna_in_stack}
+                                        onChange={() =>
+                                            set_tmp_data((prev) => ({
+                                                ...prev,
+                                                mna_in_stack: !prev.mna_in_stack,
+                                            }))
+                                        }
+                                        disabled={disabled}
+                                    />
                                 </Form.Group>
                             </Accordion.Body>
                         </Accordion.Item>

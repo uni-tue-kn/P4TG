@@ -87,6 +87,7 @@ const normalizeStreamsForFrontend = (
         if (normalizedStream.encapsulation !== Encapsulation.MPLS) {
             normalizedStream.detnet_cw = false;
             normalizedStream.detnet_seq_num_length = null;
+            normalizedStream.mna_in_stack = false;
         } else if (!normalizedStream.detnet_cw) {
             normalizedStream.detnet_seq_num_length = null;
         } else if (normalizedStream.detnet_seq_num_length == null) {
@@ -276,17 +277,24 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         if (stats !== undefined) {
             if (Object.keys(stats.data).length > 1) {
                 let old_streams = JSON.stringify(streams)
+                const nextStreams = (stats.data.streams ?? []).map((streamFromBackend: Stream) => {
+                    const existing = streams.find((stream) => stream.stream_id === streamFromBackend.stream_id);
+                    return {
+                        ...streamFromBackend,
+                        mna_in_stack: streamFromBackend.mna_in_stack ?? existing?.mna_in_stack ?? false,
+                    };
+                });
 
-                if (old_streams != JSON.stringify(stats.data.streams)) {
+                if (old_streams != JSON.stringify(nextStreams)) {
                     set_mode(stats.data.mode)
                     set_duration(stats.data.duration)
                     set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
                     set_stream_settings(stats.data.stream_settings)
-                    set_streams(stats.data.streams)
+                    set_streams(nextStreams)
                     set_rtt_histogram_settings(stats.data.rtt_histogram_config)
                     set_iat_histogram_settings(stats.data.iat_histogram_config)
 
-                    localStorage.setItem("streams", JSON.stringify(stats.data.streams))
+                    localStorage.setItem("streams", JSON.stringify(nextStreams))
                     localStorage.setItem("gen-mode", stats.data.mode)
                     localStorage.setItem("duration", stats.data.duration)
                     localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))

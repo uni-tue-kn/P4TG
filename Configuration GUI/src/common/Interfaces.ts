@@ -291,6 +291,7 @@ export interface Stream {
     pattern: GenerationPatternConfig | null,
     detnet_cw: boolean,
     detnet_seq_num_length: DetNetSeqNumLength | null,
+    mna_in_stack: boolean,
 }
 
 export const DefaultMPLSHeader = () => {
@@ -321,6 +322,7 @@ export const DefaultStream = (id: number) => {
         pattern: null,
         detnet_cw: false,
         detnet_seq_num_length: null,
+        mna_in_stack: false,
     }
 
     return stream
