@@ -62,6 +62,7 @@ lazy_static! {
             pattern: None,
             detnet_cw: None,
             detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -145,6 +146,7 @@ lazy_static! {
             pattern: None,
             detnet_cw: None,
             detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -193,6 +195,7 @@ lazy_static! {
         pattern: None,
         detnet_cw: None,
         detnet_seq_num_length: None,
+        mna_post_stack: None,
     }];
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
@@ -251,6 +254,7 @@ lazy_static! {
             pattern: None,
             detnet_cw: None,
             detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -333,6 +337,7 @@ lazy_static! {
             pattern: None,
             detnet_cw: None,
             detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -381,6 +386,7 @@ lazy_static! {
         pattern: None,
         detnet_cw: None,
         detnet_seq_num_length: None,
+        mna_post_stack: None,
     }];
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Poisson,
@@ -441,6 +447,7 @@ lazy_static! {
             pattern: None,
             detnet_cw: None,
             detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         duration: None,
         rtt_histogram_config: None,
@@ -468,6 +475,7 @@ lazy_static! {
         pattern: None,
         detnet_cw: None,
         detnet_seq_num_length: None,
+        mna_post_stack: None,
     }];
     pub static ref EXAMPLE_POST_4_REQUEST: Vec<TrafficGenData> = vec![
         TrafficGenData {
@@ -529,6 +537,7 @@ lazy_static! {
                 pattern: None,
                 detnet_cw: None,
                 detnet_seq_num_length: None,
+                mna_post_stack: None,
             }],
             port_tx_rx_mapping: HashMap::from([(
                 "1".to_string(),
@@ -615,6 +624,7 @@ lazy_static! {
                 pattern: None,
                 detnet_cw: None,
                 detnet_seq_num_length: None,
+                mna_post_stack: None,
             }],
             port_tx_rx_mapping: HashMap::from([(
                 "1".to_string(),
@@ -666,6 +676,7 @@ lazy_static! {
             pattern: None,
             detnet_cw: None,
             detnet_seq_num_length: None,
+            mna_post_stack: None,
         },
         Stream {
             stream_id: 1,
@@ -689,6 +700,7 @@ lazy_static! {
             pattern: None,
             detnet_cw: None,
             detnet_seq_num_length: None,
+            mna_post_stack: None,
         }
     ];
 }

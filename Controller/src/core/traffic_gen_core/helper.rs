@@ -613,9 +613,9 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     ether_type: 0x8847, // MPLS ether type
                 };
                 let detnet_cw_overhead = if s.detnet_cw == Some(true) { 4 } else { 0 };
-                let packet_capacity =
-                    (s.frame_size + s.number_of_lse.unwrap() as u32 * 4 + detnet_cw_overhead)
-                        as usize;
+                let packet_capacity = (s.frame_size
+                    + s.number_of_lse.unwrap() as u32 * 4
+                    + detnet_cw_overhead) as usize;
 
                 let mut result = Vec::<u8>::with_capacity(packet_capacity);
 

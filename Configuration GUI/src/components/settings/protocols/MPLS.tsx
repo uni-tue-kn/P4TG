@@ -19,7 +19,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Alert, Button, Col, Form, OverlayTrigger, Row, Tooltip } from "react-bootstrap";
+import { Alert, Button, Col, Dropdown, Form, OverlayTrigger, Row, Tooltip } from "react-bootstrap";
 import { StyledRow } from "../../../sites/Settings";
 import { DefaultMPLSHeader, Stream, StreamSettings } from "../../../common/Interfaces";
 import {
@@ -30,7 +30,8 @@ import {
     MNAComputedRow,
     MNAEditorEntry,
     MNAIhsScope,
-} from "../../../common/MPLSMNA";
+    normalizePostStackEntries,
+} from "./MPLSMNA";
 
 interface Props {
     stream: Stream,
@@ -56,7 +57,13 @@ const stacksEqual = (left: StreamSettings["mpls_stack"], right: StreamSettings["
 
     return (left ?? []).every((header, index) => {
         const other = right?.[index];
-        return !!other && header.label === other.label && header.tc === other.tc && header.ttl === other.ttl;
+        return (
+            !!other &&
+            header.label === other.label &&
+            header.tc === other.tc &&
+            header.bos === other.bos &&
+            header.ttl === other.ttl
+        );
     });
 };
 
@@ -64,10 +71,32 @@ const cloneEntries = (entries: MNAEditorEntry[]) =>
     entries.map((entry) => ({
         plain: { ...entry.plain },
         isNasi: entry.isNasi,
+        isPsmht: entry.isPsmht,
         formatB: { ...entry.formatB },
         formatC: { ...entry.formatC },
         formatD: { ...entry.formatD },
+        psmht: { ...entry.psmht },
+        psna: { ...entry.psna },
+        psData: { ...entry.psData },
     }));
+
+const clearPostStackMarkersAfter = (entries: MNAEditorEntry[], index: number) => {
+    for (let markerIndex = index + 1; markerIndex < entries.length; markerIndex += 1) {
+        entries[markerIndex].isPsmht = false;
+    }
+};
+
+const sanitizeEntriesForFeatureFlags = (entries: MNAEditorEntry[], allowPostStack: boolean) => {
+    if (!allowPostStack) {
+        entries.forEach((entry) => {
+            entry.isPsmht = false;
+            entry.formatB.p = false;
+        });
+        return;
+    }
+
+    normalizePostStackEntries(entries);
+};
 
 const ihsLabel = (value: MNAIhsScope) => {
     switch (value) {
@@ -93,6 +122,12 @@ const roleLabel = (row: MNAComputedRow) => {
             return "Format C";
         case "formatD":
             return "Format D";
+        case "psmht":
+            return "PSMHT";
+        case "psna":
+            return "PSNA";
+        case "psData":
+            return "PS Data";
         case "plain":
         default:
             return "Plain MPLS";
@@ -109,6 +144,12 @@ const roleBadgeStyle = (role: MNAComputedRow["role"]): React.CSSProperties => {
             return { backgroundColor: "#60a5fa", color: "#0f172a" };
         case "formatD":
             return { backgroundColor: "#bfdbfe", color: "#0f172a" };
+        case "psmht":
+            return { backgroundColor: "#92400e", color: "#ffffff" };
+        case "psna":
+            return { backgroundColor: "#d97706", color: "#ffffff" };
+        case "psData":
+            return { backgroundColor: "#fcd34d", color: "#0f172a" };
         case "plain":
         default:
             return { backgroundColor: "#6b7280", color: "#ffffff" };
@@ -121,8 +162,28 @@ const renderTooltip = (props: any, message: string) => (
     </Tooltip>
 );
 
+const responsiveFieldCol = {
+    xs: 12,
+    sm: 6,
+    lg: 3,
+};
+
+const responsiveCompactCol = {
+    xs: 12,
+    sm: 6,
+    xl: 2,
+};
+
+const responsiveSmallSelectCol = {
+    xs: 6,
+    sm: 4,
+    lg: 3,
+    xl: "auto" as const,
+};
+
 const MPLS = ({ stream, data, set_data, running }: Props) => {
     const stackLength = stream.number_of_lse;
+    const allowPostStack = stream.mna_post_stack === true;
     const normalizedStack = ensureStackLength(data.mpls_stack, stackLength);
     const [mnaEntries, setMnaEntries] = useState<MNAEditorEntry[]>(() =>
         createDefaultMNAEditorEntries(normalizedStack, stackLength)
@@ -164,19 +225,27 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             return;
         }
 
-        const decoded = decodeMNAEditorEntries(nextNormalizedStack, stackLength);
-        const computed = computeMNAState(decoded.entries);
+        const decoded = decodeMNAEditorEntries(nextNormalizedStack, stackLength, {
+            allowPostStack,
+        });
+        sanitizeEntriesForFeatureFlags(decoded.entries, allowPostStack);
+        const computed = computeMNAState(decoded.entries, {
+            allowPostStack,
+        });
 
         setMnaEntries(decoded.entries);
         setMnaAlert(decoded.error ?? computed.error);
         syncEffectStack(computed.encodedStack);
-    }, [data.mpls_stack, set_data, stackLength, stream.mna_in_stack]);
+    }, [allowPostStack, data.mpls_stack, set_data, stackLength, stream.mna_in_stack]);
 
     const updatePlainHeader = (index: number, field: "label" | "tc" | "ttl", value: number) => {
         if (stream.mna_in_stack) {
             const nextEntries = cloneEntries(mnaEntries);
             nextEntries[index].plain[field] = value;
-            const computed = computeMNAState(nextEntries);
+            sanitizeEntriesForFeatureFlags(nextEntries, allowPostStack);
+            const computed = computeMNAState(nextEntries, {
+                allowPostStack,
+            });
             setMnaEntries(nextEntries);
             setMnaAlert(computed.error);
             syncStack(computed.encodedStack);
@@ -190,19 +259,26 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
 
     const applyMnaUpdate = (mutate: (entries: MNAEditorEntry[], computedRows: MNAComputedRow[]) => void) => {
         const nextEntries = cloneEntries(mnaEntries);
-        const current = computeMNAState(nextEntries);
+        const current = computeMNAState(nextEntries, {
+            allowPostStack,
+        });
         mutate(nextEntries, current.rows);
-        const computed = computeMNAState(nextEntries);
+        sanitizeEntriesForFeatureFlags(nextEntries, allowPostStack);
+        const computed = computeMNAState(nextEntries, {
+            allowPostStack,
+        });
         setMnaEntries(nextEntries);
         setMnaAlert(computed.error);
         syncStack(computed.encodedStack);
     };
 
-    const computedMna = computeMNAState(mnaEntries);
+    const computedMna = computeMNAState(mnaEntries, {
+        allowPostStack,
+    });
 
     const renderPlainEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
         <Row className="g-2 align-items-center">
-            <Col md={3}>
+            <Col xs={12} sm={6} lg={3}>
                 {showLabels && <Form.Label className="mb-1">Label</Form.Label>}
                 <Form.Control
                     value={row.plain.label}
@@ -216,7 +292,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     type="number"
                 />
             </Col>
-            <Col md={2}>
+            <Col xs={6} sm={3} lg={2}>
                 {showLabels && <Form.Label className="mb-1">TC</Form.Label>}
                 <Form.Control
                     value={row.plain.tc}
@@ -230,7 +306,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     type="number"
                 />
             </Col>
-            <Col md={2}>
+            <Col xs={6} sm={3} lg={2}>
                 {showLabels && <Form.Label className="mb-1">TTL</Form.Label>}
                 <Form.Control
                     value={row.plain.ttl}
@@ -245,32 +321,79 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                 />
             </Col>
             {stream.mna_in_stack ? (
-                <Col md={5} className="d-flex align-items-end">
-                    <OverlayTrigger
-                        placement="top"
-                        overlay={(props) =>
-                            renderTooltip(
-                                props,
-                                row.canBeNasi
-                                    ? "Mark this LSE as the MNA sub-stack indicator."
-                                    : row.nasiDisabledReason ?? "This row cannot be NASI."
-                            )
-                        }
-                    >
-                        <span className="d-inline-block">
-                            <Button
-                                variant="outline-secondary"
-                                disabled={running || !row.canBeNasi}
-                                onClick={() =>
-                                    applyMnaUpdate((entries) => {
-                                        entries[index].isNasi = true;
-                                    })
-                                }
-                            >
-                                Mark as NASI
-                            </Button>
-                        </span>
-                    </OverlayTrigger>
+                <Col xs={12} lg={5} className="d-flex align-items-end gap-2 flex-wrap">
+                    {allowPostStack ? (
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={(props) =>
+                                renderTooltip(
+                                    props,
+                                    "Choose whether this free row starts an in-stack NAS or a post-stack MNA section."
+                                )
+                            }
+                        >
+                            <Dropdown className="mna-action-dropdown">
+                                <Dropdown.Toggle
+                                    variant="outline-secondary"
+                                    className="mna-action-button"
+                                    disabled={running || (!row.canBeNasi && !row.canBePsmht)}
+                                >
+                                    Add MNA
+                                </Dropdown.Toggle>
+                                <Dropdown.Menu>
+                                    <Dropdown.Item
+                                        disabled={!row.canBeNasi}
+                                        onClick={() =>
+                                            applyMnaUpdate((entries) => {
+                                                entries[index].isNasi = true;
+                                            })
+                                        }
+                                    >
+                                        Add NASI
+                                    </Dropdown.Item>
+                                    <Dropdown.Item
+                                        disabled={!row.canBePsmht}
+                                        onClick={() =>
+                                            applyMnaUpdate((entries) => {
+                                                clearPostStackMarkersAfter(entries, index);
+                                                entries[index].isPsmht = true;
+                                                entries[index].psmht.psmhLen = entries.length - index - 1;
+                                            })
+                                        }
+                                    >
+                                        Add Post-Stack Header
+                                    </Dropdown.Item>
+                                </Dropdown.Menu>
+                            </Dropdown>
+                        </OverlayTrigger>
+                    ) : (
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={(props) =>
+                                renderTooltip(
+                                    props,
+                                    row.canBeNasi
+                                        ? "Mark this LSE as the MNA sub-stack indicator."
+                                        : row.nasiDisabledReason ?? "This row cannot be NASI."
+                                )
+                            }
+                        >
+                            <span className="d-inline-block">
+                                <Button
+                                    variant="outline-secondary"
+                                    className="mna-action-button"
+                                    disabled={running || !row.canBeNasi}
+                                    onClick={() =>
+                                        applyMnaUpdate((entries) => {
+                                            entries[index].isNasi = true;
+                                        })
+                                    }
+                                >
+                                    Add NASI
+                                </Button>
+                            </span>
+                        </OverlayTrigger>
+                    )}
                 </Col>
             ) : null}
         </Row>
@@ -278,21 +401,22 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
 
     const renderFormatAEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
         <Row className="g-2 align-items-center">
-            <Col md={3}>
+            <Col xs={12} sm={6} lg={3}>
                 {showLabels && <Form.Label className="mb-1">Label</Form.Label>}
                 <Form.Control value={MNA_BSPL_LABEL} disabled type="number" />
             </Col>
-            <Col md={2}>
+            <Col xs={6} sm={3} lg={2}>
                 {showLabels && <Form.Label className="mb-1">TC</Form.Label>}
                 <Form.Control value={row.plain.tc} disabled type="number" />
             </Col>
-            <Col md={2}>
+            <Col xs={6} sm={3} lg={2}>
                 {showLabels && <Form.Label className="mb-1">TTL</Form.Label>}
                 <Form.Control value={row.plain.ttl} disabled type="number" />
             </Col>
-            <Col md={5} className="d-flex align-items-end">
+            <Col xs={12} lg={5} className="d-flex align-items-end">
                 <Button
                     variant="outline-secondary"
+                    className="mna-action-button"
                     disabled={running}
                     onClick={() =>
                         applyMnaUpdate((entries) => {
@@ -311,7 +435,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
 
     const renderFormatBEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
         <Row className="g-2 align-items-center">
-            <Col md={2}>
+            <Col {...responsiveCompactCol}>
                 {showLabels && <Form.Label className="mb-1">Opcode</Form.Label>}
                 <Form.Control
                     value={row.formatB.opcode}
@@ -327,7 +451,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     type="number"
                 />
             </Col>
-            <Col md={2}>
+            <Col {...responsiveCompactCol}>
                 {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
                 <Form.Control
                     value={row.formatB.data}
@@ -343,7 +467,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     type="number"
                 />
             </Col>
-            <Col md={2}>
+            <Col xs={12} sm={6} xl={2}>
                 {showLabels && <Form.Label className="mb-1">IHS</Form.Label>}
                 <Form.Select
                     value={row.formatB.ihs}
@@ -359,7 +483,22 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     ))}
                 </Form.Select>
             </Col>
-            <Col md={2}>
+            {allowPostStack ? (
+                <Col xs={6} sm={4} lg={3} xl={1}>
+                    {showLabels && <Form.Label className="mb-1">P</Form.Label>}
+                    <Form.Check
+                        type="switch"
+                        checked={row.formatB.p}
+                        onChange={() =>
+                            applyMnaUpdate((entries) => {
+                                entries[index].formatB.p = !entries[index].formatB.p;
+                            })
+                        }
+                        disabled={running}
+                    />
+                </Col>
+            ) : null}
+            <Col {...responsiveSmallSelectCol}>
                 {showLabels && <Form.Label className="mb-1">NASL</Form.Label>}
                 <Form.Select
                     value={row.formatB.nasl}
@@ -372,13 +511,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                         })
                     }
                     disabled={running || row.maxNasl === 0}
+                    style={{ width: "3.85rem", maxWidth: "100%" }}
                 >
                     {Array.from({ length: row.maxNasl + 1 }, (_, option) => (
                         <option key={option} value={option}>{option}</option>
                     ))}
                 </Form.Select>
             </Col>
-            <Col md={2}>
+            <Col {...responsiveSmallSelectCol}>
                 {showLabels && <Form.Label className="mb-1">NAL</Form.Label>}
                 <Form.Select
                     value={row.formatB.nal}
@@ -388,13 +528,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                         })
                     }
                     disabled={running || row.formatB.nasl === 0}
+                    style={{ width: "3.85rem", maxWidth: "100%" }}
                 >
                     {Array.from({ length: row.formatB.nasl + 1 }, (_, option) => (
                         <option key={option} value={option}>{option}</option>
                     ))}
                 </Form.Select>
             </Col>
-            <Col md={2}>
+            <Col xs={6} md="auto" className="d-flex flex-column align-items-md-end">
                 {showLabels && (
                     <Form.Label className="mb-1 d-flex align-items-center gap-1">
                         <span>U</span>
@@ -408,23 +549,26 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                         </OverlayTrigger>
                     </Form.Label>
                 )}
-                <Form.Check
-                    type="switch"
-                    checked={row.formatB.u}
-                    onChange={() =>
+                <Form.Select
+                    value={row.formatB.u ? "drop" : "ignore"}
+                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) =>
                         applyMnaUpdate((entries) => {
-                            entries[index].formatB.u = !entries[index].formatB.u;
+                            entries[index].formatB.u = event.target.value === "drop";
                         })
                     }
                     disabled={running}
-                />
+                    style={{ width: "4rem", maxWidth: "100%" }}
+                >
+                    <option value="ignore">Ign.</option>
+                    <option value="drop">Drop</option>
+                </Form.Select>
             </Col>
         </Row>
     );
 
     const renderFormatCEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
         <Row className="g-2 align-items-center">
-            <Col md={3}>
+            <Col {...responsiveFieldCol}>
                 {showLabels && <Form.Label className="mb-1">Opcode</Form.Label>}
                 <Form.Control
                     value={row.formatC.opcode}
@@ -440,23 +584,23 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     type="number"
                 />
             </Col>
-            <Col md={3}>
+            <Col {...responsiveFieldCol}>
                 {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
                 <Form.Control
                     value={row.formatC.data}
                     onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
                         applyMnaUpdate((entries) => {
-                            entries[index].formatC.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0xfffff);
+                            entries[index].formatC.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0x7ffff);
                         })
                     }
                     min={0}
-                    max={0xfffff}
+                    max={0x7ffff}
                     step={1}
                     disabled={running}
                     type="number"
                 />
             </Col>
-            <Col md={2}>
+            <Col xs={6} sm={4} lg={2}>
                 {showLabels && <Form.Label className="mb-1">NAL</Form.Label>}
                 <Form.Select
                     value={row.formatC.nal}
@@ -472,7 +616,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     ))}
                 </Form.Select>
             </Col>
-            <Col md={2}>
+            <Col xs={6} md="auto" className="d-flex flex-column align-items-md-end">
                 {showLabels && (
                     <Form.Label className="mb-1 d-flex align-items-center gap-1">
                         <span>U</span>
@@ -486,23 +630,26 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                         </OverlayTrigger>
                     </Form.Label>
                 )}
-                <Form.Check
-                    type="switch"
-                    checked={row.formatC.u}
-                    onChange={() =>
+                <Form.Select
+                    value={row.formatC.u ? "drop" : "ignore"}
+                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) =>
                         applyMnaUpdate((entries) => {
-                            entries[index].formatC.u = !entries[index].formatC.u;
+                            entries[index].formatC.u = event.target.value === "drop";
                         })
                     }
                     disabled={running}
-                />
+                    style={{ width: "4rem", maxWidth: "100%" }}
+                >
+                    <option value="ignore">Ign.</option>
+                    <option value="drop">Drop</option>
+                </Form.Select>
             </Col>
         </Row>
     );
 
     const renderFormatDEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
         <Row className="g-2 align-items-center">
-            <Col md={4}>
+            <Col xs={12} sm={6} lg={4}>
                 {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
                 <Form.Control
                     value={row.formatD.data}
@@ -521,6 +668,127 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
         </Row>
     );
 
+    const renderPsmhtEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
+        <Row className="g-2 align-items-center">
+            <Col xs={12} sm={6} lg={4}>
+                {showLabels && <Form.Label className="mb-1">PSMH-Len</Form.Label>}
+                <Form.Select
+                    value={row.psmht.psmhLen}
+                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) =>
+                        applyMnaUpdate((entries) => {
+                            entries[index].psmht.psmhLen = parseInt(event.target.value, 10);
+                            clearPostStackMarkersAfter(entries, index);
+                        })
+                    }
+                    disabled={running || row.maxPsmhLen <= 1}
+                >
+                    {Array.from({ length: Math.max(row.maxPsmhLen, 1) }, (_, option) => option + 1).map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                    ))}
+                </Form.Select>
+            </Col>
+            <Col xs={12} sm={6} lg={5} className="d-flex align-items-end">
+                <Button
+                    variant="outline-secondary"
+                    className="mna-action-button"
+                    disabled={running}
+                    onClick={() =>
+                        applyMnaUpdate((entries) => {
+                            let previousPsmhtIndex = -1;
+                            for (let markerIndex = index - 1; markerIndex >= 0; markerIndex -= 1) {
+                                if (entries[markerIndex].isPsmht) {
+                                    previousPsmhtIndex = markerIndex;
+                                    break;
+                                }
+                            }
+                            clearPostStackMarkersAfter(entries, index);
+                            entries[index].isPsmht = false;
+                            if (previousPsmhtIndex !== -1) {
+                                entries[previousPsmhtIndex].psmht.psmhLen = entries.length - previousPsmhtIndex - 1;
+                            }
+                        })
+                    }
+                >
+                    Remove Post-Stack Header
+                </Button>
+            </Col>
+        </Row>
+    );
+
+    const renderPsnaEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
+        <Row className="g-2 align-items-center">
+            <Col {...responsiveFieldCol}>
+                {showLabels && <Form.Label className="mb-1">Opcode</Form.Label>}
+                <Form.Control
+                    value={row.psna.opcode}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                        applyMnaUpdate((entries) => {
+                            entries[index].psna.opcode = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 127);
+                        })
+                    }
+                    min={0}
+                    max={127}
+                    step={1}
+                    disabled={running}
+                    type="number"
+                />
+            </Col>
+            <Col {...responsiveFieldCol}>
+                {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
+                <Form.Control
+                    value={row.psna.data}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                        applyMnaUpdate((entries) => {
+                            entries[index].psna.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0xffff);
+                        })
+                    }
+                    min={0}
+                    max={0xffff}
+                    step={1}
+                    disabled={running}
+                    type="number"
+                />
+            </Col>
+            <Col xs={12} sm={6} lg={3}>
+                {showLabels && <Form.Label className="mb-1">PS-NAL</Form.Label>}
+                <Form.Select
+                    value={row.psna.psNal}
+                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) =>
+                        applyMnaUpdate((entries) => {
+                            entries[index].psna.psNal = parseInt(event.target.value, 10);
+                        })
+                    }
+                    disabled={running || row.maxPsNal === 0}
+                >
+                    {Array.from({ length: row.maxPsNal + 1 }, (_, option) => (
+                        <option key={option} value={option}>{option}</option>
+                    ))}
+                </Form.Select>
+            </Col>
+        </Row>
+    );
+
+    const renderPsDataEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
+        <Row className="g-2 align-items-center">
+            <Col xs={12} sm={6} lg={4}>
+                {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
+                <Form.Control
+                    value={row.psData.data}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                        applyMnaUpdate((entries) => {
+                            entries[index].psData.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0xffffffff);
+                        })
+                    }
+                    min={0}
+                    max={0xffffffff}
+                    step={1}
+                    disabled={running}
+                    type="number"
+                />
+            </Col>
+        </Row>
+    );
+
     if (stackLength === 0) {
         return <Form.Text className="text-muted">Configure at least one MPLS LSE to edit the stack.</Form.Text>;
     }
@@ -530,14 +798,22 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
         role: "plain",
         plain: header,
         isNasi: false,
-        formatB: { opcode: 0, data: 0, ihs: MNAIhsScope.I2E, u: false, nasl: 0, nal: 0 },
+        isPsmht: false,
+        formatB: { opcode: 0, data: 0, ihs: MNAIhsScope.I2E, p: false, u: false, nasl: 0, nal: 0 },
         formatC: { opcode: 0, data: 0, u: false, nal: 0 },
         formatD: { data: 0 },
+        psmht: { psmhLen: 1 },
+        psna: { opcode: 0, psNal: 0, data: 0 },
+        psData: { data: 0 },
         ownerIndex: null,
         canBeNasi: false,
         nasiDisabledReason: null,
+        canBePsmht: false,
+        psmhtDisabledReason: null,
         maxNasl: 0,
         maxNal: 0,
+        maxPsmhLen: 0,
+        maxPsNal: 0,
     });
 
     const rowsToRender: MNAComputedRow[] = stream.mna_in_stack
@@ -546,7 +822,8 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
 
     type RenderGroup =
         | { type: "plain"; row: MNAComputedRow }
-        | { type: "nas"; rows: MNAComputedRow[] };
+        | { type: "nas"; rows: MNAComputedRow[] }
+        | { type: "postStack"; rows: MNAComputedRow[] };
 
     const groups: RenderGroup[] = [];
     let cursor = 0;
@@ -557,17 +834,19 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             cursor += 1;
             continue;
         }
-        const nasRows: MNAComputedRow[] = [rowsToRender[cursor]];
+        const groupType = current.role === "psmht" ? "postStack" : "nas";
+        const groupedRows: MNAComputedRow[] = [rowsToRender[cursor]];
         cursor += 1;
         while (
             cursor < rowsToRender.length
             && rowsToRender[cursor].role !== "plain"
             && rowsToRender[cursor].role !== "formatA"
+            && rowsToRender[cursor].role !== "psmht"
         ) {
-            nasRows.push(rowsToRender[cursor]);
+            groupedRows.push(rowsToRender[cursor]);
             cursor += 1;
         }
-        groups.push({ type: "nas", rows: nasRows });
+        groups.push({ type: groupType, rows: groupedRows });
     }
 
     const renderEditor = (row: MNAComputedRow, showLabels: boolean) => {
@@ -580,11 +859,36 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                 return renderFormatCEditor(row.index, row, showLabels);
             case "formatD":
                 return renderFormatDEditor(row.index, row, showLabels);
+            case "psmht":
+                return renderPsmhtEditor(row.index, row, showLabels);
+            case "psna":
+                return renderPsnaEditor(row.index, row, showLabels);
+            case "psData":
+                return renderPsDataEditor(row.index, row, showLabels);
             case "plain":
             default:
                 return renderPlainEditor(row.index, row, showLabels);
         }
     };
+
+    const renderPlainStackHeader = () => (
+        <Form.Group as={StyledRow} className="mb-2" controlId="mpls-plain-header">
+            <div className="col-3" />
+            <Col className="col-9 text-start">
+                <Row className="g-2 align-items-end">
+                    <Col xs={12} sm={6} lg={3}>
+                        <Form.Label className="mb-1">Label</Form.Label>
+                    </Col>
+                    <Col xs={6} sm={3} lg={2}>
+                        <Form.Label className="mb-1">TC</Form.Label>
+                    </Col>
+                    <Col xs={6} sm={3} lg={2}>
+                        <Form.Label className="mb-1">TTL</Form.Label>
+                    </Col>
+                </Row>
+            </Col>
+        </Form.Group>
+    );
 
     const renderLseLabel = (row: MNAComputedRow) => (
         <Form.Label className="col-3 text-start">
@@ -605,9 +909,13 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
     return <>
         {stream.mna_in_stack ? (
             <Alert variant={mnaAlert ? "warning" : "info"} className="mb-3">
-                {mnaAlert ?? "MNA editing is enabled. Mark any non-final free LSE as NASI to create an in-stack sub-stack."}
+                {mnaAlert ?? (allowPostStack
+                    ? "MNA editing is enabled. Mark any free non-final row as NASI for in-stack data or as a Post-Stack MNA Header to start post-stack data."
+                    : "MNA editing is enabled. Mark any free non-final row as NASI to create an in-stack network action sub-stack.")}
             </Alert>
         ) : null}
+
+        {!stream.mna_in_stack ? renderPlainStackHeader() : null}
 
         {groups.map((group, groupIndex) => {
             if (group.type === "plain") {
@@ -617,11 +925,15 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     <Form.Group as={StyledRow} className="mb-3" controlId={key} key={key}>
                         {renderLseLabel(row)}
                         <Col className="col-9 text-start">
-                            {renderEditor(row, true)}
+                            {renderEditor(row, stream.mna_in_stack)}
                         </Col>
                     </Form.Group>
                 );
             }
+
+            const showBosDivider = allowPostStack
+                && group.type === "postStack"
+                && group.rows[0].index === rowsToRender.find((row) => row.role === "psmht")?.index;
 
             const shownRoles = new Set<MNAComputedRow["role"]>();
             const labelFlags = group.rows.map((row) => {
@@ -631,25 +943,34 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             });
 
             return (
-                <div className="mna-nas-container" key={`mna-group-${groupIndex}`}>
-                    <div className="mna-nas-header">Network Action Sub-Stack</div>
-                    {group.rows.map((row, rowIndex) => {
-                        const key = `mpls-row-${row.index}`;
-                        return (
-                            <Form.Group
-                                as={StyledRow}
-                                className={rowIndex === group.rows.length - 1 ? "mb-2" : "mb-3"}
-                                controlId={key}
-                                key={key}
-                            >
-                                {renderLseLabel(row)}
-                                <Col className="col-9 text-start">
-                                    {renderEditor(row, labelFlags[rowIndex])}
-                                </Col>
-                            </Form.Group>
-                        );
-                    })}
-                </div>
+                <React.Fragment key={`mna-group-${groupIndex}`}>
+                    {showBosDivider ? (
+                        <div className="mna-bos-divider">
+                            <span className="mna-bos-divider-label">Bottom of Stack</span>
+                        </div>
+                    ) : null}
+                    <div className={`mna-nas-container${group.type === "postStack" ? " mna-post-stack-container" : ""}`}>
+                        <div className={`mna-nas-header${group.type === "postStack" ? " mna-post-stack-header" : ""}`}>
+                            {group.type === "postStack" ? "Post-Stack MNA Header" : "Network Action Sub-Stack"}
+                        </div>
+                        {group.rows.map((row, rowIndex) => {
+                            const key = `mpls-row-${row.index}`;
+                            return (
+                                <Form.Group
+                                    as={StyledRow}
+                                    className={rowIndex === group.rows.length - 1 ? "mb-2" : "mb-3"}
+                                    controlId={key}
+                                    key={key}
+                                >
+                                    {renderLseLabel(row)}
+                                    <Col className="col-9 text-start">
+                                        {renderEditor(row, labelFlags[rowIndex])}
+                                    </Col>
+                                </Form.Group>
+                            );
+                        })}
+                    </div>
+                </React.Fragment>
             );
         })}
     </>;

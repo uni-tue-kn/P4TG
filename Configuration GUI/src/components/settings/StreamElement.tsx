@@ -39,6 +39,7 @@ import InfoBox from "../InfoBox";
 import { StyledCol, StyledRow } from "../../sites/Settings";
 import PatternModal from "./PatternModal";
 import StreamAdvancedOptionsModal from "./StreamAdvancedOptionsModal";
+import { stripPostStackEncoding } from "./protocols/MPLSMNA";
 
 const getDefaultFlashcrowdQuietUntil = (period: number) => period * 0.2;
 const getDefaultFlashcrowdRampUntil = (period: number) => period * 0.25;
@@ -56,7 +57,6 @@ const optionsSelectStyle = {
     minWidth: "92px",
     height: optionsControlHeight,
 };
-
 
 const StreamElement = ({
     running,
@@ -77,7 +77,6 @@ const StreamElement = ({
     const [show_sid_config, set_show_sid_config] = useState(data.encapsulation == Encapsulation.SRv6)
     const [number_of_lse, set_number_of_lse] = useState(data.number_of_lse)
     const [number_of_srv6_sids, set_number_of_srv6_sids] = useState(data.number_of_srv6_sids)
-    const [stream_settings_c, set_stream_settings] = useState(stream_settings)
     const [patternConfig, setPatternConfig] = useState<GenerationPatternConfig | null>(data.pattern ?? null)
     const [showPatternModal, setShowPatternModal] = useState(false);
     const [showAdvancedOptionsModal, setShowAdvancedOptionsModal] = useState(false);
@@ -91,72 +90,108 @@ const StreamElement = ({
         </Tooltip>
     );
 
+    const updateFormData = (updates: Partial<Stream>) => {
+        setFormData((prevData) => ({
+            ...prevData,
+            ...updates,
+        }));
+    };
+
+    const getCurrentStreamSettings = () =>
+        stream_settings.find((setting) => setting.stream_id === data.stream_id);
+
     const clearDetNetSettings = () => {
         data.detnet_cw = false;
         data.detnet_seq_num_length = null;
-        setFormData((prevData) => ({
-            ...prevData,
+        updateFormData({
             detnet_cw: false,
             detnet_seq_num_length: null,
-        }));
+        });
     };
 
     const clearMNASettings = () => {
         data.mna_in_stack = false;
-        setFormData((prevData) => ({
-            ...prevData,
+        data.mna_post_stack = false;
+        updateFormData({
             mna_in_stack: false,
-        }));
+            mna_post_stack: false,
+        });
+    };
+
+    const clearPostStackMNA = (updates: Partial<Stream> = {}) => {
+        const currentSettings = getCurrentStreamSettings();
+        if (currentSettings) {
+            currentSettings.mpls_stack = stripPostStackEncoding(currentSettings.mpls_stack, data.number_of_lse);
+        }
+        data.mna_post_stack = false;
+        updateFormData({
+            ...updates,
+            mna_post_stack: false,
+        });
     };
 
     const enforceDetNetConstraints = (detnetEnabled: boolean) => {
         if (p4tg_infos.asic === ASIC.Tofino1 && data.encapsulation === Encapsulation.MPLS && detnetEnabled) {
             data.ip_version = 4;
-            setFormData((prevData) => ({
-                ...prevData,
+            updateFormData({
                 ip_version: 4,
-            }));
+            });
+        }
+
+        if (detnetEnabled && data.mna_post_stack) {
+            clearPostStackMNA();
         }
     };
 
     const handleIPVersionChange = () => {
         // Toggle IP version and set tunneling to none
         const newIPVersion = formData.ip_version === 4 ? 6 : 4;
-        setFormData((prevData) => ({
-            ...prevData,
-            ip_version: newIPVersion,
-            vxlan: false,
-            gtpu: false,
-        }));
         data.ip_version = newIPVersion;
         data.vxlan = false;
         data.gtpu = false;
+        if (newIPVersion !== 4) {
+            clearPostStackMNA({
+                ip_version: newIPVersion,
+                vxlan: false,
+                gtpu: false,
+            });
+            return;
+        }
+        updateFormData({
+            ip_version: newIPVersion,
+            vxlan: false,
+            gtpu: false,
+        });
     };
 
     const handleTunnelingChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         const value = event.target.value;
-        setFormData((prevData) => ({
-            ...prevData,
-            vxlan: value === "vxlan",
-            gtpu: value === "gtpu",
-        }))
         data.vxlan = value === "vxlan";
         data.gtpu = value === "gtpu";
+        if (value !== "none") {
+            clearPostStackMNA({
+                vxlan: data.vxlan,
+                gtpu: data.gtpu,
+            });
+            return;
+        }
+        updateFormData({
+            vxlan: false,
+            gtpu: false,
+        });
     }
 
     const handleBatchesToggle = () => {
-        setFormData((prevData) => ({
-            ...prevData,
-            batches: !prevData.batches
-        }))
+        updateFormData({
+            batches: !formData.batches
+        });
         data.batches = !data.batches;
-    }
+    };
 
     const handleUnitChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-        setFormData((prevData) => ({
-            ...prevData,
+        updateFormData({
             unit: data.unit
-        }))
+        })
         data.unit = parseInt(event.target.value);
     }
 
@@ -167,19 +202,17 @@ const StreamElement = ({
             set_show_sid_config(false);
             if (p4tg_infos.asic == ASIC.Tofino1) {
                 // Disable tunneling. Not supported in combination with MPLS on Tofino 1
-                setFormData((prevData) => ({
-                    ...prevData,
+                updateFormData({
                     vxlan: false,
                     gtpu: false,
                     encapsulation: Encapsulation.MPLS
-                }));
+                });
                 data.vxlan = false;
                 data.gtpu = false;
             } else {
-                setFormData((prevData) => ({
-                    ...prevData,
+                updateFormData({
                     encapsulation: Encapsulation.MPLS
-                }));
+                });
             }
             enforceDetNetConstraints(data.detnet_cw);
         } else if (data.encapsulation === Encapsulation.SRv6) {
@@ -188,12 +221,11 @@ const StreamElement = ({
             clearDetNetSettings();
             clearMNASettings();
             // Disable tunneling
-            setFormData((prevData) => ({
-                ...prevData,
+            updateFormData({
                 vxlan: false,
                 gtpu: false,
                 encapsulation: Encapsulation.SRv6
-            }));
+            });
             data.vxlan = false;
             data.gtpu = false;
         } else {
@@ -206,81 +238,101 @@ const StreamElement = ({
             set_number_of_srv6_sids(0);
             set_number_of_lse(0);
             update_settings();
-            setFormData((prevData) => ({
-                ...prevData,
+            updateFormData({
                 encapsulation: data.encapsulation
-            }));
+            });
         }
-    }
+    };
 
     const handleModeChange = (event: any) => {
         data.burst = parseInt(event.target.value)
         // Toggle burst precision mode off for IAT mode, on for rate mode
-        setFormData((prevData) => ({
-            ...prevData,
+        updateFormData({
             batches: parseInt(event.target.value) !== 1
-        }));
+        });
         data.batches = parseInt(event.target.value) !== 1;
     }
 
     const update_settings = () => {
-        stream_settings_c.map((s, i) => {
-            if (s.stream_id == data.stream_id) {
-                const mpls_stack = s.mpls_stack ?? [];
-                if (mpls_stack.length > data.number_of_lse) {
-                    // Newly set length is smaller than previous length. Remove the excess elements.
-                    s.mpls_stack = mpls_stack.slice(0, data.number_of_lse);
+        const currentSettings = getCurrentStreamSettings();
+        if (!currentSettings) {
+            return;
+        }
 
-                } else if (mpls_stack.length < data.number_of_lse) {
-                    // Newly set length is larger than previous length. Fill with default MPLS headers
-                    let new_mpls_stack: MPLSHeader[] = [];
-                    let elements_to_add = data.number_of_lse - mpls_stack.length;
+        const mpls_stack = currentSettings.mpls_stack ?? [];
+        if (mpls_stack.length > data.number_of_lse) {
+            currentSettings.mpls_stack = mpls_stack.slice(0, data.number_of_lse);
+        } else if (mpls_stack.length < data.number_of_lse) {
+            const elementsToAdd = data.number_of_lse - mpls_stack.length;
+            const newMplsStack: MPLSHeader[] = Array.from({ length: elementsToAdd }, () => DefaultMPLSHeader());
+            currentSettings.mpls_stack = mpls_stack.concat(newMplsStack);
+        }
 
-                    Array.from({ length: elements_to_add }, (_, index) => {
-                        new_mpls_stack.push(DefaultMPLSHeader());
-                    })
-
-                    s.mpls_stack = mpls_stack.concat(new_mpls_stack);
-                }
-
-                const sid_list = s.sid_list ?? [];
-                if (sid_list.length > data.number_of_srv6_sids) {
-                    // Newly set length is smaller than previous length. Remove the excess elements.
-                    s.sid_list = sid_list.slice(0, data.number_of_srv6_sids)
-                } else if (sid_list.length < data.number_of_srv6_sids) {
-                    // Newly set length is larger than previous length. Fill with default SIDs
-                    let new_sid_list: string[] = [];
-                    let elements_to_add = data.number_of_srv6_sids - sid_list.length;
-
-                    Array.from({ length: elements_to_add }, (_, index) => {
-                        new_sid_list.push("fe80::");
-                    })
-
-                    s.sid_list = sid_list.concat(new_sid_list);
-                }
-            }
-        })
+        const sid_list = currentSettings.sid_list ?? [];
+        if (sid_list.length > data.number_of_srv6_sids) {
+            currentSettings.sid_list = sid_list.slice(0, data.number_of_srv6_sids);
+        } else if (sid_list.length < data.number_of_srv6_sids) {
+            const elementsToAdd = data.number_of_srv6_sids - sid_list.length;
+            const newSidList = Array.from({ length: elementsToAdd }, () => "fe80::");
+            currentSettings.sid_list = sid_list.concat(newSidList);
+        }
     }
 
     const handleNumberOfLSE = (event: React.ChangeEvent<HTMLSelectElement>) => {
         set_number_of_lse(parseInt(event.target.value));
         data.number_of_lse = parseInt(event.target.value);
-        update_settings()
-    }
+        update_settings();
+    };
 
     const handleNumberOfSids = (event: React.ChangeEvent<HTMLSelectElement>) => {
         set_number_of_srv6_sids(parseInt(event.target.value));
         data.number_of_srv6_sids = parseInt(event.target.value);
         update_settings();
-    }
+    };
 
     const handleSRv6TunnelingChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setFormData((prevData) => ({
-            ...prevData,
-            srv6_ip_tunneling: !prevData.srv6_ip_tunneling  // Toggle IP tunneling
-        }))
+        updateFormData({
+            srv6_ip_tunneling: !formData.srv6_ip_tunneling  // Toggle IP tunneling
+        });
         data.srv6_ip_tunneling = !data.srv6_ip_tunneling;
-    }
+    };
+
+    const applyAdvancedOptions = (updated: {
+        detnet_cw: boolean;
+        detnet_seq_num_length: DetNetSeqNumLength | null;
+        mna_in_stack: boolean;
+        mna_post_stack: boolean;
+    }) => {
+        const hadPostStack = data.mna_post_stack;
+        const nextIpVersion = p4tg_infos.asic === ASIC.Tofino1 && updated.detnet_cw && data.encapsulation === Encapsulation.MPLS
+            ? 4
+            : data.ip_version;
+
+        data.detnet_cw = updated.detnet_cw;
+        data.detnet_seq_num_length = updated.detnet_cw
+            ? (updated.detnet_seq_num_length ?? DetNetSeqNumLength.TwentyEight)
+            : null;
+        data.mna_in_stack = updated.mna_in_stack;
+        data.mna_post_stack = updated.mna_post_stack;
+        data.ip_version = nextIpVersion;
+
+        const nextFormData: Partial<Stream> = {
+            detnet_cw: data.detnet_cw,
+            detnet_seq_num_length: data.detnet_seq_num_length,
+            mna_in_stack: data.mna_in_stack,
+            ip_version: nextIpVersion,
+        };
+
+        if (hadPostStack && !updated.mna_post_stack) {
+            clearPostStackMNA(nextFormData);
+            return;
+        }
+
+        updateFormData({
+            ...nextFormData,
+            mna_post_stack: data.mna_post_stack,
+        });
+    };
 
     const handlePatternTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         if (event.target.value === "") {
@@ -569,23 +621,7 @@ const StreamElement = ({
                 data={data}
                 disabled={running}
                 p4tg_infos={p4tg_infos}
-                set_data={(updated) => {
-                    data.detnet_cw = updated.detnet_cw;
-                    data.detnet_seq_num_length = updated.detnet_cw
-                        ? (updated.detnet_seq_num_length ?? DetNetSeqNumLength.TwentyEight)
-                        : null;
-                    data.mna_in_stack = updated.mna_in_stack;
-                    setFormData((prevData) => ({
-                        ...prevData,
-                        detnet_cw: data.detnet_cw,
-                        detnet_seq_num_length: data.detnet_seq_num_length,
-                        mna_in_stack: data.mna_in_stack,
-                        ip_version: p4tg_infos.asic === ASIC.Tofino1 && data.detnet_cw && data.encapsulation === Encapsulation.MPLS
-                            ? 4
-                            : prevData.ip_version,
-                    }));
-                    enforceDetNetConstraints(updated.detnet_cw);
-                }}
+                set_data={applyAdvancedOptions}
             />
         ) : null}
     </tr>

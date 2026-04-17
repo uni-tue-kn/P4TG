@@ -24,7 +24,7 @@ import { Accordion, Button, Modal, Alert } from "react-bootstrap";
 
 import { VLAN, Ethernet, IPv4, QinQ, VxLAN, GtpU, MPLS, IPv6, SRv6 } from "./protocols";
 import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask, validateTEID } from "../../common/Validators";
-import { computeMNAState, decodeMNAEditorEntries } from "../../common/MPLSMNA";
+import { computeMNAState, decodeMNAEditorEntries, stripPostStackEncoding } from "./protocols/MPLSMNA";
 
 /**
  * Ensures that the StreamSettings has defaults for all fields
@@ -78,6 +78,10 @@ export const ensureDefaults = (settings: StreamSettings, stream: Stream): Stream
  */
 export const stripUnusedFields = (settings: StreamSettings, stream: Stream): StreamSettings => {
     const s = { ...settings };
+
+    if (stream.encapsulation === Encapsulation.MPLS && !stream.mna_post_stack) {
+        s.mpls_stack = stripPostStackEncoding(s.mpls_stack, stream.number_of_lse);
+    }
 
     if (stream.ip_version === 6) {
         delete s.ip;
@@ -173,8 +177,12 @@ const SettingsModal = ({
 
     const submit = () => {
         if (stream.encapsulation === Encapsulation.MPLS && stream.mna_in_stack) {
-            const decoded = decodeMNAEditorEntries(tmp_data.mpls_stack ?? [], stream.number_of_lse);
-            const computed = computeMNAState(decoded.entries);
+            const decoded = decodeMNAEditorEntries(tmp_data.mpls_stack ?? [], stream.number_of_lse, {
+                allowPostStack: stream.mna_post_stack,
+            });
+            const computed = computeMNAState(decoded.entries, {
+                allowPostStack: stream.mna_post_stack,
+            });
 
             if (decoded.error) {
                 setAlertMessage(decoded.error);
@@ -378,9 +386,9 @@ const SettingsModal = ({
                             <Accordion.Item eventKey="4">
                                 <Accordion.Header>MPLS</Accordion.Header>
                                 <Accordion.Body>
-                                <MPLS stream={stream} data={tmp_data} set_data={set_tmp_data} running={running} />
-                            </Accordion.Body>
-                        </Accordion.Item>
+                                    <MPLS stream={stream} data={tmp_data} set_data={set_tmp_data} running={running} />
+                                </Accordion.Body>
+                            </Accordion.Item>
                         </>
                         :
                         null

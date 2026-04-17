@@ -39,6 +39,10 @@ const ether_type_t ETHERTYPE_QinQ = 0x88a8;
 const ether_type_t ETHERTYPE_VLANQ = 0x8100;
 const ether_type_t ETHERTYPE_MPLS = 0x8847;
 const ether_type_t ETHERTYPE_ARP = 0x0806;
+const bit<16> MPLS_MNA_PSMHT_TYPE = 0x0001;
+// Non-standard pfn value used by P4TG so PSMHT can't alias DetNet d-CW
+// (version=0) in the post-stack parser check.
+const bit<4> MPLS_MNA_PSMHT_PFN = 0x5;
 
 const bit<8> IP_PROTOCOL_UDP = 17;
 const bit<8> IP_PROTOCOL_IPV4 = 4;
@@ -77,6 +81,13 @@ header mpls_h {
     bit<3> tc; // traffic class
     bit<1> bos; // bottom of stack
     bit<8> ttl;
+}
+
+header mpls_post_stack_lookahead_t {
+    bit<4> pfn;
+    bit<4> reserved;
+    bit<8> psmh_len;
+    bit<16> type;
 }
 
 header detnet_dCW_h {

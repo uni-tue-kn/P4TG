@@ -71,6 +71,11 @@ pub const TRAFFIC_GEN_MODE: &str = "ingress.tg_mode";
 /// If thats the case, the packet is timestamped for RTT calculation.
 pub const IS_EGRESS_TABLE: &str = "egress.is_egress";
 
+/// Table keyed on app_id. Matches PSD streams and writes the
+/// TX timestamp on the TX recirc pass, because the final-TX-port parser
+/// cannot reach hdr.path past the PSMHT.
+pub const IS_EGRESS_PSD_TABLE: &str = "egress.is_egress_psd";
+
 /// Table that indicates that a packet is on TX egress recirculation port.
 /// Packets on this path have an additional 6 byte generation header that is removed
 /// if this table matches.

@@ -22,6 +22,7 @@
 export interface MPLSHeader {
     label: number,
     tc: number,
+    bos?: boolean,
     ttl: number
 }
 
@@ -292,6 +293,7 @@ export interface Stream {
     detnet_cw: boolean,
     detnet_seq_num_length: DetNetSeqNumLength | null,
     mna_in_stack: boolean,
+    mna_post_stack: boolean,
 }
 
 export const DefaultMPLSHeader = () => {
@@ -323,6 +325,7 @@ export const DefaultStream = (id: number) => {
         detnet_cw: false,
         detnet_seq_num_length: null,
         mna_in_stack: false,
+        mna_post_stack: false,
     }
 
     return stream

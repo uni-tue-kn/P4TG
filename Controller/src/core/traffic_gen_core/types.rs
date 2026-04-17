@@ -145,6 +145,9 @@ pub struct MPLSHeader {
     pub label: u32,
     /// Traffic class field of this MPLS LSE
     pub tc: u32,
+    /// Bottom-of-stack bit of this MPLS LSE
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bos: Option<bool>,
     /// Time-to-live of this MPLS LSE
     pub ttl: u32,
 }
@@ -363,6 +366,11 @@ pub struct Stream {
     /// Length of Sequence numbers in the d-CW. 8, 16, or 28.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) detnet_seq_num_length: Option<DetNetSeqNumLength>,
+    /// Flag that indicates the MPLS stack contains post-stack data (MNA PSD).
+    /// When set, TX timestamp is written on the TX recirc pass because the
+    /// final-TX-port parser cannot reach hdr.path past the PSMHT.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) mna_post_stack: Option<bool>,
 }
 
 #[derive(Serialize, ToSchema)]

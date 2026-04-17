@@ -275,6 +275,11 @@ parser SwitchIngressParser(
             0x0: parse_dCW;
             0x4: parse_path;
             0x6: parse_path_v6;
+            // P4TG uses a non-standard pfn=0x5 for PSMHT so it can never collide with d-CW
+            // (version=0). PSD bytes are left as payload: the parser budget
+            // would prune parse_path after a post-stack chain anyway, so RTT /
+            // packet-loss measurement is unavailable when PSD is present on RX (works
+            // again if the DuT pops the MPLS stack before echoing the packet back).
             default: accept;
         }
     }
@@ -484,6 +489,10 @@ parser SwitchEgressParser(
             0x0: parse_dCW;
             0x4: parse_path;
             0x6: parse_path_v6;
+            // PSD detection: see ingress parser comment. PSD bytes are left as payload
+            // — egress can't reach hdr.path (parser budget) and can't write into
+            // mpls_stack[] post-stack indices (never made valid here), so post-stack
+            // content passes through unmodified from the packet generator template.            
             default: accept;
         }
     }

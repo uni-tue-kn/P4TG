@@ -78,6 +78,11 @@ const normalizeStreamsForFrontend = (
 
     const normalizedStreams = streams.map((stream) => {
         const normalizedStream = { ...stream };
+        const postStackAllowed = normalizedStream.encapsulation === Encapsulation.MPLS
+            && normalizedStream.ip_version === 4
+            && !normalizedStream.vxlan
+            && !normalizedStream.gtpu
+            && !normalizedStream.detnet_cw;
 
         if (asic === ASIC.Tofino1 && normalizedStream.encapsulation === Encapsulation.SRv6) {
             warning = `SRv6 is not supported on Tofino 1. Stream "${normalizedStream.stream_id}" encapsulation set to None.`;
@@ -88,10 +93,18 @@ const normalizeStreamsForFrontend = (
             normalizedStream.detnet_cw = false;
             normalizedStream.detnet_seq_num_length = null;
             normalizedStream.mna_in_stack = false;
+            normalizedStream.mna_post_stack = false;
         } else if (!normalizedStream.detnet_cw) {
             normalizedStream.detnet_seq_num_length = null;
         } else if (normalizedStream.detnet_seq_num_length == null) {
             normalizedStream.detnet_seq_num_length = DetNetSeqNumLength.TwentyEight;
+        }
+
+        if (!normalizedStream.mna_in_stack || !postStackAllowed) {
+            if (normalizedStream.mna_post_stack && normalizedStream.encapsulation === Encapsulation.MPLS) {
+                warning = `Post-stack MNA requires MPLS with IPv4 only, without DetNet Control Word, VxLAN, or GTP-U. Stream "${normalizedStream.stream_id}" post-stack MNA was disabled.`;
+            }
+            normalizedStream.mna_post_stack = false;
         }
 
         if (
@@ -282,6 +295,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     return {
                         ...streamFromBackend,
                         mna_in_stack: streamFromBackend.mna_in_stack ?? existing?.mna_in_stack ?? false,
+                        mna_post_stack: streamFromBackend.mna_post_stack ?? existing?.mna_post_stack ?? false,
                     };
                 });
 

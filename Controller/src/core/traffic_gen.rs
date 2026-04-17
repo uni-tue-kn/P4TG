@@ -1049,12 +1049,24 @@ impl TrafficGen {
         port_mapping: &HashMap<u32, PortMapping>,
     ) -> Result<(), RBFRTError> {
         let mut reqs = vec![];
+        // DCW_HEADER_REPLACE_TABLE and IS_EGRESS_PSD_TABLE are keyed only on
+        // app_id, so the same stream replicated across multiple ports would
+        // push duplicate entries.
+        let mut dcw_app_ids: HashSet<u8> = HashSet::new();
+        let mut psd_app_ids: HashSet<u8> = HashSet::new();
 
         for s in streams {
             for setting in stream_settings {
                 // find the "correct" stream for a stream setting
                 if setting.stream_id != s.stream_id || !setting.active {
                     continue;
+                }
+
+                if s.mna_post_stack == Some(true) && psd_app_ids.insert(s.app_id) {
+                    let req = Request::new(IS_EGRESS_PSD_TABLE)
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action("egress.set_tx");
+                    reqs.push(req);
                 }
 
                 let port = port_mapping.get(&setting.port).ok_or(P4TGError::Error {
@@ -1235,9 +1247,10 @@ impl TrafficGen {
                 } else if s.encapsulation == Encapsulation::Mpls {
                     // we checked that mpls stack exists
                     let mpls_stack = setting.mpls_stack.as_ref().unwrap();
+                    let num_lse = cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL);
                     let action_name: String = format!(
                         "egress.header_replace.mpls_replace_c.rewrite_mpls_{}",
-                        cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL)
+                        num_lse
                     );
 
                     let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
@@ -1249,22 +1262,24 @@ impl TrafficGen {
                         .action(&action_name);
 
                     // build generic action data
-                    for j in 1..cmp::min(s.number_of_lse.unwrap() + 1, MAX_NUM_MPLS_LABEL + 1) {
+                    for j in 1..(num_lse + 1) {
                         let lse = &mpls_stack[(j - 1) as usize];
 
                         let label_param = format!("label{j}");
-                        let ttl_param = format!("ttl{j}");
                         let tc_param = format!("tc{j}");
+                        let bos_param = format!("bos{j}");
+                        let ttl_param = format!("ttl{j}");
                         req = req
                             .action_data(&label_param, lse.label)
-                            .action_data(&ttl_param, lse.ttl)
-                            .action_data(&tc_param, lse.tc);
+                            .action_data(&tc_param, lse.tc)
+                            .action_data(&bos_param, lse.bos.unwrap_or(j == num_lse))
+                            .action_data(&ttl_param, lse.ttl);
                     }
 
                     reqs.push(req.clone());
 
                     // Check for d-CW
-                    if s.detnet_cw == Some(true) {
+                    if s.detnet_cw == Some(true) && dcw_app_ids.insert(s.app_id) {
                         let seq_num_len = s
                             .detnet_seq_num_length
                             .unwrap_or(DetNetSeqNumLength::TwentyEight);
@@ -1394,6 +1409,7 @@ impl TrafficGen {
                 .clear_tables(vec![
                     TRAFFIC_GEN_MODE,
                     IS_EGRESS_TABLE,
+                    IS_EGRESS_PSD_TABLE,
                     IS_TX_EGRESS_TABLE,
                     VLAN_HEADER_REPLACE_TABLE,
                     MPLS_HEADER_REPLACE_TABLE,
@@ -1411,6 +1427,7 @@ impl TrafficGen {
                 .clear_tables(vec![
                     TRAFFIC_GEN_MODE,
                     IS_EGRESS_TABLE,
+                    IS_EGRESS_PSD_TABLE,
                     IS_TX_EGRESS_TABLE,
                     VLAN_HEADER_REPLACE_TABLE,
                     MPLS_HEADER_REPLACE_TABLE,
