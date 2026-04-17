@@ -266,6 +266,13 @@ export enum GenerationUnit {
     Gbps = 0,
     Mpps = 1,
 }
+
+export enum DetNetSeqNumLength {
+    Eight = 8,
+    Sixteen = 16,
+    TwentyEight = 28,
+}
+
 export interface Stream {
     stream_id: number,
     frame_size: number,
@@ -282,6 +289,8 @@ export interface Stream {
     batches: boolean,
     unit: GenerationUnit,
     pattern: GenerationPatternConfig | null,
+    detnet_cw: boolean,
+    detnet_seq_num_length: DetNetSeqNumLength | null,
 }
 
 export const DefaultMPLSHeader = () => {
@@ -310,6 +319,8 @@ export const DefaultStream = (id: number) => {
         ip_version: 4,
         unit: GenerationUnit.Gbps,
         pattern: null,
+        detnet_cw: false,
+        detnet_seq_num_length: null,
     }
 
     return stream

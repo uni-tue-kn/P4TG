@@ -272,8 +272,25 @@ parser SwitchIngressParser(
     state check_ip_version_mpls {
         bit<4> first_nibble = pkt.lookahead<bit<4>>();
         transition select (first_nibble) {
+            0x0: parse_dCW;
             0x4: parse_path;
             0x6: parse_path_v6;
+            default: accept;
+        }
+    }
+
+    state parse_dCW {
+        pkt.extract(hdr.dCW);
+        transition check_ip_version_dCW;
+    }
+
+    state check_ip_version_dCW {
+        bit<4> first_nibble = pkt.lookahead<bit<4>>();
+        transition select (first_nibble) {
+            0x4: parse_path;
+        #if __TARGET_TOFINO__ == 2
+            0x6: parse_path_v6;
+        #endif
             default: accept;
         }
     }
@@ -312,6 +329,7 @@ control SwitchIngressDeparser(
         pkt.emit(hdr.gtpu);
         pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
+        pkt.emit(hdr.dCW);        
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.inner_ipv4);
@@ -463,8 +481,25 @@ parser SwitchEgressParser(
     state check_ip_version_mpls {
         bit<4> first_nibble = pkt.lookahead<bit<4>>();
         transition select (first_nibble) {
+            0x0: parse_dCW;
             0x4: parse_path;
             0x6: parse_path_v6;
+            default: accept;
+        }
+    }
+
+    state parse_dCW {
+        pkt.extract(hdr.dCW);
+        transition check_ip_version_dCW;
+    }
+
+    state check_ip_version_dCW {
+        bit<4> first_nibble = pkt.lookahead<bit<4>>();
+        transition select (first_nibble) {
+            0x4: parse_path;
+        #if __TARGET_TOFINO__ == 2
+            0x6: parse_path_v6;
+        #endif
             default: accept;
         }
     }
@@ -661,6 +696,7 @@ control SwitchEgressDeparser(
         pkt.emit(hdr.gtpu);
         pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
+        pkt.emit(hdr.dCW);
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.inner_ipv4);

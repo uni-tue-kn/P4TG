@@ -357,6 +357,12 @@ pub struct Stream {
     /// Traffic shaping pattern applied to this stream
     #[serde(default)]
     pub pattern: Option<GenerationPatternConfig>,
+    /// d-CW of DetNet, with sequence numbers based on RFC 8964
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) detnet_cw: Option<bool>,
+    /// Length of Sequence numbers in the d-CW. 8, 16, or 28.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) detnet_seq_num_length: Option<DetNetSeqNumLength>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -410,4 +416,12 @@ pub enum GenerationPattern {
 pub enum HistogramType {
     Rtt,
     Iat,
+}
+
+#[derive(Copy, Clone, Serialize_repr, Deserialize_repr, Debug, ToSchema)]
+#[repr(u8)]
+pub enum DetNetSeqNumLength {
+    Eight = 8,
+    Sixteen = 16,
+    TwentyEight = 28,
 }

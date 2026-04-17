@@ -1262,6 +1262,24 @@ impl TrafficGen {
                     }
 
                     reqs.push(req.clone());
+
+                    // Check for d-CW
+                    if s.detnet_cw == Some(true) {
+                        let seq_num_len = s
+                            .detnet_seq_num_length
+                            .unwrap_or(DetNetSeqNumLength::TwentyEight);
+
+                        let action_name = format!(
+                            "egress.header_replace.mpls_replace_c.write_{}_bit_seq_num",
+                            seq_num_len as u8
+                        );
+
+                        let req = Request::new(DCW_HEADER_REPLACE_TABLE)
+                            .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                            .action(&action_name);
+
+                        reqs.push(req.clone());
+                    }
                 } else if s.encapsulation == Encapsulation::SRv6 {
                     let action_name: String = format!(
                         "egress.header_replace.srv6_replace_c.rewrite_{}_sids",
@@ -1379,6 +1397,7 @@ impl TrafficGen {
                     IS_TX_EGRESS_TABLE,
                     VLAN_HEADER_REPLACE_TABLE,
                     MPLS_HEADER_REPLACE_TABLE,
+                    DCW_HEADER_REPLACE_TABLE,
                     SRV6_HEADER_REPLACE_TABLE,
                     ETHERNET_IP_HEADER_REPLACE_TABLE,
                     DEFAULT_FORWARD_TABLE,
@@ -1395,6 +1414,7 @@ impl TrafficGen {
                     IS_TX_EGRESS_TABLE,
                     VLAN_HEADER_REPLACE_TABLE,
                     MPLS_HEADER_REPLACE_TABLE,
+                    DCW_HEADER_REPLACE_TABLE,
                     ETHERNET_IP_HEADER_REPLACE_TABLE,
                     DEFAULT_FORWARD_TABLE,
                     PATTERN_TABLE,

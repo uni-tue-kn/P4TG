@@ -147,6 +147,27 @@ pub fn validate_request(
             )));
         }
 
+        if stream.detnet_cw == Some(true) && stream.encapsulation != Encapsulation::Mpls {
+            return Err(Error::new(format!(
+                "DetNet CW is only supported with MPLS encapsulation (Stream with ID #{})",
+                stream.stream_id
+            )));
+        }
+
+        if stream.detnet_cw == Some(true) && stream.detnet_seq_num_length.is_none() {
+            return Err(Error::new(format!(
+                "DetNet CW sequence number length missing for stream #{}",
+                stream.stream_id
+            )));
+        }
+
+        if stream.detnet_cw != Some(true) && stream.detnet_seq_num_length.is_some() {
+            return Err(Error::new(format!(
+                "DetNet CW sequence number length configured without enabling DetNet CW (Stream with ID #{})",
+                stream.stream_id
+            )));
+        }
+
         // Check max number of MPLS labels
         if stream.encapsulation == Encapsulation::Mpls {
             if stream.number_of_lse.is_none() {
@@ -166,6 +187,13 @@ pub fn validate_request(
             if stream.number_of_lse.unwrap() == 0 {
                 return Err(Error::new(format!(
                     "MPLS encapsulation selected for stream with ID #{} but #LSE is zero.",
+                    stream.stream_id
+                )));
+            }
+
+            if !is_tofino2 && stream.detnet_cw == Some(true) && stream.ip_version == Some(6) {
+                return Err(Error::new(format!(
+                    "DetNet CW with IPv6 is not supported on Tofino1 (Stream with ID #{})",
                     stream.stream_id
                 )));
             }

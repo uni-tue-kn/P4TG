@@ -24,6 +24,7 @@ import { get } from "../common/API";
 import Loader from "../components/Loader";
 import {
     ASIC,
+    DetNetSeqNumLength,
     DefaultMPLSHeader,
     DefaultStream,
     DefaultStreamSettings,
@@ -65,6 +66,89 @@ export const StyledCol = styled.td`
 
 const CONFIG_STORAGE_KEY = "saved_configs";
 const DEFAULT_CONFIG_NAME = "Test 1";
+
+const normalizeStreamsForFrontend = (
+    config: TrafficGenData,
+    asic: ASIC,
+): { config: TrafficGenData; warning?: string } => {
+    const streams = (config.streams ?? []).map((stream) => ({ ...stream }));
+    validateStreams(streams);
+
+    let warning: string | undefined;
+
+    const normalizedStreams = streams.map((stream) => {
+        const normalizedStream = { ...stream };
+
+        if (asic === ASIC.Tofino1 && normalizedStream.encapsulation === Encapsulation.SRv6) {
+            warning = `SRv6 is not supported on Tofino 1. Stream "${normalizedStream.stream_id}" encapsulation set to None.`;
+            normalizedStream.encapsulation = Encapsulation.None;
+        }
+
+        if (normalizedStream.encapsulation !== Encapsulation.MPLS) {
+            normalizedStream.detnet_cw = false;
+            normalizedStream.detnet_seq_num_length = null;
+        } else if (!normalizedStream.detnet_cw) {
+            normalizedStream.detnet_seq_num_length = null;
+        } else if (normalizedStream.detnet_seq_num_length == null) {
+            normalizedStream.detnet_seq_num_length = DetNetSeqNumLength.TwentyEight;
+        }
+
+        if (
+            asic === ASIC.Tofino1 &&
+            normalizedStream.encapsulation === Encapsulation.MPLS &&
+            normalizedStream.detnet_cw &&
+            normalizedStream.ip_version === 6
+        ) {
+            warning = `DetNet CW requires IPv4 on Tofino 1. Stream "${normalizedStream.stream_id}" IP version set to IPv4.`;
+            normalizedStream.ip_version = 4;
+        }
+
+        return normalizedStream;
+    });
+
+    return {
+        config: {
+            ...config,
+            streams: normalizedStreams,
+        },
+        warning,
+    };
+};
+
+const normalizeTofino1StreamSettings = (
+    stream_settings: StreamSettings[],
+): { stream_settings: StreamSettings[]; warning?: string } => {
+    let warning: string | undefined;
+
+    const normalizedSettings = stream_settings.map((setting) => {
+        let updated = setting;
+
+        if (setting.ipv6) {
+            const ipv6 = updated.ipv6!;
+            if (!validateIPv6RandomMask(setting.ipv6.ipv6_src_mask, ASIC.Tofino1)) {
+                warning = `IPv6 source randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
+                updated = {
+                    ...updated,
+                    ipv6: { ...ipv6, ipv6_src_mask: "::ffff:ffff" },
+                };
+            }
+            if (!validateIPv6RandomMask(setting.ipv6.ipv6_dst_mask, ASIC.Tofino1)) {
+                warning = `IPv6 destination randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
+                updated = {
+                    ...updated,
+                    ipv6: { ...ipv6, ipv6_dst_mask: "::ffff:ffff" },
+                };
+            }
+        }
+
+        return updated;
+    });
+
+    return {
+        stream_settings: normalizedSettings,
+        warning,
+    };
+};
 
 
 const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (msg: string, bg: ToastVariant) => void }) => {
@@ -229,6 +313,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     useEffect(() => {
         let configs = JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY) || "{}");
+        let toastMessage;
+        let toastType;
 
         // If no configs, create default one
         if (Object.keys(configs).length === 0) {
@@ -242,8 +328,23 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 iat_histogram_config: {}
             };
             configs = { [DEFAULT_CONFIG_NAME]: defaultConfig };
-            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs));
         }
+
+        configs = Object.fromEntries(
+            Object.entries(configs).map(([name, config]) => {
+                const normalized = normalizeStreamsForFrontend(
+                    config as TrafficGenData,
+                    p4tg_infos.asic,
+                );
+                if (normalized.warning) {
+                    toastMessage = normalized.warning;
+                    toastType = "warning" as ToastVariant;
+                }
+                return [name, normalized.config];
+            })
+        );
+
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs));
 
         setSavedConfigs(configs);
 
@@ -252,6 +353,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         if (names.length > 0) {
             setActiveConfigName(names[0]);
             loadConfigToState(configs[names[0]]);
+        }
+
+        if (toastMessage && toastType) {
+            showToast(toastMessage, toastType);
         }
     }, []);
 
@@ -769,48 +874,20 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
             let toastMessage;
             let toastType;
-            // --- TOFINO1 SRv6 handling: remove unsupported encapsulation ---
-            if (p4tg_infos.asic === ASIC.Tofino1) {
-                for (const [cfgName, cfg] of Object.entries(migrated_config)) {
-                    // Streams: SRv6 -> None
-                    if (Array.isArray(cfg.streams)) {
-                        cfg.streams = cfg.streams.map((stream) => {
-                            if (stream.encapsulation === Encapsulation.SRv6) {
-                                toastMessage = `SRv6 is not supported on Tofino 1. Stream "${stream.stream_id}" encapsulation set to None.`;
-                                toastType = "warning" as ToastVariant;
-                                return { ...stream, encapsulation: Encapsulation.None };
-                            }
-                            return stream;
-                        });
-                    }
+            for (const [cfgName, cfg] of Object.entries(migrated_config)) {
+                const normalized = normalizeStreamsForFrontend(cfg, p4tg_infos.asic);
+                migrated_config[cfgName] = normalized.config;
+                if (normalized.warning) {
+                    toastMessage = normalized.warning;
+                    toastType = "warning" as ToastVariant;
+                }
 
-                    // Stream settings: clamp IPv6 randomization masks
-                    if (Array.isArray(cfg.stream_settings)) {
-                        cfg.stream_settings = cfg.stream_settings.map((setting) => {
-                            let updated = setting;
-
-                            if (setting.ipv6) {
-                                const ipv6 = updated.ipv6!;
-                                if (!validateIPv6RandomMask(setting.ipv6.ipv6_src_mask, ASIC.Tofino1)) {
-                                    toastMessage = `IPv6 source randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
-                                    toastType = "warning" as ToastVariant;
-                                    updated = {
-                                        ...updated,
-                                        ipv6: { ...ipv6, ipv6_src_mask: "::ffff:ffff" },
-                                    };
-                                }
-                                if (!validateIPv6RandomMask(setting.ipv6.ipv6_dst_mask, ASIC.Tofino1)) {
-                                    toastMessage = `IPv6 destination randomization mask too large for Tofino 1 on ${setting.stream_id}. Setting to ::ffff:ffff`;
-                                    toastType = "warning" as ToastVariant;
-                                    updated = {
-                                        ...updated,
-                                        ipv6: { ...ipv6, ipv6_dst_mask: "::ffff:ffff" },
-                                    };
-                                }
-                            }
-
-                            return updated;
-                        });
+                if (p4tg_infos.asic === ASIC.Tofino1 && Array.isArray(cfg.stream_settings)) {
+                    const normalizedSettings = normalizeTofino1StreamSettings(cfg.stream_settings);
+                    cfg.stream_settings = normalizedSettings.stream_settings;
+                    if (normalizedSettings.warning) {
+                        toastMessage = normalizedSettings.warning;
+                        toastType = "warning" as ToastVariant;
                     }
                 }
             }

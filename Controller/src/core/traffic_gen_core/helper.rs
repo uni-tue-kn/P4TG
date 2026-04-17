@@ -176,6 +176,10 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
         Encapsulation::SRv6 => 40 + 8 + stream.number_of_srv6_sids.unwrap() as u32 * 16, // Base IPv6 Header + SRH + each SID has 16 bytes
     };
 
+    if stream.encapsulation == Encapsulation::Mpls && stream.detnet_cw == Some(true) {
+        encapsulation_overhead += 4; // dCW adds 4 bytes after the MPLS stack
+    }
+
     if stream.vxlan || stream.gtpu {
         encapsulation_overhead += 50; // VxLAN has 50 byte overhead
     }
@@ -608,10 +612,12 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     destination: [0, 0, 0, 0, 0, 0],
                     ether_type: 0x8847, // MPLS ether type
                 };
+                let detnet_cw_overhead = if s.detnet_cw == Some(true) { 4 } else { 0 };
+                let packet_capacity =
+                    (s.frame_size + s.number_of_lse.unwrap() as u32 * 4 + detnet_cw_overhead)
+                        as usize;
 
-                let mut result = Vec::<u8>::with_capacity(
-                    (s.frame_size + s.number_of_lse.unwrap() as u32 * 4) as usize,
-                );
+                let mut result = Vec::<u8>::with_capacity(packet_capacity);
 
                 pkt.write(&mut result).unwrap();
 
@@ -632,6 +638,17 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     };
 
                     vlan_header.write(&mut result).unwrap();
+                }
+
+                if s.detnet_cw == Some(true) {
+                    // Write another "empty VLAN header", aka 32 bits.
+                    let d_cw_lse = etherparse::SingleVlanHeader {
+                        priority_code_point: 0,
+                        drop_eligible_indicator: false,
+                        vlan_identifier: 0,
+                        ether_type: 0,
+                    };
+                    d_cw_lse.write(&mut result).unwrap();
                 }
 
                 let ip_header: etherparse::IpHeader = match s.ip_version {
@@ -679,7 +696,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 };
 
                 // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = (result.capacity() as isize
+                let remaining = (packet_capacity as isize
                     - result.len() as isize
                     - 8
                     - payload.len() as isize

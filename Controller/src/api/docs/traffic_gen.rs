@@ -60,6 +60,8 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -141,6 +143,8 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -187,6 +191,8 @@ lazy_static! {
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
         pattern: None,
+        detnet_cw: None,
+        detnet_seq_num_length: None,
     }];
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
@@ -243,6 +249,8 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -323,6 +331,8 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -369,6 +379,8 @@ lazy_static! {
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
         pattern: None,
+        detnet_cw: None,
+        detnet_seq_num_length: None,
     }];
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Poisson,
@@ -427,6 +439,8 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
         }],
         duration: None,
         rtt_histogram_config: None,
@@ -452,6 +466,8 @@ lazy_static! {
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
         pattern: None,
+        detnet_cw: None,
+        detnet_seq_num_length: None,
     }];
     pub static ref EXAMPLE_POST_4_REQUEST: Vec<TrafficGenData> = vec![
         TrafficGenData {
@@ -511,6 +527,8 @@ lazy_static! {
                 srv6_ip_tunneling: Some(true),
                 unit: Some(GenerationUnit::Gbps),
                 pattern: None,
+                detnet_cw: None,
+                detnet_seq_num_length: None,
             }],
             port_tx_rx_mapping: HashMap::from([(
                 "1".to_string(),
@@ -595,6 +613,8 @@ lazy_static! {
                 srv6_ip_tunneling: Some(true),
                 unit: Some(GenerationUnit::Gbps),
                 pattern: None,
+                detnet_cw: None,
+                detnet_seq_num_length: None,
             }],
             port_tx_rx_mapping: HashMap::from([(
                 "1".to_string(),
@@ -644,6 +664,8 @@ lazy_static! {
             srv6_ip_tunneling: Some(true),
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
         },
         Stream {
             stream_id: 1,
@@ -665,6 +687,8 @@ lazy_static! {
             srv6_ip_tunneling: Some(true),
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
         }
     ];
 }

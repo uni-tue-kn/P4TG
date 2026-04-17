@@ -428,6 +428,16 @@ control MPLS_Replace(
                 hdr.mpls_stack[14].bos = 1;
         }
 
+        action write_8_bit_seq_num(){
+                hdr.dCW.seq_num[7:0] = hdr.path.seq[7:0];
+        }
+        action write_16_bit_seq_num(){
+                hdr.dCW.seq_num[15:0] = hdr.path.seq[15:0];
+        }
+        action write_28_bit_seq_num(){
+                hdr.dCW.seq_num[27:0] = hdr.path.seq[27:0];
+        }
+
         table mpls_header_replace {
             key = {
                 eg_intr_md.egress_port: exact;
@@ -457,7 +467,24 @@ control MPLS_Replace(
         #endif
         }
 
+        table dCW_seq_num {
+                key = {
+                        hdr.path.app_id: exact;                        
+                }
+        actions = {
+                write_8_bit_seq_num;
+                write_16_bit_seq_num;
+                write_28_bit_seq_num;
+                }
+        #if __TARGET_TOFINO__ == 2
+            size = 16;
+        #else 
+            size = 8;
+        #endif                
+        }
+
         apply {
             mpls_header_replace.apply();
+            dCW_seq_num.apply();
         }
     }

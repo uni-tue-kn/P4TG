@@ -79,6 +79,11 @@ header mpls_h {
     bit<8> ttl;
 }
 
+header detnet_dCW_h {
+    bit<4> version;
+    bit<28> seq_num;
+}
+
 header vlan_t {
         bit<3> pcp;
         bit<1> dei;
@@ -215,6 +220,7 @@ struct header_t {
     sid_t sid3;
     ethernet_h inner_ethernet;
     mpls_h[15] mpls_stack;
+    detnet_dCW_h dCW;
     ipv4_t ipv4;
     ipv6_t ipv6;
     ipv4_t inner_ipv4;

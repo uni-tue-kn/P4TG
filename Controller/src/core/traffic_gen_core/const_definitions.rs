@@ -119,6 +119,10 @@ pub const VLAN_HEADER_REPLACE_TABLE: &str = "egress.header_replace.vlan_header_r
 pub const MPLS_HEADER_REPLACE_TABLE: &str =
     "egress.header_replace.mpls_replace_c.mpls_header_replace";
 
+/// MPLS d-CW replace table
+/// This table writes the P4TG sequence number into the d-CW field
+pub const DCW_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_replace_c.dCW_seq_num";
+
 /// SRv6 replace table
 /// This table replaces the header content of the SRv6 header
 pub const SRV6_HEADER_REPLACE_TABLE: &str = "egress.header_replace.srv6_replace_c.srv6_replace";

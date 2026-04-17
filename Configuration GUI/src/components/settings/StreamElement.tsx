@@ -20,6 +20,7 @@
 
 
 import {
+    DetNetSeqNumLength,
     DefaultMPLSHeader,
     Encapsulation,
     GenerationMode,
@@ -33,13 +34,28 @@ import {
     GenerationPatternConfig
 } from "../../common/Interfaces";
 import React, { useState } from "react";
-import { Button, Col, Form, InputGroup, Row } from "react-bootstrap";
+import { Button, Col, Form, InputGroup, OverlayTrigger, Row, Tooltip } from "react-bootstrap";
 import InfoBox from "../InfoBox";
 import { StyledCol, StyledRow } from "../../sites/Settings";
 import PatternModal from "./PatternModal";
+import StreamAdvancedOptionsModal from "./StreamAdvancedOptionsModal";
 
 const getDefaultFlashcrowdQuietUntil = (period: number) => period * 0.2;
 const getDefaultFlashcrowdRampUntil = (period: number) => period * 0.25;
+const optionsControlHeight = "44px";
+const optionsButtonStyle = {
+    height: optionsControlHeight,
+    minWidth: optionsControlHeight,
+    padding: "0.375rem 0.5rem",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+};
+const optionsSelectStyle = {
+    maxWidth: "92px",
+    minWidth: "92px",
+    height: optionsControlHeight,
+};
 
 
 const StreamElement = ({
@@ -64,9 +80,36 @@ const StreamElement = ({
     const [stream_settings_c, set_stream_settings] = useState(stream_settings)
     const [patternConfig, setPatternConfig] = useState<GenerationPatternConfig | null>(data.pattern ?? null)
     const [showPatternModal, setShowPatternModal] = useState(false);
+    const [showAdvancedOptionsModal, setShowAdvancedOptionsModal] = useState(false);
 
     // Used to store tunneling and IP Version setting. Tunneling must be disabled on changing IP version
     const [formData, setFormData] = useState({ ...data });
+
+    const renderTooltip = (props: any, message: string) => (
+        <Tooltip id="tooltip-stream-options" {...props}>
+            {message}
+        </Tooltip>
+    );
+
+    const clearDetNetSettings = () => {
+        data.detnet_cw = false;
+        data.detnet_seq_num_length = null;
+        setFormData((prevData) => ({
+            ...prevData,
+            detnet_cw: false,
+            detnet_seq_num_length: null,
+        }));
+    };
+
+    const enforceDetNetConstraints = (detnetEnabled: boolean) => {
+        if (p4tg_infos.asic === ASIC.Tofino1 && data.encapsulation === Encapsulation.MPLS && detnetEnabled) {
+            data.ip_version = 4;
+            setFormData((prevData) => ({
+                ...prevData,
+                ip_version: 4,
+            }));
+        }
+    };
 
     const handleIPVersionChange = () => {
         // Toggle IP version and set tunneling to none
@@ -130,9 +173,11 @@ const StreamElement = ({
                     encapsulation: Encapsulation.MPLS
                 }));
             }
+            enforceDetNetConstraints(data.detnet_cw);
         } else if (data.encapsulation === Encapsulation.SRv6) {
             set_show_sid_config(true);
             set_show(false);
+            clearDetNetSettings();
             // Disable tunneling
             setFormData((prevData) => ({
                 ...prevData,
@@ -145,6 +190,7 @@ const StreamElement = ({
         } else {
             set_show(false);
             set_show_sid_config(false);
+            clearDetNetSettings();
             data.number_of_lse = 0;
             data.number_of_srv6_sids = 0;
             set_number_of_srv6_sids(0);
@@ -367,7 +413,11 @@ const StreamElement = ({
                 <Col>
                     <Form.Check
                         type={"switch"}
-                        disabled={running || (data.encapsulation == Encapsulation.SRv6 && !data.srv6_ip_tunneling)}
+                        disabled={running
+                            || (data.encapsulation == Encapsulation.SRv6 && !data.srv6_ip_tunneling)
+                            || (p4tg_infos.asic === ASIC.Tofino1
+                                && data.encapsulation === Encapsulation.MPLS
+                                && data.detnet_cw)}
                         checked={formData.ip_version === 6}
                         onChange={handleIPVersionChange}  // Toggle IP version and reset VxLAN
                     >
@@ -395,62 +445,92 @@ const StreamElement = ({
             </Form.Select>
         </StyledCol>
         <StyledRow>
-            <StyledCol>
-                {show_mpls_dropdown ?
-                    <Form.Select disabled={running}
-                        onChange={handleNumberOfLSE}
-                        defaultValue={number_of_lse}
-                    >
-                        <option selected={0 == number_of_lse} value="0">#LSE</option>
-                        {Array.from({ length: 15 }, (_, index) => (
-                            <option selected={index + 1 == number_of_lse} value={index + 1}>{index + 1}</option>
-                        ))}
-                    </Form.Select>
-                    :
-                    null
-                }
-                {show_sid_config ?
-                    <Form.Group>
-                        <Form.Select disabled={running}
-                            onChange={handleNumberOfSids}
-                            defaultValue={number_of_srv6_sids}
+            <StyledCol style={{ textIndent: 0 }}>
+                <div className="d-flex align-items-center justify-content-end gap-2 flex-nowrap">
+                    {show_mpls_dropdown ?
+                        <Form.Select
+                            disabled={running}
+                            onChange={handleNumberOfLSE}
+                            defaultValue={number_of_lse}
+                            style={optionsSelectStyle}
                         >
-                            <option selected={0 == number_of_srv6_sids} value="0">#SIDs</option>
-                            {Array.from({ length: 3 }, (_, index) => (
-                                <option selected={index + 1 == number_of_srv6_sids} value={index + 1}>{index + 1}</option>
+                            <option selected={0 == number_of_lse} value="0">#LSE</option>
+                            {Array.from({ length: 15 }, (_, index) => (
+                                <option selected={index + 1 == number_of_lse} value={index + 1}>{index + 1}</option>
                             ))}
                         </Form.Select>
-                        <tr>
-                            <td>IP Tunneling</td>
-                            <td>
-                                <Form.Check
-                                    type={"switch"}
-                                    disabled={running}
-                                    checked={data.srv6_ip_tunneling}
-                                    onChange={handleSRv6TunnelingChange}
-                                >
-                                </Form.Check>
-                            </td>
-                            <td>
-                                <InfoBox>
-                                    <>
-                                        <h5>IP Tunneling</h5>
+                        :
+                        null
+                    }
+                    {show_sid_config ?
+                        <Form.Group className="mb-0">
+                            <Form.Select
+                                disabled={running}
+                                onChange={handleNumberOfSids}
+                                defaultValue={number_of_srv6_sids}
+                                style={optionsSelectStyle}
+                            >
+                                <option selected={0 == number_of_srv6_sids} value="0">#SIDs</option>
+                                {Array.from({ length: 3 }, (_, index) => (
+                                    <option selected={index + 1 == number_of_srv6_sids} value={index + 1}>{index + 1}</option>
+                                ))}
+                            </Form.Select>
+                            <tr>
+                                <td>IP Tunneling</td>
+                                <td>
+                                    <Form.Check
+                                        type={"switch"}
+                                        disabled={running}
+                                        checked={data.srv6_ip_tunneling}
+                                        onChange={handleSRv6TunnelingChange}
+                                    >
+                                    </Form.Check>
+                                </td>
+                                <td>
+                                    <InfoBox>
+                                        <>
+                                            <h5>IP Tunneling</h5>
 
-                                        <p>Adds an inner IPv4 or IPv6 header to the packet, if enabled. If disabled, the UDP header follows directly after the SRv6 header.</p>
+                                            <p>Adds an inner IPv4 or IPv6 header to the packet, if enabled. If disabled, the UDP header follows directly after the SRv6 header.</p>
 
-                                    </>
-                                </InfoBox>
-                            </td>
-                        </tr>
-                    </Form.Group>
-                    :
-                    null
-                }
+                                        </>
+                                    </InfoBox>
+                                </td>
+                            </tr>
+                        </Form.Group>
+                        :
+                        null
+                    }
+                </div>
             </StyledCol>
-            <StyledCol className={"text-end"}>
-                <Button size={"sm"} disabled={running} variant={"outline-secondary"}
-                    onClick={() => remove(data.stream_id)}>
-                    <i className="bi bi-trash2-fill" /></Button>
+            <StyledCol style={{ textIndent: 0 }}>
+                <div className="d-flex align-items-center justify-content-end gap-2 flex-nowrap">
+                    {data.encapsulation === Encapsulation.MPLS ? (
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={(props) => renderTooltip(props, "Advanced stream options")}
+                        >
+                            <Button
+                                size={"sm"}
+                                disabled={running}
+                                variant={"outline-secondary"}
+                                style={optionsButtonStyle}
+                                onClick={() => setShowAdvancedOptionsModal(true)}
+                            >
+                                <i className="bi bi-sliders" />
+                            </Button>
+                        </OverlayTrigger>
+                    ) : null}
+                    <Button
+                        size={"sm"}
+                        disabled={running}
+                        variant={"outline-secondary"}
+                        style={optionsButtonStyle}
+                        onClick={() => remove(data.stream_id)}
+                    >
+                        <i className="bi bi-trash2-fill" />
+                    </Button>
+                </div>
             </StyledCol>
         </StyledRow>
         <PatternModal
@@ -472,6 +552,30 @@ const StreamElement = ({
                 data.pattern = updated;
             }}
         />
+        {data.encapsulation === Encapsulation.MPLS ? (
+            <StreamAdvancedOptionsModal
+                show={showAdvancedOptionsModal}
+                hide={() => setShowAdvancedOptionsModal(false)}
+                data={data}
+                disabled={running}
+                p4tg_infos={p4tg_infos}
+                set_data={(updated) => {
+                    data.detnet_cw = updated.detnet_cw;
+                    data.detnet_seq_num_length = updated.detnet_cw
+                        ? (updated.detnet_seq_num_length ?? DetNetSeqNumLength.TwentyEight)
+                        : null;
+                    setFormData((prevData) => ({
+                        ...prevData,
+                        detnet_cw: data.detnet_cw,
+                        detnet_seq_num_length: data.detnet_seq_num_length,
+                        ip_version: p4tg_infos.asic === ASIC.Tofino1 && data.detnet_cw && data.encapsulation === Encapsulation.MPLS
+                            ? 4
+                            : prevData.ip_version,
+                    }));
+                    enforceDetNetConstraints(updated.detnet_cw);
+                }}
+            />
+        ) : null}
     </tr>
 }
 
