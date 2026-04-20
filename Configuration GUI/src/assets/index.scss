@@ -53,6 +53,9 @@
     --color-post-stack-border: #d97706;
     --color-post-stack-header: #b45309;
     --color-bos-divider: #64748b;
+    --color-mna-warning-text: #92400e;
+    --color-mna-warning-border: #f59e0b;
+    --color-mna-warning-bg: #fffbeb;
 
 }
 
@@ -95,6 +98,9 @@
     --color-post-stack-border: #d97706;
     --color-post-stack-header: #b45309;
     --color-bos-divider: #475569;
+    --color-mna-warning-text: #fcd34d;
+    --color-mna-warning-border: #d97706;
+    --color-mna-warning-bg: rgba(245, 158, 11, 0.14);
 
 }
 
@@ -158,6 +164,14 @@
 
 .mna-action-dropdown .dropdown-toggle {
     min-width: 10rem;
+}
+
+.mna-warning-box {
+    background-color: var(--color-mna-warning-bg);
+    border-left: 4px solid var(--color-mna-warning-border);
+    border-radius: 6px;
+    color: var(--color-mna-warning-text);
+    padding: 0.75rem 0.9rem;
 }
 
 .mna-action-button,

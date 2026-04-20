@@ -90,6 +90,51 @@ const StreamElement = ({
         </Tooltip>
     );
 
+    const wrapDisabledControl = (
+        control: React.ReactElement,
+        reason: string | null,
+        wrapperClassName: string = "d-inline-block w-100",
+    ) => {
+        if (!reason) {
+            return control;
+        }
+
+        return (
+            <OverlayTrigger
+                placement="top"
+                overlay={(props) => renderTooltip(props, reason)}
+            >
+                <span className={wrapperClassName}>
+                    {control}
+                </span>
+            </OverlayTrigger>
+        );
+    };
+
+    const runningDisabledReason = running ? "Disabled while traffic generation is running." : null;
+    const tunnelingDisabledReason = running
+        ? runningDisabledReason
+        : formData.ip_version === 6
+            ? "VxLAN and GTP-U are available with IPv4 only."
+            : (p4tg_infos.asic === ASIC.Tofino1 && formData.encapsulation === Encapsulation.MPLS)
+                ? "VxLAN and GTP-U are not supported together with MPLS on Tofino1."
+                : formData.encapsulation === Encapsulation.SRv6
+                    ? "Use the SRv6 IP Tunneling option instead of VxLAN or GTP-U."
+                    : null;
+    const ipVersionDisabledReason = running
+        ? runningDisabledReason
+        : (data.encapsulation === Encapsulation.SRv6 && !data.srv6_ip_tunneling)
+            ? "Enable SRv6 IP Tunneling before switching the inner IP version."
+            : (p4tg_infos.asic === ASIC.Tofino1
+                && data.encapsulation === Encapsulation.MPLS
+                && data.detnet_cw)
+                ? "IPv6 is disabled because the DetNet Control Word is enabled on Tofino1."
+                : null;
+    const encapsulationDisabledReason = runningDisabledReason;
+    const numberOfLseDisabledReason = runningDisabledReason;
+    const numberOfSidsDisabledReason = runningDisabledReason;
+    const srv6TunnelDisabledReason = runningDisabledReason;
+
     const updateFormData = (updates: Partial<Stream>) => {
         setFormData((prevData) => ({
             ...prevData,
@@ -149,14 +194,6 @@ const StreamElement = ({
         data.ip_version = newIPVersion;
         data.vxlan = false;
         data.gtpu = false;
-        if (newIPVersion !== 4) {
-            clearPostStackMNA({
-                ip_version: newIPVersion,
-                vxlan: false,
-                gtpu: false,
-            });
-            return;
-        }
         updateFormData({
             ip_version: newIPVersion,
             vxlan: false,
@@ -459,94 +496,116 @@ const StreamElement = ({
             </tr>
         </StyledCol>
         <StyledCol>
-            <Form.Select
-                disabled={running || formData.ip_version === 6 || (p4tg_infos.asic === ASIC.Tofino1 && formData.encapsulation === Encapsulation.MPLS) || formData.encapsulation === Encapsulation.SRv6}
-                value={formData.vxlan ? "vxlan" : formData.gtpu ? "gtpu" : "none"}
-                onChange={handleTunnelingChange}
-            >
-                <option value="none">None</option>
-                <option value="vxlan">VxLAN</option>
-                <option value="gtpu">GTP-U</option>
-            </Form.Select>
+            {wrapDisabledControl(
+                <Form.Select
+                    disabled={running || formData.ip_version === 6 || (p4tg_infos.asic === ASIC.Tofino1 && formData.encapsulation === Encapsulation.MPLS) || formData.encapsulation === Encapsulation.SRv6}
+                    value={formData.vxlan ? "vxlan" : formData.gtpu ? "gtpu" : "none"}
+                    onChange={handleTunnelingChange}
+                >
+                    <option value="none">None</option>
+                    <option value="vxlan">VxLAN</option>
+                    <option value="gtpu">GTP-U</option>
+                </Form.Select>,
+                tunnelingDisabledReason,
+            )}
         </StyledCol>
         <StyledCol>
             <Row>
                 <Col className={"text-end"}><span>v4</span></Col>
                 <Col>
-                    <Form.Check
-                        type={"switch"}
-                        disabled={running
-                            || (data.encapsulation == Encapsulation.SRv6 && !data.srv6_ip_tunneling)
-                            || (p4tg_infos.asic === ASIC.Tofino1
-                                && data.encapsulation === Encapsulation.MPLS
-                                && data.detnet_cw)}
-                        checked={formData.ip_version === 6}
-                        onChange={handleIPVersionChange}  // Toggle IP version and reset VxLAN
-                    >
-                    </Form.Check>
+                    {wrapDisabledControl(
+                        <Form.Check
+                            type={"switch"}
+                            disabled={running
+                                || (data.encapsulation == Encapsulation.SRv6 && !data.srv6_ip_tunneling)
+                                || (p4tg_infos.asic === ASIC.Tofino1
+                                    && data.encapsulation === Encapsulation.MPLS
+                                    && data.detnet_cw)}
+                            checked={formData.ip_version === 6}
+                            onChange={handleIPVersionChange}  // Toggle IP version and reset VxLAN
+                        >
+                        </Form.Check>,
+                        ipVersionDisabledReason,
+                        "d-inline-block",
+                    )}
                 </Col>
                 <Col className={"text-start"}><span>v6</span></Col>
             </Row>
         </StyledCol>
         <StyledCol>
-            <Form.Select disabled={running} required
-                onChange={handleEncapsulationChange}
-            >
-                <option selected={Encapsulation.None == data.encapsulation} value={Encapsulation.None}>None</option>
-                <option selected={Encapsulation.Q == data.encapsulation} value={Encapsulation.Q}>VLAN (+4 byte)</option>
-                <option selected={Encapsulation.QinQ == data.encapsulation} value={Encapsulation.QinQ}>Q-in-Q (+8
-                    byte)
-                </option>
-                <option selected={Encapsulation.MPLS == data.encapsulation} value={Encapsulation.MPLS}>MPLS (+4 byte /
-                    LSE)
-                </option>
-                {p4tg_infos.asic == ASIC.Tofino2 ? <option selected={Encapsulation.SRv6 == data.encapsulation} value={Encapsulation.SRv6}>SRv6 (+48 byte + 16 byte / SID)
-                </option>
-                    :
-                    null}
-            </Form.Select>
+            {wrapDisabledControl(
+                <Form.Select disabled={running} required
+                    onChange={handleEncapsulationChange}
+                >
+                    <option selected={Encapsulation.None == data.encapsulation} value={Encapsulation.None}>None</option>
+                    <option selected={Encapsulation.Q == data.encapsulation} value={Encapsulation.Q}>VLAN (+4 byte)</option>
+                    <option selected={Encapsulation.QinQ == data.encapsulation} value={Encapsulation.QinQ}>Q-in-Q (+8
+                        byte)
+                    </option>
+                    <option selected={Encapsulation.MPLS == data.encapsulation} value={Encapsulation.MPLS}>MPLS (+4 byte /
+                        LSE)
+                    </option>
+                    {p4tg_infos.asic == ASIC.Tofino2 ? <option selected={Encapsulation.SRv6 == data.encapsulation} value={Encapsulation.SRv6}>SRv6 (+48 byte + 16 byte / SID)
+                    </option>
+                        :
+                        null}
+                </Form.Select>,
+                encapsulationDisabledReason,
+            )}
         </StyledCol>
         <StyledRow>
             <StyledCol style={{ textIndent: 0 }}>
                 <div className="d-flex align-items-center justify-content-end gap-2 flex-nowrap">
                     {show_mpls_dropdown ?
-                        <Form.Select
-                            disabled={running}
-                            onChange={handleNumberOfLSE}
-                            defaultValue={number_of_lse}
-                            style={optionsSelectStyle}
-                        >
-                            <option selected={0 == number_of_lse} value="0">#LSE</option>
-                            {Array.from({ length: 15 }, (_, index) => (
-                                <option selected={index + 1 == number_of_lse} value={index + 1}>{index + 1}</option>
-                            ))}
-                        </Form.Select>
+                        wrapDisabledControl(
+                            <Form.Select
+                                disabled={running}
+                                onChange={handleNumberOfLSE}
+                                defaultValue={number_of_lse}
+                                style={optionsSelectStyle}
+                            >
+                                <option selected={0 == number_of_lse} value="0">#LSE</option>
+                                {Array.from({ length: 15 }, (_, index) => (
+                                    <option selected={index + 1 == number_of_lse} value={index + 1}>{index + 1}</option>
+                                ))}
+                            </Form.Select>,
+                            numberOfLseDisabledReason,
+                            "d-inline-block"
+                        )
                         :
                         null
                     }
                     {show_sid_config ?
                         <Form.Group className="mb-0">
-                            <Form.Select
-                                disabled={running}
-                                onChange={handleNumberOfSids}
-                                defaultValue={number_of_srv6_sids}
-                                style={optionsSelectStyle}
-                            >
-                                <option selected={0 == number_of_srv6_sids} value="0">#SIDs</option>
-                                {Array.from({ length: 3 }, (_, index) => (
-                                    <option selected={index + 1 == number_of_srv6_sids} value={index + 1}>{index + 1}</option>
-                                ))}
-                            </Form.Select>
+                            {wrapDisabledControl(
+                                <Form.Select
+                                    disabled={running}
+                                    onChange={handleNumberOfSids}
+                                    defaultValue={number_of_srv6_sids}
+                                    style={optionsSelectStyle}
+                                >
+                                    <option selected={0 == number_of_srv6_sids} value="0">#SIDs</option>
+                                    {Array.from({ length: 3 }, (_, index) => (
+                                        <option selected={index + 1 == number_of_srv6_sids} value={index + 1}>{index + 1}</option>
+                                    ))}
+                                </Form.Select>,
+                                numberOfSidsDisabledReason,
+                                "d-inline-block"
+                            )}
                             <tr>
                                 <td>IP Tunneling</td>
                                 <td>
-                                    <Form.Check
-                                        type={"switch"}
-                                        disabled={running}
-                                        checked={data.srv6_ip_tunneling}
-                                        onChange={handleSRv6TunnelingChange}
-                                    >
-                                    </Form.Check>
+                                    {wrapDisabledControl(
+                                        <Form.Check
+                                            type={"switch"}
+                                            disabled={running}
+                                            checked={data.srv6_ip_tunneling}
+                                            onChange={handleSRv6TunnelingChange}
+                                        >
+                                        </Form.Check>,
+                                        srv6TunnelDisabledReason,
+                                        "d-inline-block"
+                                    )}
                                 </td>
                                 <td>
                                     <InfoBox>

@@ -14,7 +14,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Accordion, Button, Form, Modal } from "react-bootstrap";
+import { Accordion, Button, Form, Modal, OverlayTrigger, Tooltip } from "react-bootstrap";
 import {
     ASIC,
     DetNetSeqNumLength,
@@ -59,20 +59,17 @@ const StreamAdvancedOptionsModal = ({
     const detnetAvailable = data.encapsulation === Encapsulation.MPLS;
     const tofino1Ipv4Only = p4tg_infos.asic === ASIC.Tofino1;
     const postStackSupported = data.encapsulation === Encapsulation.MPLS
-        && data.ip_version === 4
         && !data.vxlan
         && !data.gtpu
         && !tmp_data.detnet_cw;
 
-    const postStackUnavailableReason = data.ip_version !== 4
-        ? "Post-stack MNA is available with IPv4 only."
-        : tmp_data.detnet_cw
-            ? "Post-stack MNA cannot be combined with the DetNet Control Word."
-            : data.vxlan
-                ? "Post-stack MNA is not available together with VxLAN."
-                : data.gtpu
-                    ? "Post-stack MNA is not available together with GTP-U."
-                    : null;
+    const postStackUnavailableReason = tmp_data.detnet_cw
+        ? "Post-stack MNA cannot be combined with the DetNet Control Word."
+        : data.vxlan
+            ? "Post-stack MNA is not available together with VxLAN."
+            : data.gtpu
+                ? "Post-stack MNA is not available together with GTP-U."
+                : null;
 
     useEffect(() => {
         if (show) {
@@ -99,6 +96,50 @@ const StreamAdvancedOptionsModal = ({
     };
 
     const detnetDisabledByPostStack = tmp_data.mna_post_stack;
+    const detnetDisabledByIpv6 = tofino1Ipv4Only && data.ip_version === 6;
+    const renderTooltip = (props: any, message: string) => (
+        <Tooltip id="tooltip-advanced-stream-options" {...props}>
+            {message}
+        </Tooltip>
+    );
+
+    const wrapDisabledControl = (
+        control: React.ReactElement,
+        reason: string | null,
+        wrapperClassName: string = "d-inline-block",
+    ) => {
+        if (!reason) {
+            return control;
+        }
+
+        return (
+            <OverlayTrigger
+                placement="top"
+                overlay={(props) => renderTooltip(props, reason)}
+            >
+                <span className={wrapperClassName}>
+                    {control}
+                </span>
+            </OverlayTrigger>
+        );
+    };
+
+    const modalDisabledReason = disabled ? "Disabled while traffic generation is running." : null;
+    const detnetDisabledReason = modalDisabledReason
+        ?? (detnetDisabledByPostStack
+            ? "Disable post-stack MNA before enabling the DetNet Control Word."
+            : (detnetDisabledByIpv6
+                ? "On Tofino1, the DetNet Control Word is available with IPv4 only."
+                : null));
+    const detnetSeqLengthDisabledReason = modalDisabledReason
+        ?? (!tmp_data.detnet_cw ? "Enable the DetNet Control Word first." : null);
+    const mnaDisabledReason = modalDisabledReason;
+    const postStackDisabledReason = modalDisabledReason
+        ?? (!tmp_data.mna_in_stack
+            ? "Enable MPLS Network Actions first."
+            : (!postStackSupported
+                ? postStackUnavailableReason
+                : null));
 
     const submit = () => {
         set_data({
@@ -147,53 +188,45 @@ const StreamAdvancedOptionsModal = ({
                                     for the DetNet MPLS data-plane specification.
                                 </p>
 
-                                {tofino1Ipv4Only && (
-                                    <p className="text-muted mb-3">
-                                        On Tofino1, DetNet CW is supported only with IPv4.
-                                    </p>
-                                )}
-
-                                {detnetDisabledByPostStack && (
-                                    <p className="text-muted mb-3">
-                                        Disable post-stack MNA before enabling the DetNet Control Word.
-                                    </p>
-                                )}
-
                                 <Form.Group className="mb-3">
-                                    <Form.Check
-                                        type="switch"
-                                        label="Enable DetNet Control Word"
-                                        checked={tmp_data.detnet_cw}
-                                        onChange={handleDetNetToggle}
-                                        disabled={disabled || detnetDisabledByPostStack}
-                                    />
+                                    {wrapDisabledControl(
+                                        <Form.Check
+                                            type="switch"
+                                            label="Enable DetNet Control Word"
+                                            checked={tmp_data.detnet_cw}
+                                            onChange={handleDetNetToggle}
+                                            disabled={disabled || detnetDisabledByPostStack || detnetDisabledByIpv6}
+                                        />,
+                                        detnetDisabledReason,
+                                    )}
                                 </Form.Group>
 
                                 <Form.Group>
                                     <Form.Label>Sequence number length</Form.Label>
-                                    <Form.Select
-                                        value={tmp_data.detnet_seq_num_length ?? ""}
-                                        onChange={(e) =>
-                                            set_tmp_data((prev) => ({
-                                                ...prev,
-                                                detnet_seq_num_length: e.target.value === ""
-                                                    ? null
-                                                    : (Number(e.target.value) as DetNetSeqNumLength),
-                                            }))
-                                        }
-                                        disabled={disabled || !tmp_data.detnet_cw}
-                                    >
-                                        <option value="">Select sequence number length</option>
-                                        <option value={DetNetSeqNumLength.Eight}>8 bit</option>
-                                        <option value={DetNetSeqNumLength.Sixteen}>16 bit</option>
-                                        <option value={DetNetSeqNumLength.TwentyEight}>28 bit</option>
-                                    </Form.Select>
+                                    {wrapDisabledControl(
+                                        <Form.Select
+                                            value={tmp_data.detnet_seq_num_length ?? ""}
+                                            onChange={(e) =>
+                                                set_tmp_data((prev) => ({
+                                                    ...prev,
+                                                    detnet_seq_num_length: e.target.value === ""
+                                                        ? null
+                                                        : (Number(e.target.value) as DetNetSeqNumLength),
+                                                }))
+                                            }
+                                            disabled={disabled || !tmp_data.detnet_cw}
+                                        >
+                                            <option value="">Select sequence number length</option>
+                                            <option value={DetNetSeqNumLength.Eight}>8 bit</option>
+                                            <option value={DetNetSeqNumLength.Sixteen}>16 bit</option>
+                                            <option value={DetNetSeqNumLength.TwentyEight}>28 bit</option>
+                                        </Form.Select>,
+                                        detnetSeqLengthDisabledReason,
+                                        "d-inline-block w-100"
+                                    )}
                                     <Form.Text className="text-muted">
                                         The first 4 bits of the d-CW remain zero; the sequence number uses
                                         8, 16, or 28 bits within the 32-bit field.
-                                    </Form.Text>
-                                    <Form.Text className="text-muted d-block">
-                                        DetNet Control Word cannot be combined with post-stack MNA.
                                     </Form.Text>
                                 </Form.Group>
 
@@ -230,57 +263,57 @@ const StreamAdvancedOptionsModal = ({
                                 )}
 
                                 <Form.Group className="mb-3">
-                                    <Form.Check
-                                        type="switch"
-                                        label="Enable MPLS Network Actions"
-                                        checked={tmp_data.mna_in_stack}
-                                        onChange={() =>
-                                            set_tmp_data((prev) => ({
-                                                ...prev,
-                                                mna_in_stack: !prev.mna_in_stack,
-                                                mna_post_stack: !prev.mna_in_stack
-                                                    ? prev.mna_post_stack
-                                                    : false,
-                                            }))
-                                        }
-                                        disabled={disabled}
-                                    />
+                                    {wrapDisabledControl(
+                                        <Form.Check
+                                            type="switch"
+                                            label="Enable MPLS Network Actions"
+                                            checked={tmp_data.mna_in_stack}
+                                            onChange={() =>
+                                                set_tmp_data((prev) => ({
+                                                    ...prev,
+                                                    mna_in_stack: !prev.mna_in_stack,
+                                                    mna_post_stack: !prev.mna_in_stack
+                                                        ? prev.mna_post_stack
+                                                        : false,
+                                                }))
+                                            }
+                                            disabled={disabled}
+                                        />,
+                                        mnaDisabledReason,
+                                    )}
                                 </Form.Group>
 
                                 <Form.Group>
-                                    <Form.Check
-                                        type="switch"
-                                        label="Enable Post-Stack MNA"
-                                        checked={tmp_data.mna_post_stack}
-                                        onChange={() =>
-                                            set_tmp_data((prev) => ({
-                                                ...prev,
-                                                mna_post_stack: !prev.mna_post_stack,
-                                            }))
-                                        }
-                                        disabled={disabled || !tmp_data.mna_in_stack || !postStackSupported}
-                                    />
-                                    <Form.Text className="text-muted">
-                                        Requires IPv4. DetNet Control Word, VxLAN, and GTP-U are not
-                                        supported with post-stack MNA.
-                                    </Form.Text>
+                                    {wrapDisabledControl(
+                                        <Form.Check
+                                            type="switch"
+                                            label="Enable Post-Stack MNA"
+                                            checked={tmp_data.mna_post_stack}
+                                            onChange={() =>
+                                                set_tmp_data((prev) => ({
+                                                    ...prev,
+                                                    mna_post_stack: !prev.mna_post_stack,
+                                                }))
+                                            }
+                                            disabled={disabled || !tmp_data.mna_in_stack || !postStackSupported}
+                                        />,
+                                        postStackDisabledReason,
+                                    )}
                                 </Form.Group>
 
                                 {tmp_data.mna_in_stack && tmp_data.mna_post_stack && postStackSupported && (
                                     <>
-                                        <p className="text-warning mt-3 mb-0">
+                                        <div className="mna-warning-box mt-3">
                                             <strong>Warning:</strong> When post-stack data (PSD) is present on the
                                             receive path, RTT and packet loss measurement are not available. This
                                             only applies if the DuT does not pop/remove the post-stack data before
                                             sending the packet back to P4TG. If the DuT removes the MPLS stack (and
                                             therefore the PSD), RTT and packet loss measurement work as usual.
-                                        </p>
+                                        </div>
                                         <p className="text-muted small mt-3 mb-0">
-                                            <strong>Note:</strong> P4TG uses a non-standard PSMHT first-nibble
-                                            value (pfn = 0x5 instead of 0x0) so the post-stack detection in the
-                                            parser cannot alias DetNet d-CW (which fixes version = 0).
-                                            This keeps RTT and packet-loss measurement exact for d-CW packets
-                                            but makes the emitted PSMHT non-compliant with the draft encoding.
+                                            <strong>Note:</strong> P4TG uses a non-standard PSMHT first nibble
+                                            (`pfn = 0x3`) to avoid aliasing DetNet d-CW. This keeps d-CW
+                                            measurement correct, but the emitted PSMHT is not draft-compliant.
                                         </p>
                                     </>
                                 )}

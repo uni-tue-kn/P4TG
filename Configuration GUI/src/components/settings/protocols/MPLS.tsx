@@ -26,6 +26,7 @@ import {
     computeMNAState,
     createDefaultMNAEditorEntries,
     decodeMNAEditorEntries,
+    getPostStackPBitWarning,
     MNA_BSPL_LABEL,
     MNAComputedRow,
     MNAEditorEntry,
@@ -275,6 +276,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
     const computedMna = computeMNAState(mnaEntries, {
         allowPostStack,
     });
+    const mnaWarning = getPostStackPBitWarning(computedMna);
 
     const renderPlainEditor = (index: number, row: MNAComputedRow, showLabels: boolean = true) => (
         <Row className="g-2 align-items-center">
@@ -906,6 +908,8 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
         </Form.Label>
     );
 
+    const hasPlainRows = groups.some((group) => group.type === "plain");
+
     return <>
         {stream.mna_in_stack ? (
             <Alert variant={mnaAlert ? "warning" : "info"} className="mb-3">
@@ -915,7 +919,13 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             </Alert>
         ) : null}
 
-        {!stream.mna_in_stack ? renderPlainStackHeader() : null}
+        {stream.mna_in_stack && !mnaAlert && mnaWarning ? (
+            <Alert variant="warning" className="mb-3">
+                {mnaWarning}
+            </Alert>
+        ) : null}
+
+        {hasPlainRows ? renderPlainStackHeader() : null}
 
         {groups.map((group, groupIndex) => {
             if (group.type === "plain") {
@@ -925,7 +935,7 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
                     <Form.Group as={StyledRow} className="mb-3" controlId={key} key={key}>
                         {renderLseLabel(row)}
                         <Col className="col-9 text-start">
-                            {renderEditor(row, stream.mna_in_stack)}
+                            {renderEditor(row, false)}
                         </Col>
                     </Form.Group>
                 );

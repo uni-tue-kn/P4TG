@@ -79,7 +79,6 @@ const normalizeStreamsForFrontend = (
     const normalizedStreams = streams.map((stream) => {
         const normalizedStream = { ...stream };
         const postStackAllowed = normalizedStream.encapsulation === Encapsulation.MPLS
-            && normalizedStream.ip_version === 4
             && !normalizedStream.vxlan
             && !normalizedStream.gtpu
             && !normalizedStream.detnet_cw;
@@ -102,7 +101,7 @@ const normalizeStreamsForFrontend = (
 
         if (!normalizedStream.mna_in_stack || !postStackAllowed) {
             if (normalizedStream.mna_post_stack && normalizedStream.encapsulation === Encapsulation.MPLS) {
-                warning = `Post-stack MNA requires MPLS with IPv4 only, without DetNet Control Word, VxLAN, or GTP-U. Stream "${normalizedStream.stream_id}" post-stack MNA was disabled.`;
+                warning = `Post-stack MNA requires MPLS without DetNet Control Word, VxLAN, or GTP-U. Stream "${normalizedStream.stream_id}" post-stack MNA was disabled.`;
             }
             normalizedStream.mna_post_stack = false;
         }

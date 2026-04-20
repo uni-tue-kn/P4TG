@@ -39,10 +39,6 @@ const ether_type_t ETHERTYPE_QinQ = 0x88a8;
 const ether_type_t ETHERTYPE_VLANQ = 0x8100;
 const ether_type_t ETHERTYPE_MPLS = 0x8847;
 const ether_type_t ETHERTYPE_ARP = 0x0806;
-const bit<16> MPLS_MNA_PSMHT_TYPE = 0x0001;
-// Non-standard pfn value used by P4TG so PSMHT can't alias DetNet d-CW
-// (version=0) in the post-stack parser check.
-const bit<4> MPLS_MNA_PSMHT_PFN = 0x5;
 
 const bit<8> IP_PROTOCOL_UDP = 17;
 const bit<8> IP_PROTOCOL_IPV4 = 4;

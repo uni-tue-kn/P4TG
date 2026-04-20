@@ -21,8 +21,8 @@ import { DefaultMPLSHeader, MPLSHeader } from "../../../common/Interfaces";
 export const MNA_BSPL_LABEL = 4;
 export const MNA_POST_STACK_TYPE = 1;
 // Non-standard pfn value used by P4TG to disambiguate PSMHT from DetNet d-CW
-// in the Tofino 2 parser (d-CW fixes version=0, so pfn=5 can never alias).
-export const MNA_PSMHT_PFN = 0x5;
+// in the parser (d-CW fixes version=0, so pfn=3 can never alias).
+export const MNA_PSMHT_PFN = 0x3;
 
 export enum MNAIhsScope {
     I2E = 0,
@@ -118,6 +118,17 @@ export interface MNAComputedState {
     hasNas: boolean;
     hasPostStack: boolean;
 }
+
+export const getPostStackPBitWarning = (state: MNAComputedState): string | null => {
+    if (!state.hasPostStack) {
+        return null;
+    }
+
+    const hasPBit = state.rows.some((row) => row.role === "formatB" && row.formatB.p);
+    return hasPBit
+        ? null
+        : "A post-stack MNA header is present, but no in-stack Format B row has the P bit set.";
+};
 
 export interface MNAFeatureOptions {
     allowPostStack?: boolean;

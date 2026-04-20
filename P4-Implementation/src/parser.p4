@@ -239,7 +239,7 @@ parser SwitchIngressParser(
     state parse_udp {
         pkt.extract(hdr.udp);
         transition select(hdr.udp.dst_port) {
-            50083: parse_path;
+            UDP_P4TG_PORT: parse_path;
             default: accept;
         }
     }
@@ -275,7 +275,7 @@ parser SwitchIngressParser(
             0x0: parse_dCW;
             0x4: parse_path;
             0x6: parse_path_v6;
-            // P4TG uses a non-standard pfn=0x5 for PSMHT so it can never collide with d-CW
+            // P4TG uses a non-standard pfn=0x3 for PSMHT so it can never collide with d-CW
             // (version=0). PSD bytes are left as payload: the parser budget
             // would prune parse_path after a post-stack chain anyway, so RTT /
             // packet-loss measurement is unavailable when PSD is present on RX (works
