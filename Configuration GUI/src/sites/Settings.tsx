@@ -103,6 +103,12 @@ const normalizeStreamsForFrontend = (
             normalizedStream.detnet_seq_num_length = DetNetSeqNumLength.TwentyEight;
         }
 
+        if (normalizedStream.encapsulation === Encapsulation.MPLS
+            && normalizedStream.mna_post_stack
+            && !normalizedStream.mna_in_stack) {
+            normalizedStream.mna_in_stack = true;
+        }
+
         if (!normalizedStream.mna_in_stack || !postStackAllowed) {
             if (normalizedStream.mna_post_stack && normalizedStream.encapsulation === Encapsulation.MPLS) {
                 warning = `Post-stack MNA requires MPLS without DetNet Control Word, VxLAN, or GTP-U. Stream "${normalizedStream.stream_id}" post-stack MNA was disabled.`;
@@ -199,6 +205,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
     const [loaded, set_loaded] = useState(false)
     const ref = useRef()
+    const streamsRef = useRef<Stream[]>(streams);
+    const loadGenWarningRef = useRef<string | null>(null);
 
     const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>({});
     const [activeConfigName, setActiveConfigName] = useState<string>(DEFAULT_CONFIG_NAME);
@@ -300,20 +308,27 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     }
 
     const loadGen = async () => {
+        const currentStreams = streamsRef.current;
 
         let stats = await get({ route: "/trafficgen" })
         if (stats !== undefined) {
             if (Object.keys(stats.data).length > 1) {
-                let old_streams = JSON.stringify(streams)
-                const normalized = normalizeStreamsForFrontend(stats.data, p4tg_infos.asic);
-                const nextStreams = (normalized.config.streams ?? []).map((streamFromBackend: Stream) => {
-                    const existing = streams.find((stream) => stream.stream_id === streamFromBackend.stream_id);
+                let old_streams = JSON.stringify(currentStreams)
+                const mergedStreams = (stats.data.streams ?? []).map((streamFromBackend: Stream) => {
+                    const existing = currentStreams.find((stream) => stream.stream_id === streamFromBackend.stream_id);
                     return {
                         ...streamFromBackend,
+                        detnet_cw: streamFromBackend.detnet_cw ?? existing?.detnet_cw ?? false,
+                        detnet_seq_num_length: streamFromBackend.detnet_seq_num_length ?? existing?.detnet_seq_num_length ?? null,
                         mna_in_stack: streamFromBackend.mna_in_stack ?? existing?.mna_in_stack ?? false,
                         mna_post_stack: streamFromBackend.mna_post_stack ?? existing?.mna_post_stack ?? false,
                     };
                 });
+                const normalized = normalizeStreamsForFrontend({
+                    ...stats.data,
+                    streams: mergedStreams,
+                }, p4tg_infos.asic);
+                const nextStreams = normalized.config.streams ?? [];
 
                 if (old_streams != JSON.stringify(nextStreams)) {
                     set_mode(normalized.config.mode)
@@ -333,15 +348,23 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     localStorage.setItem("iat_histogram_config", JSON.stringify(normalized.config.iat_histogram_config))
                 }
 
-                if (normalized.warning) {
+                if (normalized.warning && loadGenWarningRef.current !== normalized.warning) {
                     showToast(normalized.warning, "warning");
+                    loadGenWarningRef.current = normalized.warning;
+                } else if (!normalized.warning) {
+                    loadGenWarningRef.current = null;
                 }
                 set_running(true)
             } else {
+                loadGenWarningRef.current = null;
                 set_running(false)
             }
         }
     }
+
+    useEffect(() => {
+        streamsRef.current = streams;
+    }, [streams]);
 
     useEffect(() => {
         refresh()
@@ -351,7 +374,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         return () => {
             clearInterval(interval)
         }
-    }, [streams])
+    }, [])
 
     useEffect(() => {
         let configs = JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY) || "{}");
