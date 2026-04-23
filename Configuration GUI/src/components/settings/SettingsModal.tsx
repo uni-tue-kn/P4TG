@@ -26,6 +26,8 @@ import { VLAN, Ethernet, IPv4, QinQ, VxLAN, GtpU, MPLS, IPv6, SRv6 } from "./pro
 import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask, validateTEID } from "../../common/Validators";
 import { computeMNAState, decodeMNAEditorEntries, stripPostStackEncoding } from "./protocols/MPLSMNA";
 
+const MISSING_MNA_STRUCTURE_WARNING = "MNA is enabled, but the MPLS stack does not contain an MNA structure.";
+
 /**
  * Ensures that the StreamSettings has defaults for all fields
  * required by the given Stream configuration.
@@ -189,7 +191,7 @@ const SettingsModal = ({
                 return;
             }
 
-            if (computed.error) {
+            if (computed.error && computed.error !== MISSING_MNA_STRUCTURE_WARNING) {
                 setAlertMessage(computed.error);
                 return;
             }
