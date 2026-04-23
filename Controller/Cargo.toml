@@ -7,24 +7,24 @@ license = "Apache-2.0"
 
 
 [dependencies]
-rbfrt = "0.1.9"
+rbfrt = "0.1.10"
 tokio = { version = "1.47.1", features = ["rt-multi-thread"]}
-axum = { version = "0.8.7" , features =  ["macros", "json", "tokio", "form", "query"]}
+axum = { version = "0.8.9" , features =  ["macros", "json", "tokio", "form", "query"]}
 tower-http = { version = "0.6.7", features = ["cors"] }
 log = "0.4.28"
-env_logger = "0.11.3"
+env_logger = "0.11.10"
 serde = { version = "1.0.226", features = ["derive", "rc", "alloc"] }
 serde_repr = "0.1.20"
 tower = { version = "0.5.2", features = ["full"] }
 highs = "1.12.0"
 etherparse = "0.13.0"
-rand = "0.9.2"
+rand = "0.10.1"
 async-trait = "0.1.89"
 thiserror = "2.0.18"
 macaddr = "1.0.1"
 axum-extra = "0.10.1"
 schemars = { version = "1.0.4", features = ["uuid1"] }
-axum-macros = "0.5.0"
+axum-macros = "0.5.1"
 serde_json = "1.0.145"
 include_dir = "0.7.4"
 mime_guess = "2.0.5"
