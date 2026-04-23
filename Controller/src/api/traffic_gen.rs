@@ -17,7 +17,9 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use crate::api::helper::validate::{validate_multiple_test, validate_request};
+use crate::api::helper::validate::{
+    normalize_stream_patterns, validate_multiple_test, validate_request,
+};
 use crate::core::traffic_gen_core::helper::{
     generate_front_panel_to_dev_port_mappings, translate_fp_channel_to_dev_port_mapping,
 };
@@ -145,12 +147,13 @@ pub async fn configure_traffic_gen(
     let port_mapping = &state.port_mapping;
 
     match payload {
-        axum::Json(TrafficGenTests::SingleTest(traffic_gen_data)) => {
+        axum::Json(TrafficGenTests::SingleTest(mut traffic_gen_data)) => {
             // Just start a single test.
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
             match validate_request(&traffic_gen_data, port_mapping, is_tofino2) {
                 Ok(_) => {
                     info!("Test validation successful.");
+                    traffic_gen_data.streams = normalize_stream_patterns(traffic_gen_data.streams);
                     match start_single_test(&state, traffic_gen_data).await {
                         Ok(streams) => (StatusCode::OK, Json(streams)).into_response(),
                         Err(e) => {
@@ -169,18 +172,21 @@ pub async fn configure_traffic_gen(
                 Err(e) => (StatusCode::BAD_REQUEST, Json(e)).into_response(),
             }
         }
-        axum::Json(TrafficGenTests::MultipleTest(traffic_gen_datas)) => {
+        axum::Json(TrafficGenTests::MultipleTest(mut traffic_gen_datas)) => {
             // This starts an async task that sequentially runs all the tests.
-            let streams: Vec<Vec<Stream>> = traffic_gen_datas
-                .clone()
-                .into_iter()
-                .map(|t: TrafficGenData| t.streams)
-                .collect();
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
 
             // Request validation
             match validate_multiple_test(traffic_gen_datas.clone(), port_mapping, is_tofino2) {
                 Ok(_) => {
+                    for test in &mut traffic_gen_datas {
+                        test.streams = normalize_stream_patterns(test.streams.clone());
+                    }
+                    let streams: Vec<Vec<Stream>> = traffic_gen_datas
+                        .clone()
+                        .into_iter()
+                        .map(|t: TrafficGenData| t.streams)
+                        .collect();
                     state
                         .multiple_tests
                         .multiple_test_monitor_task

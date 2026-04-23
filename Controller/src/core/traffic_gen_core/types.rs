@@ -392,6 +392,10 @@ pub struct GenerationPatternConfig {
     pub period: f64,
     /// The number of samples per period.
     pub sample_rate: u32,
+    /// Inverts supported patterns. For square waves, the period starts in the low phase.
+    /// For sawtooth, the period starts high and decreases linearly.
+    #[serde(default)]
+    pub inverted: Option<bool>,
     /// Flash-crowd specific setting: time in nanoseconds within the period
     /// until the quiet phase ends.
     #[serde(default)]

@@ -32,10 +32,11 @@ fn sine_factor(k: u32, sampling_rate: u32) -> f64 {
     0.5 * (1.0 + (2.0 * std::f64::consts::PI * x).sin())
 }
 
-/// Simple square wave factor in {0, 1}.
-fn square_factor(k: u32, low: f64, high_until: f64, sampling_rate: u32) -> f64 {
+/// Simple square wave factor in {low, 1}.
+fn square_factor(k: u32, low: f64, high_until: f64, sampling_rate: u32, inverted: bool) -> f64 {
     let x = k as f64 / sampling_rate as f64;
-    if x < high_until {
+    let high_first = x < high_until;
+    if high_first != inverted {
         1.0
     } else {
         low
@@ -104,8 +105,13 @@ fn cat_factor(k: u32, sampling_rate: u32) -> f64 {
     }
 }
 
-fn sawtooth_factor(k: u32, sampling_rate: u32) -> f64 {
-    k as f64 / sampling_rate as f64
+fn sawtooth_factor(k: u32, sampling_rate: u32, inverted: bool) -> f64 {
+    let factor = k as f64 / sampling_rate as f64;
+    if inverted {
+        1.0 - factor
+    } else {
+        factor
+    }
 }
 
 fn default_flashcrowd_quiet_until(period_ns: f64) -> f64 {
@@ -229,6 +235,7 @@ pub fn build_pattern_generation_entries(
     // Convert configured line-rate target into the byte domain seen by the ingress meter.
     let meter_to_line_ratio = meter_packet_size_bytes as f64 / total_frame_size_bytes.max(1) as f64;
     let max_kbps = gbps_per_pipe * 1e6_f64 * meter_to_line_ratio;
+    let inverted = pattern_config.inverted.unwrap_or(false);
 
     let mut entries = Vec::new();
 
@@ -243,10 +250,10 @@ pub fn build_pattern_generation_entries(
                     .square_high_until
                     .unwrap_or(pattern_config.period * 0.5)
                     / pattern_config.period;
-                square_factor(sample_idx, low, high_until, sampling_rate)
+                square_factor(sample_idx, low, high_until, sampling_rate, inverted)
             }
             GenerationPattern::Triangle => triangle_factor(sample_idx, sampling_rate),
-            GenerationPattern::Sawtooth => sawtooth_factor(sample_idx, sampling_rate),
+            GenerationPattern::Sawtooth => sawtooth_factor(sample_idx, sampling_rate, inverted),
             GenerationPattern::CatWave => cat_factor(sample_idx, sampling_rate),
             GenerationPattern::Flashcrowd => {
                 let (quiet_until, ramp_until, decay_rate) =

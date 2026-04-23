@@ -383,6 +383,7 @@ const StreamElement = ({
             pattern_type: selectedType,
             period: 20_000_000_000,
             sample_rate: 128,
+            inverted: false,
             fc_quiet_until: null,
             fc_ramp_until: null,
             fc_decay_rate: null,
@@ -393,6 +394,9 @@ const StreamElement = ({
         const updatedConfig: GenerationPatternConfig = {
             ...baseConfig,
             pattern_type: selectedType,
+            inverted: selectedType === GenerationPattern.Square || selectedType === GenerationPattern.Sawtooth
+                ? (baseConfig.inverted ?? false)
+                : null,
             fc_quiet_until: selectedType === GenerationPattern.Flashcrowd
                 ? (baseConfig.fc_quiet_until ?? getDefaultFlashcrowdQuietUntil(baseConfig.period))
                 : null,
@@ -661,6 +665,7 @@ const StreamElement = ({
                 pattern_type: GenerationPattern.Sine,
                 period: 20_000_000_000,
                 sample_rate: 128,
+                inverted: false,
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,

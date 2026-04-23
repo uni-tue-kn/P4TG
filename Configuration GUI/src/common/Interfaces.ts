@@ -473,6 +473,7 @@ export interface GenerationPatternConfig {
     pattern_type: GenerationPattern,
     period: number,
     sample_rate: number,
+    inverted: boolean | null,
     fc_quiet_until: number | null,
     fc_ramp_until: number | null,
     fc_decay_rate: number | null,

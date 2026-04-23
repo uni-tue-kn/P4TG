@@ -29,7 +29,7 @@ import {
     DefaultStream,
     DefaultStreamSettings,
     Encapsulation,
-    GenerationMode, GenerationUnit, HistogramConfigMap, P4TGInfos,
+    GenerationMode, GenerationPattern, GenerationUnit, HistogramConfigMap, P4TGInfos,
     PortInfo,
     PortTxRxMap,
     HistogramConfig,
@@ -67,6 +67,9 @@ export const StyledCol = styled.td`
 const CONFIG_STORAGE_KEY = "saved_configs";
 const DEFAULT_CONFIG_NAME = "Test 1";
 
+const patternSupportsInverted = (patternType: GenerationPattern): boolean =>
+    patternType === GenerationPattern.Square || patternType === GenerationPattern.Sawtooth;
+
 const normalizeStreamsForFrontend = (
     config: TrafficGenData,
     asic: ASIC,
@@ -78,6 +81,7 @@ const normalizeStreamsForFrontend = (
 
     const normalizedStreams = streams.map((stream) => {
         const normalizedStream = { ...stream };
+        const pattern = normalizedStream.pattern ? { ...normalizedStream.pattern } : null;
         const postStackAllowed = normalizedStream.encapsulation === Encapsulation.MPLS
             && !normalizedStream.vxlan
             && !normalizedStream.gtpu
@@ -114,6 +118,18 @@ const normalizeStreamsForFrontend = (
         ) {
             warning = `DetNet CW requires IPv4 on Tofino 1. Stream "${normalizedStream.stream_id}" IP version set to IPv4.`;
             normalizedStream.ip_version = 4;
+        }
+
+        if (pattern) {
+            if (!patternSupportsInverted(pattern.pattern_type)) {
+                if (pattern.inverted) {
+                    warning = `Inverted is ignored for ${pattern.pattern_type} in stream "${normalizedStream.stream_id}".`;
+                }
+                pattern.inverted = null;
+            } else if (pattern.inverted == null) {
+                pattern.inverted = false;
+            }
+            normalizedStream.pattern = pattern;
         }
 
         return normalizedStream;
@@ -289,7 +305,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         if (stats !== undefined) {
             if (Object.keys(stats.data).length > 1) {
                 let old_streams = JSON.stringify(streams)
-                const nextStreams = (stats.data.streams ?? []).map((streamFromBackend: Stream) => {
+                const normalized = normalizeStreamsForFrontend(stats.data, p4tg_infos.asic);
+                const nextStreams = (normalized.config.streams ?? []).map((streamFromBackend: Stream) => {
                     const existing = streams.find((stream) => stream.stream_id === streamFromBackend.stream_id);
                     return {
                         ...streamFromBackend,
@@ -299,21 +316,25 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 });
 
                 if (old_streams != JSON.stringify(nextStreams)) {
-                    set_mode(stats.data.mode)
-                    set_duration(stats.data.duration)
-                    set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
-                    set_stream_settings(stats.data.stream_settings)
+                    set_mode(normalized.config.mode)
+                    set_duration(normalized.config.duration)
+                    set_port_tx_rx_mapping(normalized.config.port_tx_rx_mapping)
+                    set_stream_settings(normalized.config.stream_settings)
                     set_streams(nextStreams)
-                    set_rtt_histogram_settings(stats.data.rtt_histogram_config)
-                    set_iat_histogram_settings(stats.data.iat_histogram_config)
+                    set_rtt_histogram_settings(normalized.config.rtt_histogram_config)
+                    set_iat_histogram_settings(normalized.config.iat_histogram_config)
 
                     localStorage.setItem("streams", JSON.stringify(nextStreams))
-                    localStorage.setItem("gen-mode", stats.data.mode)
-                    localStorage.setItem("duration", stats.data.duration)
-                    localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
-                    localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
-                    localStorage.setItem("rtt_histogram_config", JSON.stringify(stats.data.rtt_histogram_config))
-                    localStorage.setItem("iat_histogram_config", JSON.stringify(stats.data.iat_histogram_config))
+                    localStorage.setItem("gen-mode", String(normalized.config.mode))
+                    localStorage.setItem("duration", String(normalized.config.duration ?? 0))
+                    localStorage.setItem("streamSettings", JSON.stringify(normalized.config.stream_settings))
+                    localStorage.setItem("port_tx_rx_mapping", JSON.stringify(normalized.config.port_tx_rx_mapping))
+                    localStorage.setItem("rtt_histogram_config", JSON.stringify(normalized.config.rtt_histogram_config))
+                    localStorage.setItem("iat_histogram_config", JSON.stringify(normalized.config.iat_histogram_config))
+                }
+
+                if (normalized.warning) {
+                    showToast(normalized.warning, "warning");
                 }
                 set_running(true)
             } else {

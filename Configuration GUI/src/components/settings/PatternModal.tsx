@@ -21,6 +21,7 @@ import { GenerationPattern, GenerationPatternConfig, unitOptions } from "../../c
 import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
 import { formatNanoSeconds } from "../../common/Helper";
+import InfoBox from "../InfoBox";
 
 const getDefaultFlashcrowdQuietUntil = (period: number) => period * 0.2;
 const getDefaultFlashcrowdRampUntil = (period: number) => period * 0.25;
@@ -29,6 +30,7 @@ const defaultPatternConfig = (config?: GenerationPatternConfig): GenerationPatte
     pattern_type: config?.pattern_type ?? GenerationPattern.Sine,
     period: config?.period ?? 20_000_000_000,
     sample_rate: config?.sample_rate ?? 128,
+    inverted: config?.inverted ?? false,
     fc_quiet_until: config?.fc_quiet_until ?? getDefaultFlashcrowdQuietUntil(config?.period ?? 20_000_000_000),
     fc_ramp_until: config?.fc_ramp_until ?? getDefaultFlashcrowdRampUntil(config?.period ?? 20_000_000_000),
     fc_decay_rate: config?.fc_decay_rate ?? 4.0,
@@ -124,6 +126,9 @@ const PatternModal = ({
         set_tmp_data(prev => ({
             ...prev,
             pattern_type: value as GenerationPattern,
+            inverted: value === GenerationPattern.Square || value === GenerationPattern.Sawtooth
+                ? (prev.inverted ?? false)
+                : null,
             fc_quiet_until: value === GenerationPattern.Flashcrowd && prev.pattern_type !== GenerationPattern.Flashcrowd
                 ? getDefaultFlashcrowdQuietUntil(Number(prev.period) * getPeriodMultiplier(periodUnit)) / getPeriodMultiplier(flashcrowdQuietUntilUnit)
                 : prev.fc_quiet_until,
@@ -149,6 +154,13 @@ const PatternModal = ({
         if (typeof window !== "undefined") {
             window.localStorage.setItem("p4tg.pattern.period.unit", newUnit);
         }
+    };
+
+    const handleInvertedChange = (checked: boolean) => {
+        set_tmp_data(prev => ({
+            ...prev,
+            inverted: checked,
+        }));
     };
 
     const handleSquareHighUntilUnitChange = (newUnit: string) => {
@@ -243,6 +255,7 @@ const PatternModal = ({
                 ...tmp_data,
                 period,
                 sample_rate: sampleRate,
+                inverted: null,
                 fc_quiet_until: quietUntil,
                 fc_ramp_until: rampUntil,
                 fc_decay_rate: decayRate,
@@ -252,17 +265,18 @@ const PatternModal = ({
         } else if (tmp_data.pattern_type === GenerationPattern.Square) {
             const squareLow = tmp_data.square_low ?? 0;
             const squareHighUntil = Number(tmp_data.square_high_until ?? 0) * getPeriodMultiplier(squareHighUntilUnit);
+            const squarePhaseName = (tmp_data.inverted ?? false) ? "Square low-until" : "Square high-until";
 
             if (squareLow < 0 || squareLow > 1) {
                 setAlertMessage("Square low must be within [0, 1].");
                 return;
             }
             if (squareHighUntil < 0) {
-                setAlertMessage("Square high-until must be zero or greater.");
+                setAlertMessage(`${squarePhaseName} must be zero or greater.`);
                 return;
             }
             if (squareHighUntil > period) {
-                setAlertMessage("Square high-until must be smaller than or equal to the period.");
+                setAlertMessage(`${squarePhaseName} must be smaller than or equal to the period.`);
                 return;
             }
 
@@ -270,17 +284,31 @@ const PatternModal = ({
                 ...tmp_data,
                 period,
                 sample_rate: sampleRate,
+                inverted: tmp_data.inverted ?? false,
                 square_low: squareLow,
                 square_high_until: squareHighUntil,
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,
             });
+        } else if (tmp_data.pattern_type === GenerationPattern.Sawtooth) {
+            set_data({
+                ...tmp_data,
+                period,
+                sample_rate: sampleRate,
+                inverted: tmp_data.inverted ?? false,
+                fc_quiet_until: null,
+                fc_ramp_until: null,
+                fc_decay_rate: null,
+                square_low: null,
+                square_high_until: null,
+            });
         } else {
             set_data({
                 ...tmp_data,
                 period,
                 sample_rate: sampleRate,
+                inverted: null,
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,
@@ -295,6 +323,12 @@ const PatternModal = ({
 
     const isFlashcrowd = tmp_data.pattern_type === GenerationPattern.Flashcrowd;
     const isSquare = tmp_data.pattern_type === GenerationPattern.Square;
+    const isSawtooth = tmp_data.pattern_type === GenerationPattern.Sawtooth;
+    const supportsInverted = isSquare || isSawtooth;
+    const squarePhaseLabel = (tmp_data.inverted ?? false) ? "Low until" : "High until";
+    const squarePhaseDescription = (tmp_data.inverted ?? false)
+        ? "Time within the period where the low phase ends."
+        : "Time within the period where the high phase ends.";
     const periodInBaseUnit = Number(tmp_data.period) * getPeriodMultiplier(periodUnit);
     const flashcrowdQuietUntilMax = periodInBaseUnit / getPeriodMultiplier(flashcrowdQuietUntilUnit);
     const flashcrowdRampUntilMax = periodInBaseUnit / getPeriodMultiplier(flashcrowdRampUntilUnit);
@@ -388,6 +422,31 @@ const PatternModal = ({
                     </Col>
                 </Form.Group>
 
+                {supportsInverted && (
+                    <Form.Group as={Row} className="mb-3 align-items-center">
+                        <Form.Label column sm={3}>
+                            <span className="d-inline-flex align-items-center gap-1">
+                                Inverted
+                                <InfoBox>
+                                    <>
+                                        <h5>Inverted</h5>
+                                        <p>For square waves, inverted means the period starts in the low phase and then switches to the high phase.</p>
+                                        <p>For sawtooth, inverted means the period starts high and then linearly decreases.</p>
+                                    </>
+                                </InfoBox>
+                            </span>
+                        </Form.Label>
+                        <Col sm={9}>
+                            <Form.Check
+                                type="switch"
+                                checked={tmp_data.inverted ?? false}
+                                onChange={(e) => handleInvertedChange(e.target.checked)}
+                                disabled={disabled}
+                            />
+                        </Col>
+                    </Form.Group>
+                )}
+
                 {isSquare && (
                     <Form.Group as={Row} className="mb-3 align-items-center">
                         <Form.Label column sm={3}>Square low</Form.Label>
@@ -408,7 +467,7 @@ const PatternModal = ({
                 )}
                 {isSquare && (
                     <Form.Group as={Row} className="mb-3 align-items-start">
-                        <Form.Label column sm={3} className="pt-2">High until</Form.Label>
+                        <Form.Label column sm={3} className="pt-2">{squarePhaseLabel}</Form.Label>
                         <Col sm={6}>
                             <Form.Control
                                 type="number"
@@ -420,7 +479,7 @@ const PatternModal = ({
                                 required
                                 disabled={disabled}
                             />
-                            <Form.Text className="text-muted">Time within the period where the high phase ends.</Form.Text>
+                            <Form.Text className="text-muted">{squarePhaseDescription}</Form.Text>
                         </Col>
                         <Col sm={3}>
                             <Form.Select

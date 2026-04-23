@@ -35,6 +35,40 @@ use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 use crate::PortMapping;
 
+fn pattern_supports_inverted(pattern_type: &GenerationPattern) -> bool {
+    matches!(
+        pattern_type,
+        GenerationPattern::Square | GenerationPattern::Sawtooth
+    )
+}
+
+fn normalize_pattern_config(
+    mut pattern: GenerationPatternConfig,
+    stream_id: u8,
+) -> GenerationPatternConfig {
+    if !pattern_supports_inverted(&pattern.pattern_type) {
+        if pattern.inverted == Some(true) {
+            warn!(
+                "Inverted flag ignored for pattern {:?} in stream with ID #{}.",
+                pattern.pattern_type, stream_id
+            );
+        }
+        pattern.inverted = None;
+    }
+
+    pattern
+}
+
+pub fn normalize_stream_patterns(mut streams: Vec<Stream>) -> Vec<Stream> {
+    for stream in &mut streams {
+        if let Some(pattern) = stream.pattern.take() {
+            stream.pattern = Some(normalize_pattern_config(pattern, stream.stream_id));
+        }
+    }
+
+    streams
+}
+
 /// Validates an incoming traffic generation request.
 /// Checks if the MPLS/SRv6 configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
 pub fn validate_request(
@@ -85,6 +119,7 @@ pub fn validate_request(
         .into_iter()
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
+    let active_streams = normalize_stream_patterns(active_streams);
 
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
