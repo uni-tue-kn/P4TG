@@ -6,6 +6,9 @@
 - Added configuration support for MPLS Network Actions (in-stack and post-stack).
 - Added an "invert" flag for square waves and sawtooth patterns.
 
+### Bug fixes
+- Fixed bug for square waves with low != 0 and very short high phases.
+
 ## v2.7.1
 ### New features
 - Added periodic pattern shaping options: Sine, Triangle, Sawtooth, Square, Flashcrowd.
