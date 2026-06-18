@@ -10,6 +10,8 @@ use crate::core::traffic_gen_core::{
     types::{GenerationPattern, GenerationPatternConfig},
 };
 
+const DEFAULT_PATTERN_BURST_PKTS: u64 = 100;
+
 /// Compute the [start, end] range (inclusive) of the `i`-th "point"
 /// when splitting [0, space) into `total_points` equal-ish segments.
 fn point_range_in_space(i: u32, total_points: u32, space: u64) -> (u32, u32) {
@@ -23,6 +25,33 @@ fn point_range_in_space(i: u32, total_points: u32, space: u64) -> (u32, u32) {
     let end_u32 = (end_exclusive - 1) as u32; // inclusive
 
     (start_u32, end_u32)
+}
+
+fn prefix_packet_count(prefix_len: u8) -> u64 {
+    1_u64 << (32_u32.saturating_sub(prefix_len as u32))
+}
+
+fn pattern_burst_packets(pattern_type: &GenerationPattern, factor: f64, prefix_len: u8) -> u64 {
+    // Direct meters are per table entry. Short square-wave low windows can be
+    // fully hidden by the default bucket, so size them to the entry's packet span.
+    if matches!(pattern_type, GenerationPattern::Square) && factor > 0.0 && factor < 1.0 {
+        let prefix_packets = prefix_packet_count(prefix_len);
+        ((prefix_packets as f64 * factor).ceil() as u64).clamp(1, DEFAULT_PATTERN_BURST_PKTS)
+    } else {
+        // Preserve the previous bucket size for full-rate, zero-rate, and non-square entries.
+        DEFAULT_PATTERN_BURST_PKTS
+    }
+}
+
+fn packet_burst_to_kbits(packet_size_bytes: u32, burst_packets: u64) -> u32 {
+    let bits = burst_packets
+        .saturating_mul(packet_size_bytes as u64)
+        .saturating_mul(8);
+
+    bits.saturating_add(999)
+        .saturating_div(1000)
+        .max(1)
+        .min(u32::MAX as u64) as u32
 }
 
 /// Simple normalized sine factor in [0, 1].
@@ -242,7 +271,7 @@ pub fn build_pattern_generation_entries(
     for point_idx in 0..total_points {
         // Map point to sample on the sine
         let sample_idx = (point_idx * sampling_rate / total_points) % sampling_rate;
-        let factor = match pattern_config.pattern_type {
+        let factor = match &pattern_config.pattern_type {
             GenerationPattern::Sine => sine_factor(sample_idx, sampling_rate),
             GenerationPattern::Square => {
                 let low = pattern_config.square_low.unwrap_or(0.0);
@@ -270,9 +299,6 @@ pub fn build_pattern_generation_entries(
 
         let cir_kbps = (factor * max_kbps) as u64;
         let pir_kbps = cir_kbps;
-        // Size the buckets large enough such that we do not starve the tokens
-        let cbs_kbits = 100 * meter_packet_size_bytes * 8 / 1000;
-        let pbs_kbits = 100 * meter_packet_size_bytes * 8 / 1000;
 
         // Segment range in [0..period_pkts)
         let (start, end) = point_range_in_space(point_idx, total_points, space);
@@ -290,6 +316,13 @@ pub fn build_pattern_generation_entries(
         };
 
         for (base, prefix_len) in prefixes {
+            // Each prefix becomes its own direct-meter entry, so burst sizing
+            // uses the prefix span rather than the larger sampled point span.
+            let burst_packets =
+                pattern_burst_packets(&pattern_config.pattern_type, factor, prefix_len);
+            let cbs_kbits = packet_burst_to_kbits(meter_packet_size_bytes, burst_packets);
+            let pbs_kbits = cbs_kbits;
+
             if entries.len() > max_pattern_entries {
                 warn!(
                     "WARNING: reached MAX_PATTERN_TABLE_ENTRIES ({}) while building pattern table",
