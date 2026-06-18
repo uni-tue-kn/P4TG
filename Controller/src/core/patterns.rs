@@ -11,6 +11,7 @@ use crate::core::traffic_gen_core::{
 };
 
 const DEFAULT_PATTERN_BURST_PKTS: u64 = 100;
+const SQUARE_LOW_PATTERN_BURST_PKTS: u64 = 1;
 
 /// Compute the [start, end] range (inclusive) of the `i`-th "point"
 /// when splitting [0, space) into `total_points` equal-ish segments.
@@ -27,16 +28,11 @@ fn point_range_in_space(i: u32, total_points: u32, space: u64) -> (u32, u32) {
     (start_u32, end_u32)
 }
 
-fn prefix_packet_count(prefix_len: u8) -> u64 {
-    1_u64 << (32_u32.saturating_sub(prefix_len as u32))
-}
-
-fn pattern_burst_packets(pattern_type: &GenerationPattern, factor: f64, prefix_len: u8) -> u64 {
+fn pattern_burst_packets(pattern_type: &GenerationPattern, factor: f64) -> u64 {
     // Direct meters are per table entry. Short square-wave low windows can be
-    // fully hidden by the default bucket, so size them to the entry's packet span.
+    // fully hidden by the default bucket, so keep only a minimal initial burst.
     if matches!(pattern_type, GenerationPattern::Square) && factor > 0.0 && factor < 1.0 {
-        let prefix_packets = prefix_packet_count(prefix_len);
-        ((prefix_packets as f64 * factor).ceil() as u64).clamp(1, DEFAULT_PATTERN_BURST_PKTS)
+        SQUARE_LOW_PATTERN_BURST_PKTS
     } else {
         // Preserve the previous bucket size for full-rate, zero-rate, and non-square entries.
         DEFAULT_PATTERN_BURST_PKTS
@@ -44,6 +40,10 @@ fn pattern_burst_packets(pattern_type: &GenerationPattern, factor: f64, prefix_l
 }
 
 fn packet_burst_to_kbits(packet_size_bytes: u32, burst_packets: u64) -> u32 {
+    if burst_packets == 0 {
+        return 0;
+    }
+
     let bits = burst_packets
         .saturating_mul(packet_size_bytes as u64)
         .saturating_mul(8);
@@ -52,6 +52,10 @@ fn packet_burst_to_kbits(packet_size_bytes: u32, burst_packets: u64) -> u32 {
         .saturating_div(1000)
         .max(1)
         .min(u32::MAX as u64) as u32
+}
+
+fn same_meter_factor(a: f64, b: f64) -> bool {
+    (a - b).abs() < f64::EPSILON
 }
 
 /// Simple normalized sine factor in [0, 1].
@@ -266,7 +270,7 @@ pub fn build_pattern_generation_entries(
     let max_kbps = gbps_per_pipe * 1e6_f64 * meter_to_line_ratio;
     let inverted = pattern_config.inverted.unwrap_or(false);
 
-    let mut entries = Vec::new();
+    let mut ranges = Vec::new();
 
     for point_idx in 0..total_points {
         // Map point to sample on the sine
@@ -297,14 +301,27 @@ pub fn build_pattern_generation_entries(
             }
         };
 
-        let cir_kbps = (factor * max_kbps) as u64;
-        let pir_kbps = cir_kbps;
-
         // Segment range in [0..period_pkts)
         let (start, end) = point_range_in_space(point_idx, total_points, space);
         if end < start {
             continue;
         }
+
+        if let Some((_, last_end, last_factor)) = ranges.last_mut() {
+            if *last_end + 1 == start && same_meter_factor(*last_factor, factor) {
+                *last_end = end;
+                continue;
+            }
+        }
+
+        ranges.push((start, end, factor));
+    }
+
+    let mut entries = Vec::new();
+
+    for (start, end, factor) in ranges {
+        let cir_kbps = (factor * max_kbps) as u64;
+        let pir_kbps = cir_kbps;
 
         // Range-to-prefix (LPM) seems to consume less MAT space than range-to-ternary here.
         let prefixes = range_to_prefixes(start, end);
@@ -316,10 +333,9 @@ pub fn build_pattern_generation_entries(
         };
 
         for (base, prefix_len) in prefixes {
-            // Each prefix becomes its own direct-meter entry, so burst sizing
-            // uses the prefix span rather than the larger sampled point span.
-            let burst_packets =
-                pattern_burst_packets(&pattern_config.pattern_type, factor, prefix_len);
+            // Each prefix becomes its own direct-meter entry. Square low phases
+            // are merged before prefixing so this minimal bucket is only startup slack.
+            let burst_packets = pattern_burst_packets(&pattern_config.pattern_type, factor);
             let cbs_kbits = packet_burst_to_kbits(meter_packet_size_bytes, burst_packets);
             let pbs_kbits = cbs_kbits;
 
