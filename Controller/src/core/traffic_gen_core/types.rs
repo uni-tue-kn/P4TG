@@ -54,6 +54,8 @@ pub enum GenerationMode {
     Poisson = 3,
     /// Analyze mode. In this mode, traffic is not generated and external traffic is forwarded and analyzed.
     Analyze = 4,
+    /// RFC2544 benchmark orchestration. Trials are run as regular generated traffic.
+    Rfc2544 = 5,
 }
 
 /// Describes the unit for a generated traffic stream
@@ -159,6 +161,184 @@ pub enum TrafficGenTests {
     MultipleTest(Vec<TrafficGenData>),
 }
 
+pub fn default_rfc2544_frame_sizes() -> Vec<u32> {
+    vec![64, 128, 256, 512, 1024, 1280, 1518]
+}
+
+fn default_rfc2544_line_rate_gbps() -> f32 {
+    100.0
+}
+
+fn default_rfc2544_trial_duration_secs() -> u32 {
+    10
+}
+
+fn default_rfc2544_throughput_search_steps() -> u32 {
+    7
+}
+
+fn default_rfc2544_latency_duration_secs() -> u32 {
+    10
+}
+
+fn default_rfc2544_latency_repetitions() -> u32 {
+    1
+}
+
+fn default_rfc2544_reset_timeout_secs() -> u32 {
+    120
+}
+
+fn default_rfc2544_system_recovery_overload_duration_secs() -> u32 {
+    60
+}
+
+fn default_rfc2544_system_recovery_observation_duration_secs() -> u32 {
+    60
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544Config {
+    #[serde(default = "default_true")]
+    pub throughput: bool,
+    #[serde(default)]
+    pub reset: bool,
+    #[serde(default = "default_true")]
+    pub latency: bool,
+    #[serde(default = "default_true")]
+    pub frame_loss: bool,
+    #[serde(default)]
+    pub system_recovery: bool,
+    #[serde(default = "default_rfc2544_frame_sizes")]
+    pub frame_sizes: Vec<u32>,
+    #[serde(default = "default_rfc2544_line_rate_gbps")]
+    pub line_rate_gbps: f32,
+    #[serde(default = "default_rfc2544_trial_duration_secs")]
+    pub trial_duration_secs: u32,
+    #[serde(default = "default_rfc2544_throughput_search_steps")]
+    pub throughput_search_steps: u32,
+    #[serde(default = "default_rfc2544_latency_duration_secs")]
+    pub latency_duration_secs: u32,
+    #[serde(default = "default_rfc2544_latency_repetitions")]
+    pub latency_repetitions: u32,
+    #[serde(default = "default_rfc2544_reset_timeout_secs")]
+    pub reset_timeout_secs: u32,
+    #[serde(default = "default_rfc2544_system_recovery_overload_duration_secs")]
+    pub system_recovery_overload_duration_secs: u32,
+    #[serde(default = "default_rfc2544_system_recovery_observation_duration_secs")]
+    pub system_recovery_observation_duration_secs: u32,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544Results {
+    pub running: bool,
+    pub status: String,
+    pub selected_frame_sizes: Vec<u32>,
+    pub line_rate_gbps: f32,
+    pub throughput_selected: bool,
+    pub latency_selected: bool,
+    pub reset_selected: bool,
+    pub frame_loss_selected: bool,
+    pub system_recovery_selected: bool,
+    pub throughput: Vec<Rfc2544ThroughputResult>,
+    pub latency: Vec<Rfc2544LatencyResult>,
+    pub reset: Vec<Rfc2544ResetResult>,
+    pub frame_loss: Vec<Rfc2544FrameLossResult>,
+    pub system_recovery: Vec<Rfc2544SystemRecoveryResult>,
+}
+
+impl Rfc2544Results {
+    pub fn new(config: &Rfc2544Config) -> Self {
+        Rfc2544Results {
+            running: true,
+            status: "Starting RFC2544 benchmark.".to_string(),
+            selected_frame_sizes: config.frame_sizes.clone(),
+            line_rate_gbps: config.line_rate_gbps,
+            throughput_selected: config.throughput,
+            latency_selected: config.latency,
+            reset_selected: config.reset,
+            frame_loss_selected: config.frame_loss,
+            system_recovery_selected: config.system_recovery,
+            throughput: vec![],
+            latency: vec![],
+            reset: vec![],
+            frame_loss: vec![],
+            system_recovery: vec![],
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
+pub struct Rfc2544PortMapping {
+    pub tx_port: u32,
+    pub tx_channel: u8,
+    pub rx_port: u32,
+    pub rx_channel: u8,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544ThroughputResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub zero_loss_rate_gbps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_loss_rate_gbps: Option<f64>,
+    pub lost_frames: u64,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544LatencyResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub rate_gbps: f64,
+    pub mean_latency_ns: f64,
+    pub current_latency_ns: f64,
+    pub min_latency_ns: u32,
+    pub max_latency_ns: u32,
+    pub jitter_ns: f64,
+    pub samples: u32,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544ResetResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub rate_gbps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reset_time_ms: Option<f64>,
+    pub status: String,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544FrameLossResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub offered_percent: u32,
+    pub offered_rate_gbps: f64,
+    pub tx_frames: u128,
+    pub rx_frames: u128,
+    pub lost_frames: u64,
+    pub loss_percentage: f64,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544SystemRecoveryResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub throughput_rate_gbps: f64,
+    pub overload_rate_gbps: f64,
+    pub recovery_rate_gbps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_time_ms: Option<f64>,
+    pub lost_frames_after_reduction: u64,
+    pub recovered: bool,
+    pub status: String,
+}
+
 /// Represents the body of the GET / POST endpoints of /trafficgen
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct TrafficGenData {
@@ -181,6 +361,9 @@ pub struct TrafficGenData {
     /// Mapping between RX port and IAT histogram config.
     #[serde(default)]
     pub(crate) iat_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,
+    /// RFC2544 orchestration configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) rfc2544: Option<Rfc2544Config>,
     /// The name of the test. This is used to identify the test in the UI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,

@@ -15,10 +15,11 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 import React, { useEffect, useState } from 'react'
-import { Button, Col, Form, Nav, Row, Tab, Tabs } from 'react-bootstrap'
+import { Button, Col, Form, Nav, Row, Tab } from 'react-bootstrap'
 import { del, get, post } from "../common/API";
 import SendReceiveMonitor from "../components/SendReceiveMonitor";
 import Loader from "../components/Loader";
@@ -39,7 +40,6 @@ import {
 } from '../common/Interfaces'
 import styled from "styled-components";
 import SummaryView from '../components/SummaryView';
-import { getTotalActiveStreamRate } from '../common/Helper';
 
 styled(Row)`
     display: flex;
@@ -72,6 +72,35 @@ const TestNumber = styled.span`
     display: inline-block;
 `
 
+const Rfc2544StatusLabel = styled.div`
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.15rem;
+    text-transform: uppercase;
+`
+
+const Rfc2544StatusText = styled.div`
+    display: inline-block;
+    overflow-wrap: anywhere;
+    white-space: normal;
+`
+
+const Rfc2544StatusBar = styled.div<{ $attention: boolean }>`
+    align-items: flex-start;
+    background: ${props => props.$attention ? 'var(--color-mna-warning-bg)' : 'var(--color-background)'};
+    border: 1px solid ${props => props.$attention ? 'var(--color-mna-warning-border)' : 'var(--color-secondary)'};
+    border-left-width: 4px;
+    border-radius: 6px;
+    color: ${props => props.$attention ? 'var(--color-mna-warning-text)' : 'var(--color-text)'};
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    min-height: 38px;
+    padding: 0.65rem 0.9rem;
+    width: 100%;
+`
+
 export const GitHub = () => {
     return <Row className="mt-2">
         <Col className="text-center col-12 mt-3">
@@ -98,9 +127,20 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     // @ts-ignore
     const [iat_histogram_settings, set_iat_histogram_settings] = useState<Record<string, HistogramConfig>>(JSON.parse(localStorage.getItem("iat_histogram_config")) || {})
 
-    const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>(
-        JSON.parse(localStorage.getItem("saved_configs") || '{}') as Record<string, TrafficGenData>
-    );
+    const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>(() => {
+        const configs = JSON.parse(localStorage.getItem("saved_configs") || '{}') as Record<string, TrafficGenData>;
+        const filteredConfigs = Object.fromEntries(
+            Object.entries(configs).filter(([name, config]) =>
+                !(config.mode === GenerationMode.RFC2544 && /^RFC2544 \d+B$/.test(name))
+            )
+        ) as Record<string, TrafficGenData>;
+
+        if (Object.keys(filteredConfigs).length !== Object.keys(configs).length) {
+            localStorage.setItem("saved_configs", JSON.stringify(filteredConfigs));
+        }
+
+        return filteredConfigs;
+    });
     const [activeTab, setActiveTab] = useState(running ? "current" : Object.keys(savedConfigs)[0]);
 
 
@@ -175,8 +215,22 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     }, [running]);
 
     const serializeSavedConfigs = () => {
+        const withRfc2544ThroughputDependencies = (config: TrafficGenData): TrafficGenData => {
+            const rfc2544 = config.rfc2544;
+            if (config.mode !== GenerationMode.RFC2544 || !rfc2544 || !(rfc2544.latency || rfc2544.reset || rfc2544.system_recovery)) {
+                return config;
+            }
+
+            return {
+                ...config,
+                rfc2544: {
+                    ...rfc2544,
+                    throughput: true,
+                },
+            };
+        };
         const withActiveStreamSettingsOnly = (config: TrafficGenData) => ({
-            ...config,
+            ...withRfc2544ThroughputDependencies(config),
             stream_settings: config.stream_settings.filter((setting) => setting.active),
         });
         if (Object.keys(savedConfigs).length === 1) {
@@ -196,9 +250,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const onSubmit = async (event: any) => {
         event.preventDefault()
 
-        const totalRate = getTotalActiveStreamRate(streams, stream_settings);
         const maxRate = p4tg_infos.asic === ASIC.Tofino1 ? 100 : 400;
-        const rateExceeded = totalRate > maxRate;
 
         set_overlay(true)
 
@@ -214,8 +266,30 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                         overall_rate += v.traffic_rate
                     }
                 })
-                if (rateExceeded) {
-                    showToast("Sum of active stream rates > " + maxRate + " Gbps for test " + name + "!", "danger")
+                if (config.mode === GenerationMode.RFC2544) {
+                    const rfc2544 = config.rfc2544;
+                    if (!rfc2544) {
+                        showToast("RFC2544 settings missing for test " + name + ".", "danger")
+                        set_overlay(false)
+                        return;
+                    }
+                    if (!rfc2544.throughput && !rfc2544.latency && !rfc2544.frame_loss && !rfc2544.reset && !rfc2544.system_recovery) {
+                        showToast("Select at least one RFC2544 test for " + name + ".", "danger")
+                        set_overlay(false)
+                        return;
+                    }
+                    if (rfc2544.frame_sizes.length === 0) {
+                        showToast("Select at least one RFC2544 frame size for " + name + ".", "danger")
+                        set_overlay(false)
+                        return;
+                    }
+                    if (rfc2544.line_rate_gbps > maxRate) {
+                        showToast("RFC2544 line rate > " + maxRate + " Gbit/s for test " + name + "!", "danger")
+                        set_overlay(false)
+                        return;
+                    }
+                } else if (overall_rate > maxRate) {
+                    showToast("Sum of active stream rates > " + maxRate + " Gbit/s for test " + name + "!", "danger")
                     set_overlay(false)
                     return;
                 }
@@ -289,10 +363,11 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
             localStorage.setItem("rtt_histogram_config", JSON.stringify(stats.data.rtt_histogram_config))
             localStorage.setItem("iat_histogram_config", JSON.stringify(stats.data.iat_histogram_config))
+            localStorage.setItem("rfc2544_config", JSON.stringify(stats.data.rfc2544 ?? {}))
 
             // This copies TrafficGenData from the GET response into localStorage and config.
             // It's needed to keep the state consistent if multiple tests were started directly via the REST API
-            if (stats.data.name) {
+            if (stats.data.name && stats.data.mode !== GenerationMode.RFC2544) {
                 setSavedConfigs(prev => {
                     const updatedConfigs = {
                         ...prev,
@@ -339,6 +414,10 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
         downloadAnchorNode.remove();
     }
 
+    const rfc2544Status = statistics?.[0]?.rfc2544;
+    const rfc2544StatusText = rfc2544Status?.status.toLowerCase() ?? "";
+    const rfc2544StatusNeedsAttention = rfc2544Status?.running && rfc2544StatusText.includes("waiting for dut");
+
     return <Loader loaded={loaded} overlay={overlay}>
         <form onSubmit={onSubmit}>
             <Row className={"mb-3"}>
@@ -381,6 +460,26 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
             </Row>
         </form>
+
+        {rfc2544Status ?
+            <Row>
+                <Col className="col-12">
+                    <Rfc2544StatusBar
+                        $attention={Boolean(rfc2544StatusNeedsAttention)}
+                        role="status"
+                        aria-live="polite"
+                    >
+                        <div className="pt-1">
+                            {rfc2544Status.running ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-info-circle-fill" />}
+                        </div>
+                        <div>
+                            <Rfc2544StatusLabel>RFC2544 status</Rfc2544StatusLabel>
+                            <Rfc2544StatusText>{rfc2544Status.status}</Rfc2544StatusText>
+                        </div>
+                    </Rfc2544StatusBar>
+                </Col>
+            </Row>
+            : null}
 
         <Form>
             <Form.Check

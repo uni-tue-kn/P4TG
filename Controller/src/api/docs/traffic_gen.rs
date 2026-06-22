@@ -88,6 +88,7 @@ lazy_static! {
             )])
         )])),
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
@@ -172,6 +173,7 @@ lazy_static! {
             )])
         )])),
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_POST_1_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -280,6 +282,7 @@ lazy_static! {
             )])
         )])),
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
@@ -363,6 +366,7 @@ lazy_static! {
             )])
         )])),
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -452,6 +456,7 @@ lazy_static! {
         duration: None,
         rtt_histogram_config: None,
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_POST_3_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -563,6 +568,7 @@ lazy_static! {
                 )])
             )])),
             iat_histogram_config: None,
+            rfc2544: None,
             name: Some("Test 1".to_string())
         },
         TrafficGenData {
@@ -650,6 +656,7 @@ lazy_static! {
                 )])
             )])),
             iat_histogram_config: None,
+            rfc2544: None,
             name: Some("Another test".to_string())
         }
     ];

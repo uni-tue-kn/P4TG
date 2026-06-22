@@ -410,68 +410,74 @@ const StreamElement = ({
         data.pattern = updatedConfig;
     }
 
+    const showTrafficControls = mode !== GenerationMode.RFC2544;
+
     return <tr>
-        <StyledCol>{data.app_id}</StyledCol>
-        <StyledCol>
-            <InputGroup>
-                <Form.Select disabled={running} required
-                    defaultValue={data.frame_size}
-                    onChange={(event: any) => data.frame_size = parseInt(event.target.value)}>
-                    <option value={""}>Frame size</option>
-                    {[64, 128, 256, 512, 1024, 1280, 1518, 9000].map((v, i) => {
-                        return <option selected={v === data.frame_size} key={i}
-                            value={v}>{v == 9000 ? "Jumbo (9000)" : v}</option>
-                    })
-                    }
-                </Form.Select>
-                <InputGroup.Text>bytes</InputGroup.Text>
-            </InputGroup>
-        </StyledCol>
-        <StyledCol>
-            <InputGroup>
-                <Form.Control
-                    disabled={running}
-                    onChange={(event: any) => data.traffic_rate = parseFloat(event.target.value)}
-                    required
-                    min={"0"}
-                    step={"any"}
-                    type={"number"}
-                    placeholder="Traffic rate"
-                    defaultValue={data.traffic_rate > 0 ? data.traffic_rate : ""}
-                />
-                <Form.Select
-                    style={{ width: "auto", flex: "0 0 auto", minWidth: "fit-content", whiteSpace: "nowrap" }}
-                    disabled={running}
-                    required
-                    onChange={handleUnitChange}
-                >
-                    <option selected={GenerationUnit.Gbps === data.unit} value={GenerationUnit.Gbps}>Gbps</option>
-                    <option selected={GenerationUnit.Mpps === data.unit} value={GenerationUnit.Mpps}>Mpps</option>
-                </Form.Select>
-            </InputGroup>
-        </StyledCol>
-        <StyledCol>
-            <div className="d-flex align-items-center gap-2">
-                <Form.Select disabled={running} required style={{ maxWidth: "150px" }}
-                    onChange={handlePatternTypeChange}>
-                    <option selected={patternConfig == null} value={""}>None</option>
-                    <option selected={patternConfig?.pattern_type === GenerationPattern.Sine} value={GenerationPattern.Sine}>Sine</option>
-                    <option selected={patternConfig?.pattern_type === GenerationPattern.Sawtooth} value={GenerationPattern.Sawtooth}>Sawtooth</option>
-                    <option selected={patternConfig?.pattern_type === GenerationPattern.Triangle} value={GenerationPattern.Triangle}>Triangle</option>
-                    <option selected={patternConfig?.pattern_type === GenerationPattern.Square} value={GenerationPattern.Square}>Square</option>
-                    <option selected={patternConfig?.pattern_type === GenerationPattern.Flashcrowd} value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
-                </Form.Select>
-                <Button
-                    variant="outline-secondary"
-                    size="sm"
-                    disabled={running || patternConfig == null}
-                    onClick={() => setShowPatternModal(true)}
-                    title="Configure pattern"
-                >
-                    <i className="bi bi-gear-wide-connected" />
-                </Button>
-            </div>
-        </StyledCol>
+        {showTrafficControls ?
+            <>
+                <StyledCol>{data.app_id}</StyledCol>
+                <StyledCol>
+                    <InputGroup>
+                        <Form.Select disabled={running} required
+                            defaultValue={data.frame_size}
+                            onChange={(event: any) => data.frame_size = parseInt(event.target.value)}>
+                            <option value={""}>Frame size</option>
+                            {[64, 128, 256, 512, 1024, 1280, 1518, 9000].map((v, i) => {
+                                return <option selected={v === data.frame_size} key={i}
+                                    value={v}>{v == 9000 ? "Jumbo (9000)" : v}</option>
+                            })
+                            }
+                        </Form.Select>
+                        <InputGroup.Text>bytes</InputGroup.Text>
+                    </InputGroup>
+                </StyledCol>
+                <StyledCol>
+                    <InputGroup>
+                        <Form.Control
+                            disabled={running}
+                            onChange={(event: any) => data.traffic_rate = parseFloat(event.target.value)}
+                            required
+                            min={"0"}
+                            step={"any"}
+                            type={"number"}
+                            placeholder="Traffic rate"
+                            defaultValue={data.traffic_rate > 0 ? data.traffic_rate : ""}
+                        />
+                        <Form.Select
+                            style={{ width: "auto", flex: "0 0 auto", minWidth: "fit-content", whiteSpace: "nowrap" }}
+                            disabled={running}
+                            required
+                            onChange={handleUnitChange}
+                        >
+                            <option selected={GenerationUnit.Gbps === data.unit} value={GenerationUnit.Gbps}>Gbit/s</option>
+                            <option selected={GenerationUnit.Mpps === data.unit} value={GenerationUnit.Mpps}>Mpps</option>
+                        </Form.Select>
+                    </InputGroup>
+                </StyledCol>
+                <StyledCol>
+                    <div className="d-flex align-items-center gap-2">
+                        <Form.Select disabled={running} required style={{ maxWidth: "150px" }}
+                            onChange={handlePatternTypeChange}>
+                            <option selected={patternConfig == null} value={""}>None</option>
+                            <option selected={patternConfig?.pattern_type === GenerationPattern.Sine} value={GenerationPattern.Sine}>Sine</option>
+                            <option selected={patternConfig?.pattern_type === GenerationPattern.Sawtooth} value={GenerationPattern.Sawtooth}>Sawtooth</option>
+                            <option selected={patternConfig?.pattern_type === GenerationPattern.Triangle} value={GenerationPattern.Triangle}>Triangle</option>
+                            <option selected={patternConfig?.pattern_type === GenerationPattern.Square} value={GenerationPattern.Square}>Square</option>
+                            <option selected={patternConfig?.pattern_type === GenerationPattern.Flashcrowd} value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
+                        </Form.Select>
+                        <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            disabled={running || patternConfig == null}
+                            onClick={() => setShowPatternModal(true)}
+                            title="Configure pattern"
+                        >
+                            <i className="bi bi-gear-wide-connected" />
+                        </Button>
+                    </div>
+                </StyledCol>
+            </>
+            : null}
         <StyledCol>
             <tr>
                 <td className={"col-auto"}>

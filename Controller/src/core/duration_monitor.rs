@@ -30,6 +30,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::traffic_gen_core::types::TrafficGenData;
 use crate::api::traffic_gen::start_single_test;
+use crate::core::rfc2544;
 
 pub struct DurationMonitorTask {
     pub handle: Option<JoinHandle<()>>,
@@ -172,6 +173,19 @@ impl DurationMonitorTask {
 
         self.handle = Some(handle);
         self.cancel_token = Some(cancel_token_clone);
+    }
+
+    pub async fn start_rfc2544(&mut self, state: &Arc<AppState>, payload: TrafficGenData) {
+        let cancel_token: CancellationToken = CancellationToken::new();
+        let cancel_token_clone = cancel_token.clone();
+        let state_clone: Arc<AppState> = state.clone();
+
+        let handle = tokio::spawn(async move {
+            rfc2544::run(state_clone, payload, cancel_token_clone).await;
+        });
+
+        self.handle = Some(handle);
+        self.cancel_token = Some(cancel_token);
     }
 
     pub async fn copy_stats_to_history(state: &Arc<AppState>) {

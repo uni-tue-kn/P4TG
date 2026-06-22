@@ -174,6 +174,103 @@ pub fn validate_request(
         return Err(Error::new("No stream definition in analyze mode allowed."));
     }
 
+    if payload.mode == GenerationMode::Rfc2544 {
+        let Some(config) = &payload.rfc2544 else {
+            return Err(Error::new("RFC2544 configuration missing."));
+        };
+
+        if !config.throughput
+            && !config.reset
+            && !config.latency
+            && !config.frame_loss
+            && !config.system_recovery
+        {
+            return Err(Error::new("At least one RFC2544 test must be selected."));
+        }
+
+        if config.frame_sizes.is_empty() {
+            return Err(Error::new(
+                "At least one RFC2544 frame size must be selected.",
+            ));
+        }
+
+        if config.frame_sizes.contains(&0) {
+            return Err(Error::new("RFC2544 frame sizes must be greater than 0."));
+        }
+
+        if active_streams.is_empty() {
+            return Err(Error::new("RFC2544 requires at least one active stream."));
+        }
+
+        if active_stream_settings.is_empty() {
+            return Err(Error::new(
+                "RFC2544 requires at least one active stream setting.",
+            ));
+        }
+
+        if tx_rx_port_mapping.is_empty()
+            || tx_rx_port_mapping
+                .values()
+                .all(|channel_map| channel_map.is_empty())
+        {
+            return Err(Error::new("RFC2544 requires a TX/RX port mapping."));
+        }
+
+        if config.line_rate_gbps <= 0.0 {
+            return Err(Error::new("RFC2544 line rate must be greater than 0."));
+        }
+
+        let max_rate = if is_tofino2 {
+            TG_MAX_RATE_TF2
+        } else {
+            TG_MAX_RATE
+        };
+
+        if config.line_rate_gbps > max_rate {
+            return Err(Error::new(
+                "RFC2544 line rate larger than maximal supported rate.",
+            ));
+        }
+
+        if config.trial_duration_secs == 0 {
+            return Err(Error::new("RFC2544 trial duration must be greater than 0."));
+        }
+
+        if config.throughput && config.throughput_search_steps == 0 {
+            return Err(Error::new(
+                "RFC2544 throughput search steps must be greater than 0.",
+            ));
+        }
+
+        if config.latency && config.latency_duration_secs == 0 {
+            return Err(Error::new(
+                "RFC2544 latency duration must be greater than 0.",
+            ));
+        }
+
+        if config.latency && config.latency_repetitions == 0 {
+            return Err(Error::new(
+                "RFC2544 latency repetitions must be greater than 0.",
+            ));
+        }
+
+        if config.reset && config.reset_timeout_secs == 0 {
+            return Err(Error::new("RFC2544 reset timeout must be greater than 0."));
+        }
+
+        if config.system_recovery && config.system_recovery_overload_duration_secs == 0 {
+            return Err(Error::new(
+                "RFC2544 system recovery overload duration must be greater than 0.",
+            ));
+        }
+
+        if config.system_recovery && config.system_recovery_observation_duration_secs == 0 {
+            return Err(Error::new(
+                "RFC2544 system recovery observation duration must be greater than 0.",
+            ));
+        }
+    }
+
     for stream in active_streams.iter() {
         if stream.gtpu && stream.vxlan {
             return Err(Error::new(format!(
@@ -451,6 +548,7 @@ pub fn validate_request(
         .sum();
 
     if payload.mode != GenerationMode::Analyze
+        && payload.mode != GenerationMode::Rfc2544
         && rate
             > if is_tofino2 {
                 TG_MAX_RATE_TF2
@@ -666,6 +764,12 @@ pub fn validate_multiple_test(
     }
 
     for (idx, test) in tests.iter().enumerate() {
+        if test.mode == GenerationMode::Rfc2544 {
+            return Err(Error::new(
+                "RFC2544 tests cannot be nested in multiple-test runs.",
+            ));
+        }
+
         // Validate that each test has a name
         if test.name.is_none() {
             return Err(Error::new(format!("Test #{idx} has no name.")));

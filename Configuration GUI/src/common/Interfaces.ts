@@ -141,6 +141,7 @@ export type StatisticsEntry = {
     rtt_histogram: { [port: string]: { [channel: string]: Histogram } };
     iat_histogram: { [port: string]: { [channel: string]: Histogram } };
 
+    rfc2544?: Rfc2544Results;
     name?: string;
 };
 
@@ -262,6 +263,7 @@ export enum GenerationMode {
     MPPS = 2, // DEPRECATED. Only kept for backward compatibility
     POISSON = 3,
     ANALYZE = 4,
+    RFC2544 = 5,
 }
 export enum GenerationUnit {
     Gbps = 0,
@@ -455,7 +457,119 @@ export interface TrafficGenData {
     duration: number,
     rtt_histogram_config: HistogramConfigMap,
     iat_histogram_config: HistogramConfigMap,
+    rfc2544?: Rfc2544Config,
     name?: string,
+}
+
+export interface Rfc2544Config {
+    throughput: boolean,
+    reset: boolean,
+    latency: boolean,
+    frame_loss: boolean,
+    system_recovery: boolean,
+    frame_sizes: number[],
+    line_rate_gbps: number,
+    trial_duration_secs: number,
+    throughput_search_steps: number,
+    latency_duration_secs: number,
+    latency_repetitions: number,
+    reset_timeout_secs: number,
+    system_recovery_overload_duration_secs: number,
+    system_recovery_observation_duration_secs: number,
+}
+
+export const RFC2544_FRAME_SIZES = [64, 128, 256, 512, 1024, 1280, 1518];
+
+export const DefaultRfc2544Config = (): Rfc2544Config => ({
+    throughput: true,
+    reset: false,
+    latency: true,
+    frame_loss: true,
+    system_recovery: false,
+    frame_sizes: RFC2544_FRAME_SIZES,
+    line_rate_gbps: 100,
+    trial_duration_secs: 10,
+    throughput_search_steps: 7,
+    latency_duration_secs: 10,
+    latency_repetitions: 1,
+    reset_timeout_secs: 120,
+    system_recovery_overload_duration_secs: 60,
+    system_recovery_observation_duration_secs: 60,
+});
+
+export interface Rfc2544Results {
+    running: boolean,
+    status: string,
+    selected_frame_sizes: number[],
+    line_rate_gbps: number,
+    throughput_selected?: boolean,
+    latency_selected?: boolean,
+    reset_selected?: boolean,
+    frame_loss_selected?: boolean,
+    system_recovery_selected?: boolean,
+    throughput: Rfc2544ThroughputResult[],
+    latency: Rfc2544LatencyResult[],
+    reset: Rfc2544ResetResult[],
+    frame_loss: Rfc2544FrameLossResult[],
+    system_recovery: Rfc2544SystemRecoveryResult[],
+}
+
+export interface Rfc2544PortMapping {
+    tx_port: number,
+    tx_channel: number,
+    rx_port: number,
+    rx_channel: number,
+}
+
+export interface Rfc2544ThroughputResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    zero_loss_rate_gbps: number,
+    first_loss_rate_gbps?: number,
+    lost_frames: number,
+}
+
+export interface Rfc2544LatencyResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    rate_gbps: number,
+    mean_latency_ns: number,
+    current_latency_ns: number,
+    min_latency_ns: number,
+    max_latency_ns: number,
+    jitter_ns: number,
+    samples: number,
+}
+
+export interface Rfc2544ResetResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    rate_gbps: number,
+    reset_time_ms?: number,
+    status: string,
+}
+
+export interface Rfc2544FrameLossResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    offered_percent: number,
+    offered_rate_gbps: number,
+    tx_frames: number,
+    rx_frames: number,
+    lost_frames: number,
+    loss_percentage: number,
+}
+
+export interface Rfc2544SystemRecoveryResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    throughput_rate_gbps: number,
+    overload_rate_gbps: number,
+    recovery_rate_gbps: number,
+    recovery_time_ms?: number,
+    lost_frames_after_reduction: number,
+    recovered: boolean,
+    status: string,
 }
 
 export interface PortInfo {

@@ -25,6 +25,7 @@ use crate::core::traffic_gen_core::helper::{
     derive_fpch, filter_map_for_keys, generate_dev_port_to_front_panel_mappings, get_used_ports,
     remap_app_map, remap_port_map,
 };
+use crate::core::traffic_gen_core::types::Rfc2544Results;
 use crate::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -59,6 +60,8 @@ pub struct StatisticsApi {
     pub rtt_histogram: HashMap<u32, HashMap<u8, Histogram>>,
     pub iat_histogram: HashMap<u32, HashMap<u8, Histogram>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub rfc2544: Option<Rfc2544Results>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
 
@@ -88,6 +91,7 @@ impl StatisticsApi {
             elapsed_time: core.elapsed_time,
             rtt_histogram: remap_port_map(&core.rtt_histogram, &dev_to_fpch),
             iat_histogram: remap_port_map(&core.iat_histogram, &dev_to_fpch),
+            rfc2544: None,
             name: core.name.clone(),
         }
     }
@@ -309,7 +313,8 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
 
     // Filter for inactive ports
     let used_ports: HashSet<u32> = get_used_ports(state).await;
-    let stats = StatisticsApi::filter_inactive_ports(stats, used_ports);
+    let mut stats = StatisticsApi::filter_inactive_ports(stats, used_ports);
+    stats.rfc2544 = state.rfc2544_results.lock().await.clone();
 
     let mut all_stats = vec![stats];
     let previous_stats = state

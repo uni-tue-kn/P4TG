@@ -1,5 +1,6 @@
 import requests
 import json
+import logging
 from ..utils.helpers import save_stats
 from enum import Enum
 from typing import Union
@@ -33,38 +34,49 @@ class P4TG:
     
     def start_traffic_gen(self, req):
         url = f"{self.base_url}/trafficgen"
+        logging.info("POST %s", url)
         response = requests.post(url, json=req)
         if response.status_code != 200:
             print(f"Error {response.status_code}, {response.reason}: ", response.text)
+        else:
+            logging.info("Traffic generator accepted request.")
         
     def stop_traffic_gen(self):
         url = f"{self.base_url}/trafficgen"
+        logging.info("DELETE %s", url)
         response = requests.delete(url)
         if response.status_code != 200:
             print(f"Error {response.status_code}, {response.reason}: ", response.text)    
+        else:
+            logging.info("Traffic generator stopped.")
         
-    def get_time_statistics(self, payload_path):
+    def get_time_statistics(self, payload_path=None):
         url = f"{self.base_url}/time_statistics"
+        logging.debug("GET %s", url)
         response = requests.get(url)
         if response.status_code != 200:
             print(f"Error {response.status_code}, {response.reason}: ", response.text)      
             return ""
         else:
-            save_stats("time_stats", response.text, payload_path)
+            if payload_path is not None:
+                save_stats("time_stats", response.text, payload_path)
             return json.loads(response.text)
         
-    def get_statistics(self, payload_path):
+    def get_statistics(self, payload_path=None):
         url = f"{self.base_url}/statistics"
+        logging.debug("GET %s", url)
         response = requests.get(url)
         if response.status_code != 200:
             print(f"Error {response.status_code}, {response.reason}: ", response.text)      
             return ""
         else:
-            save_stats("stats", response.text, payload_path)
+            if payload_path is not None:
+                save_stats("stats", response.text, payload_path)
             return json.loads(response.text)
 
     def get_ports(self):
         url = f"{self.base_url}/ports"
+        logging.debug("GET %s", url)
         response = requests.get(url)
         if response.status_code != 200:
             print(f"Error {response.status_code}, {response.reason}: ", response.text)
@@ -82,6 +94,7 @@ class P4TG:
     ):
         """Configure a front-panel port/channel with speed/FEC/AN."""
         url = f"{self.base_url}/ports"
+        logging.info("POST %s for port %s/%s (%s, %s, %s)", url, port, channel, speed, auto_neg, fec)
         req = {
             "front_panel_port": port,
             "channel": channel,

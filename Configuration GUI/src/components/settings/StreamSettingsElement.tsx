@@ -15,10 +15,11 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 import { P4TGInfos, Stream, StreamSettings } from "../../common/Interfaces";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import SettingsModal from "./SettingsModal";
 import { Form } from "react-bootstrap";
 import { StyledCol } from "../../sites/Settings";
@@ -35,6 +36,10 @@ const StreamSettingsElement = ({
     // Needed to update the view immediately
     const [isActive, setIsActive] = useState(stream.active);
 
+    useEffect(() => {
+        setIsActive(stream.active);
+    }, [stream.active, stream.stream_id, stream.port, stream.channel]);
+
     console.log(port_status, isActive, port_status)
 
     return <>
@@ -43,11 +48,11 @@ const StreamSettingsElement = ({
             <Form.Check
                 className={"d-inline"}
                 disabled={running || !isActive && (running || !port_status)}
-                defaultChecked={isActive}
+                checked={isActive}
                 type={"switch"}
                 onChange={(event) => {
-                    setIsActive(!isActive);
-                    stream.active = !stream.active
+                    setIsActive(event.target.checked);
+                    stream.active = event.target.checked
                 }}
             />
 

@@ -1,5 +1,6 @@
 import argparse
 import logging
+import time
     
 from .api.client import P4TG, FEC, Speed, AutoNeg
 from .plots.rates import plot_tx_rx_rate, plot_packet_loss
@@ -8,43 +9,124 @@ from .plots.histograms import (
     plot_all_iat_histograms_tx,
     plot_all_iat_histograms_rx,
 )
+from .plots.rfc2544 import plot_rfc2544_results
 from .utils.helpers import load_payload, sleep_with_progress, wait_for_ports_up
 
 
 # ------- Test orchestration ---------
 
-def run_tests(api: P4TG, payload, payload_path, show_plots):
-    logging.info("Starting P4TG traffic generator...")
+def is_rfc2544_payload(payload):
+    tests = payload if isinstance(payload, list) else [payload]
+    return any(test.get("mode") == 5 or test.get("rfc2544") for test in tests)
+
+
+def configure_logging(log_level: str):
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
+def prepare_payload_for_post(payload):
+    if isinstance(payload, list) and len(payload) == 1 and is_rfc2544_payload(payload):
+        logging.info("Posting single RFC2544 test as object instead of one-element multiple-test list.")
+        return payload[0]
+    return payload
+
+
+def rfc2544_result_counts(rfc2544):
+    keys = ["throughput", "latency", "frame_loss", "reset", "system_recovery"]
+    return ", ".join(f"{key}={len(rfc2544.get(key, []) or [])}" for key in keys)
+
+
+def wait_for_rfc2544(api: P4TG, timeout_s: float = 1800.0, poll_interval_s: float = 2.0):
+    start = time.time()
+    deadline = start + timeout_s
+    last_status = None
+    next_progress_log = start
+
+    while time.time() < deadline:
+        stats = api.get_statistics()
+        now = time.time()
+        if isinstance(stats, list) and stats:
+            rfc2544 = stats[0].get("rfc2544") or {}
+            status = rfc2544.get("status")
+            should_log = status != last_status or now >= next_progress_log
+            if rfc2544 and should_log:
+                logging.info(
+                    "RFC2544 running %.0fs/%.0fs: %s (%s)",
+                    now - start,
+                    timeout_s,
+                    status or "no status yet",
+                    rfc2544_result_counts(rfc2544),
+                )
+                last_status = status
+                next_progress_log = now + 10
+            if rfc2544 and not rfc2544.get("running", False):
+                logging.info("RFC2544 completed: %s (%s)", status, rfc2544_result_counts(rfc2544))
+                return
+        elif now >= next_progress_log:
+            logging.info("Waiting for RFC2544 statistics block...")
+            next_progress_log = now + 10
+
+        time.sleep(poll_interval_s)
+
+    raise TimeoutError(f"Timed out waiting for RFC2544 completion after {timeout_s:.0f}s")
+
+
+def run_tests(api: P4TG, payload, payload_path, show_plots, rfc2544_timeout):
+    tests = payload if isinstance(payload, list) else [payload]
+    logging.info("Loaded %d test configuration(s) from %s.", len(tests), payload_path)
     
-    infinite_duration = any(t.get("duration") == 0 for t in (payload if isinstance(payload, list) else [payload]) if "duration" in t)
-    api.start_traffic_gen(payload)
+    rfc2544_mode = is_rfc2544_payload(payload)
+    infinite_duration = any(t.get("duration") == 0 for t in tests if "duration" in t)
+    logging.info("Starting P4TG traffic generator via REST API...")
+    api.start_traffic_gen(prepare_payload_for_post(payload))
     
-    if infinite_duration:
+    if rfc2544_mode:
+        logging.info("Detected RFC2544 payload. Polling /statistics until the RFC2544 task finishes.")
+        wait_for_rfc2544(api, timeout_s=rfc2544_timeout)
+    elif infinite_duration:
         logging.warning(
             "At least one test has no duration and will run indefinitely. "
             "Auto-stopping after 20s."
         )
         sleep_with_progress(20, desc="Running indefinite test")
+        logging.info("Stopping indefinite traffic generation after automation timeout.")
         api.stop_traffic_gen()
     else:
-        tests = payload if isinstance(payload, list) else [payload]
         total_duration = sum(t.get("duration", 0) for t in tests) + 3 * len(tests)
+        logging.info("Waiting %.0fs for configured test duration plus settling time.", total_duration)
         sleep_with_progress(total_duration, desc="Running tests")
     
     # Retrieve statistics
+    logging.info("Fetching /time_statistics and saving raw time statistics.")
     time_stats = api.get_time_statistics(payload_path)
+    logging.info("Fetching /statistics and saving raw final statistics.")
     stats = api.get_statistics(payload_path) 
     
     # Plot all results into a single plot
+    logging.info("Rendering RTT histogram plots.")
     plot_all_rtt_histograms(stats, payload_path, y="probability", show_plots=show_plots)
+    logging.info("Rendering TX IAT histogram plots.")
     plot_all_iat_histograms_tx(stats, payload_path, y="probability", show_plots=show_plots)
+    logging.info("Rendering RX IAT histogram plots.")
     plot_all_iat_histograms_rx(stats, payload_path, y="probability", show_plots=show_plots)
+    logging.info("Rendering TX/RX rate plot.")
     plot_tx_rx_rate(time_stats, payload_path, show_plots=show_plots)
+    logging.info("Rendering packet-loss plot.")
     plot_packet_loss(time_stats, payload_path, show_plots=show_plots)
+    if rfc2544_mode:
+        logging.info("Rendering RFC2544 summaries and plots.")
+        plot_rfc2544_results(stats, payload_path, show_plots=show_plots)
+    logging.info("Done. Results are in the results/ directory.")
 
 def configure_ports(api: P4TG):
     # Example to configure port 1 and 2
+    logging.info("Configuring port 1/0.")
     api.configure_port(1, 0, Speed.BF_SPEED_100G, AutoNeg.PM_AN_DEFAULT, FEC.BF_FEC_TYP_NONE)
+    logging.info("Configuring port 2/0.")
     api.configure_port(2, 0, Speed.BF_SPEED_100G, AutoNeg.PM_AN_DEFAULT, FEC.BF_FEC_TYP_NONE)
     return [(1, 0), (2, 0)]
 
@@ -54,23 +136,28 @@ def main():
     ap.add_argument("--payload", required=True, help="Path to payload JSON")
     ap.add_argument("--base-url", default="http://localhost:8000/api")
     ap.add_argument("--show-plots", type=lambda x: x.lower()=="true", default=False)
+    ap.add_argument("--rfc2544-timeout", type=float, default=1800.0)
+    ap.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     ap.add_argument(
         "--configure-ports",
         action="store_true",
         help="Configure ports before starting traffic generation.",
     )
     args = ap.parse_args()
+    configure_logging(args.log_level)
 
     payload_path = args.payload
+    logging.info("Loading payload from %s.", payload_path)
     payload = load_payload(payload_path)
     api = P4TG(args.base_url)
+    logging.info("Using P4TG API at %s.", args.base_url)
     show_plots = args.show_plots
 
     if args.configure_ports:
         configured_ports = configure_ports(api)
         wait_for_ports_up(api, configured_ports)
 
-    run_tests(api, payload, payload_path, show_plots)
+    run_tests(api, payload, payload_path, show_plots, args.rfc2544_timeout)
 
 
 if __name__ == "__main__":

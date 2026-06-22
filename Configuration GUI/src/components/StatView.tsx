@@ -15,20 +15,39 @@
 
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
 import React, { useEffect, useState } from 'react'
-import { Col, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
-import { GenerationMode, PortTxRxMap, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
+import { ButtonGroup, Col, OverlayTrigger, Row, Tab, Table, Tabs, ToggleButton, Tooltip } from "react-bootstrap";
+import { Line } from 'react-chartjs-2';
+import { GenerationMode, PortTxRxMap, Rfc2544PortMapping, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
 import { formatBits } from "./SendReceiveMonitor";
 
 import styled from 'styled-components'
 import Visuals from "./Visuals";
 import { formatNanoSeconds, formatFrameCount } from '../common/Helper';
+import InfoBox from './InfoBox';
 
 const Overline = styled.span`
   text-decoration: overline;
 `
+
+const Rfc2544Caption = styled.caption`
+  color: var(--color-text) !important;
+`
+
+const RFC2544_FRAME_LOSS_STEPS = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10];
+const RFC2544_FRAME_LOSS_GRAPH_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+const RFC2544_CHART_COLORS = [
+    "rgb(53, 162, 235)",
+    "rgb(231, 76, 60)",
+    "rgb(46, 204, 113)",
+    "rgb(155, 89, 182)",
+    "rgb(241, 196, 15)",
+    "rgb(230, 126, 34)",
+    "rgb(26, 188, 156)",
+];
 
 const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port }: { stats: StatisticsEntry, time_stats: TimeStatisticsEntry, port_mapping: PortTxRxMap, mode: GenerationMode, visual: boolean, is_summary: boolean, rx_port: number }) => {
     const [total_tx, set_total_tx] = useState(0);
@@ -38,6 +57,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     const [rtt, set_rtt] = useState({ "mean": 0, "max": 0, "min": 0, "jitter": 0, "n": 0, "current": 0 })
     const [lost_packets, set_lost_packets] = useState(0);
     const [out_of_order_packets, set_out_of_order_packets] = useState(0);
+    const [rfc2544RateUnit, setRfc2544RateUnit] = useState<"mpps" | "gbit">("mpps");
 
     const renderTooltip = (props: any, message: string) => (
         <Tooltip id="tooltip-disabled" {...props}>
@@ -268,8 +288,164 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     const tx_rate_l2 = addRatesByPairs(stats.tx_rate_l2, txPairs);
     const rx_rate_l1 = addRatesByPairs(stats.rx_rate_l1, rxPairs);
     const rx_rate_l2 = addRatesByPairs(stats.rx_rate_l2, rxPairs);
+    const rfc2544 = stats.rfc2544;
+    const formatGbps = (gbps: number) => formatBits(gbps * 1_000_000_000);
+    const rfc2544FrameSizes = rfc2544?.selected_frame_sizes ?? [];
+    const rfc2544Mappings = Object.entries(port_mapping ?? {}).flatMap(([txPort, perChannel]) =>
+        Object.entries(perChannel ?? {}).map(([txChannel, target]) => ({
+            tx_port: Number(txPort),
+            tx_channel: Number(txChannel),
+            rx_port: target.port,
+            rx_channel: target.channel,
+        }))
+    ).sort((left, right) =>
+        left.tx_port - right.tx_port ||
+        left.tx_channel - right.tx_channel ||
+        left.rx_port - right.rx_port ||
+        left.rx_channel - right.rx_channel
+    );
+    const rfc2544SystemRecovery = rfc2544?.system_recovery ?? [];
+    const rfc2544ThroughputSelected = rfc2544 ? (rfc2544.throughput_selected ?? rfc2544.throughput.length > 0) : false;
+    const rfc2544LatencySelected = rfc2544 ? (rfc2544.latency_selected ?? rfc2544.latency.length > 0) : false;
+    const rfc2544ResetSelected = rfc2544 ? (rfc2544.reset_selected ?? rfc2544.reset.length > 0) : false;
+    const rfc2544FrameLossSelected = rfc2544 ? (rfc2544.frame_loss_selected ?? rfc2544.frame_loss.length > 0) : false;
+    const rfc2544SystemRecoverySelected = rfc2544 ? (rfc2544.system_recovery_selected ?? rfc2544SystemRecovery.length > 0) : false;
+    const formatOptionalGbps = (gbps: number | undefined) => gbps !== undefined ? formatGbps(gbps) : "-";
+    const mappingLabel = (mapping: Rfc2544PortMapping) =>
+        `${mapping.tx_port}/${mapping.tx_channel} -> ${mapping.rx_port}/${mapping.rx_channel}`;
+    const mappingMatches = (left: Rfc2544PortMapping | undefined, right: Rfc2544PortMapping) =>
+        left !== undefined &&
+        left.tx_port === right.tx_port &&
+        left.tx_channel === right.tx_channel &&
+        left.rx_port === right.rx_port &&
+        left.rx_channel === right.rx_channel;
+    const frameRateMpps = (gbps: number, frameSize: number) => gbps * 1_000 / ((frameSize + 20) * 8);
+    const rfc2544RateUnitLabel = rfc2544RateUnit === "mpps" ? "Mpps" : "Gbit/s";
+    const rfc2544RateValue = (gbps: number, frameSize: number) =>
+        rfc2544RateUnit === "mpps" ? frameRateMpps(gbps, frameSize) : gbps;
+    const chartTextColor = typeof document !== "undefined"
+        ? getComputedStyle(document.documentElement).getPropertyValue("--color-text").trim() || "#000000"
+        : "#000000";
+    const rfc2544ChartOptions = (xTitle: string, yTitle: string, suggestedMax?: number, linearX = false) => ({
+        responsive: true,
+        aspectRatio: 4,
+        scales: {
+            x: {
+                type: linearX ? "linear" as const : "category" as const,
+                title: {
+                    display: true,
+                    text: xTitle,
+                    color: chartTextColor,
+                },
+                ticks: {
+                    color: chartTextColor,
+                },
+                grid: {
+                    color: "rgba(128, 128, 128, 0.25)",
+                },
+            },
+            y: {
+                beginAtZero: true,
+                suggestedMax,
+                title: {
+                    display: true,
+                    text: yTitle,
+                    color: chartTextColor,
+                },
+                ticks: {
+                    color: chartTextColor,
+                },
+                grid: {
+                    color: "rgba(128, 128, 128, 0.25)",
+                },
+            },
+        },
+        plugins: {
+            legend: {
+                labels: {
+                    color: chartTextColor,
+                },
+            },
+        },
+    });
+    const rfc2544ThroughputChartData = rfc2544 ? {
+        labels: rfc2544FrameSizes.map((frameSize) => `${frameSize}`),
+        datasets: [
+            {
+                label: "Theoretical media rate",
+                data: rfc2544FrameSizes.map((frameSize) => rfc2544RateValue(rfc2544.line_rate_gbps, frameSize)),
+                borderColor: RFC2544_CHART_COLORS[0],
+                backgroundColor: "rgba(53, 162, 235, 0.25)",
+                tension: 0.2,
+            },
+            ...rfc2544Mappings.map((mapping, index) => {
+                const color = RFC2544_CHART_COLORS[(index + 1) % RFC2544_CHART_COLORS.length];
+                return {
+                    label: `Measured ${mappingLabel(mapping)}`,
+                    data: rfc2544FrameSizes.map((frameSize) => {
+                        const row = rfc2544.throughput.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
+                        return row ? rfc2544RateValue(row.zero_loss_rate_gbps, frameSize) : null;
+                    }),
+                    borderColor: color,
+                    backgroundColor: `${color.replace("rgb", "rgba").replace(")", ", 0.25)")}`,
+                    tension: 0.2,
+                };
+            }),
+        ],
+    } : undefined;
+    const rfc2544FrameLossChartData = rfc2544 ? {
+        datasets: rfc2544Mappings.flatMap((mapping, mappingIndex) => rfc2544FrameSizes.map((frameSize, frameSizeIndex) => {
+            const index = mappingIndex * rfc2544FrameSizes.length + frameSizeIndex;
+            const color = RFC2544_CHART_COLORS[index % RFC2544_CHART_COLORS.length];
+            return {
+                label: `${mappingLabel(mapping)} ${frameSize} B`,
+                data: RFC2544_FRAME_LOSS_GRAPH_STEPS.map((offeredPercent) => {
+                    const x = rfc2544RateValue(rfc2544.line_rate_gbps * offeredPercent / 100, frameSize);
+                    if (offeredPercent === 0) return { x, y: 0 };
+                    const row = rfc2544.frame_loss.find((entry) =>
+                        entry.frame_size === frameSize &&
+                        entry.offered_percent === offeredPercent &&
+                        mappingMatches(entry.mapping, mapping)
+                    );
+                    return row ? { x, y: row.loss_percentage } : null;
+                }).filter((point): point is { x: number, y: number } => point !== null),
+                borderColor: color,
+                backgroundColor: `${color.replace("rgb", "rgba").replace(")", ", 0.25)")}`,
+                tension: 0.2,
+            };
+        })),
+    } : undefined;
+    const renderRfc2544RateUnitToggle = (idSuffix: string) => (
+        <div className="d-flex justify-content-end align-items-center gap-2 mt-2">
+            <span className="small text-muted">Rate unit</span>
+            <ButtonGroup size="sm">
+                <ToggleButton
+                    id={`rfc2544-rate-unit-mpps-${idSuffix}`}
+                    type="radio"
+                    variant={rfc2544RateUnit === "mpps" ? "primary" : "outline-secondary"}
+                    name="rfc2544-rate-unit"
+                    value="mpps"
+                    checked={rfc2544RateUnit === "mpps"}
+                    onChange={() => setRfc2544RateUnit("mpps")}
+                >
+                    Mpps
+                </ToggleButton>
+                <ToggleButton
+                    id={`rfc2544-rate-unit-gbit-${idSuffix}`}
+                    type="radio"
+                    variant={rfc2544RateUnit === "gbit" ? "primary" : "outline-secondary"}
+                    name="rfc2544-rate-unit"
+                    value="gbit"
+                    checked={rfc2544RateUnit === "gbit"}
+                    onChange={() => setRfc2544RateUnit("gbit")}
+                >
+                    Gbit/s
+                </ToggleButton>
+            </ButtonGroup>
+        </div>
+    );
 
-    return <>
+    const generalStatsView = <>
         {visual ?
             <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary} rx_port={rx_port} />
             :
@@ -568,7 +744,283 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                 </Table>
             </Col>
         </Row>
-    </>
+    </>;
+
+    const rfc2544ThroughputView = rfc2544 && rfc2544ThroughputSelected ?
+        <Row className="mt-3">
+            <Col className="col-12">
+                {renderRfc2544RateUnitToggle("throughput")}
+            </Col>
+            <Col className="col-12">
+                {rfc2544ThroughputChartData ?
+                    <Line
+                        options={rfc2544ChartOptions("Frame size (bytes)", rfc2544RateUnitLabel)}
+                        data={rfc2544ThroughputChartData}
+                    />
+                    : null}
+            </Col>
+            <Col className={"col-12 col-md-6"}>
+                <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
+                    <Rfc2544Caption className="caption-top fw-semibold">
+                        RFC2544 Zero Loss Throughput&nbsp;
+                        <InfoBox>
+                            <>
+                                <h5>Zero Loss Throughput</h5>
+                                <p>RFC2544 defines throughput as the fastest offered rate where the DUT forwards all test frames without loss. P4TG records this per configured frame size.</p>
+                            </>
+                        </InfoBox>
+                    </Rfc2544Caption>
+                    <thead className={"table-dark"}>
+                        <tr>
+                            <th>Mapping</th>
+                            <th>Frame Size</th>
+                            <th>Zero Loss Throughput</th>
+                            <th>First Loss Rate</th>
+                            <th>Lost Frames</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rfc2544Mappings.flatMap((mapping) => rfc2544FrameSizes.map((frameSize) => {
+                            const row = rfc2544.throughput.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
+                            return <tr key={`throughput-${mappingLabel(mapping)}-${frameSize}`}>
+                                <td>{mappingLabel(mapping)}</td>
+                                <td>{frameSize} B</td>
+                                <td>{formatOptionalGbps(row?.zero_loss_rate_gbps)}</td>
+                                <td>{formatOptionalGbps(row?.first_loss_rate_gbps)}</td>
+                                <td>{row ? formatFrameCount(row.lost_frames) : "-"}</td>
+                            </tr>
+                        }))}
+                    </tbody>
+                </Table>
+            </Col>
+        </Row>
+        : null;
+
+    const rfc2544LatencyView = rfc2544 && rfc2544LatencySelected ?
+        <Row className="mt-3">
+            <Col className={"col-12"}>
+                <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
+                    <Rfc2544Caption className="caption-top fw-semibold">
+                        <OverlayTrigger
+                            placement="top"
+                            overlay={(props) => renderTooltip(props, "Latency values are sampled from P4TG RTT/2 measurements. Sampled values may miss short-lived variation and may not be 100% accurate.")}
+                        >
+                            <span className="text-decoration-underline">RFC2544 Latency</span>
+                        </OverlayTrigger>
+                        &nbsp;
+                        <InfoBox>
+                            <>
+                                <h5>Latency</h5>
+                                <p>RFC2544 runs latency at the previously determined throughput rate for each frame size. P4TG reports latency as one half of the measured RTT.</p>
+                            </>
+                        </InfoBox>
+                    </Rfc2544Caption>
+                    <thead className={"table-dark"}>
+                        <tr>
+                            <th>Mapping</th>
+                            <th>Frame Size</th>
+                            <th>Rate</th>
+                            <th><Overline>Latency</Overline></th>
+                            <th>Min</th>
+                            <th>Max</th>
+                            <th>Jitter</th>
+                            <th>Samples</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rfc2544Mappings.flatMap((mapping) => rfc2544FrameSizes.map((frameSize) => {
+                            const row = rfc2544.latency.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
+                            return <tr key={`latency-${mappingLabel(mapping)}-${frameSize}`}>
+                                <td>{mappingLabel(mapping)}</td>
+                                <td>{frameSize} B</td>
+                                <td>{formatOptionalGbps(row?.rate_gbps)}</td>
+                                <td>{row ? formatNanoSeconds(row.mean_latency_ns) : "-"}</td>
+                                <td>{row ? formatNanoSeconds(row.min_latency_ns) : "-"}</td>
+                                <td>{row ? formatNanoSeconds(row.max_latency_ns) : "-"}</td>
+                                <td>{row ? formatNanoSeconds(row.jitter_ns) : "-"}</td>
+                                <td>{row ? row.samples : "-"}</td>
+                            </tr>
+                        }))}
+                    </tbody>
+                </Table>
+            </Col>
+        </Row>
+        : null;
+
+    const rfc2544ResetView = rfc2544 && rfc2544ResetSelected ?
+        <Row className="mt-3">
+            <Col className={"col-12"}>
+                <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
+                    <Rfc2544Caption className="caption-top fw-semibold">
+                        RFC2544 Reset&nbsp;
+                        <InfoBox>
+                            <>
+                                <h5>Reset</h5>
+                                <p>RFC2544 reset time measures the interval between the last frame before reset and the first forwarded frame after recovery. P4TG observes this as the RX outage duration.</p>
+                            </>
+                        </InfoBox>
+                    </Rfc2544Caption>
+                    <thead className={"table-dark"}>
+                        <tr>
+                            <th>Mapping</th>
+                            <th>Frame Size</th>
+                            <th>Rate</th>
+                            <th>Reset Time</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rfc2544Mappings.flatMap((mapping) => rfc2544FrameSizes.map((frameSize) => {
+                            const row = rfc2544.reset.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
+                            return <tr key={`reset-${mappingLabel(mapping)}-${frameSize}`}>
+                                <td>{mappingLabel(mapping)}</td>
+                                <td>{frameSize} B</td>
+                                <td>{formatOptionalGbps(row?.rate_gbps)}</td>
+                                <td>{row?.reset_time_ms !== undefined ? formatNanoSeconds(row.reset_time_ms * 1_000_000) : "-"}</td>
+                                <td>{row?.status ?? (rfc2544.running ? "Pending" : "Not run")}</td>
+                            </tr>
+                        }))}
+                    </tbody>
+                </Table>
+            </Col>
+        </Row>
+        : null;
+
+    const rfc2544FrameLossView = rfc2544 && rfc2544FrameLossSelected ?
+        <Row className="mt-3">
+            <Col className="col-12">
+                {renderRfc2544RateUnitToggle("frame-loss")}
+            </Col>
+            <Col className="col-12">
+                {rfc2544FrameLossChartData ?
+                    <Line
+                        options={rfc2544ChartOptions(`Offered rate (${rfc2544RateUnitLabel})`, "Frame loss (%)", 100, true)}
+                        data={rfc2544FrameLossChartData}
+                    />
+                    : null}
+            </Col>
+            <Col className={"col-12"}>
+                <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
+                    <Rfc2544Caption className="caption-top fw-semibold">
+                        RFC2544 Frame Loss Rate&nbsp;
+                        <InfoBox>
+                            <>
+                                <h5>Frame Loss Rate</h5>
+                                <p>RFC2544 starts frame loss at 100% of the maximum rate, then reduces offered load in 10% steps until two successive trials complete without loss.</p>
+                            </>
+                        </InfoBox>
+                    </Rfc2544Caption>
+                    <thead className={"table-dark"}>
+                        <tr>
+                            <th>Mapping</th>
+                            <th>Frame Size</th>
+                            {RFC2544_FRAME_LOSS_STEPS.map((offeredPercent) => (
+                                <th key={`frame-loss-header-${offeredPercent}`} className="text-nowrap">
+                                    {offeredPercent} %
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rfc2544Mappings.flatMap((mapping) => rfc2544FrameSizes.map((frameSize) => (
+                            <tr key={`frame-loss-${mappingLabel(mapping)}-${frameSize}`}>
+                                <td>{mappingLabel(mapping)}</td>
+                                <td>{frameSize} B</td>
+                                {RFC2544_FRAME_LOSS_STEPS.map((offeredPercent) => {
+                                    const row = rfc2544.frame_loss.find((entry) =>
+                                        entry.frame_size === frameSize &&
+                                        entry.offered_percent === offeredPercent &&
+                                        mappingMatches(entry.mapping, mapping)
+                                    );
+                                    const rate = formatGbps(rfc2544.line_rate_gbps * offeredPercent / 100);
+                                    const tooltip = row
+                                        ? `Rate: ${rate}; TX: ${formatFrameCount(row.tx_frames)}; RX: ${formatFrameCount(row.rx_frames)}; Lost: ${formatFrameCount(row.lost_frames)}`
+                                        : `${rfc2544.running ? "Pending" : "Not run or skipped after two zero-loss trials"} at ${rate}`;
+
+                                    return <td key={`frame-loss-${frameSize}-${offeredPercent}`}>
+                                        <OverlayTrigger
+                                            placement="top"
+                                            overlay={(props) => renderTooltip(props, tooltip)}
+                                        >
+                                            <span>{row ? `${row.loss_percentage.toFixed(4)} %` : "-"}</span>
+                                        </OverlayTrigger>
+                                    </td>
+                                })}
+                            </tr>
+                        )))}
+                    </tbody>
+                </Table>
+            </Col>
+        </Row>
+        : null;
+
+    const rfc2544SystemRecoveryView = rfc2544 && rfc2544SystemRecoverySelected ?
+        <Row className="mt-3">
+            <Col className={"col-12"}>
+                <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
+                    <Rfc2544Caption className="caption-top fw-semibold">
+                        RFC2544 System Recovery&nbsp;
+                        <InfoBox>
+                            <>
+                                <h5>System Recovery</h5>
+                                <p>RFC2544 sends traffic at 110% of the measured throughput, capped by line rate, then reduces to 50% of throughput. P4TG uses non-overlapping square-wave streams and reports when post-reduction loss stops.</p>
+                                <p>Recovery time is based on controller-observed samples. The coarse sampling interval can shift the reported value by up to about one second.</p>
+                            </>
+                        </InfoBox>
+                    </Rfc2544Caption>
+                    <thead className={"table-dark"}>
+                        <tr>
+                            <th>Mapping</th>
+                            <th>Frame Size</th>
+                            <th>Throughput</th>
+                            <th>Overload</th>
+                            <th>Recovery Rate</th>
+                            <th>
+                                <OverlayTrigger
+                                    placement="top"
+                                    overlay={(props) => renderTooltip(props, "Recovery time is sampled coarsely; the controller sampling interval can shift this value by up to about one second.")}
+                                >
+                                    <span className="text-decoration-underline">Recovery Time</span>
+                                </OverlayTrigger>
+                            </th>
+                            <th>Lost After Reduction</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rfc2544Mappings.flatMap((mapping) => rfc2544FrameSizes.map((frameSize) => {
+                            const row = rfc2544SystemRecovery.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
+                            return <tr key={`system-recovery-${mappingLabel(mapping)}-${frameSize}`}>
+                                <td>{mappingLabel(mapping)}</td>
+                                <td>{frameSize} B</td>
+                                <td>{formatOptionalGbps(row?.throughput_rate_gbps)}</td>
+                                <td>{formatOptionalGbps(row?.overload_rate_gbps)}</td>
+                                <td>{formatOptionalGbps(row?.recovery_rate_gbps)}</td>
+                                <td>{row?.recovery_time_ms !== undefined ? formatNanoSeconds(row.recovery_time_ms * 1_000_000) : "-"}</td>
+                                <td>{row ? formatFrameCount(row.lost_frames_after_reduction) : "-"}</td>
+                                <td>{row ? `${row.recovered ? "Recovered" : "Not confirmed"} - ${row.status}` : (rfc2544.running ? "Pending" : "Not run")}</td>
+                            </tr>
+                        }))}
+                    </tbody>
+                </Table>
+            </Col>
+        </Row>
+        : null;
+
+    if (rfc2544) {
+        return <Tabs defaultActiveKey="general" className="mt-3">
+            <Tab eventKey="general" title="General stats">
+                {generalStatsView}
+            </Tab>
+            {rfc2544ThroughputView ? <Tab eventKey="throughput" title="Throughput">{rfc2544ThroughputView}</Tab> : null}
+            {rfc2544LatencyView ? <Tab eventKey="latency" title="Latency">{rfc2544LatencyView}</Tab> : null}
+            {rfc2544ResetView ? <Tab eventKey="reset" title="Reset">{rfc2544ResetView}</Tab> : null}
+            {rfc2544FrameLossView ? <Tab eventKey="frame-loss" title="Frame loss">{rfc2544FrameLossView}</Tab> : null}
+            {rfc2544SystemRecoveryView ? <Tab eventKey="system-recovery" title="System recovery">{rfc2544SystemRecoveryView}</Tab> : null}
+        </Tabs>
+    }
+
+    return generalStatsView;
 }
 
 export default StatView

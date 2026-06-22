@@ -86,6 +86,7 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             duration: tg.duration,
             rtt_histogram_config: Some(tg.rtt_histogram_config.clone()),
             iat_histogram_config: Some(tg.iat_histogram_config.clone()),
+            rfc2544: tg.rfc2544_config.clone(),
             name: tg.name.clone(),
         };
 
@@ -143,6 +144,7 @@ pub async fn configure_traffic_gen(
     stats_lock.clear();
     let mut stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
     stats_lock.clear();
+    *state.rfc2544_results.lock().await = None;
 
     let port_mapping = &state.port_mapping;
 
@@ -151,9 +153,22 @@ pub async fn configure_traffic_gen(
             // Just start a single test.
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
             match validate_request(&traffic_gen_data, port_mapping, is_tofino2) {
-                Ok(_) => {
+                Ok(active_streams) => {
                     info!("Test validation successful.");
                     traffic_gen_data.streams = normalize_stream_patterns(traffic_gen_data.streams);
+
+                    if traffic_gen_data.mode == GenerationMode::Rfc2544 {
+                        state
+                            .multiple_tests
+                            .multiple_test_monitor_task
+                            .lock()
+                            .await
+                            .start_rfc2544(&state, traffic_gen_data)
+                            .await;
+
+                        return (StatusCode::OK, Json(active_streams)).into_response();
+                    }
+
                     match start_single_test(&state, traffic_gen_data).await {
                         Ok(streams) => (StatusCode::OK, Json(streams)).into_response(),
                         Err(e) => {
@@ -357,6 +372,7 @@ pub async fn start_single_test(
             tg.streams = payload.streams.clone();
             tg.rtt_histogram_config = payload.rtt_histogram_config.unwrap_or_default();
             tg.iat_histogram_config = payload.iat_histogram_config.unwrap_or_default();
+            tg.rfc2544_config = payload.rfc2544;
             tg.mode = payload.mode;
             tg.duration = payload.duration;
             tg.name = payload.name;

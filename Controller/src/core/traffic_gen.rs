@@ -78,6 +78,8 @@ pub struct TrafficGen {
     pub(crate) rtt_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
     /// Mapping between RX port and IAT histogram config. The first index is the front panel port, the second is the channel.
     pub(crate) iat_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
+    /// Current RFC2544 configuration, if the running test is an RFC2544 benchmark.
+    pub(crate) rfc2544_config: Option<Rfc2544Config>,
     /// Name of the current test
     pub(crate) name: Option<String>,
 }
@@ -96,6 +98,7 @@ impl TrafficGen {
             duration: None,
             rtt_histogram_config: HashMap::new(),
             iat_histogram_config: HashMap::new(),
+            rfc2544_config: None,
             name: None,
         }
     }

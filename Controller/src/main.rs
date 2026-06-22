@@ -37,7 +37,7 @@ use crate::core::traffic_gen_core::const_definitions::{
     DEVICE_CONFIGURATION, DEVICE_CONFIGURATION_TF2, PORT_CFG_TF2,
 };
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
-use crate::core::traffic_gen_core::types::HistogramType;
+use crate::core::traffic_gen_core::types::{HistogramType, Rfc2544Results};
 use crate::core::{
     configure_ports, Arp, Config, DurationMonitorTask, FrameSizeMonitor, FrameTypeMonitor,
     HistogramMonitor, RateMonitor, TrafficGen,
@@ -98,6 +98,7 @@ pub struct AppState {
     pub(crate) loopback_mode: bool,
     pub(crate) monitor_task: Mutex<DurationMonitorTask>,
     pub(crate) multiple_tests: MultiTest,
+    pub(crate) rfc2544_results: Mutex<Option<Rfc2544Results>>,
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -275,6 +276,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 cancel_token: None,
             }),
         },
+        rfc2544_results: Mutex::new(None),
     });
 
     state
