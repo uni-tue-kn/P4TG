@@ -476,6 +476,9 @@ export interface Rfc2544Config {
     reset_timeout_secs: number,
     system_recovery_overload_duration_secs: number,
     system_recovery_observation_duration_secs: number,
+    warmup_duration_secs: number,
+    warmup_once_per_mapping: boolean,
+    cooldown_duration_secs: number,
 }
 
 export const RFC2544_FRAME_SIZES = [64, 128, 256, 512, 1024, 1280, 1518];
@@ -495,6 +498,9 @@ export const DefaultRfc2544Config = (): Rfc2544Config => ({
     reset_timeout_secs: 120,
     system_recovery_overload_duration_secs: 60,
     system_recovery_observation_duration_secs: 60,
+    warmup_duration_secs: 0,
+    warmup_once_per_mapping: true,
+    cooldown_duration_secs: 2,
 });
 
 export interface Rfc2544Results {

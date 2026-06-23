@@ -16,6 +16,8 @@ use crate::core::traffic_gen_core::types::{
 };
 use crate::AppState;
 
+const MIN_THROUGHPUT_LOSS_OBSERVATION_SECS: u32 = 4;
+
 struct TrialSample {
     rx_rate_gbps: f64,
     lost_frames: u64,
@@ -359,10 +361,6 @@ async fn stop_trial(state: &Arc<AppState>) {
     state.experiment.lock().await.running = false;
 }
 
-async fn trial_cooldown() {
-    tokio::time::sleep(Duration::from_secs(1)).await;
-}
-
 async fn wait_with_cancel(duration: Duration, cancel_token: &CancellationToken) -> bool {
     let deadline = Instant::now() + duration;
     let mut interval = tokio::time::interval(Duration::from_secs(1));
@@ -378,6 +376,77 @@ async fn wait_with_cancel(duration: Duration, cancel_token: &CancellationToken) 
                 return false;
             }
         }
+    }
+}
+
+async fn maybe_warmup(
+    state: &Arc<AppState>,
+    config: &Rfc2544Config,
+    mapping_warmup_done: &mut bool,
+    context: String,
+    cancel_token: &CancellationToken,
+) -> bool {
+    if config.warmup_duration_secs == 0 {
+        return true;
+    }
+
+    if config.warmup_once_per_mapping && *mapping_warmup_done {
+        return true;
+    }
+
+    set_status(
+        state,
+        format!(
+            "RFC2544 warm-up: {context}. Running traffic for {}s before measurement.",
+            config.warmup_duration_secs
+        ),
+    )
+    .await;
+
+    if wait_with_cancel(
+        Duration::from_secs(config.warmup_duration_secs as u64),
+        cancel_token,
+    )
+    .await
+    {
+        *mapping_warmup_done = true;
+        true
+    } else {
+        stop_trial(state).await;
+        finish(state, "RFC2544 benchmark cancelled.".to_string()).await;
+        false
+    }
+}
+
+async fn trial_cooldown(
+    state: &Arc<AppState>,
+    config: &Rfc2544Config,
+    context: String,
+    cancel_token: &CancellationToken,
+) -> bool {
+    if config.cooldown_duration_secs == 0 {
+        return true;
+    }
+
+    set_status(
+        state,
+        format!(
+            "RFC2544 cool-down: {context}. Waiting {}s before next trial.",
+            config.cooldown_duration_secs
+        ),
+    )
+    .await;
+
+    if wait_with_cancel(
+        Duration::from_secs(config.cooldown_duration_secs as u64),
+        cancel_token,
+    )
+    .await
+    {
+        true
+    } else {
+        finish(state, "RFC2544 benchmark cancelled.".to_string()).await;
+        false
     }
 }
 
@@ -433,6 +502,7 @@ async fn run_throughput(
     mapping_index: usize,
     mapping_count: usize,
     frame_size: u32,
+    mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
 ) -> Option<Rfc2544ThroughputResult> {
     set_status(
@@ -459,6 +529,7 @@ async fn run_throughput(
         mapping_count,
         1,
         total_trials,
+        mapping_warmup_done,
         cancel_token,
     )
     .await?;
@@ -488,6 +559,7 @@ async fn run_throughput(
                 mapping_count,
                 step + 2,
                 total_trials,
+                mapping_warmup_done,
                 cancel_token,
             )
             .await?;
@@ -539,6 +611,7 @@ async fn run_fixed_rate_loss_trial(
     mapping_count: usize,
     trial_index: u32,
     trial_count: u32,
+    mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
 ) -> Option<u64> {
     let rate_gbps = usable_trial_rate(rate_gbps, config);
@@ -567,9 +640,37 @@ async fn run_fixed_rate_loss_trial(
         return None;
     }
 
+    let context = format!(
+        "throughput mapping {}/{} {}, {frame_size} byte frames, trial {}/{} at {:.3} Gbps",
+        mapping_index,
+        mapping_count,
+        mapping_label(mapping),
+        trial_index,
+        trial_count,
+        rate_gbps
+    );
+    if !maybe_warmup(
+        state,
+        config,
+        mapping_warmup_done,
+        context.clone(),
+        cancel_token,
+    )
+    .await
+    {
+        return None;
+    }
+
     let baseline = sample_trial(state, &trial).await;
     let baseline_loss = baseline.lost_frames;
-    let deadline = Instant::now() + Duration::from_secs(config.trial_duration_secs as u64);
+    let measurement_start = Instant::now();
+    let deadline = measurement_start + Duration::from_secs(config.trial_duration_secs as u64);
+    let early_loss_stop_at = measurement_start
+        + Duration::from_secs(
+            config
+                .trial_duration_secs
+                .min(MIN_THROUGHPUT_LOSS_OBSERVATION_SECS) as u64,
+        );
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     interval.tick().await;
     let mut trial_loss = 0;
@@ -580,7 +681,7 @@ async fn run_fixed_rate_loss_trial(
                 let sample = sample_trial(state, &trial).await;
                 trial_loss = sample.lost_frames.saturating_sub(baseline_loss);
 
-                if trial_loss > 0 {
+                if trial_loss > 0 && Instant::now() >= early_loss_stop_at {
                     break true;
                 }
 
@@ -601,7 +702,9 @@ async fn run_fixed_rate_loss_trial(
         return None;
     }
 
-    trial_cooldown().await;
+    if !trial_cooldown(state, config, context, cancel_token).await {
+        return None;
+    }
     let sample = sample_trial(state, &trial).await;
     trial_loss = trial_loss.max(sample.lost_frames.saturating_sub(baseline_loss));
 
@@ -617,6 +720,7 @@ async fn run_latency(
     mapping_count: usize,
     frame_size: u32,
     rate_gbps: f64,
+    mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
 ) -> bool {
     set_status(
@@ -640,6 +744,28 @@ async fn run_latency(
             return false;
         }
 
+        let context = format!(
+            "latency mapping {}/{} {}, {frame_size} byte frames, repetition {}/{}",
+            mapping_index,
+            mapping_count,
+            mapping_label(mapping),
+            repetition + 1,
+            config.latency_repetitions
+        );
+        if !maybe_warmup(
+            state,
+            config,
+            mapping_warmup_done,
+            context.clone(),
+            cancel_token,
+        )
+        .await
+        {
+            return false;
+        }
+        let baseline = sample_trial(state, &trial).await;
+        let baseline_rtt_count = baseline.rtts.len();
+
         set_status(
             state,
             format!(
@@ -660,7 +786,7 @@ async fn run_latency(
         .await;
 
         let sample = sample_trial(state, &trial).await;
-        all_rtts.extend(sample.rtts);
+        all_rtts.extend(sample.rtts.into_iter().skip(baseline_rtt_count));
         stop_trial(state).await;
 
         if !completed {
@@ -668,7 +794,9 @@ async fn run_latency(
             return false;
         }
 
-        trial_cooldown().await;
+        if !trial_cooldown(state, config, context, cancel_token).await {
+            return false;
+        }
     }
 
     let result = latency_result(mapping, frame_size, rate_gbps, &all_rtts);
@@ -687,6 +815,7 @@ async fn run_frame_loss(
     mapping_index: usize,
     mapping_count: usize,
     frame_size: u32,
+    mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
 ) -> bool {
     let mut successive_zero_loss_trials = 0;
@@ -712,6 +841,24 @@ async fn run_frame_loss(
             return false;
         }
 
+        let context = format!(
+            "frame loss mapping {}/{} {}, {frame_size} byte frames at {offered_percent}%",
+            mapping_index,
+            mapping_count,
+            mapping_label(mapping)
+        );
+        if !maybe_warmup(
+            state,
+            config,
+            mapping_warmup_done,
+            context.clone(),
+            cancel_token,
+        )
+        .await
+        {
+            return false;
+        }
+
         let baseline = sample_trial(state, &trial).await;
         let completed = wait_with_cancel(
             Duration::from_secs(config.trial_duration_secs as u64),
@@ -726,7 +873,9 @@ async fn run_frame_loss(
             return false;
         }
 
-        trial_cooldown().await;
+        if !trial_cooldown(state, config, context, cancel_token).await {
+            return false;
+        }
         let sample = sample_trial(state, &trial).await;
         let tx_frames = sample.tx_frames.saturating_sub(baseline.tx_frames);
         let rx_frames = sample.rx_frames.saturating_sub(baseline.rx_frames);
@@ -909,7 +1058,21 @@ async fn run_system_recovery(
     }
 
     stop_trial(state).await;
-    trial_cooldown().await;
+    if !trial_cooldown(
+        state,
+        config,
+        format!(
+            "system recovery mapping {}/{} {}, {frame_size} byte frames",
+            mapping_index,
+            mapping_count,
+            mapping_label(mapping)
+        ),
+        cancel_token,
+    )
+    .await
+    {
+        return false;
+    }
 
     let recovered = if last_loss_increase_at.is_none() {
         true
@@ -958,6 +1121,7 @@ async fn run_reset(
     mapping_count: usize,
     frame_size: u32,
     rate_gbps: f64,
+    mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
 ) -> bool {
     set_status(
@@ -976,6 +1140,24 @@ async fn run_reset(
     if let Err(err) = start_single_test(state, trial.clone()).await {
         error!("RFC2544 reset trial failed: {err}");
         finish(state, format!("RFC2544 reset failed: {err}")).await;
+        return false;
+    }
+
+    let context = format!(
+        "reset mapping {}/{} {}, {frame_size} byte frames",
+        mapping_index,
+        mapping_count,
+        mapping_label(mapping)
+    );
+    if !maybe_warmup(
+        state,
+        config,
+        mapping_warmup_done,
+        context.clone(),
+        cancel_token,
+    )
+    .await
+    {
         return false;
     }
 
@@ -1037,7 +1219,9 @@ async fn run_reset(
     }
 
     stop_trial(state).await;
-    trial_cooldown().await;
+    if !trial_cooldown(state, config, context, cancel_token).await {
+        return false;
+    }
 
     let result = Rfc2544ResetResult {
         mapping: mapping.clone(),
@@ -1087,6 +1271,7 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
         };
 
         let mut throughput_rates: HashMap<u32, f64> = HashMap::new();
+        let mut mapping_warmup_done = false;
 
         set_status(
             &state,
@@ -1114,6 +1299,7 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                     mapping_index,
                     mapping_count,
                     frame_size,
+                    &mut mapping_warmup_done,
                     &cancel_token,
                 )
                 .await
@@ -1139,6 +1325,7 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                     mapping_count,
                     frame_size,
                     zero_loss_rate,
+                    &mut mapping_warmup_done,
                     &cancel_token,
                 )
                 .await
@@ -1155,6 +1342,7 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                     mapping_index,
                     mapping_count,
                     frame_size,
+                    &mut mapping_warmup_done,
                     &cancel_token,
                 )
                 .await
@@ -1189,6 +1377,7 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                     mapping_count,
                     frame_size,
                     zero_loss_rate,
+                    &mut mapping_warmup_done,
                     &cancel_token,
                 )
                 .await

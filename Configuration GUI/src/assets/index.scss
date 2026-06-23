@@ -250,7 +250,8 @@ table {
 }
 
 .sidebar {
-    width: auto;
+    width: 100%;
+    min-height: 100vh;
     display: block;
     background: var(--color-sidebar-background);
     border-right: 1px solid rgba(208, 208, 208, 0.8);
@@ -565,7 +566,10 @@ table {
 
 .fixed-navbar {
     position: fixed;
+    top: 0;
+    left: 0;
     height: 100%;
+    padding: 0 !important;
     z-index: 1000;
 }
 

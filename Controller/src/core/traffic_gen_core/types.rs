@@ -197,6 +197,14 @@ fn default_rfc2544_system_recovery_observation_duration_secs() -> u32 {
     60
 }
 
+fn default_rfc2544_warmup_duration_secs() -> u32 {
+    0
+}
+
+fn default_rfc2544_cooldown_duration_secs() -> u32 {
+    2
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct Rfc2544Config {
     #[serde(default = "default_true")]
@@ -227,6 +235,12 @@ pub struct Rfc2544Config {
     pub system_recovery_overload_duration_secs: u32,
     #[serde(default = "default_rfc2544_system_recovery_observation_duration_secs")]
     pub system_recovery_observation_duration_secs: u32,
+    #[serde(default = "default_rfc2544_warmup_duration_secs")]
+    pub warmup_duration_secs: u32,
+    #[serde(default = "default_true")]
+    pub warmup_once_per_mapping: bool,
+    #[serde(default = "default_rfc2544_cooldown_duration_secs")]
+    pub cooldown_duration_secs: u32,
 }
 
 fn default_true() -> bool {

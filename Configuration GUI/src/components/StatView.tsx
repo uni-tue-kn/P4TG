@@ -323,9 +323,32 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     const rfc2544RateUnitLabel = rfc2544RateUnit === "mpps" ? "Mpps" : "Gbit/s";
     const rfc2544RateValue = (gbps: number, frameSize: number) =>
         rfc2544RateUnit === "mpps" ? frameRateMpps(gbps, frameSize) : gbps;
+    const formatRfc2544ChartRate = (value: number) =>
+        `${value.toFixed(value >= 10 ? 2 : 3)} ${rfc2544RateUnitLabel}`;
     const chartTextColor = typeof document !== "undefined"
         ? getComputedStyle(document.documentElement).getPropertyValue("--color-text").trim() || "#000000"
         : "#000000";
+    const rfc2544ThroughputValueLabels = {
+        id: `rfc2544ThroughputValueLabels-${rfc2544RateUnit}`,
+        afterDatasetsDraw: (chart: any) => {
+            const { ctx, data } = chart;
+            ctx.save();
+            ctx.fillStyle = chartTextColor;
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "bottom";
+            data.datasets.forEach((dataset: any, datasetIndex: number) => {
+                if (datasetIndex === 0) return;
+                const meta = chart.getDatasetMeta(datasetIndex);
+                meta.data.forEach((point: any, pointIndex: number) => {
+                    const value = dataset.data[pointIndex];
+                    if (typeof value !== "number" || !Number.isFinite(value)) return;
+                    ctx.fillText(formatRfc2544ChartRate(value), point.x, point.y - 8);
+                });
+            });
+            ctx.restore();
+        },
+    };
     const rfc2544ChartOptions = (xTitle: string, yTitle: string, suggestedMax?: number, linearX = false) => ({
         responsive: true,
         aspectRatio: 4,
@@ -389,6 +412,9 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                     borderColor: color,
                     backgroundColor: `${color.replace("rgb", "rgba").replace(")", ", 0.25)")}`,
                     tension: 0.2,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    pointBorderWidth: 2,
                 };
             }),
         ],
@@ -754,8 +780,10 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
             <Col className="col-12">
                 {rfc2544ThroughputChartData ?
                     <Line
+                        key={`rfc2544-throughput-${rfc2544RateUnit}`}
                         options={rfc2544ChartOptions("Frame size (bytes)", rfc2544RateUnitLabel)}
                         data={rfc2544ThroughputChartData}
+                        plugins={[rfc2544ThroughputValueLabels]}
                     />
                     : null}
             </Col>
@@ -894,6 +922,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
             <Col className="col-12">
                 {rfc2544FrameLossChartData ?
                     <Line
+                        key={`rfc2544-frame-loss-${rfc2544RateUnit}`}
                         options={rfc2544ChartOptions(`Offered rate (${rfc2544RateUnitLabel})`, "Frame loss (%)", 100, true)}
                         data={rfc2544FrameLossChartData}
                     />

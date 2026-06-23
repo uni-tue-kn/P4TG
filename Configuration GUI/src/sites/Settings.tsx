@@ -1586,6 +1586,45 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                 </Row>
 
                                                 <div className="border-top mt-3 pt-2">
+                                                    <div className="small fw-semibold text-uppercase opacity-75 mb-1">Warm-up / Cool-down</div>
+                                                    <Row className="g-2 align-items-end">
+                                                        <Col className="col-12 col-sm-4">
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Warm-up duration (s)", "Traffic is generated for this duration before a measured RFC2544 trial starts. Warm-up traffic is excluded from the result counters and latency samples.")}</Form.Label>
+                                                            <Form.Control
+                                                                size="sm"
+                                                                type="number"
+                                                                min={0}
+                                                                step={1}
+                                                                value={rfc2544_config.warmup_duration_secs}
+                                                                disabled={running}
+                                                                onChange={(event) => updateRfc2544Config({ warmup_duration_secs: Number(event.target.value) })}
+                                                            />
+                                                        </Col>
+                                                        <Col className="col-12 col-sm-4">
+                                                            <Form.Check
+                                                                type="checkbox"
+                                                                label={rfc2544HoverLabel("Warm up first trial per mapping", "When enabled, warm-up runs only before the first measured trial for each active TX/RX mapping. When disabled, warm-up runs before every measured trial.")}
+                                                                checked={rfc2544_config.warmup_once_per_mapping}
+                                                                disabled={running || rfc2544_config.warmup_duration_secs <= 0}
+                                                                onChange={(event) => updateRfc2544Config({ warmup_once_per_mapping: event.target.checked })}
+                                                            />
+                                                        </Col>
+                                                        <Col className="col-12 col-sm-4">
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Cool-down duration (s)", "Pause between successive RFC2544 trials after traffic stops. Default is 2 seconds.")}</Form.Label>
+                                                            <Form.Control
+                                                                size="sm"
+                                                                type="number"
+                                                                min={0}
+                                                                step={1}
+                                                                value={rfc2544_config.cooldown_duration_secs}
+                                                                disabled={running}
+                                                                onChange={(event) => updateRfc2544Config({ cooldown_duration_secs: Number(event.target.value) })}
+                                                            />
+                                                        </Col>
+                                                    </Row>
+                                                </div>
+
+                                                <div className="border-top mt-3 pt-2">
                                                     <div className="small fw-semibold text-uppercase opacity-75 mb-1">Zero Loss Throughput and Frame Loss Rate</div>
                                                     <Row className="g-2">
                                                         <Col className="col-12 col-sm-6">

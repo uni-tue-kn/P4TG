@@ -17,6 +17,10 @@
 - Improved RFC2544 throughput detection robustness and trial pacing.
 - Improved consistency of displayed rate units (`Gbit/s`, `Mpps`).
 
+### Other
+- Migrated frontend from `react-scripts` to `vite`.
+- Updated frontend and controller dependencies.
+
 ## v2.7.1
 ### New features
 - Added periodic pattern shaping options: Sine, Triangle, Sawtooth, Square, Flashcrowd.
