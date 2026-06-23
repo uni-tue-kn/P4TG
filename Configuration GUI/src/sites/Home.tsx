@@ -121,6 +121,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
     const [visual, set_visual] = useState(true)
+    const [rfc2544_runtime_countdown, set_rfc2544_runtime_countdown] = useState<number | null>(null)
 
     // @ts-ignore
     const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
@@ -219,6 +220,28 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
         // Either switch to the first tab, or stay at the active tab if its not the "Running" one 
         setActiveTab(running ? "current" : activeTab === "current" ? Object.keys(savedConfigs)[0] : activeTab);
     }, [running]);
+
+    useEffect(() => {
+        const rfc = statistics?.[0]?.rfc2544;
+        if (!rfc) {
+            set_rfc2544_runtime_countdown(null);
+            return;
+        }
+        set_rfc2544_runtime_countdown(rfc.estimated_remaining_runtime_secs);
+    }, [statistics?.[0]?.rfc2544?.estimated_remaining_runtime_secs]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            set_rfc2544_runtime_countdown((prev) => {
+                if (prev === null || prev <= 0 || !statistics?.[0]?.rfc2544?.running) {
+                    return prev;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [statistics?.[0]?.rfc2544?.running]);
 
     const serializeSavedConfigs = () => {
         const withRfc2544ThroughputDependencies = (config: TrafficGenData): TrafficGenData => {
@@ -494,9 +517,9 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                         <div>
                             <Rfc2544StatusLabel>RFC2544 status</Rfc2544StatusLabel>
                             <Rfc2544StatusText>{rfc2544Status.status}</Rfc2544StatusText>
-                            {rfc2544Status.estimated_remaining_runtime_secs !== undefined ?
+                            {rfc2544_runtime_countdown !== null ?
                                 <Rfc2544StatusMeta>
-                                    Estimated remaining runtime: {formatRuntime(rfc2544Status.estimated_remaining_runtime_secs)}
+                                    Estimated remaining runtime: {formatRuntime(rfc2544_runtime_countdown)}
                                 </Rfc2544StatusMeta>
                                 : null}
                         </div>
