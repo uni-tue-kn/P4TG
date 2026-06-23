@@ -168,7 +168,7 @@ impl TrafficGen {
             let pkt = etherparse::Ethernet2Header {
                 source: [0, 0, 0, 0, 0, 0], // we do not need mac src & dst
                 destination: [0, 0, 0, 0, 0, 0],
-                ether_type: 0xBB02, // Monitoring ether type
+                ether_type: etherparse::EtherType(0xBB02), // Monitoring ether type
             };
 
             let mut result = Vec::<u8>::with_capacity(64);

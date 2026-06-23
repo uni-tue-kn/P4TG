@@ -49,7 +49,7 @@ const getHeader = (token?: string) => {
 }
 
 
-const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError: (message: string, bg: ToastVariant) => void, onOffline: () => void, onOnline: () => void, children: JSX.Element }) => {
+const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError: (message: string, bg: ToastVariant) => void, onOffline: () => void, onOnline: () => void, children: ReactNode }) => {
 
     useEffect(() => {
 

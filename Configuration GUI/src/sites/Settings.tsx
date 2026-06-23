@@ -226,7 +226,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
     const [loaded, set_loaded] = useState(false)
-    const ref = useRef()
+    const ref = useRef<HTMLInputElement>(null)
     const streamsRef = useRef<Stream[]>(streams);
     const loadGenWarningRef = useRef<string | null>(null);
 
@@ -1061,7 +1061,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const rateExceeded = totalRate > maxRate;
 
     const patternSrc = (name: string, variant: "light" | "dark") =>
-        `${process.env.PUBLIC_URL}/patterns/${name}_${variant}.png`;
+        `${import.meta.env.BASE_URL}patterns/${name}_${variant}.png`;
     const patternNames = ["sine", "sawtooth", "triangle", "square", "flashcrowd"];
     const rfc2544ThroughputRequired = rfc2544NeedsThroughput(rfc2544_config);
     const activeRfc2544TxChannels = new Set(

@@ -7,7 +7,9 @@ use crate::core::traffic_gen_core::const_definitions::{
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::{AppState, PortMapping};
-use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
+use etherparse::{
+    EtherType, IpHeaders, IpNumber, Ipv6RawExtHeader, PacketBuilder, VlanId, VlanPcp,
+};
 use log::error;
 use rbfrt::util::{Speed, FEC};
 
@@ -364,7 +366,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         let pkt = etherparse::Ethernet2Header {
             source: [0, 0, 0, 0, 0, 0],
             destination: [0, 0, 0, 0, 0, 0],
-            ether_type: 0x800,
+            ether_type: EtherType::IPV4,
         };
 
         pkt.write(&mut result).unwrap();
@@ -373,10 +375,11 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         let outer_ip_header = etherparse::Ipv4Header::new(
             (p4tg_packet.len() as u16) + 8 + 8,
             64,
-            17,
+            IpNumber::UDP,
             [0, 0, 0, 0],
             [0, 0, 0, 0],
-        );
+        )
+        .unwrap();
         outer_ip_header.write(&mut result).unwrap();
 
         let outer_udp_header = etherparse::UdpHeader {
@@ -424,7 +427,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         let pkt = etherparse::Ethernet2Header {
             source: [0, 0, 0, 0, 0, 0],
             destination: [0, 0, 0, 0, 0, 0],
-            ether_type: 0x800,
+            ether_type: EtherType::IPV4,
         };
 
         pkt.write(&mut result).unwrap();
@@ -433,10 +436,11 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         let outer_ip_header = etherparse::Ipv4Header::new(
             (p4tg_packet.len() as u16) + 8 + 8,
             64,
-            17,
+            IpNumber::UDP,
             [0, 0, 0, 0],
             [0, 0, 0, 0],
-        );
+        )
+        .unwrap();
         outer_ip_header.write(&mut result).unwrap();
 
         let outer_udp_header = etherparse::UdpHeader {
@@ -528,7 +532,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
             Encapsulation::Vlan => {
                 let builder = match s.ip_version {
                     Some(6) => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .single_vlan(0)
+                        .single_vlan(VlanId::ZERO)
                         .ipv6(
                             [
                                 11, 12, 13, 14, 15, 16, 17, 18, 19, 10, 21, 22, 23, 24, 25, 26,
@@ -541,7 +545,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                     // This covers Some(4) | None | _
                     _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .single_vlan(0)
+                        .single_vlan(VlanId::ZERO)
                         .ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                 };
@@ -568,7 +572,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
             Encapsulation::QinQ => {
                 let builder = match s.ip_version {
                     Some(6) => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .double_vlan(0, 0)
+                        .double_vlan(VlanId::ZERO, VlanId::ZERO)
                         .ipv6(
                             [
                                 11, 12, 13, 14, 15, 16, 17, 18, 19, 10, 21, 22, 23, 24, 25, 26,
@@ -581,7 +585,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                     // This covers Some(4) | None | _
                     _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .double_vlan(0, 0)
+                        .double_vlan(VlanId::ZERO, VlanId::ZERO)
                         .ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                 };
@@ -610,7 +614,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 let pkt = etherparse::Ethernet2Header {
                     source: [0, 0, 0, 0, 0, 0],
                     destination: [0, 0, 0, 0, 0, 0],
-                    ether_type: 0x8847, // MPLS ether type
+                    ether_type: EtherType(0x8847), // MPLS ether type
                 };
                 let detnet_cw_overhead = if s.detnet_cw == Some(true) { 4 } else { 0 };
                 let packet_capacity = (s.frame_size
@@ -631,10 +635,10 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     };
 
                     let vlan_header = etherparse::SingleVlanHeader {
-                        priority_code_point: 0,
+                        pcp: VlanPcp::ZERO,
                         drop_eligible_indicator: false,
-                        vlan_identifier: 0,
-                        ether_type,
+                        vlan_id: VlanId::ZERO,
+                        ether_type: EtherType(ether_type),
                     };
 
                     vlan_header.write(&mut result).unwrap();
@@ -643,22 +647,22 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 if s.detnet_cw == Some(true) {
                     // Write another "empty VLAN header", aka 32 bits.
                     let d_cw_lse = etherparse::SingleVlanHeader {
-                        priority_code_point: 0,
+                        pcp: VlanPcp::ZERO,
                         drop_eligible_indicator: false,
-                        vlan_identifier: 0,
-                        ether_type: 0,
+                        vlan_id: VlanId::ZERO,
+                        ether_type: EtherType(0),
                     };
                     d_cw_lse.write(&mut result).unwrap();
                 }
 
-                let ip_header: etherparse::IpHeader = match s.ip_version {
-                    Some(6) => etherparse::IpHeader::Version6(
+                let ip_header: IpHeaders = match s.ip_version {
+                    Some(6) => IpHeaders::Ipv6(
                         etherparse::Ipv6Header {
                             source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             hop_limit: 64,
                             payload_length: ((frame_size - 40 - 14 - 4) as u16).max(8),
-                            next_header: 17,
+                            next_header: IpNumber::UDP,
                             ..Default::default()
                         },
                         etherparse::Ipv6Extensions::default(),
@@ -667,14 +671,15 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     _ =>
                     // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
                     {
-                        etherparse::IpHeader::Version4(
+                        IpHeaders::Ipv4(
                             etherparse::Ipv4Header::new(
                                 (frame_size - 20 - 14 - 4) as u16,
                                 64,
-                                17,
+                                IpNumber::UDP,
                                 [0, 0, 0, 0],
                                 [0, 0, 0, 0],
-                            ),
+                            )
+                            .unwrap(),
                             etherparse::Ipv4Extensions::default(),
                         )
                     }
@@ -706,10 +711,10 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
 
                 payload.extend_from_slice(&padding);
                 match ip_header {
-                    IpHeader::Version6(v6, _) => {
+                    IpHeaders::Ipv6(v6, _) => {
                         udp_header.checksum = udp_header.calc_checksum_ipv6(&v6, &payload).unwrap();
                     }
-                    IpHeader::Version4(v4, _) => {
+                    IpHeaders::Ipv4(v4, _) => {
                         udp_header.checksum = udp_header.calc_checksum_ipv4(&v4, &payload).unwrap();
                     }
                 }
@@ -724,7 +729,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 let pkt = etherparse::Ethernet2Header {
                     source: [0, 0, 0, 0, 0, 0],
                     destination: [0, 0, 0, 0, 0, 0],
-                    ether_type: 0x86dd, // IPv6 ether type
+                    ether_type: EtherType::IPV6,
                 };
 
                 // Frame size + Base IPv6 Header + SRH + SID list
@@ -739,7 +744,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                     hop_limit: 64,
                     payload_length: ((result.capacity() as isize - 14 - 40 - 4) as u16).max(8),
-                    next_header: 43,
+                    next_header: IpNumber::IPV6_ROUTE_HEADER,
                     ..Default::default()
                 };
 
@@ -769,8 +774,10 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 }
 
                 // IPv6 raw includes the next header field and the length field. All SRH specific fields are added in the payload
-                let srh =
-                    Ipv6RawExtensionHeader::new_raw(next_header_ip_version, &extension_hdr_payload);
+                let srh = Ipv6RawExtHeader::new_raw(
+                    IpNumber(next_header_ip_version),
+                    &extension_hdr_payload,
+                );
 
                 match srh {
                     Ok(s) => s.write(&mut result).unwrap(),
@@ -779,12 +786,12 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     }
                 }
 
-                let inner_ip_header: Option<IpHeader> = match s.srv6_ip_tunneling {
+                let inner_ip_header: Option<IpHeaders> = match s.srv6_ip_tunneling {
                     Some(false) => None, // No IP header beneath SRv6 header
                     None | Some(true) => {
                         // Inner IP Header, either v4 or v6
-                        let ip_header: etherparse::IpHeader = match s.ip_version {
-                            Some(6) => etherparse::IpHeader::Version6(
+                        let ip_header: IpHeaders = match s.ip_version {
+                            Some(6) => IpHeaders::Ipv6(
                                 etherparse::Ipv6Header {
                                     source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                                     destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -795,7 +802,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                                         - 4)
                                     .max(8))
                                         as u16,
-                                    next_header: 17,
+                                    next_header: IpNumber::UDP,
                                     ..Default::default()
                                 },
                                 etherparse::Ipv6Extensions::default(),
@@ -804,15 +811,16 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                             _ =>
                             // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
                             {
-                                etherparse::IpHeader::Version4(
+                                IpHeaders::Ipv4(
                                     etherparse::Ipv4Header::new(
                                         ((frame_size as isize - 14 - inner_ip_header_size - 4)
                                             .max(8)) as u16,
                                         64,
-                                        17,
+                                        IpNumber::UDP,
                                         [0, 0, 0, 0],
                                         [0, 0, 0, 0],
-                                    ),
+                                    )
+                                    .unwrap(),
                                     etherparse::Ipv4Extensions::default(),
                                 )
                             }
@@ -839,10 +847,10 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 payload.extend_from_slice(&padding);
 
                 match inner_ip_header {
-                    Some(IpHeader::Version6(v6, _)) => {
+                    Some(IpHeaders::Ipv6(v6, _)) => {
                         udp_header.checksum = udp_header.calc_checksum_ipv6(&v6, &payload).unwrap();
                     }
-                    Some(IpHeader::Version4(v4, _)) => {
+                    Some(IpHeaders::Ipv4(v4, _)) => {
                         udp_header.checksum = udp_header.calc_checksum_ipv4(&v4, &payload).unwrap();
                     }
                     None => {

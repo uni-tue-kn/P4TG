@@ -12,7 +12,9 @@ RUN npm install
 # Copy remaining GUI source files
 COPY ${path}/public ./public
 COPY ${path}/src ./src
+COPY ${path}/index.html .
 COPY ${path}/tsconfig.json .
+COPY ${path}/vite.config.ts .
 
 # Build GUI
 RUN npm run build

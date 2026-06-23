@@ -8,30 +8,30 @@ license = "Apache-2.0"
 
 [dependencies]
 rbfrt = "0.1.10"
-tokio = { version = "1.47.1", features = ["rt-multi-thread"]}
+tokio = { version = "1.52.3", features = ["rt-multi-thread"]}
 axum = { version = "0.8.9" , features =  ["macros", "json", "tokio", "form", "query"]}
-tower-http = { version = "0.6.7", features = ["cors"] }
-log = "0.4.28"
+tower-http = { version = "0.7.0", features = ["cors"] }
+log = "0.4.33"
 env_logger = "0.11.10"
-serde = { version = "1.0.226", features = ["derive", "rc", "alloc"] }
+serde = { version = "1.0.228", features = ["derive", "rc", "alloc"] }
 serde_repr = "0.1.20"
-tower = { version = "0.5.2", features = ["full"] }
-highs = "1.12.0"
-etherparse = "0.13.0"
+tower = { version = "0.5.3", features = ["full"] }
+highs = "2.3.0"
+etherparse = "0.20.2"
 rand = "0.10.1"
 async-trait = "0.1.89"
 thiserror = "2.0.18"
 macaddr = "1.0.1"
-axum-extra = "0.10.1"
-schemars = { version = "1.0.4", features = ["uuid1"] }
+axum-extra = "0.12.6"
+schemars = { version = "1.2.1", features = ["uuid1"] }
 axum-macros = "0.5.1"
-serde_json = "1.0.145"
+serde_json = "1.0.150"
 include_dir = "0.7.4"
 mime_guess = "2.0.5"
-utoipa = { version = "5.3.1", features = ["axum_extras"] }
+utoipa = { version = "5.5.0", features = ["axum_extras"] }
 utoipa-swagger-ui = {  version = "9.0.2", features = ["axum"]}
 lazy_static = "1.5.0"
-tokio-util = "0.7.17"
+tokio-util = "0.7.18"
 
 [dev-dependencies]
 test-case = "3.3.1"
