@@ -40,6 +40,33 @@ const SummaryView = ({
                 rx_ch: (target as RxTarget).channel,
             }))
         );
+    const rfc2544Ports = [
+        ...(statistics.rfc2544?.selected_mappings ?? []),
+        ...(statistics.rfc2544?.throughput ?? []).map((entry) => entry.mapping),
+        ...(statistics.rfc2544?.latency ?? []).map((entry) => entry.mapping),
+        ...(statistics.rfc2544?.reset ?? []).map((entry) => entry.mapping),
+        ...(statistics.rfc2544?.frame_loss ?? []).map((entry) => entry.mapping),
+        ...(statistics.rfc2544?.system_recovery ?? []).map((entry) => entry.mapping),
+    ].map((mapping) => ({
+        tx: mapping.tx_port,
+        tx_ch: mapping.tx_channel,
+        rx: mapping.rx_port,
+        rx_ch: mapping.rx_channel,
+    }));
+    const mappingTabKeys = new Set<string>();
+    const mappingTabs = [...activePorts(port_tx_rx_mapping), ...rfc2544Ports].filter((mapping) => {
+        const key = `${mapping.tx}/${mapping.tx_ch}/${mapping.rx}/${mapping.rx_ch}`;
+        if (mappingTabKeys.has(key)) {
+            return false;
+        }
+        mappingTabKeys.add(key);
+        return true;
+    }).sort((left, right) =>
+        left.tx - right.tx ||
+        left.tx_ch - right.tx_ch ||
+        left.rx - right.rx ||
+        left.rx_ch - right.rx_ch
+    );
 
     const getStreamIDsByPortAndChannel = (pid: number, ch: number): number[] => {
         const ids = new Set<number>();
@@ -93,7 +120,7 @@ const SummaryView = ({
                     />
                 </Tab>
 
-                {activePorts(port_tx_rx_mapping).map((v) => {
+                {mappingTabs.map((v) => {
                     // Build a single-pair nested mapping for this tab
                     const singleMapping: PortTxRxMap = {
                         [String(v.tx)]: {
