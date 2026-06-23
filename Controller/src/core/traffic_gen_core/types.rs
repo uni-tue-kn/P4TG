@@ -205,6 +205,26 @@ fn default_rfc2544_cooldown_duration_secs() -> u32 {
     2
 }
 
+fn default_rfc2544_throughput_loss_tolerance() -> Rfc2544LossTolerance {
+    Rfc2544LossTolerance {
+        unit: Rfc2544LossToleranceUnit::Packets,
+        value: 0.0,
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Rfc2544LossToleranceUnit {
+    Packets,
+    Percent,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544LossTolerance {
+    pub unit: Rfc2544LossToleranceUnit,
+    pub value: f64,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct Rfc2544Config {
     #[serde(default = "default_true")]
@@ -225,6 +245,8 @@ pub struct Rfc2544Config {
     pub trial_duration_secs: u32,
     #[serde(default = "default_rfc2544_throughput_search_steps")]
     pub throughput_search_steps: u32,
+    #[serde(default = "default_rfc2544_throughput_loss_tolerance")]
+    pub throughput_loss_tolerance: Rfc2544LossTolerance,
     #[serde(default = "default_rfc2544_latency_duration_secs")]
     pub latency_duration_secs: u32,
     #[serde(default = "default_rfc2544_latency_repetitions")]
@@ -259,6 +281,7 @@ pub struct Rfc2544Results {
     pub reset_selected: bool,
     pub frame_loss_selected: bool,
     pub system_recovery_selected: bool,
+    pub estimated_remaining_runtime_secs: u32,
     pub throughput: Vec<Rfc2544ThroughputResult>,
     pub latency: Vec<Rfc2544LatencyResult>,
     pub reset: Vec<Rfc2544ResetResult>,
@@ -279,6 +302,7 @@ impl Rfc2544Results {
             reset_selected: config.reset,
             frame_loss_selected: config.frame_loss,
             system_recovery_selected: config.system_recovery,
+            estimated_remaining_runtime_secs: 0,
             throughput: vec![],
             latency: vec![],
             reset: vec![],

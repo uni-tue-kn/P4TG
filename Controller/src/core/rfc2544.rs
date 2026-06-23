@@ -14,8 +14,9 @@ use crate::core::traffic_gen_core::helper::{
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::{
     GenerationMode, GenerationPattern, GenerationPatternConfig, GenerationUnit, Rfc2544Config,
-    Rfc2544FrameLossResult, Rfc2544LatencyResult, Rfc2544PortMapping, Rfc2544ResetResult,
-    Rfc2544Results, Rfc2544SystemRecoveryResult, Rfc2544ThroughputResult, RxTarget, TrafficGenData,
+    Rfc2544FrameLossResult, Rfc2544LatencyResult, Rfc2544LossToleranceUnit, Rfc2544PortMapping,
+    Rfc2544ResetResult, Rfc2544Results, Rfc2544SystemRecoveryResult, Rfc2544ThroughputResult,
+    RxTarget, TrafficGenData,
 };
 use crate::AppState;
 
@@ -27,6 +28,26 @@ struct TrialSample {
     tx_frames: u128,
     rx_frames: u128,
     rtts: Vec<u64>,
+}
+
+struct ThroughputTrialLoss {
+    lost_frames: u64,
+    tx_frames: u128,
+}
+
+impl ThroughputTrialLoss {
+    fn exceeds_tolerance(&self, config: &Rfc2544Config) -> bool {
+        let tolerance = config.throughput_loss_tolerance.value.max(0.0);
+        match config.throughput_loss_tolerance.unit {
+            Rfc2544LossToleranceUnit::Packets => self.lost_frames as f64 > tolerance,
+            Rfc2544LossToleranceUnit::Percent => {
+                if self.tx_frames == 0 {
+                    return false;
+                }
+                (self.lost_frames as f64 * 100.0 / self.tx_frames as f64) > tolerance.min(100.0)
+            }
+        }
+    }
 }
 
 fn positive_rate(rate_gbps: f64) -> bool {
@@ -67,6 +88,218 @@ fn mapping_label(mapping: &Rfc2544PortMapping) -> String {
         "{}/{} → {}/{}",
         mapping.tx_port, mapping.tx_channel, mapping.rx_port, mapping.rx_channel
     )
+}
+
+fn mapping_key(mapping: &Rfc2544PortMapping) -> (u32, u8, u32, u8) {
+    (
+        mapping.tx_port,
+        mapping.tx_channel,
+        mapping.rx_port,
+        mapping.rx_channel,
+    )
+}
+
+fn has_mapping_frame_result<T>(
+    rows: &[T],
+    mapping: &Rfc2544PortMapping,
+    frame_size: u32,
+    row_mapping: impl Fn(&T) -> &Rfc2544PortMapping,
+    row_frame_size: impl Fn(&T) -> u32,
+) -> bool {
+    rows.iter().any(|row| {
+        row_frame_size(row) == frame_size && mapping_key(row_mapping(row)) == mapping_key(mapping)
+    })
+}
+
+fn mapping_has_measured_result(results: &Rfc2544Results, mapping: &Rfc2544PortMapping) -> bool {
+    let key = mapping_key(mapping);
+    results
+        .throughput
+        .iter()
+        .any(|row| mapping_key(&row.mapping) == key)
+        || results
+            .latency
+            .iter()
+            .any(|row| mapping_key(&row.mapping) == key)
+        || results
+            .reset
+            .iter()
+            .any(|row| mapping_key(&row.mapping) == key)
+        || results
+            .frame_loss
+            .iter()
+            .any(|row| mapping_key(&row.mapping) == key)
+}
+
+fn frame_loss_complete(
+    results: &Rfc2544Results,
+    mapping: &Rfc2544PortMapping,
+    frame_size: u32,
+) -> bool {
+    let rows = results
+        .frame_loss
+        .iter()
+        .filter(|row| {
+            row.frame_size == frame_size && mapping_key(&row.mapping) == mapping_key(mapping)
+        })
+        .collect::<Vec<_>>();
+    rows.len() >= 10
+        || rows
+            .windows(2)
+            .any(|window| window[0].lost_frames == 0 && window[1].lost_frames == 0)
+}
+
+fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Results) -> u32 {
+    let throughput_needed =
+        config.throughput || config.latency || config.reset || config.system_recovery;
+    let throughput_trials = config.throughput_search_steps.saturating_add(1);
+    let recovery_duration = config
+        .system_recovery_overload_duration_secs
+        .saturating_add(config.system_recovery_observation_duration_secs);
+    let mut warmup_pending = results
+        .selected_mappings
+        .iter()
+        .filter(|mapping| !mapping_has_measured_result(results, mapping))
+        .map(mapping_key)
+        .collect::<HashSet<_>>();
+    let mut remaining = 0_u32;
+
+    let mut measured_trial_cost =
+        |base_secs: u32, trials: u32, mapping: &Rfc2544PortMapping| -> u32 {
+            if trials == 0 {
+                return 0;
+            }
+
+            let warmup_secs = if config.warmup_once_per_mapping {
+                if warmup_pending.remove(&mapping_key(mapping)) {
+                    config.warmup_duration_secs
+                } else {
+                    0
+                }
+            } else {
+                config.warmup_duration_secs.saturating_mul(trials)
+            };
+
+            trials
+                .saturating_mul(base_secs.saturating_add(config.cooldown_duration_secs))
+                .saturating_add(warmup_secs)
+        };
+
+    for mapping in &results.selected_mappings {
+        for &frame_size in &results.selected_frame_sizes {
+            if throughput_needed
+                && !has_mapping_frame_result(
+                    &results.throughput,
+                    mapping,
+                    frame_size,
+                    |row| &row.mapping,
+                    |row| row.frame_size,
+                )
+            {
+                remaining = remaining.saturating_add(measured_trial_cost(
+                    config.trial_duration_secs,
+                    throughput_trials,
+                    mapping,
+                ));
+            }
+
+            if config.frame_loss && !frame_loss_complete(results, mapping, frame_size) {
+                let completed_trials = results
+                    .frame_loss
+                    .iter()
+                    .filter(|row| {
+                        row.frame_size == frame_size
+                            && mapping_key(&row.mapping) == mapping_key(mapping)
+                    })
+                    .count() as u32;
+                remaining = remaining.saturating_add(measured_trial_cost(
+                    config.trial_duration_secs,
+                    10_u32.saturating_sub(completed_trials),
+                    mapping,
+                ));
+            }
+
+            if config.latency
+                && !has_mapping_frame_result(
+                    &results.latency,
+                    mapping,
+                    frame_size,
+                    |row| &row.mapping,
+                    |row| row.frame_size,
+                )
+            {
+                remaining = remaining.saturating_add(measured_trial_cost(
+                    config.latency_duration_secs,
+                    config.latency_repetitions,
+                    mapping,
+                ));
+            }
+
+            if config.reset
+                && !has_mapping_frame_result(
+                    &results.reset,
+                    mapping,
+                    frame_size,
+                    |row| &row.mapping,
+                    |row| row.frame_size,
+                )
+            {
+                remaining = remaining.saturating_add(measured_trial_cost(
+                    config.reset_timeout_secs,
+                    1,
+                    mapping,
+                ));
+            }
+
+            if config.system_recovery
+                && !has_mapping_frame_result(
+                    &results.system_recovery,
+                    mapping,
+                    frame_size,
+                    |row| &row.mapping,
+                    |row| row.frame_size,
+                )
+            {
+                remaining = remaining.saturating_add(
+                    recovery_duration.saturating_add(config.cooldown_duration_secs),
+                );
+            }
+        }
+    }
+
+    remaining
+}
+
+async fn refresh_runtime_estimate(state: &Arc<AppState>, config: &Rfc2544Config) {
+    if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
+        results.estimated_remaining_runtime_secs = estimate_rfc2544_remaining_secs(config, results);
+    }
+}
+
+fn start_runtime_estimate_ticker(state: Arc<AppState>, cancel_token: CancellationToken) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(1));
+        interval.tick().await;
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let mut guard = state.rfc2544_results.lock().await;
+                    let Some(results) = guard.as_mut() else {
+                        break;
+                    };
+                    if !results.running {
+                        break;
+                    }
+                    results.estimated_remaining_runtime_secs =
+                        results.estimated_remaining_runtime_secs.saturating_sub(1);
+                }
+                _ = cancel_token.cancelled() => {
+                    break;
+                }
+            }
+        }
+    });
 }
 
 fn serial_mappings(payload: &TrafficGenData) -> Vec<Rfc2544PortMapping> {
@@ -396,6 +629,7 @@ async fn finish(state: &Arc<AppState>, status: String) {
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
         results.running = false;
         results.status = status;
+        results.estimated_remaining_runtime_secs = 0;
     }
 }
 
@@ -585,13 +819,15 @@ async fn run_throughput(
     )
     .await?;
 
-    let (zero_loss_rate_gbps, first_loss_rate, result_lost_frames) = if line_rate_loss == 0 {
+    let (zero_loss_rate_gbps, first_loss_rate, result_lost_frames) = if !line_rate_loss
+        .exceeds_tolerance(config)
+    {
         (line_rate_gbps, None, 0)
     } else {
         let mut low_rate = 0.0;
         let mut high_rate = line_rate_gbps;
         let mut first_loss_rate = Some(line_rate_gbps);
-        let mut result_lost_frames = line_rate_loss;
+        let mut result_lost_frames = line_rate_loss.lost_frames;
 
         for step in 0..config.throughput_search_steps {
             let mid_rate = (low_rate + high_rate) / 2.0;
@@ -615,12 +851,12 @@ async fn run_throughput(
             )
             .await?;
 
-            if mid_loss == 0 {
+            if !mid_loss.exceeds_tolerance(config) {
                 low_rate = mid_rate;
             } else {
                 high_rate = mid_rate;
                 first_loss_rate = Some(mid_rate);
-                result_lost_frames = mid_loss;
+                result_lost_frames = mid_loss.lost_frames;
             }
         }
 
@@ -647,6 +883,7 @@ async fn run_throughput(
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
         results.throughput.push(result.clone());
     }
+    refresh_runtime_estimate(state, config).await;
 
     Some(result)
 }
@@ -664,7 +901,7 @@ async fn run_fixed_rate_loss_trial(
     trial_count: u32,
     mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
-) -> Option<u64> {
+) -> Option<ThroughputTrialLoss> {
     let rate_gbps = usable_trial_rate(rate_gbps, config);
     set_status(
         state,
@@ -714,6 +951,7 @@ async fn run_fixed_rate_loss_trial(
 
     let baseline = sample_trial(state, &trial).await;
     let baseline_loss = baseline.lost_frames;
+    let baseline_tx = baseline.tx_frames;
     let measurement_start = Instant::now();
     let deadline = measurement_start + Duration::from_secs(config.trial_duration_secs as u64);
     let early_loss_stop_at = measurement_start
@@ -725,14 +963,16 @@ async fn run_fixed_rate_loss_trial(
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     interval.tick().await;
     let mut trial_loss = 0;
+    let mut trial_tx = 0;
 
     let completed = loop {
         tokio::select! {
             _ = interval.tick() => {
                 let sample = sample_trial(state, &trial).await;
                 trial_loss = sample.lost_frames.saturating_sub(baseline_loss);
+                trial_tx = sample.tx_frames.saturating_sub(baseline_tx);
 
-                if trial_loss > 0 && Instant::now() >= early_loss_stop_at {
+                if (ThroughputTrialLoss { lost_frames: trial_loss, tx_frames: trial_tx }).exceeds_tolerance(config) && Instant::now() >= early_loss_stop_at {
                     break true;
                 }
 
@@ -758,8 +998,12 @@ async fn run_fixed_rate_loss_trial(
     }
     let sample = sample_trial(state, &trial).await;
     trial_loss = trial_loss.max(sample.lost_frames.saturating_sub(baseline_loss));
+    trial_tx = trial_tx.max(sample.tx_frames.saturating_sub(baseline_tx));
 
-    Some(trial_loss)
+    Some(ThroughputTrialLoss {
+        lost_frames: trial_loss,
+        tx_frames: trial_tx,
+    })
 }
 
 async fn run_latency(
@@ -854,6 +1098,7 @@ async fn run_latency(
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
         results.latency.push(result);
     }
+    refresh_runtime_estimate(state, config).await;
 
     true
 }
@@ -958,6 +1203,7 @@ async fn run_frame_loss(
         if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
             results.frame_loss.push(result);
         }
+        refresh_runtime_estimate(state, config).await;
 
         if successive_zero_loss_trials >= 2 {
             break;
@@ -1007,6 +1253,7 @@ async fn run_system_recovery(
         if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
             results.system_recovery.push(result);
         }
+        refresh_runtime_estimate(state, config).await;
         finish(
             state,
             "RFC2544 system recovery failed: no active stream template available.".to_string(),
@@ -1042,6 +1289,7 @@ async fn run_system_recovery(
         if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
             results.system_recovery.push(result);
         }
+        refresh_runtime_estimate(state, config).await;
         return true;
     }
 
@@ -1061,6 +1309,7 @@ async fn run_system_recovery(
         if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
             results.system_recovery.push(result);
         }
+        refresh_runtime_estimate(state, config).await;
         finish(state, format!("RFC2544 system recovery failed: {err}")).await;
         return false;
     }
@@ -1189,6 +1438,7 @@ async fn run_system_recovery(
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
         results.system_recovery.push(result);
     }
+    refresh_runtime_estimate(state, config).await;
 
     true
 }
@@ -1315,6 +1565,7 @@ async fn run_reset(
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
         results.reset.push(result);
     }
+    refresh_runtime_estimate(state, config).await;
 
     true
 }
@@ -1334,6 +1585,8 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
         results.selected_mappings = mappings.clone();
     }
+    refresh_runtime_estimate(&state, &config).await;
+    start_runtime_estimate_ticker(state.clone(), cancel_token.clone());
     if mappings.is_empty() {
         finish(
             &state,

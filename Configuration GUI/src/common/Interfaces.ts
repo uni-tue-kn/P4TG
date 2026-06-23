@@ -471,6 +471,7 @@ export interface Rfc2544Config {
     line_rate_gbps: number,
     trial_duration_secs: number,
     throughput_search_steps: number,
+    throughput_loss_tolerance: Rfc2544LossTolerance,
     latency_duration_secs: number,
     latency_repetitions: number,
     reset_timeout_secs: number,
@@ -479,6 +480,11 @@ export interface Rfc2544Config {
     warmup_duration_secs: number,
     warmup_once_per_mapping: boolean,
     cooldown_duration_secs: number,
+}
+
+export interface Rfc2544LossTolerance {
+    unit: "packets" | "percent",
+    value: number,
 }
 
 export const RFC2544_FRAME_SIZES = [64, 128, 256, 512, 1024, 1280, 1518];
@@ -493,6 +499,7 @@ export const DefaultRfc2544Config = (): Rfc2544Config => ({
     line_rate_gbps: 100,
     trial_duration_secs: 10,
     throughput_search_steps: 7,
+    throughput_loss_tolerance: { unit: "packets", value: 0 },
     latency_duration_secs: 10,
     latency_repetitions: 1,
     reset_timeout_secs: 120,
@@ -514,6 +521,7 @@ export interface Rfc2544Results {
     reset_selected?: boolean,
     frame_loss_selected?: boolean,
     system_recovery_selected?: boolean,
+    estimated_remaining_runtime_secs: number,
     throughput: Rfc2544ThroughputResult[],
     latency: Rfc2544LatencyResult[],
     reset: Rfc2544ResetResult[],

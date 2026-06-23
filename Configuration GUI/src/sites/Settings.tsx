@@ -80,11 +80,17 @@ const rfc2544NeedsThroughput = (config: Partial<Rfc2544Config>): boolean =>
 const enforceRfc2544ThroughputDependencies = (config: Rfc2544Config): Rfc2544Config =>
     rfc2544NeedsThroughput(config) ? { ...config, throughput: true } : config;
 
-const normalizeRfc2544Config = (config?: Partial<Rfc2544Config>): Rfc2544Config =>
-    enforceRfc2544ThroughputDependencies({
-        ...DefaultRfc2544Config(),
+const normalizeRfc2544Config = (config?: Partial<Rfc2544Config>): Rfc2544Config => {
+    const defaults = DefaultRfc2544Config();
+    return enforceRfc2544ThroughputDependencies({
+        ...defaults,
         ...(config ?? {}),
+        throughput_loss_tolerance: {
+            ...defaults.throughput_loss_tolerance,
+            ...(config?.throughput_loss_tolerance ?? {}),
+        },
     });
+};
 
 const patternSupportsInverted = (patternType: GenerationPattern): boolean =>
     patternType === GenerationPattern.Square || patternType === GenerationPattern.Sawtooth;
@@ -1650,6 +1656,43 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 disabled={running || !rfc2544_config.throughput}
                                                                 onChange={(event) => updateRfc2544Config({ throughput_search_steps: Number(event.target.value) })}
                                                             />
+                                                        </Col>
+                                                    </Row>
+                                                    <Row className="g-2 mt-1">
+                                                        <Col className="col-12 col-sm-6">
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Ignored loss", "Zero-loss throughput treats loss at or below this value as no loss. This is useful for noisy systems, but is not fully RFC2544 conform because RFC2544 throughput is defined with zero frame loss.")}</Form.Label>
+                                                            <Form.Control
+                                                                size="sm"
+                                                                type="number"
+                                                                min={0}
+                                                                max={rfc2544_config.throughput_loss_tolerance.unit === "percent" ? 100 : undefined}
+                                                                step={rfc2544_config.throughput_loss_tolerance.unit === "percent" ? 0.0001 : 1}
+                                                                value={rfc2544_config.throughput_loss_tolerance.value}
+                                                                disabled={running || !rfc2544_config.throughput}
+                                                                onChange={(event) => updateRfc2544Config({
+                                                                    throughput_loss_tolerance: {
+                                                                        ...rfc2544_config.throughput_loss_tolerance,
+                                                                        value: Number(event.target.value),
+                                                                    }
+                                                                })}
+                                                            />
+                                                        </Col>
+                                                        <Col className="col-12 col-sm-6">
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Ignored loss unit", "Select whether the ignored zero-loss-throughput loss value is an absolute packet count or a percentage of transmitted frames.")}</Form.Label>
+                                                            <Form.Select
+                                                                size="sm"
+                                                                value={rfc2544_config.throughput_loss_tolerance.unit}
+                                                                disabled={running || !rfc2544_config.throughput}
+                                                                onChange={(event) => updateRfc2544Config({
+                                                                    throughput_loss_tolerance: {
+                                                                        ...rfc2544_config.throughput_loss_tolerance,
+                                                                        unit: event.target.value as "packets" | "percent",
+                                                                    }
+                                                                })}
+                                                            >
+                                                                <option value="packets">Packets</option>
+                                                                <option value="percent">Percent</option>
+                                                            </Form.Select>
                                                         </Col>
                                                     </Row>
                                                 </div>

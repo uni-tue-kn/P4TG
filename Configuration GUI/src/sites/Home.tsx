@@ -86,6 +86,12 @@ const Rfc2544StatusText = styled.div`
     white-space: normal;
 `
 
+const Rfc2544StatusMeta = styled.div`
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+    opacity: 0.85;
+`
+
 const Rfc2544StatusBar = styled.div<{ $attention: boolean }>`
     align-items: flex-start;
     background: ${props => props.$attention ? 'var(--color-mna-warning-bg)' : 'var(--color-background)'};
@@ -417,6 +423,19 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const rfc2544Status = statistics?.[0]?.rfc2544;
     const rfc2544StatusText = rfc2544Status?.status.toLowerCase() ?? "";
     const rfc2544StatusNeedsAttention = rfc2544Status?.running && rfc2544StatusText.includes("waiting for dut");
+    const formatRuntime = (seconds: number) => {
+        const rounded = Math.max(0, Math.ceil(seconds));
+        const hours = Math.floor(rounded / 3600);
+        const minutes = Math.floor((rounded % 3600) / 60);
+        const secs = rounded % 60;
+        if (hours > 0) {
+            return `${hours}h ${minutes}m ${secs}s`;
+        }
+        if (minutes > 0) {
+            return `${minutes}m ${secs}s`;
+        }
+        return `${secs}s`;
+    };
 
     return <Loader loaded={loaded} overlay={overlay}>
         <form onSubmit={onSubmit}>
@@ -475,6 +494,11 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                         <div>
                             <Rfc2544StatusLabel>RFC2544 status</Rfc2544StatusLabel>
                             <Rfc2544StatusText>{rfc2544Status.status}</Rfc2544StatusText>
+                            {rfc2544Status.estimated_remaining_runtime_secs !== undefined ?
+                                <Rfc2544StatusMeta>
+                                    Estimated remaining runtime: {formatRuntime(rfc2544Status.estimated_remaining_runtime_secs)}
+                                </Rfc2544StatusMeta>
+                                : null}
                         </div>
                     </Rfc2544StatusBar>
                 </Col>
