@@ -6,9 +6,12 @@ use log::{error, info, warn};
 use tokio_util::sync::CancellationToken;
 
 use crate::api::traffic_gen::start_single_test;
+use crate::core::traffic_gen_core::const_definitions::BATCH_FACTOR;
 use crate::core::traffic_gen_core::helper::{
-    generate_front_panel_to_dev_port_mappings, translate_fp_channel_to_dev_port_mapping,
+    calculate_overhead, generate_front_panel_to_dev_port_mappings, get_num_pipes,
+    translate_fp_channel_to_dev_port_mapping,
 };
+use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::{
     GenerationMode, GenerationPattern, GenerationPatternConfig, GenerationUnit, Rfc2544Config,
     Rfc2544FrameLossResult, Rfc2544LatencyResult, Rfc2544PortMapping, Rfc2544ResetResult,
@@ -52,9 +55,16 @@ fn active_stream_ids(payload: &TrafficGenData) -> HashSet<u8> {
         .collect()
 }
 
+fn system_recovery_total_duration_secs(config: &Rfc2544Config) -> u32 {
+    config
+        .system_recovery_overload_duration_secs
+        .saturating_add(config.system_recovery_observation_duration_secs)
+        .max(1)
+}
+
 fn mapping_label(mapping: &Rfc2544PortMapping) -> String {
     format!(
-        "{}/{} -> {}/{}",
+        "{}/{} → {}/{}",
         mapping.tx_port, mapping.tx_channel, mapping.rx_port, mapping.rx_channel
     )
 }
@@ -191,44 +201,28 @@ fn build_system_recovery_payload(
         config,
     );
     let recovery_rate_gbps = usable_trial_rate(throughput_rate_gbps * 0.50, config);
-    let total_duration_secs = config
-        .system_recovery_overload_duration_secs
-        .saturating_add(config.system_recovery_observation_duration_secs)
-        .max(1);
+    let total_duration_secs = system_recovery_total_duration_secs(config);
 
-    let mut overload_stream = template_stream.clone();
-    overload_stream.stream_id = 1;
-    overload_stream.app_id = 1;
-    overload_stream.frame_size = frame_size;
-    overload_stream.traffic_rate = overload_rate_gbps as f32;
-    overload_stream.unit = Some(GenerationUnit::Gbps);
-    overload_stream.pattern = Some(square_pattern(
+    // Keep recovery in one square-wave stream. A separate inverted stream with
+    // square_low=0 can starve in its initial low phase and never reach high.
+    let recovery_factor = (recovery_rate_gbps / overload_rate_gbps).clamp(0.0, 1.0);
+
+    let mut recovery_trial_stream = template_stream.clone();
+    recovery_trial_stream.stream_id = 1;
+    recovery_trial_stream.app_id = 1;
+    recovery_trial_stream.frame_size = frame_size;
+    recovery_trial_stream.traffic_rate = overload_rate_gbps as f32;
+    recovery_trial_stream.unit = Some(GenerationUnit::Gbps);
+    recovery_trial_stream.pattern = Some(square_pattern(
         total_duration_secs,
         config.system_recovery_overload_duration_secs,
-        false,
+        recovery_factor,
     ));
 
-    let mut recovery_stream = template_stream.clone();
-    recovery_stream.stream_id = 2;
-    recovery_stream.app_id = 2;
-    recovery_stream.frame_size = frame_size;
-    recovery_stream.traffic_rate = recovery_rate_gbps as f32;
-    recovery_stream.unit = Some(GenerationUnit::Gbps);
-    recovery_stream.pattern = Some(square_pattern(
-        total_duration_secs,
-        config.system_recovery_overload_duration_secs,
-        true,
-    ));
-
-    let mut stream_settings = Vec::with_capacity(template_settings.len() * 2);
+    let mut stream_settings = Vec::with_capacity(template_settings.len());
     for setting in template_settings {
-        let mut overload_setting = setting.clone();
-        overload_setting.stream_id = 1;
-        overload_setting.active = true;
-        stream_settings.push(overload_setting);
-
         let mut recovery_setting = setting;
-        recovery_setting.stream_id = 2;
+        recovery_setting.stream_id = 1;
         recovery_setting.active = true;
         stream_settings.push(recovery_setting);
     }
@@ -237,7 +231,7 @@ fn build_system_recovery_payload(
     payload.mode = GenerationMode::Rfc2544;
     payload.duration = None;
     payload.name = Some(format!("RFC2544 system recovery {frame_size}B"));
-    payload.streams = vec![overload_stream, recovery_stream];
+    payload.streams = vec![recovery_trial_stream];
     payload.stream_settings = stream_settings;
 
     Some((payload, overload_rate_gbps, recovery_rate_gbps))
@@ -246,19 +240,76 @@ fn build_system_recovery_payload(
 fn square_pattern(
     total_duration_secs: u32,
     high_duration_secs: u32,
-    inverted: bool,
+    low_factor: f64,
 ) -> GenerationPatternConfig {
     GenerationPatternConfig {
         pattern_type: GenerationPattern::Square,
         period: total_duration_secs as f64 * 1_000_000_000.0,
         sample_rate: 128,
-        inverted: Some(inverted),
+        inverted: Some(false),
         fc_quiet_until: None,
         fc_ramp_until: None,
         fc_decay_rate: None,
-        square_low: Some(0.0),
+        square_low: Some(low_factor),
         square_high_until: Some(high_duration_secs as f64 * 1_000_000_000.0),
     }
+}
+
+async fn system_recovery_period_error(
+    state: &Arc<AppState>,
+    trial: &TrafficGenData,
+    total_duration_secs: u32,
+) -> Option<String> {
+    let stream = trial.streams.first()?;
+    let num_pipes = {
+        let tg = state.traffic_generator.lock().await;
+        get_num_pipes(stream, tg.num_pipes)
+    };
+    let encapsulation_overhead = calculate_overhead(stream) + 20;
+    let frame_size = if stream.ip_version == Some(6) && stream.frame_size == 64 {
+        73 + 4
+    } else {
+        stream.frame_size
+    };
+    let generation_frame_size = frame_size + encapsulation_overhead;
+    let per_pipe_rate = stream.traffic_rate / num_pipes.max(1) as f32;
+    if per_pipe_rate <= 0.0 || !per_pipe_rate.is_finite() {
+        return Some(
+            "System recovery pattern period cannot be checked for non-positive rate.".to_string(),
+        );
+    }
+
+    let (n_packets, mut timeout) =
+        calculate_send_behaviour(generation_frame_size, per_pipe_rate, stream.burst);
+    if stream.batches.is_some_and(|b| b && stream.burst != 1) {
+        timeout *= BATCH_FACTOR;
+    }
+    if n_packets == 0 || timeout == 0 {
+        return Some(
+            "System recovery pattern period cannot be represented for this rate.".to_string(),
+        );
+    }
+
+    let batch_factor = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
+        BATCH_FACTOR as f64
+    } else {
+        1.0
+    };
+    let offered_pps_per_pipe = n_packets as f64 * batch_factor * 1e9_f64 / timeout as f64;
+    let requested_period_pkts = total_duration_secs as f64 * offered_pps_per_pipe;
+    let max_period_pkts = u32::MAX as f64;
+    if requested_period_pkts.round() <= max_period_pkts {
+        return None;
+    }
+
+    let max_period_secs = max_period_pkts / offered_pps_per_pipe;
+    Some(format!(
+        "System recovery pattern period too long: requested {}s requires {:.3}G pattern intervals per pipe, but P4TG can represent at most {:.3}s at {:.3} Gbit/s for this frame size. Reduce overload/observation duration or the offered rate.",
+        total_duration_secs,
+        requested_period_pkts / 1e9_f64,
+        max_period_secs,
+        stream.traffic_rate
+    ))
 }
 
 fn trial_ports(state: &Arc<AppState>, payload: &TrafficGenData) -> (HashSet<u32>, HashSet<u32>) {
@@ -397,7 +448,7 @@ async fn maybe_warmup(
     set_status(
         state,
         format!(
-            "RFC2544 warm-up: {context}. Running traffic for {}s before measurement.",
+            "RFC2544 warm-up | {context} | running traffic for {}s before measurement",
             config.warmup_duration_secs
         ),
     )
@@ -431,7 +482,7 @@ async fn trial_cooldown(
     set_status(
         state,
         format!(
-            "RFC2544 cool-down: {context}. Waiting {}s before next trial.",
+            "RFC2544 cool-down | {context} | waiting {}s before next trial",
             config.cooldown_duration_secs
         ),
     )
@@ -508,7 +559,7 @@ async fn run_throughput(
     set_status(
         state,
         format!(
-            "RFC2544 throughput: mapping {}/{} {}, {frame_size} byte frames.",
+            "RFC2544 throughput | mapping {}/{} | {} | {frame_size} B",
             mapping_index,
             mapping_count,
             mapping_label(mapping)
@@ -618,7 +669,7 @@ async fn run_fixed_rate_loss_trial(
     set_status(
         state,
         format!(
-            "RFC2544 throughput: mapping {}/{} {}, {frame_size} byte frames, trial {}/{} at {:.3} Gbps.",
+            "RFC2544 throughput | mapping {}/{} | {} | {frame_size} B | trial {}/{} | {:.3} Gbit/s",
             mapping_index,
             mapping_count,
             mapping_label(mapping),
@@ -641,7 +692,7 @@ async fn run_fixed_rate_loss_trial(
     }
 
     let context = format!(
-        "throughput mapping {}/{} {}, {frame_size} byte frames, trial {}/{} at {:.3} Gbps",
+        "Throughput | mapping {}/{} | {} | {frame_size} B | trial {}/{} | {:.3} Gbit/s",
         mapping_index,
         mapping_count,
         mapping_label(mapping),
@@ -726,7 +777,7 @@ async fn run_latency(
     set_status(
         state,
         format!(
-            "RFC2544 latency: mapping {}/{} {}, {frame_size} byte frames.",
+            "RFC2544 latency | mapping {}/{} | {} | {frame_size} B",
             mapping_index,
             mapping_count,
             mapping_label(mapping)
@@ -745,7 +796,7 @@ async fn run_latency(
         }
 
         let context = format!(
-            "latency mapping {}/{} {}, {frame_size} byte frames, repetition {}/{}",
+            "Latency | mapping {}/{} | {} | {frame_size} B | repetition {}/{}",
             mapping_index,
             mapping_count,
             mapping_label(mapping),
@@ -769,7 +820,7 @@ async fn run_latency(
         set_status(
             state,
             format!(
-                "RFC2544 latency: mapping {}/{} {}, {frame_size} byte frames, repetition {}/{}.",
+                "RFC2544 latency | mapping {}/{} | {} | {frame_size} B | repetition {}/{}",
                 mapping_index,
                 mapping_count,
                 mapping_label(mapping),
@@ -826,7 +877,7 @@ async fn run_frame_loss(
         set_status(
             state,
             format!(
-                "RFC2544 frame loss: mapping {}/{} {}, {frame_size} byte frames at {offered_percent}%.",
+                "RFC2544 frame loss | mapping {}/{} | {} | {frame_size} B | {offered_percent}%",
                 mapping_index,
                 mapping_count,
                 mapping_label(mapping)
@@ -842,7 +893,7 @@ async fn run_frame_loss(
         }
 
         let context = format!(
-            "frame loss mapping {}/{} {}, {frame_size} byte frames at {offered_percent}%",
+            "Frame loss | mapping {}/{} | {} | {frame_size} B | {offered_percent}%",
             mapping_index,
             mapping_count,
             mapping_label(mapping)
@@ -930,7 +981,7 @@ async fn run_system_recovery(
     set_status(
         state,
         format!(
-            "RFC2544 system recovery: preparing mapping {}/{} {}, {frame_size} byte frames.",
+            "RFC2544 system recovery | preparing | mapping {}/{} | {} | {frame_size} B",
             mapping_index,
             mapping_count,
             mapping_label(mapping)
@@ -964,6 +1015,36 @@ async fn run_system_recovery(
         return false;
     };
 
+    let total_duration_secs = system_recovery_total_duration_secs(config);
+    if let Some(status) = system_recovery_period_error(state, &trial, total_duration_secs).await {
+        warn!("RFC2544 system recovery skipped: {status}");
+        set_status(
+            state,
+            format!(
+                "RFC2544 system recovery | skipped | mapping {}/{} | {} | {frame_size} B | pattern period too long",
+                mapping_index,
+                mapping_count,
+                mapping_label(mapping)
+            ),
+        )
+        .await;
+        let result = Rfc2544SystemRecoveryResult {
+            mapping: mapping.clone(),
+            frame_size,
+            throughput_rate_gbps,
+            overload_rate_gbps,
+            recovery_rate_gbps,
+            recovery_time_ms: None,
+            lost_frames_after_reduction: 0,
+            recovered: false,
+            status,
+        };
+        if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
+            results.system_recovery.push(result);
+        }
+        return true;
+    }
+
     if let Err(err) = start_single_test(state, trial.clone()).await {
         error!("RFC2544 system recovery trial failed: {err}");
         let result = Rfc2544SystemRecoveryResult {
@@ -987,7 +1068,7 @@ async fn run_system_recovery(
     set_status(
         state,
         format!(
-            "RFC2544 system recovery: overload phase for mapping {}/{} {}, {frame_size} byte frames at {:.3} Gbps.",
+            "RFC2544 system recovery | overload | mapping {}/{} | {} | {frame_size} B | {:.3} Gbit/s",
             mapping_index,
             mapping_count,
             mapping_label(mapping),
@@ -1023,7 +1104,7 @@ async fn run_system_recovery(
     set_status(
         state,
         format!(
-            "RFC2544 system recovery: recovery phase for mapping {}/{} {}, {frame_size} byte frames at {:.3} Gbps.",
+            "RFC2544 system recovery | recovery | mapping {}/{} | {} | {frame_size} B | {:.3} Gbit/s",
             mapping_index,
             mapping_count,
             mapping_label(mapping),
@@ -1062,7 +1143,7 @@ async fn run_system_recovery(
         state,
         config,
         format!(
-            "system recovery mapping {}/{} {}, {frame_size} byte frames",
+            "System recovery | mapping {}/{} | {} | {frame_size} B",
             mapping_index,
             mapping_count,
             mapping_label(mapping)
@@ -1127,7 +1208,7 @@ async fn run_reset(
     set_status(
         state,
         format!(
-            "RFC2544 reset: starting mapping {}/{} {}, {frame_size} byte frames.",
+            "RFC2544 reset | starting | mapping {}/{} | {} | {frame_size} B",
             mapping_index,
             mapping_count,
             mapping_label(mapping)
@@ -1144,7 +1225,7 @@ async fn run_reset(
     }
 
     let context = format!(
-        "reset mapping {}/{} {}, {frame_size} byte frames",
+        "Reset | mapping {}/{} | {} | {frame_size} B",
         mapping_index,
         mapping_count,
         mapping_label(mapping)
@@ -1164,7 +1245,7 @@ async fn run_reset(
     set_status(
         state,
         format!(
-            "RFC2544 reset: waiting for DUT to reset (mapping {}/{} {}, {frame_size} byte frames).",
+            "RFC2544 reset | waiting for DUT to reset | mapping {}/{} | {} | {frame_size} B",
             mapping_index,
             mapping_count,
             mapping_label(mapping)
@@ -1197,7 +1278,7 @@ async fn run_reset(
                     set_status(
                         state,
                         format!(
-                            "RFC2544 reset: DUT appears offline, waiting for recovery (mapping {}/{} {}, {frame_size} byte frames).",
+                            "RFC2544 reset | DUT offline, waiting for recovery | mapping {}/{} | {} | {frame_size} B",
                             mapping_index,
                             mapping_count,
                             mapping_label(mapping)
@@ -1250,6 +1331,9 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
     let needs_throughput =
         config.throughput || config.latency || config.reset || config.system_recovery;
     let mappings = serial_mappings(&payload);
+    if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
+        results.selected_mappings = mappings.clone();
+    }
     if mappings.is_empty() {
         finish(
             &state,
@@ -1276,7 +1360,7 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
         set_status(
             &state,
             format!(
-                "RFC2544: running mapping {}/{} {} serially.",
+                "RFC2544 | running mapping {}/{} serially | {}",
                 mapping_index,
                 mapping_count,
                 mapping_label(mapping)

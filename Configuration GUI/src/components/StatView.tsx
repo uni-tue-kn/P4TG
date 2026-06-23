@@ -291,14 +291,39 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     const rfc2544 = stats.rfc2544;
     const formatGbps = (gbps: number) => formatBits(gbps * 1_000_000_000);
     const rfc2544FrameSizes = rfc2544?.selected_frame_sizes ?? [];
-    const rfc2544Mappings = Object.entries(port_mapping ?? {}).flatMap(([txPort, perChannel]) =>
+    const rfc2544PortMappings = Object.entries(port_mapping ?? {}).flatMap(([txPort, perChannel]) =>
         Object.entries(perChannel ?? {}).map(([txChannel, target]) => ({
             tx_port: Number(txPort),
             tx_channel: Number(txChannel),
             rx_port: target.port,
             rx_channel: target.channel,
         }))
-    ).sort((left, right) =>
+    );
+    const mappingKey = (mapping: Rfc2544PortMapping) =>
+        `${mapping.tx_port}/${mapping.tx_channel}/${mapping.rx_port}/${mapping.rx_channel}`;
+    const currentMappingKeys = new Set(rfc2544PortMappings.map(mappingKey));
+    const resultMappings = rfc2544 ? [
+        ...rfc2544.throughput.map((entry) => entry.mapping),
+        ...rfc2544.latency.map((entry) => entry.mapping),
+        ...rfc2544.reset.map((entry) => entry.mapping),
+        ...rfc2544.frame_loss.map((entry) => entry.mapping),
+        ...rfc2544.system_recovery.map((entry) => entry.mapping),
+    ] : [];
+    const baseRfc2544Mappings = rfc2544?.selected_mappings?.length
+        ? rfc2544.selected_mappings
+        : [...resultMappings, ...rfc2544PortMappings];
+    const selectedMappings = is_summary
+        ? baseRfc2544Mappings
+        : baseRfc2544Mappings.filter((mapping) => currentMappingKeys.has(mappingKey(mapping)));
+    const uniqueMappingKeys = new Set<string>();
+    const rfc2544Mappings = selectedMappings.filter((mapping) => {
+        const key = mappingKey(mapping);
+        if (uniqueMappingKeys.has(key)) {
+            return false;
+        }
+        uniqueMappingKeys.add(key);
+        return true;
+    }).sort((left, right) =>
         left.tx_port - right.tx_port ||
         left.tx_channel - right.tx_channel ||
         left.rx_port - right.rx_port ||
@@ -312,7 +337,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     const rfc2544SystemRecoverySelected = rfc2544 ? (rfc2544.system_recovery_selected ?? rfc2544SystemRecovery.length > 0) : false;
     const formatOptionalGbps = (gbps: number | undefined) => gbps !== undefined ? formatGbps(gbps) : "-";
     const mappingLabel = (mapping: Rfc2544PortMapping) =>
-        `${mapping.tx_port}/${mapping.tx_channel} -> ${mapping.rx_port}/${mapping.rx_channel}`;
+        `${mapping.tx_port}/${mapping.tx_channel} → ${mapping.rx_port}/${mapping.rx_channel}`;
     const mappingMatches = (left: Rfc2544PortMapping | undefined, right: Rfc2544PortMapping) =>
         left !== undefined &&
         left.tx_port === right.tx_port &&

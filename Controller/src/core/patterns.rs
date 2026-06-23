@@ -12,6 +12,7 @@ use crate::core::traffic_gen_core::{
 
 const DEFAULT_PATTERN_BURST_PKTS: u64 = 100;
 const SQUARE_LOW_PATTERN_BURST_PKTS: u64 = 1;
+const SQUARE_LOW_MINIMAL_BURST_THRESHOLD: f64 = 0.25;
 
 /// Compute the [start, end] range (inclusive) of the `i`-th "point"
 /// when splitting [0, space) into `total_points` equal-ish segments.
@@ -31,10 +32,14 @@ fn point_range_in_space(i: u32, total_points: u32, space: u64) -> (u32, u32) {
 fn pattern_burst_packets(pattern_type: &GenerationPattern, factor: f64) -> u64 {
     // Direct meters are per table entry. Short square-wave low windows can be
     // fully hidden by the default bucket, so keep only a minimal initial burst.
-    if matches!(pattern_type, GenerationPattern::Square) && factor > 0.0 && factor < 1.0 {
+    if matches!(pattern_type, GenerationPattern::Square)
+        && factor > 0.0
+        && factor < SQUARE_LOW_MINIMAL_BURST_THRESHOLD
+    {
         SQUARE_LOW_PATTERN_BURST_PKTS
     } else {
-        // Preserve the previous bucket size for full-rate, zero-rate, and non-square entries.
+        // Preserve the default bucket for full-rate, zero-rate, substantial low-rate,
+        // and non-square entries. Long recovery phases need enough bucket for bursts.
         DEFAULT_PATTERN_BURST_PKTS
     }
 }

@@ -507,6 +507,7 @@ export interface Rfc2544Results {
     running: boolean,
     status: string,
     selected_frame_sizes: number[],
+    selected_mappings?: Rfc2544PortMapping[],
     line_rate_gbps: number,
     throughput_selected?: boolean,
     latency_selected?: boolean,

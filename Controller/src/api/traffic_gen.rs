@@ -67,9 +67,15 @@ pub struct StopTrafficGenParams {
         )
 )]
 pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
+    let rfc2544_running = state
+        .rfc2544_results
+        .lock()
+        .await
+        .as_ref()
+        .map_or(false, |results| results.running);
     let tg = &state.traffic_generator.lock().await;
 
-    if !tg.running {
+    if !tg.running && !rfc2544_running {
         (
             StatusCode::ACCEPTED,
             Json(EmptyResponse {
@@ -158,6 +164,26 @@ pub async fn configure_traffic_gen(
                     traffic_gen_data.streams = normalize_stream_patterns(traffic_gen_data.streams);
 
                     if traffic_gen_data.mode == GenerationMode::Rfc2544 {
+                        {
+                            let mut tg = state.traffic_generator.lock().await;
+                            tg.port_mapping = traffic_gen_data.port_tx_rx_mapping.clone();
+                            tg.stream_settings = traffic_gen_data.stream_settings.clone();
+                            tg.streams = traffic_gen_data.streams.clone();
+                            tg.rtt_histogram_config = traffic_gen_data
+                                .rtt_histogram_config
+                                .clone()
+                                .unwrap_or_default();
+                            tg.iat_histogram_config = traffic_gen_data
+                                .iat_histogram_config
+                                .clone()
+                                .unwrap_or_default();
+                            tg.rfc2544_config = traffic_gen_data.rfc2544.clone();
+                            tg.mode = traffic_gen_data.mode;
+                            tg.duration = traffic_gen_data.duration;
+                            tg.name = traffic_gen_data.name.clone();
+                        }
+                        state.experiment.lock().await.start = SystemTime::now();
+                        state.experiment.lock().await.running = true;
                         state
                             .multiple_tests
                             .multiple_test_monitor_task
