@@ -6,7 +6,7 @@ control PatternShaping (
     //DirectMeter(MeterType_t.BYTES) pattern_meter;
     //Meter(MeterType_t.BYTES) pattern_meter;
     #if __TARGET_TOFINO__ == 2
-        Meter<bit<32>>(40000, MeterType_t.BYTES) pattern_meter;
+        Meter<bit<32>>(16384, MeterType_t.BYTES) pattern_meter;
     #else 
         Meter<bit<32>>(8192, MeterType_t.BYTES) pattern_meter;
     #endif

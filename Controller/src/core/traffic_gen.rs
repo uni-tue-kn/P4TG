@@ -837,11 +837,17 @@ impl TrafficGen {
         let mut pattern_config_entries = vec![];
         let mut pattern_classifier_entries = vec![];
         let mut pattern_meter_entries = vec![];
+        let mut pattern_interval_count = 0usize;
         let mut next_pattern_interval_id = 0u32;
         let max_pattern_table_entries = if self.is_tofino2 {
             MAX_PATTERN_TABLE_ENTRIES_TOFINO_2
         } else {
             MAX_PATTERN_TABLE_ENTRIES
+        };
+        let max_pattern_meter_entries = if self.is_tofino2 {
+            MAX_PATTERN_METER_ENTRIES_TOFINO_2
+        } else {
+            MAX_PATTERN_METER_ENTRIES
         };
 
         for stream in &active_streams {
@@ -883,7 +889,11 @@ impl TrafficGen {
                     next_pattern_interval_id,
                 );
 
-                if pattern_classifier_entries.len() + entries.classifier_entries.len()
+                let new_pattern_table_entries = entries.classifier_entries.len();
+                // One meter entry is generated per unique sampled/merged pattern interval.
+                let new_pattern_intervals = entries.meter_entries.len();
+
+                if pattern_classifier_entries.len() + new_pattern_table_entries
                     > max_pattern_table_entries
                 {
                     return Err(P4TGError::Error {
@@ -892,14 +902,15 @@ impl TrafficGen {
                 .into());
                 }
 
-                if entries.next_interval_id as usize > max_pattern_table_entries {
+                if pattern_interval_count + new_pattern_intervals > max_pattern_meter_entries {
                     return Err(P4TGError::Error {
-                    message: format!("Too many pattern meter entries required for stream {}. Reduce the number of streams, the rate, or the period for traffic patterns.", stream.app_id),
+                    message: format!("Too many pattern meter entries required for stream {}. Reduce the number of streams, the pattern sample rate, or the pattern period.", stream.app_id),
                 }
                 .into());
                 }
 
                 next_pattern_interval_id = entries.next_interval_id;
+                pattern_interval_count += new_pattern_intervals;
                 let config_req = build_pattern_config_entry(stream.app_id, entries.period_pkts);
                 pattern_config_entries.push(config_req);
                 pattern_classifier_entries.extend(entries.classifier_entries);
