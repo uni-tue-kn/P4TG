@@ -169,6 +169,9 @@ pub const PATTERN_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_generation
 /// Table used to store pattern configuration
 pub const PATTERN_CONFIG_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_config";
 
+/// Indexed meter used by pattern shaping.
+pub const PATTERN_METER_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_meter";
+
 /// Maximum number of table entries we are allowed to program.
 pub const MAX_PATTERN_TABLE_ENTRIES_TOFINO_2: usize = 40000;
 pub const MAX_PATTERN_TABLE_ENTRIES: usize = 8192;

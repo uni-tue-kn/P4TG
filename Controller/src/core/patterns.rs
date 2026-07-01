@@ -1,11 +1,8 @@
-use log::{info, warn};
+use log::info;
 use rbfrt::table::{self, MatchValue};
 
 use crate::core::traffic_gen_core::{
-    const_definitions::{
-        MAX_PATTERN_TABLE_ENTRIES, MAX_PATTERN_TABLE_ENTRIES_TOFINO_2, PATTERN_CONFIG_TABLE,
-        PATTERN_TABLE,
-    },
+    const_definitions::{PATTERN_CONFIG_TABLE, PATTERN_METER_TABLE, PATTERN_TABLE},
     helper::range_to_prefixes,
     types::{GenerationPattern, GenerationPatternConfig},
 };
@@ -30,8 +27,8 @@ fn point_range_in_space(i: u32, total_points: u32, space: u64) -> (u32, u32) {
 }
 
 fn pattern_burst_packets(pattern_type: &GenerationPattern, factor: f64) -> u64 {
-    // Direct meters are per table entry. Short square-wave low windows can be
-    // fully hidden by the default bucket, so keep only a minimal initial burst.
+    // Short square-wave low windows can be fully hidden by the default bucket,
+    // so keep only a minimal initial burst for those intervals.
     if matches!(pattern_type, GenerationPattern::Square)
         && factor > 0.0
         && factor < SQUARE_LOW_MINIMAL_BURST_THRESHOLD
@@ -198,6 +195,13 @@ fn flashcrowd_factor(
     }
 }
 
+pub struct PatternGenerationEntries {
+    pub period_pkts: u32,
+    pub classifier_entries: Vec<table::Request>,
+    pub meter_entries: Vec<table::Request>,
+    pub next_interval_id: u32,
+}
+
 /// Build pattern_generation entries for one app_id, given a bounded phase
 /// counter in [0 .. period_pkts), and a desired sine pattern.
 ///
@@ -214,7 +218,8 @@ fn flashcrowd_factor(
 ///  2. Computes period_pkts ≈ period_secs * per-pipe-pps
 ///  3. Splits [0..period_pkts) into NUM_SAMPLES segments
 ///  4. For each segment, computes a sine amplitude factor
-///  5. Decomposes segment ranges into LPM prefixes and creates table entries
+///  5. Creates one indexed-meter entry per logical interval
+///  6. Decomposes interval ranges into LPM prefixes that all point at that meter
 pub fn build_pattern_generation_entries(
     app_id: u8,
     pattern_config: GenerationPatternConfig,
@@ -223,8 +228,8 @@ pub fn build_pattern_generation_entries(
     total_frame_size_bytes: u32,
     meter_packet_size_bytes: u32,
     num_pipes: f64,
-    tofino2: bool,
-) -> (u32, Vec<table::Request>) {
+    first_interval_id: u32,
+) -> PatternGenerationEntries {
     // 1) The pattern period config is in nanoseconds. Convert it to seconds.
     let period_ns = pattern_config.period.max(1.0);
     let period_secs = period_ns / 1e9_f64;
@@ -322,53 +327,52 @@ pub fn build_pattern_generation_entries(
         ranges.push((start, end, factor));
     }
 
-    let mut entries = Vec::new();
+    let mut classifier_entries = Vec::new();
+    let mut meter_entries = Vec::new();
+    let mut next_interval_id = first_interval_id;
 
     for (start, end, factor) in ranges {
+        let interval_id = next_interval_id;
+        next_interval_id = next_interval_id.saturating_add(1);
+
         let cir_kbps = (factor * max_kbps) as u64;
         let pir_kbps = cir_kbps;
+        let burst_packets = pattern_burst_packets(&pattern_config.pattern_type, factor);
+        let cbs_kbits = packet_burst_to_kbits(meter_packet_size_bytes, burst_packets);
+        let pbs_kbits = cbs_kbits;
+
+        let meter_req = table::Request::new(PATTERN_METER_TABLE)
+            .match_key("$METER_INDEX", MatchValue::exact(interval_id))
+            .action_data("$METER_SPEC_CIR_KBPS", cir_kbps as u32)
+            .action_data("$METER_SPEC_PIR_KBPS", pir_kbps as u32)
+            .action_data("$METER_SPEC_CBS_KBITS", cbs_kbits)
+            .action_data("$METER_SPEC_PBS_KBITS", pbs_kbits);
+
+        meter_entries.push(meter_req);
 
         // Range-to-prefix (LPM) seems to consume less MAT space than range-to-ternary here.
         let prefixes = range_to_prefixes(start, end);
 
-        let max_pattern_entries = if tofino2 {
-            MAX_PATTERN_TABLE_ENTRIES_TOFINO_2
-        } else {
-            MAX_PATTERN_TABLE_ENTRIES
-        };
-
         for (base, prefix_len) in prefixes {
-            // Each prefix becomes its own direct-meter entry. Square low phases
-            // are merged before prefixing so this minimal bucket is only startup slack.
-            let burst_packets = pattern_burst_packets(&pattern_config.pattern_type, factor);
-            let cbs_kbits = packet_burst_to_kbits(meter_packet_size_bytes, burst_packets);
-            let pbs_kbits = cbs_kbits;
-
-            if entries.len() > max_pattern_entries {
-                warn!(
-                    "WARNING: reached MAX_PATTERN_TABLE_ENTRIES ({}) while building pattern table",
-                    max_pattern_entries
-                );
-                return (period_pkts_u32, entries);
-            }
-
             let req = table::Request::new(PATTERN_TABLE)
                 .match_key("hdr.pkt_gen.app_id", MatchValue::exact(app_id))
                 .match_key(
                     "ig_md.pattern_interval_number",
                     MatchValue::lpm(base, prefix_len.into()),
                 )
-                .action("ingress.p4tg.pattern_shaping.pattern_shape")
-                .action_data("$METER_SPEC_CIR_KBPS", cir_kbps as u32)
-                .action_data("$METER_SPEC_PIR_KBPS", pir_kbps as u32)
-                .action_data("$METER_SPEC_CBS_KBITS", cbs_kbits)
-                .action_data("$METER_SPEC_PBS_KBITS", pbs_kbits);
+                .action("ingress.p4tg.pattern_shaping.set_interval_id")
+                .action_data("interval_id", interval_id);
 
-            entries.push(req);
+            classifier_entries.push(req);
         }
     }
 
-    (period_pkts_u32, entries)
+    PatternGenerationEntries {
+        period_pkts: period_pkts_u32,
+        classifier_entries,
+        meter_entries,
+        next_interval_id,
+    }
 }
 
 /// Build the single pattern_config entry for this app_id,

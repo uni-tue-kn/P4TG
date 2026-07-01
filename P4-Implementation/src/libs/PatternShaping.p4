@@ -3,7 +3,14 @@ control PatternShaping (
     inout ingress_metadata_t ig_md,
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
-    DirectMeter(MeterType_t.BYTES) pattern_meter;
+    //DirectMeter(MeterType_t.BYTES) pattern_meter;
+    //Meter(MeterType_t.BYTES) pattern_meter;
+    #if __TARGET_TOFINO__ == 2
+        Meter<bit<32>>(40000, MeterType_t.BYTES) pattern_meter;
+    #else 
+        Meter<bit<32>>(8192, MeterType_t.BYTES) pattern_meter;
+    #endif
+
     DirectCounter<bit<64>>(CounterType_t.PACKETS) debug_counter;
 
     bit<32> period_pkts = 1;
@@ -46,8 +53,9 @@ control PatternShaping (
         #endif
     }
 
-    action pattern_shape() {
-        ig_md.pattern_color = pattern_meter.execute();
+
+    action set_interval_id(bit<32> interval_id) {
+        ig_md.pattern_interval_id = interval_id;
     }
 
     table pattern_generation {
@@ -56,9 +64,8 @@ control PatternShaping (
             ig_md.pattern_interval_number: lpm;
         }
         actions = {
-            pattern_shape;
+            set_interval_id;
         }
-        meters = pattern_meter;
         #if __TARGET_TOFINO__ == 2
             size = 40000;
         #else
@@ -75,6 +82,7 @@ control PatternShaping (
 
             // Apply traffic shaping according to pattern
             pattern_generation.apply();
+            ig_md.pattern_color = pattern_meter.execute(ig_md.pattern_interval_id);
             if (ig_md.pattern_color == 3) {
                 ig_dprsr_md.drop_ctl = 1;
             }

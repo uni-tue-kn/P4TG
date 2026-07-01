@@ -834,7 +834,10 @@ impl TrafficGen {
             .map(|p| (p.app_id, p.bytes.len() as u32))
             .collect();
 
-        let mut pattern_entries = vec![];
+        let mut pattern_config_entries = vec![];
+        let mut pattern_classifier_entries = vec![];
+        let mut pattern_meter_entries = vec![];
+        let mut next_pattern_interval_id = 0u32;
         let max_pattern_table_entries = if self.is_tofino2 {
             MAX_PATTERN_TABLE_ENTRIES_TOFINO_2
         } else {
@@ -865,7 +868,7 @@ impl TrafficGen {
                     stream.n_packets.unwrap_or(1) as f64 * batch_factor * 1e9_f64
                         / stream.timeout.unwrap_or(1) as f64;
 
-                let (period_pkts, entries) = build_pattern_generation_entries(
+                let entries = build_pattern_generation_entries(
                     stream.app_id,
                     pattern_config,
                     (stream.traffic_rate * stream.generation_accuracy.unwrap_or(100.0) / 100.0)
@@ -877,26 +880,50 @@ impl TrafficGen {
                         .unwrap_or(&total_frame_size.saturating_sub(20))
                         + 6, // Size of the internal packet generation header
                     num_pipes as f64,
-                    state.tofino2,
+                    next_pattern_interval_id,
                 );
 
-                if pattern_entries.len() + entries.len() > max_pattern_table_entries {
+                if pattern_classifier_entries.len() + entries.classifier_entries.len()
+                    > max_pattern_table_entries
+                {
                     return Err(P4TGError::Error {
                     message: format!("Too many pattern table entries required for stream {}. Reduce the number of streams, the rate, or the period for traffic patterns.", stream.app_id),
                 }
                 .into());
-                } else {
-                    let config_req = build_pattern_config_entry(stream.app_id, period_pkts);
-                    pattern_entries.push(config_req);
-                    pattern_entries.extend(entries);
                 }
+
+                if entries.next_interval_id as usize > max_pattern_table_entries {
+                    return Err(P4TGError::Error {
+                    message: format!("Too many pattern meter entries required for stream {}. Reduce the number of streams, the rate, or the period for traffic patterns.", stream.app_id),
+                }
+                .into());
+                }
+
+                next_pattern_interval_id = entries.next_interval_id;
+                let config_req = build_pattern_config_entry(stream.app_id, entries.period_pkts);
+                pattern_config_entries.push(config_req);
+                pattern_classifier_entries.extend(entries.classifier_entries);
+                pattern_meter_entries.extend(entries.meter_entries);
             }
         }
 
-        info!("Writing {} pattern table entries.", pattern_entries.len());
+        info!(
+            "Writing {} pattern meter entries, {} pattern classifier entries, and {} pattern config entries.",
+            pattern_meter_entries.len(),
+            pattern_classifier_entries.len(),
+            pattern_config_entries.len()
+        );
 
-        if !pattern_entries.is_empty() {
-            switch.write_table_entries(pattern_entries).await?;
+        if !pattern_meter_entries.is_empty() {
+            switch.write_table_entries(pattern_meter_entries).await?;
+        }
+        if !pattern_classifier_entries.is_empty() {
+            switch
+                .write_table_entries(pattern_classifier_entries)
+                .await?;
+        }
+        if !pattern_config_entries.is_empty() {
+            switch.write_table_entries(pattern_config_entries).await?;
         }
 
         // configure egress table rules

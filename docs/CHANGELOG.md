@@ -13,6 +13,7 @@
 
 ### Bug fixes
 - Fixed bug for square waves with low != 0 and very short high phases.
+- Fixed pattern shaping meters being scoped per prefix instead of per sampled interval.
 - Fixed RFC2544 mode switching and port mapping handling in the frontend.
 - Improved RFC2544 throughput detection robustness and trial pacing.
 - Improved consistency of displayed rate units (`Gbit/s`, `Mpps`).

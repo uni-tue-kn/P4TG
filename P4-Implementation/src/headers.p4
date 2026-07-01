@@ -263,6 +263,7 @@ struct ingress_metadata_t {
     bit<16> bin_index_iat;
     bit<8> pattern_color;
     bit<32> pattern_interval_number;
+    bit<32> pattern_interval_id;
 }
 
 struct egress_metadata_t {
