@@ -41,6 +41,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::api::helper::serve_static_files::{serve_index, static_path};
 use crate::api::histogram;
+use crate::api::pdf_report::{p4tg_report as p4tg_report_handler, P4tgReportRequest};
 use crate::api::ports::{arp_reply, PortConfiguration};
 use crate::api::statistics::time_statistics;
 use crate::api::tables;
@@ -58,6 +59,7 @@ use crate::core::traffic_gen_core::types::*;
         tables::tables,
         statistics::statistics,
         statistics::time_statistics,
+        crate::api::pdf_report::p4tg_report,
         restart::restart,
         reset::reset,
         ports::ports,
@@ -73,6 +75,7 @@ use crate::core::traffic_gen_core::types::*;
         StreamSetting,
         Stream,
         Rfc2544Config,
+        P4tgReportRequest,
         Rfc2544Results,
         Rfc2544ThroughputResult,
         Rfc2544ThroughputRepetitionResult,
@@ -125,7 +128,7 @@ impl Modify for SecurityAddon {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct Error {
     pub(crate) message: String,
 }
@@ -169,6 +172,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/online", get(online))
         .route("/statistics", get(statistics))
         .route("/time_statistics", get(time_statistics))
+        .route("/report", post(p4tg_report_handler))
         .route(
             "/trafficgen",
             get(traffic_gen)

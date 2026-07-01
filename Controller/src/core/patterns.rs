@@ -197,7 +197,7 @@ fn flashcrowd_factor(
 
 pub struct PatternGenerationEntries {
     pub period_pkts: u32,
-    pub classifier_entries: Vec<table::Request>,
+    pub table_entries: Vec<table::Request>,
     pub meter_entries: Vec<table::Request>,
     pub next_interval_id: u32,
 }
@@ -327,7 +327,7 @@ pub fn build_pattern_generation_entries(
         ranges.push((start, end, factor));
     }
 
-    let mut classifier_entries = Vec::new();
+    let mut table_entries = Vec::new();
     let mut meter_entries = Vec::new();
     let mut next_interval_id = first_interval_id;
 
@@ -363,13 +363,13 @@ pub fn build_pattern_generation_entries(
                 .action("ingress.p4tg.pattern_shaping.set_interval_id")
                 .action_data("interval_id", interval_id);
 
-            classifier_entries.push(req);
+            table_entries.push(req);
         }
     }
 
     PatternGenerationEntries {
         period_pkts: period_pkts_u32,
-        classifier_entries,
+        table_entries,
         meter_entries,
         next_interval_id,
     }

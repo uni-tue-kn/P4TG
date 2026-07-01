@@ -16,6 +16,7 @@
     - Median
     - Minimum: choose the smallest value
 - Added RFC2544 API automation examples, result summaries, and plots to `p4tg_test_automation`.
+- Added controller-generated PDF reports for RFC2544 results or general P4TG statistics.
 
 ### Bug fixes
 - Fixed bug for square waves with low != 0 and very short high phases.
@@ -23,6 +24,7 @@
 - Fixed RFC2544 mode switching and port mapping handling in the frontend.
 - Improved RFC2544 throughput detection robustness and trial pacing.
 - Improved consistency of displayed rate units (`Gbit/s`, `Mpps`).
+- Fixed single-point PDF report charts not rendering partial or cancelled throughput results.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.

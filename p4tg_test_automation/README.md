@@ -46,7 +46,8 @@ It uses one active packet template on port `1/0`, maps RX to `2/0`, and runs zer
 python run.py --payload payloads/rfc2544_10G_64_128.json \
               --base-url http://localhost:8000/api \
               --configure-ports \
-              --rfc2544-timeout 600
+              --rfc2544-timeout 600 \
+              --report
 ```
 
 For RFC2544 payloads, the runner polls `/statistics` until `rfc2544.running` becomes `false`.
@@ -59,6 +60,9 @@ It then saves the raw API statistics as before and additionally writes RFC2544 s
 - `<payload_stem>_rfc2544_frame_loss.csv` and `.pdf` — frame-loss percentage over offered load
 - `<payload_stem>_rfc2544_reset.csv` and `.pdf` — reset-time results, if selected
 - `<payload_stem>_rfc2544_system_recovery.csv` and `.pdf` — system-recovery results, if selected
+- `<payload_stem>_report.pdf` — controller-generated report with RFC2544 results when available, general P4TG statistics, plots, frame-size distributions, histograms, and DUT metadata if `--report` is set
+
+The PDF report is generated through `POST /api/report`. Pass `--report-metadata metadata.json` to include DUT/test metadata; omitted fields default to `n/a`.
 
 Reset and system-recovery are disabled in the example payload. Enable them in the `rfc2544` section if the DUT/link behavior needed for those tests is available.
 

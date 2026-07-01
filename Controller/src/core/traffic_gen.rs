@@ -835,7 +835,7 @@ impl TrafficGen {
             .collect();
 
         let mut pattern_config_entries = vec![];
-        let mut pattern_classifier_entries = vec![];
+        let mut pattern_table_entries = vec![];
         let mut pattern_meter_entries = vec![];
         let mut pattern_interval_count = 0usize;
         let mut next_pattern_interval_id = 0u32;
@@ -889,11 +889,11 @@ impl TrafficGen {
                     next_pattern_interval_id,
                 );
 
-                let new_pattern_table_entries = entries.classifier_entries.len();
+                let new_pattern_table_entries = entries.table_entries.len();
                 // One meter entry is generated per unique sampled/merged pattern interval.
                 let new_pattern_intervals = entries.meter_entries.len();
 
-                if pattern_classifier_entries.len() + new_pattern_table_entries
+                if pattern_table_entries.len() + new_pattern_table_entries
                     > max_pattern_table_entries
                 {
                     return Err(P4TGError::Error {
@@ -913,25 +913,23 @@ impl TrafficGen {
                 pattern_interval_count += new_pattern_intervals;
                 let config_req = build_pattern_config_entry(stream.app_id, entries.period_pkts);
                 pattern_config_entries.push(config_req);
-                pattern_classifier_entries.extend(entries.classifier_entries);
+                pattern_table_entries.extend(entries.table_entries);
                 pattern_meter_entries.extend(entries.meter_entries);
             }
         }
 
         info!(
-            "Writing {} pattern meter entries, {} pattern classifier entries, and {} pattern config entries.",
+            "Writing {} pattern meter entries, {} pattern table entries, and {} pattern config entries.",
             pattern_meter_entries.len(),
-            pattern_classifier_entries.len(),
+            pattern_table_entries.len(),
             pattern_config_entries.len()
         );
 
         if !pattern_meter_entries.is_empty() {
             switch.write_table_entries(pattern_meter_entries).await?;
         }
-        if !pattern_classifier_entries.is_empty() {
-            switch
-                .write_table_entries(pattern_classifier_entries)
-                .await?;
+        if !pattern_table_entries.is_empty() {
+            switch.write_table_entries(pattern_table_entries).await?;
         }
         if !pattern_config_entries.is_empty() {
             switch.write_table_entries(pattern_config_entries).await?;

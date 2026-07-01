@@ -111,7 +111,7 @@ See the full [Changelog](./docs/CHANGELOG.md).
 | Automated testing                             | ✅ Available    |
 | Line rate traffic patterns (e.g., flashcrowd) | ✅ Available    |
 | File reporting                                | ✅ Available    |
-| Test profiles                                 | ⚠️ Experimental |
+| RFC2544 Test profile                          | ✅ Available    |
 | Localization                                  | ⚠️ Experimental |
 | NDP                                           | ⏳ Planned      |
 | NETCONF                                       | ⏳ Planned      |

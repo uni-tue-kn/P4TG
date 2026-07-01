@@ -1,6 +1,7 @@
 import requests
 import json
 import logging
+from pathlib import Path
 from ..utils.helpers import save_stats
 from enum import Enum
 from typing import Union
@@ -73,6 +74,25 @@ class P4TG:
             if payload_path is not None:
                 save_stats("stats", response.text, payload_path)
             return json.loads(response.text)
+
+    def export_report(self, metadata, payload_path=None):
+        url = f"{self.base_url}/report"
+        logging.info("POST %s", url)
+        response = requests.post(url, json=metadata)
+        if response.status_code != 200:
+            print(f"Error {response.status_code}, {response.reason}: ", response.text)
+            return None
+
+        results_dir = Path("results")
+        results_dir.mkdir(parents=True, exist_ok=True)
+        if payload_path is None:
+            filename = "p4tg_report.pdf"
+        else:
+            filename = f"{Path(payload_path).stem}_report.pdf"
+        out_path = results_dir / filename
+        out_path.write_bytes(response.content)
+        logging.info("Wrote %s.", out_path)
+        return out_path
 
     def get_ports(self):
         url = f"{self.base_url}/ports"

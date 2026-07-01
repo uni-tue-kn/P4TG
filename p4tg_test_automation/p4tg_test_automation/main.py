@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import time
     
@@ -40,6 +41,33 @@ def rfc2544_result_counts(rfc2544):
     return ", ".join(f"{key}={len(rfc2544.get(key, []) or [])}" for key in keys)
 
 
+def default_report_metadata():
+    return {
+        "title": "P4TG Test Report",
+        "tester": "n/a",
+        "organization": "n/a",
+        "test_location": "n/a",
+        "dut_name": "n/a",
+        "dut_vendor": "n/a",
+        "dut_model": "n/a",
+        "dut_software_version": "n/a",
+        "dut_configuration": "n/a",
+        "media_type": "n/a",
+        "protocol": "n/a",
+        "data_stream_format": "n/a",
+        "notes": "n/a",
+    }
+
+
+def load_report_metadata(path):
+    metadata = default_report_metadata()
+    if not path:
+        return metadata
+    with open(path, "r", encoding="utf-8") as handle:
+        metadata.update(json.load(handle))
+    return metadata
+
+
 def wait_for_rfc2544(api: P4TG, timeout_s: float = 1800.0, poll_interval_s: float = 2.0):
     start = time.time()
     deadline = start + timeout_s
@@ -75,7 +103,7 @@ def wait_for_rfc2544(api: P4TG, timeout_s: float = 1800.0, poll_interval_s: floa
     raise TimeoutError(f"Timed out waiting for RFC2544 completion after {timeout_s:.0f}s")
 
 
-def run_tests(api: P4TG, payload, payload_path, show_plots, rfc2544_timeout):
+def run_tests(api: P4TG, payload, payload_path, show_plots, rfc2544_timeout, report, report_metadata):
     tests = payload if isinstance(payload, list) else [payload]
     logging.info("Loaded %d test configuration(s) from %s.", len(tests), payload_path)
     
@@ -120,6 +148,9 @@ def run_tests(api: P4TG, payload, payload_path, show_plots, rfc2544_timeout):
     if rfc2544_mode:
         logging.info("Rendering RFC2544 summaries and plots.")
         plot_rfc2544_results(stats, payload_path, show_plots=show_plots)
+    if report:
+        logging.info("Exporting controller-generated P4TG PDF report.")
+        api.export_report(report_metadata, payload_path)
     logging.info("Done. Results are in the results/ directory.")
 
 def configure_ports(api: P4TG):
@@ -137,6 +168,19 @@ def main():
     ap.add_argument("--base-url", default="http://localhost:8000/api")
     ap.add_argument("--show-plots", type=lambda x: x.lower()=="true", default=False)
     ap.add_argument("--rfc2544-timeout", type=float, default=1800.0)
+    ap.add_argument(
+        "--report",
+        "--rfc2544-report",
+        dest="report",
+        action="store_true",
+        help="Export the controller-generated P4TG PDF report.",
+    )
+    ap.add_argument(
+        "--report-metadata",
+        "--rfc2544-report-metadata",
+        dest="report_metadata",
+        help="Path to JSON metadata for the P4TG PDF report.",
+    )
     ap.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     ap.add_argument(
         "--configure-ports",
@@ -157,7 +201,16 @@ def main():
         configured_ports = configure_ports(api)
         wait_for_ports_up(api, configured_ports)
 
-    run_tests(api, payload, payload_path, show_plots, args.rfc2544_timeout)
+    report_metadata = load_report_metadata(args.report_metadata)
+    run_tests(
+        api,
+        payload,
+        payload_path,
+        show_plots,
+        args.rfc2544_timeout,
+        args.report,
+        report_metadata,
+    )
 
 
 if __name__ == "__main__":

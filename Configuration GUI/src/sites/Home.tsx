@@ -23,6 +23,7 @@ import { Button, Col, Form, Nav, Row, Tab } from 'react-bootstrap'
 import { del, get, post } from "../common/API";
 import SendReceiveMonitor from "../components/SendReceiveMonitor";
 import Loader from "../components/Loader";
+import P4tgReportExportModal from "../components/P4tgReportExportModal";
 
 import {
     ASIC,
@@ -444,6 +445,20 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     }
 
     const rfc2544Status = statistics?.[0]?.rfc2544;
+    const hasReportData = Object.values(time_statistics || {}).some((entry) =>
+        Boolean(entry?.tx_rate_l1 && Object.keys(entry.tx_rate_l1).length > 0)
+        || Boolean(entry?.rx_rate_l1 && Object.keys(entry.rx_rate_l1).length > 0)
+    ) || Object.values(statistics || {}).some((entry) =>
+        Boolean(entry?.rfc2544)
+        || Boolean(entry?.frame_size && Object.keys(entry.frame_size).length > 0)
+        || Boolean(entry?.tx_rate_l1 && Object.keys(entry.tx_rate_l1).length > 0)
+        || Boolean(entry?.rx_rate_l1 && Object.keys(entry.rx_rate_l1).length > 0)
+        || Boolean(entry?.frame_type_data && Object.keys(entry.frame_type_data).length > 0)
+        || Boolean(entry?.iats && Object.keys(entry.iats).length > 0)
+        || Boolean(entry?.rtts && Object.keys(entry.rtts).length > 0)
+        || Boolean(entry?.packet_loss && Object.keys(entry.packet_loss).length > 0)
+        || Boolean(entry?.out_of_order && Object.keys(entry.out_of_order).length > 0)
+    );
     const rfc2544StatusText = rfc2544Status?.status.toLowerCase() ?? "";
     const rfc2544StatusNeedsAttention = rfc2544Status?.running && rfc2544StatusText.includes("waiting for dut");
     const formatRuntime = (seconds: number) => {
@@ -488,9 +503,15 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                         <>
                             {time_statistics && time_statistics[0].tx_rate_l1 && Object.keys(time_statistics[0].tx_rate_l1).length > 0 ?
                                 <Button onClick={export_json} className="mb-1" variant="dark"><i
-                                    className="bi bi-file-earmark-arrow-down-fill" /> Export </Button>
+                                    className="bi bi-file-earmark-arrow-down-fill" /> Export JSON </Button>
                                 : null}
                             {" "}
+                            {hasReportData ?
+                                <>
+                                    <P4tgReportExportModal showToast={showToast} />
+                                    {" "}
+                                </>
+                                : null}
                             <Button type={"submit"} className="mb-1" variant="primary"><i
                                 className="bi bi-play-circle-fill" /> Start </Button>
                             {" "}

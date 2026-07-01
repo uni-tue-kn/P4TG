@@ -18,6 +18,7 @@
  */
 mod histogram;
 mod online;
+pub mod pdf_report;
 mod ports;
 pub mod server;
 pub mod statistics;
