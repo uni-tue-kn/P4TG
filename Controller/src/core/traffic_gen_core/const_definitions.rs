@@ -176,4 +176,8 @@ pub const PATTERN_METER_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_mete
 pub const MAX_PATTERN_TABLE_ENTRIES_TOFINO_2: usize = 40000;
 pub const MAX_PATTERN_TABLE_ENTRIES: usize = 8192;
 
+/// Maximum number of pattern meter indices we are allowed to program.
+pub const MAX_PATTERN_METER_ENTRIES_TOFINO_2: usize = 16384;
+pub const MAX_PATTERN_METER_ENTRIES: usize = 8192;
+
 pub const PATTERN_INTERVAL_REGISTER: &str = "ingress.p4tg.pattern_shaping.pattern_interval_number";

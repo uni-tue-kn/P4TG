@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -15,8 +16,8 @@ use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::{
     GenerationMode, GenerationPattern, GenerationPatternConfig, GenerationUnit, Rfc2544Config,
     Rfc2544FrameLossResult, Rfc2544LatencyResult, Rfc2544LossToleranceUnit, Rfc2544PortMapping,
-    Rfc2544ResetResult, Rfc2544Results, Rfc2544SystemRecoveryResult, Rfc2544ThroughputResult,
-    RxTarget, TrafficGenData,
+    Rfc2544ResetResult, Rfc2544Results, Rfc2544SystemRecoveryResult, Rfc2544ThroughputAggregation,
+    Rfc2544ThroughputRepetitionResult, Rfc2544ThroughputResult, RxTarget, TrafficGenData,
 };
 use crate::AppState;
 
@@ -152,7 +153,10 @@ fn frame_loss_complete(
 fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Results) -> u32 {
     let throughput_needed =
         config.throughput || config.latency || config.reset || config.system_recovery;
-    let throughput_trials = config.throughput_search_steps.saturating_add(1);
+    let throughput_trials = config
+        .throughput_search_steps
+        .saturating_add(1)
+        .saturating_mul(config.throughput_repetitions.max(1));
     let recovery_duration = config
         .system_recovery_overload_duration_secs
         .saturating_add(config.system_recovery_observation_duration_secs);
@@ -779,7 +783,91 @@ fn latency_result(
     }
 }
 
-async fn run_throughput(
+fn median_rate(mut rates: Vec<f64>) -> f64 {
+    rates.sort_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
+    let middle = rates.len() / 2;
+    if rates.len().is_multiple_of(2) {
+        (rates[middle - 1] + rates[middle]) / 2.0
+    } else {
+        rates[middle]
+    }
+}
+
+fn aggregate_throughput_rate(
+    config: &Rfc2544Config,
+    repetitions: &[Rfc2544ThroughputRepetitionResult],
+) -> (f64, bool) {
+    let rates = repetitions
+        .iter()
+        .map(|result| result.zero_loss_rate_gbps)
+        .collect::<Vec<_>>();
+
+    match config.throughput_aggregation {
+        Rfc2544ThroughputAggregation::Minimum => (
+            rates
+                .iter()
+                .copied()
+                .min_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal))
+                .unwrap_or(config.line_rate_gbps as f64),
+            false,
+        ),
+        Rfc2544ThroughputAggregation::Median => (median_rate(rates), false),
+        Rfc2544ThroughputAggregation::Clustered => {
+            let mut sorted = rates;
+            sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
+            if sorted.len() <= 1 {
+                return (median_rate(sorted), false);
+            }
+
+            let tolerance = config.throughput_cluster_tolerance_gbps.max(0.0);
+            let mut best_start = 0_usize;
+            let mut best_end = 0_usize;
+            let mut start = 0_usize;
+
+            for end in 0..sorted.len() {
+                while sorted[end] - sorted[start] > tolerance {
+                    start += 1;
+                }
+
+                let current_len = end - start + 1;
+                let best_len = best_end - best_start + 1;
+                if current_len > best_len {
+                    best_start = start;
+                    best_end = end;
+                }
+            }
+
+            if best_end > best_start {
+                (median_rate(sorted[best_start..=best_end].to_vec()), false)
+            } else {
+                (median_rate(sorted), true)
+            }
+        }
+    }
+}
+
+fn representative_throughput_repetition(
+    repetitions: &[Rfc2544ThroughputRepetitionResult],
+    selected_rate_gbps: f64,
+) -> &Rfc2544ThroughputRepetitionResult {
+    repetitions
+        .iter()
+        .min_by(|left, right| {
+            let left_delta = (left.zero_loss_rate_gbps - selected_rate_gbps).abs();
+            let right_delta = (right.zero_loss_rate_gbps - selected_rate_gbps).abs();
+            left_delta
+                .partial_cmp(&right_delta)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    left.zero_loss_rate_gbps
+                        .partial_cmp(&right.zero_loss_rate_gbps)
+                        .unwrap_or(Ordering::Equal)
+                })
+        })
+        .expect("throughput aggregation requires at least one repetition")
+}
+
+async fn run_throughput_repetition(
     state: &Arc<AppState>,
     base: &TrafficGenData,
     config: &Rfc2544Config,
@@ -787,16 +875,20 @@ async fn run_throughput(
     mapping_index: usize,
     mapping_count: usize,
     frame_size: u32,
+    repetition_index: u32,
+    repetition_count: u32,
     mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
-) -> Option<Rfc2544ThroughputResult> {
+) -> Option<Rfc2544ThroughputRepetitionResult> {
     set_status(
         state,
         format!(
-            "RFC2544 throughput | mapping {}/{} | {} | {frame_size} B",
+            "RFC2544 throughput | mapping {}/{} | {} | {frame_size} B | repetition {}/{}",
             mapping_index,
             mapping_count,
-            mapping_label(mapping)
+            mapping_label(mapping),
+            repetition_index,
+            repetition_count
         ),
     )
     .await;
@@ -812,6 +904,8 @@ async fn run_throughput(
         mapping,
         mapping_index,
         mapping_count,
+        repetition_index,
+        repetition_count,
         1,
         total_trials,
         mapping_warmup_done,
@@ -844,6 +938,8 @@ async fn run_throughput(
                 mapping,
                 mapping_index,
                 mapping_count,
+                repetition_index,
+                repetition_count,
                 step + 2,
                 total_trials,
                 mapping_warmup_done,
@@ -872,12 +968,76 @@ async fn run_throughput(
         (zero_loss_rate_gbps, first_loss_rate, result_lost_frames)
     };
 
+    Some(Rfc2544ThroughputRepetitionResult {
+        repetition: repetition_index,
+        zero_loss_rate_gbps,
+        first_loss_rate_gbps: first_loss_rate,
+        lost_frames: result_lost_frames,
+    })
+}
+
+async fn run_throughput(
+    state: &Arc<AppState>,
+    base: &TrafficGenData,
+    config: &Rfc2544Config,
+    mapping: &Rfc2544PortMapping,
+    mapping_index: usize,
+    mapping_count: usize,
+    frame_size: u32,
+    mapping_warmup_done: &mut bool,
+    cancel_token: &CancellationToken,
+) -> Option<Rfc2544ThroughputResult> {
+    let repetition_count = config.throughput_repetitions.max(1);
+    let mut repetitions = Vec::with_capacity(repetition_count as usize);
+
+    for repetition_index in 1..=repetition_count {
+        let result = run_throughput_repetition(
+            state,
+            base,
+            config,
+            mapping,
+            mapping_index,
+            mapping_count,
+            frame_size,
+            repetition_index,
+            repetition_count,
+            mapping_warmup_done,
+            cancel_token,
+        )
+        .await?;
+        repetitions.push(result);
+    }
+
+    let (zero_loss_rate_gbps, clustered_fallback) = aggregate_throughput_rate(config, &repetitions);
+    if clustered_fallback {
+        warn!(
+            "RFC2544 throughput clustered aggregation for {} {frame_size} byte frames did not find a multi-run cluster; using median.",
+            mapping_label(mapping)
+        );
+        set_status(
+            state,
+            format!(
+                "RFC2544 throughput | {} | {frame_size} B | no clustered ZLT group found, using median",
+                mapping_label(mapping)
+            ),
+        )
+        .await;
+    }
+
+    let selected_repetition =
+        representative_throughput_repetition(&repetitions, zero_loss_rate_gbps);
+    let first_loss_rate_gbps = selected_repetition.first_loss_rate_gbps;
+    let lost_frames = selected_repetition.lost_frames;
     let result = Rfc2544ThroughputResult {
         mapping: mapping.clone(),
         frame_size,
         zero_loss_rate_gbps,
-        first_loss_rate_gbps: first_loss_rate,
-        lost_frames: result_lost_frames,
+        first_loss_rate_gbps,
+        lost_frames,
+        aggregation: config.throughput_aggregation,
+        repetition_count,
+        cluster_tolerance_gbps: config.throughput_cluster_tolerance_gbps,
+        repetitions,
     };
 
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
@@ -897,6 +1057,8 @@ async fn run_fixed_rate_loss_trial(
     mapping: &Rfc2544PortMapping,
     mapping_index: usize,
     mapping_count: usize,
+    repetition_index: u32,
+    repetition_count: u32,
     trial_index: u32,
     trial_count: u32,
     mapping_warmup_done: &mut bool,
@@ -906,10 +1068,12 @@ async fn run_fixed_rate_loss_trial(
     set_status(
         state,
         format!(
-            "RFC2544 throughput | mapping {}/{} | {} | {frame_size} B | trial {}/{} | {:.3} Gbit/s",
+            "RFC2544 throughput | mapping {}/{} | {} | {frame_size} B | repetition {}/{} | trial {}/{} | {:.3} Gbit/s",
             mapping_index,
             mapping_count,
             mapping_label(mapping),
+            repetition_index,
+            repetition_count,
             trial_index,
             trial_count,
             rate_gbps
@@ -929,10 +1093,12 @@ async fn run_fixed_rate_loss_trial(
     }
 
     let context = format!(
-        "Throughput | mapping {}/{} | {} | {frame_size} B | trial {}/{} | {:.3} Gbit/s",
+        "Throughput | mapping {}/{} | {} | {frame_size} B | repetition {}/{} | trial {}/{} | {:.3} Gbit/s",
         mapping_index,
         mapping_count,
         mapping_label(mapping),
+        repetition_index,
+        repetition_count,
         trial_index,
         trial_count,
         rate_gbps

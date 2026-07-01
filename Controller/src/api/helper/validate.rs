@@ -242,6 +242,22 @@ pub fn validate_request(
             ));
         }
 
+        if config.throughput_repetitions == 0 {
+            return Err(Error::new(
+                "RFC2544 throughput repetitions must be greater than 0.",
+            ));
+        }
+
+        if matches!(
+            config.throughput_aggregation,
+            Rfc2544ThroughputAggregation::Clustered
+        ) && config.throughput_cluster_tolerance_gbps <= 0.0
+        {
+            return Err(Error::new(
+                "RFC2544 throughput cluster tolerance must be greater than 0.",
+            ));
+        }
+
         if config.latency && config.latency_duration_secs == 0 {
             return Err(Error::new(
                 "RFC2544 latency duration must be greater than 0.",

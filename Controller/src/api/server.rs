@@ -75,6 +75,7 @@ use crate::core::traffic_gen_core::types::*;
         Rfc2544Config,
         Rfc2544Results,
         Rfc2544ThroughputResult,
+        Rfc2544ThroughputRepetitionResult,
         Rfc2544LatencyResult,
         Rfc2544ResetResult,
         Rfc2544FrameLossResult,

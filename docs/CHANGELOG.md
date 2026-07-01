@@ -9,6 +9,12 @@
   - Zero-loss throughput, latency, frame loss, reset time, and system recovery.
   - Per TX/RX mapping execution and result reporting.
 - Added RFC2544 configuration and tabbed result views to the frontend.
+- Added optional repeated/clustered RFC2544 zero-loss throughput aggregation for noisy or virtualized DUTs.
+  - Zero-Loss Throughput measurement repetitions can be configured.
+  - The zero-loss throughput is then chosen from those repetitions based on the mode:
+    - Clustered: Aggregate results withing a configurable window and choose the window containing the most measurement results. Take the median of that value. This eliminates noisy outliers.
+    - Median
+    - Minimum: choose the smallest value
 - Added RFC2544 API automation examples, result summaries, and plots to `p4tg_test_automation`.
 
 ### Bug fixes

@@ -471,6 +471,9 @@ export interface Rfc2544Config {
     line_rate_gbps: number,
     trial_duration_secs: number,
     throughput_search_steps: number,
+    throughput_repetitions: number,
+    throughput_aggregation: Rfc2544ThroughputAggregation,
+    throughput_cluster_tolerance_gbps: number,
     throughput_loss_tolerance: Rfc2544LossTolerance,
     latency_duration_secs: number,
     latency_repetitions: number,
@@ -487,6 +490,8 @@ export interface Rfc2544LossTolerance {
     value: number,
 }
 
+export type Rfc2544ThroughputAggregation = "clustered" | "median" | "minimum";
+
 export const RFC2544_FRAME_SIZES = [64, 128, 256, 512, 1024, 1280, 1518];
 
 export const DefaultRfc2544Config = (): Rfc2544Config => ({
@@ -499,6 +504,9 @@ export const DefaultRfc2544Config = (): Rfc2544Config => ({
     line_rate_gbps: 100,
     trial_duration_secs: 10,
     throughput_search_steps: 7,
+    throughput_repetitions: 1,
+    throughput_aggregation: "clustered",
+    throughput_cluster_tolerance_gbps: 0.5,
     throughput_loss_tolerance: { unit: "packets", value: 0 },
     latency_duration_secs: 10,
     latency_repetitions: 1,
@@ -539,6 +547,17 @@ export interface Rfc2544PortMapping {
 export interface Rfc2544ThroughputResult {
     mapping: Rfc2544PortMapping,
     frame_size: number,
+    zero_loss_rate_gbps: number,
+    first_loss_rate_gbps?: number,
+    lost_frames: number,
+    aggregation: Rfc2544ThroughputAggregation,
+    repetition_count: number,
+    cluster_tolerance_gbps: number,
+    repetitions: Rfc2544ThroughputRepetitionResult[],
+}
+
+export interface Rfc2544ThroughputRepetitionResult {
+    repetition: number,
     zero_loss_rate_gbps: number,
     first_loss_rate_gbps?: number,
     lost_frames: number,

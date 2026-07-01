@@ -177,6 +177,18 @@ fn default_rfc2544_throughput_search_steps() -> u32 {
     7
 }
 
+fn default_rfc2544_throughput_repetitions() -> u32 {
+    1
+}
+
+fn default_rfc2544_throughput_aggregation() -> Rfc2544ThroughputAggregation {
+    Rfc2544ThroughputAggregation::Clustered
+}
+
+fn default_rfc2544_throughput_cluster_tolerance_gbps() -> f64 {
+    0.5
+}
+
 fn default_rfc2544_latency_duration_secs() -> u32 {
     10
 }
@@ -225,6 +237,14 @@ pub struct Rfc2544LossTolerance {
     pub value: f64,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Rfc2544ThroughputAggregation {
+    Clustered,
+    Median,
+    Minimum,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct Rfc2544Config {
     #[serde(default = "default_true")]
@@ -245,6 +265,12 @@ pub struct Rfc2544Config {
     pub trial_duration_secs: u32,
     #[serde(default = "default_rfc2544_throughput_search_steps")]
     pub throughput_search_steps: u32,
+    #[serde(default = "default_rfc2544_throughput_repetitions")]
+    pub throughput_repetitions: u32,
+    #[serde(default = "default_rfc2544_throughput_aggregation")]
+    pub throughput_aggregation: Rfc2544ThroughputAggregation,
+    #[serde(default = "default_rfc2544_throughput_cluster_tolerance_gbps")]
+    pub throughput_cluster_tolerance_gbps: f64,
     #[serde(default = "default_rfc2544_throughput_loss_tolerance")]
     pub throughput_loss_tolerance: Rfc2544LossTolerance,
     #[serde(default = "default_rfc2544_latency_duration_secs")]
@@ -324,6 +350,19 @@ pub struct Rfc2544PortMapping {
 pub struct Rfc2544ThroughputResult {
     pub mapping: Rfc2544PortMapping,
     pub frame_size: u32,
+    pub zero_loss_rate_gbps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_loss_rate_gbps: Option<f64>,
+    pub lost_frames: u64,
+    pub aggregation: Rfc2544ThroughputAggregation,
+    pub repetition_count: u32,
+    pub cluster_tolerance_gbps: f64,
+    pub repetitions: Vec<Rfc2544ThroughputRepetitionResult>,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544ThroughputRepetitionResult {
+    pub repetition: u32,
     pub zero_loss_rate_gbps: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_loss_rate_gbps: Option<f64>,

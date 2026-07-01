@@ -19,7 +19,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Button, Col, Form, Modal, Nav, OverlayTrigger, Row, Tab, Table, Tabs, Tooltip } from "react-bootstrap";
+import { Button, Col, Form, InputGroup, Modal, Nav, OverlayTrigger, Row, Tab, Table, Tabs, Tooltip } from "react-bootstrap";
 import { get } from "../common/API";
 import Loader from "../components/Loader";
 import {
@@ -1659,40 +1659,77 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                         </Col>
                                                     </Row>
                                                     <Row className="g-2 mt-1">
-                                                        <Col className="col-12 col-sm-6">
-                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Ignored loss", "Zero-loss throughput treats loss at or below this value as no loss. This is useful for noisy systems, but is not fully RFC2544 conform because RFC2544 throughput is defined with zero frame loss.")}</Form.Label>
+                                                        <Col className="col-12 col-sm-4">
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Throughput repetitions", "Number of complete zero-loss throughput searches to run per frame size and mapping. Repeating the search can make noisy or virtualized systems easier to characterize, but increases runtime.")}</Form.Label>
                                                             <Form.Control
                                                                 size="sm"
                                                                 type="number"
-                                                                min={0}
-                                                                max={rfc2544_config.throughput_loss_tolerance.unit === "percent" ? 100 : undefined}
-                                                                step={rfc2544_config.throughput_loss_tolerance.unit === "percent" ? 0.0001 : 1}
-                                                                value={rfc2544_config.throughput_loss_tolerance.value}
+                                                                min={1}
+                                                                step={1}
+                                                                value={rfc2544_config.throughput_repetitions}
                                                                 disabled={running || !rfc2544_config.throughput}
-                                                                onChange={(event) => updateRfc2544Config({
-                                                                    throughput_loss_tolerance: {
-                                                                        ...rfc2544_config.throughput_loss_tolerance,
-                                                                        value: Number(event.target.value),
-                                                                    }
-                                                                })}
+                                                                onChange={(event) => updateRfc2544Config({ throughput_repetitions: Number(event.target.value) })}
                                                             />
                                                         </Col>
-                                                        <Col className="col-12 col-sm-6">
-                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Ignored loss unit", "Select whether the ignored zero-loss-throughput loss value is an absolute packet count or a percentage of transmitted frames.")}</Form.Label>
+                                                        <Col className="col-12 col-sm-4">
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Aggregation mode", "Select how repeated zero-loss throughput searches are reduced to the reported value. Clustered mode groups rates within the configured tolerance and selects the largest stable group. Repeated or clustered ZLT is pragmatic and may deviate from strict RFC2544 single-run interpretation.")}</Form.Label>
                                                             <Form.Select
                                                                 size="sm"
-                                                                value={rfc2544_config.throughput_loss_tolerance.unit}
-                                                                disabled={running || !rfc2544_config.throughput}
-                                                                onChange={(event) => updateRfc2544Config({
-                                                                    throughput_loss_tolerance: {
-                                                                        ...rfc2544_config.throughput_loss_tolerance,
-                                                                        unit: event.target.value as "packets" | "percent",
-                                                                    }
-                                                                })}
+                                                                value={rfc2544_config.throughput_aggregation}
+                                                                disabled={running || !rfc2544_config.throughput || rfc2544_config.throughput_repetitions <= 1}
+                                                                onChange={(event) => updateRfc2544Config({ throughput_aggregation: event.target.value as "clustered" | "median" | "minimum" })}
                                                             >
-                                                                <option value="packets">Packets</option>
-                                                                <option value="percent">Percent</option>
+                                                                <option value="clustered">Clustered</option>
+                                                                <option value="median">Median</option>
+                                                                <option value="minimum">Minimum</option>
                                                             </Form.Select>
+                                                        </Col>
+                                                        <Col className="col-12 col-sm-4">
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Cluster tolerance (Gbit/s)", "Maximum spread within a clustered zero-loss-throughput group. For example, with 0.5 Gbit/s tolerance, 10.8, 11.0, and 11.2 Gbit/s form one stable group.")}</Form.Label>
+                                                            <Form.Control
+                                                                size="sm"
+                                                                type="number"
+                                                                min={0.001}
+                                                                step="any"
+                                                                value={rfc2544_config.throughput_cluster_tolerance_gbps}
+                                                                disabled={running || !rfc2544_config.throughput || rfc2544_config.throughput_repetitions <= 1 || rfc2544_config.throughput_aggregation !== "clustered"}
+                                                                onChange={(event) => updateRfc2544Config({ throughput_cluster_tolerance_gbps: Number(event.target.value) })}
+                                                            />
+                                                        </Col>
+                                                    </Row>
+                                                    <Row className="g-2 mt-1">
+                                                        <Col className="col-12 col-sm-6">
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Ignored loss", "Zero-loss throughput treats loss at or below this value as no loss. Select packets for an absolute count or percent for a share of transmitted frames. This is useful for noisy systems, but is not fully RFC2544 conform because RFC2544 throughput is defined with zero frame loss.")}</Form.Label>
+                                                            <InputGroup size="sm">
+                                                                <Form.Control
+                                                                    type="number"
+                                                                    min={0}
+                                                                    max={rfc2544_config.throughput_loss_tolerance.unit === "percent" ? 100 : undefined}
+                                                                    step={rfc2544_config.throughput_loss_tolerance.unit === "percent" ? 0.0001 : 1}
+                                                                    value={rfc2544_config.throughput_loss_tolerance.value}
+                                                                    disabled={running || !rfc2544_config.throughput}
+                                                                    onChange={(event) => updateRfc2544Config({
+                                                                        throughput_loss_tolerance: {
+                                                                            ...rfc2544_config.throughput_loss_tolerance,
+                                                                            value: Number(event.target.value),
+                                                                        }
+                                                                    })}
+                                                                />
+                                                                <Form.Select
+                                                                    style={{ width: "auto", flex: "0 0 auto", minWidth: "fit-content", whiteSpace: "nowrap" }}
+                                                                    value={rfc2544_config.throughput_loss_tolerance.unit}
+                                                                    disabled={running || !rfc2544_config.throughput}
+                                                                    onChange={(event) => updateRfc2544Config({
+                                                                        throughput_loss_tolerance: {
+                                                                            ...rfc2544_config.throughput_loss_tolerance,
+                                                                            unit: event.target.value as "packets" | "percent",
+                                                                        }
+                                                                    })}
+                                                                >
+                                                                    <option value="packets">Packets</option>
+                                                                    <option value="percent">Percent</option>
+                                                                </Form.Select>
+                                                            </InputGroup>
                                                         </Col>
                                                     </Row>
                                                 </div>

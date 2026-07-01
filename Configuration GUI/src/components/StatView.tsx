@@ -336,6 +336,18 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     const rfc2544FrameLossSelected = rfc2544 ? (rfc2544.frame_loss_selected ?? rfc2544.frame_loss.length > 0) : false;
     const rfc2544SystemRecoverySelected = rfc2544 ? (rfc2544.system_recovery_selected ?? rfc2544SystemRecovery.length > 0) : false;
     const formatOptionalGbps = (gbps: number | undefined) => gbps !== undefined ? formatGbps(gbps) : "-";
+    const formatThroughputAggregation = (aggregation: string | undefined) => {
+        switch (aggregation) {
+            case "clustered":
+                return "Clustered";
+            case "median":
+                return "Median";
+            case "minimum":
+                return "Minimum";
+            default:
+                return "-";
+        }
+    };
     const mappingLabel = (mapping: Rfc2544PortMapping) =>
         `${mapping.tx_port}/${mapping.tx_channel} → ${mapping.rx_port}/${mapping.rx_channel}`;
     const mappingMatches = (left: Rfc2544PortMapping | undefined, right: Rfc2544PortMapping) =>
@@ -830,6 +842,8 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                             <th>Zero Loss Throughput</th>
                             <th>First Loss Rate</th>
                             <th>Lost Frames</th>
+                            <th>Aggregation</th>
+                            <th>Repetitions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -841,11 +855,57 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                                 <td>{formatOptionalGbps(row?.zero_loss_rate_gbps)}</td>
                                 <td>{formatOptionalGbps(row?.first_loss_rate_gbps)}</td>
                                 <td>{row ? formatFrameCount(row.lost_frames) : "-"}</td>
+                                <td>{formatThroughputAggregation(row?.aggregation)}</td>
+                                <td>{row?.repetition_count ?? "-"}</td>
                             </tr>
                         }))}
                     </tbody>
                 </Table>
             </Col>
+            {rfc2544.throughput.some((row) => (row.repetitions ?? []).length > 1) ?
+                <Col className={"col-12 col-md-6"}>
+                    <Table striped bordered hover size="sm" className={"mt-3 mb-3"}>
+                        <Rfc2544Caption className="caption-top fw-semibold">
+                            RFC2544 ZLT Repetitions&nbsp;
+                            <InfoBox>
+                                <>
+                                    <h5>ZLT Repetitions</h5>
+                                    <p>Repeated zero-loss throughput runs are aggregated into the reported value. Clustered mode groups rates within the configured Gbit/s tolerance and uses the largest stable group.</p>
+                                </>
+                            </InfoBox>
+                        </Rfc2544Caption>
+                        <thead className={"table-dark"}>
+                            <tr>
+                                <th>Mapping</th>
+                                <th>Frame Size</th>
+                                <th>Rep.</th>
+                                <th>ZLT</th>
+                                <th>First Loss</th>
+                                <th>Lost Frames</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rfc2544Mappings.flatMap((mapping) => rfc2544FrameSizes.flatMap((frameSize) => {
+                                const row = rfc2544.throughput.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
+                                const repetitions = row?.repetitions ?? [];
+                                if (repetitions.length <= 1) {
+                                    return [];
+                                }
+                                return repetitions.map((repetition) => (
+                                    <tr key={`throughput-repetition-${mappingLabel(mapping)}-${frameSize}-${repetition.repetition}`}>
+                                        <td>{mappingLabel(mapping)}</td>
+                                        <td>{frameSize} B</td>
+                                        <td>{repetition.repetition}</td>
+                                        <td>{formatOptionalGbps(repetition.zero_loss_rate_gbps)}</td>
+                                        <td>{formatOptionalGbps(repetition.first_loss_rate_gbps)}</td>
+                                        <td>{formatFrameCount(repetition.lost_frames)}</td>
+                                    </tr>
+                                ));
+                            }))}
+                        </tbody>
+                    </Table>
+                </Col>
+                : null}
         </Row>
         : null;
 
