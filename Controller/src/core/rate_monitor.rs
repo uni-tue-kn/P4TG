@@ -314,7 +314,7 @@ impl RateMonitor {
                         // a register has a value per pipe
                         let pipe = (index >> 7) as usize; // index = port number
 
-                        if sum.len() >= pipe {
+                        if sum.len() > pipe {
                             let sum = sum.get(pipe).unwrap().to_u128();
                             let n = max(1, n.get(pipe).unwrap().to_u128());
 
@@ -373,7 +373,7 @@ impl RateMonitor {
                     if let Some(n) = n {
                         let pipe = (index >> 7) as usize; // index = port number
 
-                        if sum.len() >= pipe {
+                        if sum.len() > pipe {
                             let sum = sum.get(pipe).unwrap().to_u128();
                             let n = max(1, n.get(pipe).unwrap().to_u128());
 
@@ -790,14 +790,18 @@ impl RateMonitor {
                         {
                             let port = rx_reverse_mapping.get(&port).unwrap();
 
-                            state
-                                .rate_monitor
-                                .lock()
-                                .await
-                                .rtt_storage
-                                .entry(*port)
-                                .or_insert(VecDeque::with_capacity(RTT_STORAGE))
-                                .push_back(rtt);
+                            {
+                                let mut rate_monitor = state.rate_monitor.lock().await;
+                                let samples = rate_monitor
+                                    .rtt_storage
+                                    .entry(*port)
+                                    .or_insert(VecDeque::with_capacity(RTT_STORAGE));
+                                // keep the storage bounded; drop the oldest sample when full
+                                if samples.len() >= RTT_STORAGE {
+                                    samples.pop_front();
+                                }
+                                samples.push_back(rtt);
+                            }
                             state
                                 .rate_monitor
                                 .lock()
@@ -835,24 +839,28 @@ impl RateMonitor {
                                     // catch overflow
                                     if rx_reverse_mapping.contains_key(&port) {
                                         let port = rx_reverse_mapping.get(&port).unwrap();
-                                        state
-                                            .rate_monitor
-                                            .lock()
-                                            .await
+                                        let mut rate_monitor = state.rate_monitor.lock().await;
+                                        let samples = rate_monitor
                                             .rx_iat_storage
                                             .entry(*port)
-                                            .or_insert(VecDeque::with_capacity(RTT_STORAGE))
-                                            .push_back(iat);
+                                            .or_insert(VecDeque::with_capacity(RTT_STORAGE));
+                                        // keep the storage bounded; drop the oldest sample when full
+                                        if samples.len() >= RTT_STORAGE {
+                                            samples.pop_front();
+                                        }
+                                        samples.push_back(iat);
                                     } else if tx_reverse_mapping.contains_key(&port) {
                                         let port = tx_reverse_mapping.get(&port).unwrap();
-                                        state
-                                            .rate_monitor
-                                            .lock()
-                                            .await
+                                        let mut rate_monitor = state.rate_monitor.lock().await;
+                                        let samples = rate_monitor
                                             .tx_iat_storage
                                             .entry(*port)
-                                            .or_insert(VecDeque::with_capacity(RTT_STORAGE))
-                                            .push_back(iat);
+                                            .or_insert(VecDeque::with_capacity(RTT_STORAGE));
+                                        // keep the storage bounded; drop the oldest sample when full
+                                        if samples.len() >= RTT_STORAGE {
+                                            samples.pop_front();
+                                        }
+                                        samples.push_back(iat);
                                     }
                                 }
                             } else {

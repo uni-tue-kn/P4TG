@@ -25,6 +25,21 @@
 - Improved RFC2544 throughput detection robustness and trial pacing.
 - Improved consistency of displayed rate units (`Gbit/s`, `Mpps`).
 - Fixed single-point PDF report charts not rendering partial or cancelled throughput results.
+- Fixed a controller crash (division by zero) on `GET:/api/time_statistics` with `limit=0`.
+- Fixed an off-by-one pipe index check in IAT monitoring that could crash the monitoring task.
+- Fixed unbounded growth of RTT/IAT sample storage during long-running tests. Storage is now capped at 50k samples per port.
+- Fixed invalid auto-negotiation values in the Python automation client (`PM_AN_ENABLE`/`PM_AN_DISABLE` -> `PM_AN_FORCE_ENABLE`/`PM_AN_FORCE_DISABLE`).
+- Fixed GTP-U encapsulation overhead being counted as 50 B instead of 36 B in rate calculation and validation.
+- Fixed the PDF report falling back to another test's time series when no matching entry exists, and dropping general statistics pages when RFC2544 results are present in the history.
+- Fixed duplicate dashboard mapping tabs when RFC2544 results and the current port mapping share a TX port/channel.
+- Fixed a controller deadlock when `GET:/api/restart` was called during a running RFC2544 benchmark.
+- Added missing minimum frame size (64 B) validation and fixed arithmetic underflows in packet construction for small MPLS/SRv6 frames.
+- Added missing channel range validation for stream settings and TX/RX mappings. Out-of-range channels could crash the controller or send traffic out of a neighboring port.
+- Fixed a controller startup crash when the device configuration table could not be read. The controller now falls back to 2 pipes.
+- Fixed histogram statistics reporting NaN/null values (probability, mean, std dev) when 0 or 1 packets were counted.
+- Fixed frame size/type monitoring tasks silently dying on unexpected table data, which froze the statistics. Unexpected entries are now skipped with a warning.
+- Fixed settings import silently failing on malformed JSON files. An error toast is now shown.
+- Fixed the frontend crashing on corrupt local storage entries. Corrupt entries are now dropped and replaced with defaults.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.

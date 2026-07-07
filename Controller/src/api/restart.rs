@@ -47,51 +47,68 @@ use std::time::SystemTime;
 )]
 /// Restarts the current traffic generation
 pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
-    let tg = &mut state.traffic_generator.lock().await;
-
     let port_mapping = &state.port_mapping;
     let front_panel_dev_port_mappings =
         generate_front_panel_to_dev_port_mappings(port_mapping, state.tofino2);
-    let tx_rx_port_mapping =
-        translate_fp_channel_to_dev_port_mapping(&tg.port_mapping, &front_panel_dev_port_mappings);
 
-    if !tg.running {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(Error::new(
-                "Traffic generator not running. Nothing to restart.",
-            )),
+    // Collect the current configuration and release the traffic generator lock
+    // before cancelling the monitor tasks: a cancelled RFC2544 task needs this
+    // lock to stop its running trial, so holding it across the cancellation
+    // deadlocks the controller.
+    let (tx_rx_port_mapping, active_stream_settings, active_streams, mode, duration) = {
+        let tg = state.traffic_generator.lock().await;
+
+        if !tg.running {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(Error::new(
+                    "Traffic generator not running. Nothing to restart.",
+                )),
+            )
+                .into_response();
+        }
+
+        let tx_rx_port_mapping = translate_fp_channel_to_dev_port_mapping(
+            &tg.port_mapping,
+            &front_panel_dev_port_mappings,
+        );
+
+        // contains the description of the stream, i.e., packet size and rate
+        // only look at active stream settings
+        // Translate front panel port to dev port
+        let active_stream_settings: Vec<StreamSetting> = tg
+            .stream_settings
+            .clone()
+            .into_iter()
+            .filter_map(|mut s| {
+                if s.active {
+                    let channel = s.channel.unwrap_or(0);
+                    s.port = *front_panel_dev_port_mappings.get(&s.port)? + channel as u32;
+                    Some(s)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let active_stream_ids: Vec<u8> =
+            active_stream_settings.iter().map(|s| s.stream_id).collect();
+        let active_streams: Vec<Stream> = tg
+            .streams
+            .clone()
+            .into_iter()
+            .filter(|s| active_stream_ids.contains(&s.stream_id))
+            .collect();
+
+        (
+            tx_rx_port_mapping,
+            active_stream_settings,
+            active_streams,
+            tg.mode,
+            tg.duration,
         )
-            .into_response();
-    }
-    state.experiment.lock().await.running = false;
+    };
 
-    // contains the description of the stream, i.e., packet size and rate
-    // only look at active stream settings
-    // Translate front panel port to dev port
-    let active_stream_settings: Vec<StreamSetting> = tg
-        .stream_settings
-        .clone()
-        .into_iter()
-        .filter_map(|mut s| {
-            if s.active {
-                let channel = s.channel.unwrap_or(0);
-                s.port = *front_panel_dev_port_mappings.get(&s.port)? + channel as u32;
-                Some(s)
-            } else {
-                None
-            }
-        })
-        .collect();
-    let active_stream_ids: Vec<u8> = active_stream_settings.iter().map(|s| s.stream_id).collect();
-    let active_streams: Vec<Stream> = tg
-        .streams
-        .clone()
-        .into_iter()
-        .filter(|s| active_stream_ids.contains(&s.stream_id))
-        .collect();
-    let mode = tg.mode;
-    let duration = tg.duration;
+    state.experiment.lock().await.running = false;
 
     // Cancel any existing duration monitor task
     state
@@ -108,7 +125,10 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
         .cancel_existing_monitoring_task()
         .await;
 
-    match tg
+    match state
+        .traffic_generator
+        .lock()
+        .await
         .start_traffic_generation(
             &state,
             active_streams,

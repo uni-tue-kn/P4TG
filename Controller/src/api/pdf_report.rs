@@ -184,9 +184,8 @@ fn build_pdf(input: ReportInput) -> Result<Vec<u8>, String> {
     };
 
     write_cover(&mut pdf, &input);
-    if input.stats.iter().any(|entry| entry.rfc2544.is_some()) {
-        for entry in input.stats.iter().filter(|entry| entry.rfc2544.is_some()) {
-            let rfc = entry.rfc2544.as_ref().unwrap();
+    for entry in &input.stats {
+        if let Some(rfc) = entry.rfc2544.as_ref() {
             pdf.new_page();
             pdf.heading(&format!(
                 "RFC2544 Results{}",
@@ -203,9 +202,7 @@ fn build_pdf(input: ReportInput) -> Result<Vec<u8>, String> {
             write_system_recovery(&mut pdf, rfc);
             write_reset(&mut pdf, rfc);
             write_limitations(&mut pdf, rfc);
-        }
-    } else {
-        for entry in &input.stats {
+        } else {
             write_p4tg_additional(
                 &mut pdf,
                 entry,
@@ -1534,10 +1531,9 @@ fn matching_time_stats<'a>(
     stats: &StatisticsApi,
     time_stats: &'a [TimeStatisticsApi],
 ) -> Option<&'a TimeStatisticsApi> {
-    time_stats
-        .iter()
-        .find(|entry| entry.name == stats.name)
-        .or_else(|| time_stats.first())
+    // No fallback to another entry: rendering a different test's time series
+    // is worse than omitting the charts.
+    time_stats.iter().find(|entry| entry.name == stats.name)
 }
 
 fn aggregate_rate_series(time_stats: &TimeStatisticsApi) -> Vec<ChartSeries> {

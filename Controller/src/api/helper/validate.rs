@@ -35,6 +35,17 @@ use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 use crate::PortMapping;
 
+/// Checks if a `(front panel port, channel)` combination is configured on the device.
+fn channel_configured(
+    available_ports: &HashMap<u32, PortMapping>,
+    front_panel_port: u32,
+    channel: u8,
+) -> bool {
+    available_ports
+        .values()
+        .any(|entry| entry.front_panel_port == front_panel_port && entry.channel == channel)
+}
+
 fn pattern_supports_inverted(pattern_type: &GenerationPattern) -> bool {
     matches!(
         pattern_type,
@@ -95,20 +106,11 @@ pub fn validate_request(
             )));
         }
         // Validate that configured channels are available when a port is channelized.
-        if let Some(x) = setting.channel {
-            if x != 0 {
-                let default_pm = PortMapping::default();
-                let dev_port = front_panel_dev_port_mappings
-                    .get(&setting.port)
-                    .unwrap_or(&0u32);
-                let channel_count = available_ports
-                    .get(dev_port)
-                    .unwrap_or(&default_pm)
-                    .channel_count;
-                if channel_count.is_none() {
-                    return Err(Error::new(format!("Port {:?} is not configured with channel_count > 1, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
-                }
-            }
+        // Without this check, an out-of-range channel would resolve to a dev port of
+        // a different front panel port (or panic on a missing port mapping).
+        let channel = setting.channel.unwrap_or(0);
+        if !channel_configured(available_ports, setting.port, channel) {
+            return Err(Error::new(format!("Channel {} is not configured for port {} in StreamSettings. Try resetting your local storage.", channel, setting.port)));
         }
     }
 
@@ -123,18 +125,31 @@ pub fn validate_request(
 
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
-    // Validate that front panel port is available
+    // Validate that front panel port and channel are available
     for (tx, channel) in tx_rx_port_mapping.iter() {
-        if !front_panel_dev_port_mappings.contains_key(&tx.parse().unwrap_or(u32::MAX)) {
+        let tx_port = tx.parse().unwrap_or(u32::MAX);
+        if !front_panel_dev_port_mappings.contains_key(&tx_port) {
             return Err(Error::new(format!(
                 "No mapping for front panel port {tx:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
             )));
         }
-        for (_, rx_target) in channel.iter() {
+        for (tx_channel, rx_target) in channel.iter() {
+            let tx_channel_num = tx_channel.parse().unwrap_or(u8::MAX);
+            if !channel_configured(available_ports, tx_port, tx_channel_num) {
+                return Err(Error::new(format!(
+                    "Channel {tx_channel} is not configured for TX port {tx} in TX-RX mapping."
+                )));
+            }
             if !front_panel_dev_port_mappings.contains_key(&rx_target.port) {
                 return Err(Error::new(format!(
                 "No mapping for front panel port {:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number.", rx_target.port
             )));
+            }
+            if !channel_configured(available_ports, rx_target.port, rx_target.channel) {
+                return Err(Error::new(format!(
+                    "Channel {} is not configured for RX port {} in TX-RX mapping.",
+                    rx_target.channel, rx_target.port
+                )));
             }
         }
     }
@@ -194,8 +209,10 @@ pub fn validate_request(
             ));
         }
 
-        if config.frame_sizes.contains(&0) {
-            return Err(Error::new("RFC2544 frame sizes must be greater than 0."));
+        if config.frame_sizes.iter().any(|frame_size| *frame_size < 64) {
+            return Err(Error::new(
+                "RFC2544 frame sizes must be at least 64 bytes.",
+            ));
         }
 
         if active_streams.is_empty() {
@@ -288,6 +305,15 @@ pub fn validate_request(
     }
 
     for stream in active_streams.iter() {
+        // Frame sizes below the Ethernet minimum underflow the header size
+        // subtractions in packet construction.
+        if stream.frame_size < 64 {
+            return Err(Error::new(format!(
+                "Frame size of stream with ID #{} must be at least 64 bytes.",
+                stream.stream_id
+            )));
+        }
+
         if stream.gtpu && stream.vxlan {
             return Err(Error::new(format!(
                 "VxLAN and GTP-U are mutually exclusive (Stream with ID #{})",

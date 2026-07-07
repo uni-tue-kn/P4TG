@@ -41,6 +41,7 @@ import {
 } from '../common/Interfaces'
 import styled from "styled-components";
 import SummaryView from '../components/SummaryView';
+import { loadFromStorage } from '../common/Helper';
 
 styled(Row)`
     display: flex;
@@ -124,19 +125,15 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const [visual, set_visual] = useState(true)
     const [rfc2544_runtime_countdown, set_rfc2544_runtime_countdown] = useState<number | null>(null)
 
-    // @ts-ignore
-    const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
-    // @ts-ignore
-    const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
+    const [streams, set_streams] = useState<Stream[]>(loadFromStorage<Stream[]>("streams", []))
+    const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(loadFromStorage<StreamSettings[]>("streamSettings", []))
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
-    // @ts-ignore
-    const [rtt_histogram_settings, set_rtt_histogram_settings] = useState<Record<string, HistogramConfig>>(JSON.parse(localStorage.getItem("rtt_histogram_config")) || {})
-    // @ts-ignore
-    const [iat_histogram_settings, set_iat_histogram_settings] = useState<Record<string, HistogramConfig>>(JSON.parse(localStorage.getItem("iat_histogram_config")) || {})
+    const [rtt_histogram_settings, set_rtt_histogram_settings] = useState<Record<string, HistogramConfig>>(loadFromStorage<Record<string, HistogramConfig>>("rtt_histogram_config", {}))
+    const [iat_histogram_settings, set_iat_histogram_settings] = useState<Record<string, HistogramConfig>>(loadFromStorage<Record<string, HistogramConfig>>("iat_histogram_config", {}))
 
     const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>(() => {
-        const configs = JSON.parse(localStorage.getItem("saved_configs") || '{}') as Record<string, TrafficGenData>;
+        const configs = loadFromStorage<Record<string, TrafficGenData>>("saved_configs", {});
         const filteredConfigs = Object.fromEntries(
             Object.entries(configs).filter(([name, config]) =>
                 !(config.mode === GenerationMode.RFC2544 && /^RFC2544 \d+B$/.test(name))
@@ -154,7 +151,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
     // @ts-ignore
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(
-        () => JSON.parse(localStorage.getItem("port_tx_rx_mapping") || "{}")
+        () => loadFromStorage("port_tx_rx_mapping", {})
     );
     const [statistics, set_statistics] = useState<Statistics>([StatisticsObject])
     const [time_statistics, set_time_statistics] = useState<TimeStatistics>([TimeStatisticsObject])

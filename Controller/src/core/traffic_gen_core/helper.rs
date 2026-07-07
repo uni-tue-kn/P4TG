@@ -182,8 +182,12 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
         encapsulation_overhead += 4; // dCW adds 4 bytes after the MPLS stack
     }
 
-    if stream.vxlan || stream.gtpu {
-        encapsulation_overhead += 50; // VxLAN has 50 byte overhead
+    if stream.vxlan {
+        encapsulation_overhead += 50; // outer Ethernet (14) + IPv4 (20) + UDP (8) + VxLAN (8)
+    }
+
+    if stream.gtpu {
+        encapsulation_overhead += 36; // outer IPv4 (20) + UDP (8) + GTP-U (8); the inner packet carries no Ethernet header
     }
 
     encapsulation_overhead
@@ -661,7 +665,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                             source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             hop_limit: 64,
-                            payload_length: ((frame_size - 40 - 14 - 4) as u16).max(8),
+                            payload_length: ((frame_size as isize - 40 - 14 - 4).max(8)) as u16,
                             next_header: IpNumber::UDP,
                             ..Default::default()
                         },
@@ -673,7 +677,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     {
                         IpHeaders::Ipv4(
                             etherparse::Ipv4Header::new(
-                                (frame_size - 20 - 14 - 4) as u16,
+                                ((frame_size as isize - 20 - 14 - 4).max(8)) as u16,
                                 64,
                                 IpNumber::UDP,
                                 [0, 0, 0, 0],
@@ -689,9 +693,9 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
 
                 // Subtract IP, Ethernet, CRC size
                 let udp_size = if s.ip_version == Some(6) {
-                    ((frame_size - 40 - 14 - 4) as u16).max(8)
+                    ((frame_size as isize - 40 - 14 - 4).max(8)) as u16
                 } else {
-                    (frame_size - 20 - 14 - 4) as u16
+                    ((frame_size as isize - 20 - 14 - 4).max(8)) as u16
                 };
                 let mut udp_header = etherparse::UdpHeader {
                     source_port: P4TG_SOURCE_PORT,
@@ -841,7 +845,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 };
 
                 // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = udp_size - 8 - 11;
+                let remaining = (udp_size as isize - 8 - 11).max(0) as usize;
                 let padding: Vec<u8> = (0..remaining).map(|_| rand::random::<u8>()).collect();
 
                 payload.extend_from_slice(&padding);

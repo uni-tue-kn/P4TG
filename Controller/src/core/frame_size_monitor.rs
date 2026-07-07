@@ -158,22 +158,28 @@ impl FrameSizeMonitor {
                     .get_exact_value()
                     .to_u32();
 
-                let (lower, upper) = match entry.match_keys.get("pkt_len").unwrap() {
-                    MatchValue::RangeValue {
+                // Skip unexpected entries instead of panicking; a panic here would
+                // silently kill the monitoring task and freeze the statistics.
+                let (lower, upper) = match entry.match_keys.get("pkt_len") {
+                    Some(MatchValue::RangeValue {
                         lower_bytes,
                         higher_bytes,
-                    } => (lower_bytes.to_u32(), higher_bytes.to_u32()),
-                    _ => panic!("Wrong match type for {entry:#?}"),
+                    }) => (lower_bytes.to_u32(), higher_bytes.to_u32()),
+                    _ => {
+                        warn!("Unexpected match type for entry in table {FRAME_SIZE_MONITOR}.");
+                        continue;
+                    }
                 };
 
-                let count = 'get_count: {
-                    for action in &entry.action_data {
-                        if action.get_key() == "$COUNTER_SPEC_PKTS" {
-                            break 'get_count action.get_data().to_u128();
-                        }
-                    }
+                let count = entry
+                    .action_data
+                    .iter()
+                    .find(|action| action.get_key() == "$COUNTER_SPEC_PKTS")
+                    .map(|action| action.get_data().to_u128());
 
-                    panic!("$COUNTER_SPEC_PKTS missing in {entry:#?}")
+                let Some(count) = count else {
+                    warn!("$COUNTER_SPEC_PKTS missing for entry in table {FRAME_SIZE_MONITOR}.");
+                    continue;
                 };
 
                 if state.port_mapping.contains_key(&port) {

@@ -1,5 +1,24 @@
 import { Encapsulation, GenerationUnit, PortInfo, Stream, StreamSettings } from "./Interfaces";
 
+/**
+ * Parses a JSON value from localStorage.
+ * Returns the fallback if the key is missing or holds corrupt data,
+ * and removes corrupt entries so subsequent loads succeed.
+ */
+export const loadFromStorage = <T>(key: string, fallback: T): T => {
+    const item = localStorage.getItem(key);
+    if (item === null) {
+        return fallback;
+    }
+    try {
+        return JSON.parse(item) ?? fallback;
+    } catch {
+        console.warn(`Removing corrupt localStorage entry "${key}".`);
+        localStorage.removeItem(key);
+        return fallback;
+    }
+};
+
 export const formatNanoSeconds = (ns: number | string, decimals: number = 2) => {
     if (typeof ns == "string") {
         return ns

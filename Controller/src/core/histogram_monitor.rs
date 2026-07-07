@@ -194,15 +194,29 @@ impl HistogramMonitor {
             Self::estimate_percentiles_from_bins(&bins_data, percentiles, hist_config);
 
         // Calculate mean from histogram data
-        let mean_hist: f64 = (running_sum / total_pkt_count as f64).max(0f64);
+        // Guard against 0 or 1 total packets: the divisions would produce NaN
+        // (serialized as null in JSON) or an infinite variance.
+        let mean_hist: f64 = if total_pkt_count > 0 {
+            (running_sum / total_pkt_count as f64).max(0f64)
+        } else {
+            0f64
+        };
 
-        let variance = (total_pkt_count as f64 / (total_pkt_count as f64 - 1f64))
-            * ((running_sum_square / total_pkt_count as f64).max(0f64) - mean_hist.powi(2));
-        let std_dev = variance.sqrt();
+        let std_dev = if total_pkt_count > 1 {
+            let variance = (total_pkt_count as f64 / (total_pkt_count as f64 - 1f64))
+                * ((running_sum_square / total_pkt_count as f64).max(0f64) - mean_hist.powi(2));
+            variance.max(0f64).sqrt()
+        } else {
+            0f64
+        };
 
         // Map y-axis of histogram to probability from [0, 1]
         for (_bin_index, entry) in bins_data.iter_mut() {
-            entry.probability = entry.count as f64 / total_pkt_count as f64 * 100f64;
+            entry.probability = if total_pkt_count > 0 {
+                entry.count as f64 / total_pkt_count as f64 * 100f64
+            } else {
+                0f64
+            };
         }
 
         HistogramData {

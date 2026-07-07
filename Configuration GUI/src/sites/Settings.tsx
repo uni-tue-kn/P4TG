@@ -52,7 +52,7 @@ import { ensureDefaults, stripUnusedFields } from "../components/settings/Settin
 import { validateIPv6RandomMask, validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
 import HistogramSettings from '../components/settings/HistogramSettings';
 import { PortStatus } from './Ports';
-import { getTotalActiveStreamRate, getTotalRatePerPort } from '../common/Helper';
+import { getTotalActiveStreamRate, getTotalRatePerPort, loadFromStorage } from '../common/Helper';
 import IMIXModal from '../components/settings/IMIXModal';
 import { IMIXConfig, IMIX_DESCRIPTION, IMIX_STREAM_COUNT, IMIX_STREAM_SPECS, splitImixRate } from '../common/IMIX';
 
@@ -214,20 +214,15 @@ const normalizeTofino1StreamSettings = (
 const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (msg: string, bg: ToastVariant) => void }) => {
     const [ports, set_ports] = useState<PortInfo[]>([])
     const [running, set_running] = useState(false)
-    // @ts-ignore
-    const [streams, set_streams] = useState<Stream[]>(JSON.parse(localStorage.getItem("streams")) || [])
-    // @ts-ignore
-    const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(JSON.parse(localStorage.getItem("streamSettings")) || [])
-    // @ts-ignore
-    const [rtt_histogram_settings, set_rtt_histogram_settings] = useState<HistogramConfigMap>(JSON.parse(localStorage.getItem("rtt_histogram_config")) || {})
-    // @ts-ignore
-    const [iat_histogram_settings, set_iat_histogram_settings] = useState<HistogramConfigMap>(JSON.parse(localStorage.getItem("iat_histogram_config")) || {})
+    const [streams, set_streams] = useState<Stream[]>(loadFromStorage<Stream[]>("streams", []))
+    const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(loadFromStorage<StreamSettings[]>("streamSettings", []))
+    const [rtt_histogram_settings, set_rtt_histogram_settings] = useState<HistogramConfigMap>(loadFromStorage<HistogramConfigMap>("rtt_histogram_config", {}))
+    const [iat_histogram_settings, set_iat_histogram_settings] = useState<HistogramConfigMap>(loadFromStorage<HistogramConfigMap>("iat_histogram_config", {}))
     const [rfc2544_config, set_rfc2544_config] = useState<Rfc2544Config>(
-        normalizeRfc2544Config(JSON.parse(localStorage.getItem("rfc2544_config") || "null") || undefined)
+        normalizeRfc2544Config(loadFromStorage<Rfc2544Config | null>("rfc2544_config", null) || undefined)
     )
 
-    // @ts-ignore
-    const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(JSON.parse(localStorage.getItem("port_tx_rx_mapping")) || {})
+    const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(loadFromStorage<PortTxRxMap>("port_tx_rx_mapping", {}))
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
@@ -412,7 +407,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     }, [])
 
     useEffect(() => {
-        let configs = JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY) || "{}");
+        let configs = loadFromStorage<Record<string, TrafficGenData>>(CONFIG_STORAGE_KEY, {});
         let toastMessage;
         let toastType;
 
@@ -940,7 +935,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         fileReader.readAsText(e.target.files[0], "UTF-8");
 
         fileReader.onload = (e: any) => {
-            const data = JSON.parse(e.target.result);
+            let data;
+            try {
+                data = JSON.parse(e.target.result);
+            } catch {
+                showToast("Could not parse file content. Please check the file.", "danger")
+                return;
+            }
             let new_config: Record<string, TrafficGenData> = {};
 
             if (typeof data === 'object' && data !== null) {

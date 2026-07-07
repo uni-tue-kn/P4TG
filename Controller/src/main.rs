@@ -148,10 +148,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let res = switch.get_table_entries(req).await.unwrap_or_default();
-    let num_pipes = res[0]
-        .get_action_data("num_pipes")
-        .unwrap_or(&ActionData::new("num_pipes", 2))
-        .as_u32();
+    let num_pipes = res
+        .first()
+        .map(|entry| {
+            entry
+                .get_action_data("num_pipes")
+                .unwrap_or(&ActionData::new("num_pipes", 2))
+                .as_u32()
+        })
+        .unwrap_or(2);
     info!("#Pipes: {num_pipes:?}");
 
     // TODO find a way to derive this from device configuration

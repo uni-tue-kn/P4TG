@@ -361,7 +361,8 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
 
     let port_mapping = &state.port_mapping;
 
-    let limit = params.limit.unwrap_or(usize::MAX);
+    // guard against limit=0, which would divide by zero in the step calculation
+    let limit = params.limit.unwrap_or(usize::MAX).max(1);
 
     let elements = stats
         .tx_rate_l1

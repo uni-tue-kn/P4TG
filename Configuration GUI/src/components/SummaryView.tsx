@@ -128,7 +128,8 @@ const SummaryView = ({
                         },
                     };
 
-                    const tabKey = `${v.tx}/${v.tx_ch}`;
+                    // Include the RX side so two mappings sharing a TX port/channel get distinct keys
+                    const tabKey = `${v.tx}/${v.tx_ch}-${v.rx}/${v.rx_ch}`;
                     const tabTitle = `${v.tx}/${v.tx_ch} → ${v.rx}/${v.rx_ch}`;
 
                     return (

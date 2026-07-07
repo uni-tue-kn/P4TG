@@ -22,8 +22,8 @@ class FEC(str, Enum):
 
 class AutoNeg(str, Enum):
     PM_AN_DEFAULT       = "PM_AN_DEFAULT"
-    PM_AN_ENABLE        = "PM_AN_ENABLE"
-    PM_AN_DISABLE       = "PM_AN_DISABLE"
+    PM_AN_FORCE_ENABLE  = "PM_AN_FORCE_ENABLE"
+    PM_AN_FORCE_DISABLE = "PM_AN_FORCE_DISABLE"
 
 
 # -------- API boilerplate ---------
