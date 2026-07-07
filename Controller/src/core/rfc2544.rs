@@ -29,6 +29,20 @@ const MIN_THROUGHPUT_LOSS_OBSERVATION_SECS: u32 = 4;
 /// contain the previous trial's counters and mask all loss of this trial.
 const TRIAL_STATS_SETTLE_SECS: u32 = 2;
 
+/// Minimum wait after stopping a trial before the next trial may reset the
+/// counters. Packets of the stopped trial that are still buffered in the DUT
+/// would otherwise arrive after the sequence register reset: the first stale
+/// high sequence number is counted as a huge loss and all following packets of
+/// the next trial are misclassified as out-of-order until the sequence numbers
+/// catch up, hiding real loss.
+const MIN_TRIAL_DRAIN_SECS: u32 = 1;
+
+/// Effective wait after a trial: the configured cool-down, but at least the
+/// DUT drain time.
+fn effective_cooldown_secs(config: &Rfc2544Config) -> u32 {
+    config.cooldown_duration_secs.max(MIN_TRIAL_DRAIN_SECS)
+}
+
 struct TrialSample {
     rx_rate_gbps: f64,
     lost_frames: u64,
@@ -199,7 +213,7 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
             };
 
             trials
-                .saturating_mul(base_secs.saturating_add(config.cooldown_duration_secs))
+                .saturating_mul(base_secs.saturating_add(effective_cooldown_secs(config)))
                 .saturating_add(pre_baseline_secs)
         };
 
@@ -279,7 +293,7 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
                 )
             {
                 remaining = remaining.saturating_add(
-                    recovery_duration.saturating_add(config.cooldown_duration_secs),
+                    recovery_duration.saturating_add(effective_cooldown_secs(config)),
                 );
             }
         }
@@ -762,25 +776,17 @@ async fn trial_cooldown(
     context: String,
     cancel_token: &CancellationToken,
 ) -> bool {
-    if config.cooldown_duration_secs == 0 {
-        return true;
-    }
+    // Even with cool-down 0, wait for the DUT to drain in-flight packets of
+    // the stopped trial before the next trial resets the sequence registers.
+    let wait_secs = effective_cooldown_secs(config);
 
     set_status(
         state,
-        format!(
-            "RFC2544 cool-down | {context} | waiting {}s before next trial",
-            config.cooldown_duration_secs
-        ),
+        format!("RFC2544 cool-down | {context} | waiting {wait_secs}s before next trial"),
     )
     .await;
 
-    if wait_with_cancel(
-        Duration::from_secs(config.cooldown_duration_secs as u64),
-        cancel_token,
-    )
-    .await
-    {
+    if wait_with_cancel(Duration::from_secs(wait_secs as u64), cancel_token).await {
         true
     } else {
         finish(state, "RFC2544 benchmark cancelled.".to_string()).await;

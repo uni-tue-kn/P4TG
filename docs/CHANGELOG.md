@@ -55,6 +55,8 @@
 - Fixed remaining RX-side double counting in the dashboard when multiple TX ports map to the same RX endpoint. Lost/out-of-order frames, frame counts, frame size/type distributions, histogram bins, and RTT/IAT sample counts are now aggregated per unique RX endpoint, like the RX rates.
 - Added a counter-regression guard to the rate calculation. A data plane restart under a running controller no longer causes rate spikes or a crash of the monitoring task.
 - Fixed the IMIX rate split to weight by the on-wire (L1) frame size. Previously, 64B streams were ~23% under-represented compared to the intended 7:4:1 IMIX packet ratio.
+- RFC2544 trials now always wait at least 1s after stopping traffic before the next trial starts, even with cool-down 0. In-flight packets of the stopped trial that arrive after the counter reset would otherwise poison the RX sequence tracking and hide real loss of the next trial.
+- Added a warning in the settings when multiple TX ports are mapped to the same RX endpoint. Loss and out-of-order tracking works per RX port, so such fan-in mappings produce unreliable loss/out-of-order counters.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.

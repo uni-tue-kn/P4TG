@@ -19,7 +19,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Button, Col, Form, InputGroup, Modal, Nav, OverlayTrigger, Row, Tab, Table, Tabs, Tooltip } from "react-bootstrap";
+import { Alert, Button, Col, Form, InputGroup, Modal, Nav, OverlayTrigger, Row, Tab, Table, Tabs, Tooltip } from "react-bootstrap";
 import { get } from "../common/API";
 import Loader from "../components/Loader";
 import {
@@ -223,6 +223,22 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     )
 
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(loadFromStorage<PortTxRxMap>("port_tx_rx_mapping", {}))
+
+    // RX endpoints that are targeted by more than one TX port. Loss and
+    // out-of-order tracking works per RX port in the data plane, so such
+    // fan-in mappings produce unreliable loss/out-of-order counters.
+    const fanInRxEndpoints = (() => {
+        const counts = new Map<string, number>();
+        Object.values(port_tx_rx_mapping ?? {}).forEach((perCh: any) => {
+            Object.values(perCh ?? {}).forEach((target: any) => {
+                const key = `${target.port}/${target.channel}`;
+                counts.set(key, (counts.get(key) ?? 0) + 1);
+            });
+        });
+        return Array.from(counts.entries())
+            .filter(([, count]) => count > 1)
+            .map(([key]) => key);
+    })();
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
@@ -2121,6 +2137,20 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         </tbody>
                                     </Table>
 
+                                </Col>
+                            </Row>
+                            :
+                            null
+                        }
+
+                        {fanInRxEndpoints.length > 0 ?
+                            <Row>
+                                <Col>
+                                    <Alert variant="warning" className="mt-2">
+                                        <i className="bi bi-exclamation-triangle-fill" /> Multiple TX ports are mapped to RX {fanInRxEndpoints.join(", ")}.
+                                        Packet loss and out-of-order tracking works per RX port; interleaved sequence
+                                        numbers from multiple TX ports make these counters unreliable for such mappings.
+                                    </Alert>
                                 </Col>
                             </Row>
                             :
