@@ -72,7 +72,7 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
         .lock()
         .await
         .as_ref()
-        .map_or(false, |results| results.running);
+        .is_some_and(|results| results.running);
     let tg = &state.traffic_generator.lock().await;
 
     if !tg.running && !rfc2544_running {

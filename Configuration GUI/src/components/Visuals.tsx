@@ -34,6 +34,7 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { secondsToTime } from "./SendReceiveMonitor";
+import { uniqueRxPairs } from "../common/Helper";
 import { Histogram, PortTxRxMap, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
 import React, { useState } from "react";
 import { Button, Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
@@ -208,17 +209,9 @@ const generateLineData = (
             }
         } else {
             // RX: group by RX endpoint to avoid double counting when multiple TX map to the same RX.
-            const rxPairSet = new Set<string>();
-            for (const perCh of Object.values(port_mapping ?? {})) {
-                for (const target of Object.values(perCh ?? {})) {
-                    const rxPort = String((target as any).port);
-                    const rxCh = String((target as any).channel);
-                    const key = `${rxPort}/${rxCh}`;
-                    if (rxPairSet.has(key)) continue;
-                    rxPairSet.add(key);
-                    const s = source[rxPort]?.[rxCh];
-                    if (s) series.push(s);
-                }
+            for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+                const s = source[rxPort]?.[rxCh];
+                if (s) series.push(s);
             }
         }
     }
@@ -265,16 +258,23 @@ const generateHistogram = (
 
     if (histogram_data) {
         // collect RX (port,channel) pairs from mapping
+        const rxSeen = new Set<string>();
         for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
             for (const [txCh, target] of Object.entries(perCh ?? {})) {
                 const rxPort = String((target as any).port);
                 const rxCh = String((target as any).channel);
 
+                // Accumulate a shared RX endpoint only once when multiple
+                // TX ports map to the same RX
+                const rxKey = `${rxPort}/${rxCh}`;
+                const firstRxVisit = !rxSeen.has(rxKey);
+                rxSeen.add(rxKey);
+
                 const histTx = histogram_data?.[txPort]?.[txCh];
                 const histRx = histogram_data?.[rxPort]?.[rxCh];
                 const config = histRx?.config ?? histTx?.config;
                 const txData = includeTx ? histTx?.data?.tx : undefined;
-                const rxData = histRx?.data?.rx;
+                const rxData = firstRxVisit ? histRx?.data?.rx : undefined;
 
                 if (config) {
                     min = Math.min(min, config.min);
@@ -425,17 +425,18 @@ const get_frame_types = (
     if (!ftd) return ret;
 
     for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
-        for (const [txCh, target] of Object.entries(perCh ?? {})) {
+        for (const txCh of Object.keys(perCh ?? {})) {
             // TX side: use (txPort, txCh)
             const txVal = (ftd[txPort]?.[txCh]?.tx as any)?.[type];
             if (typeof txVal === "number") ret.tx += txVal;
-
-            // RX side: use mapped (rxPort, rxCh)
-            const rxPort = String((target as any).port);
-            const rxCh = String((target as any).channel);
-            const rxVal = (ftd[rxPort]?.[rxCh]?.rx as any)?.[type];
-            if (typeof rxVal === "number") ret.rx += rxVal;
         }
+    }
+
+    // RX side: sum per unique RX endpoint to avoid double counting
+    // when multiple TX ports map to the same RX
+    for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+        const rxVal = (ftd[rxPort]?.[rxCh]?.rx as any)?.[type];
+        if (typeof rxVal === "number") ret.rx += rxVal;
     }
 
     return ret;
@@ -465,15 +466,12 @@ const get_frame_stats = (
             }
         }
     } else if (type === "rx") {
-        // sum for all mapped RX (port, channel) targets
-        for (const perCh of Object.values(port_mapping)) {
-            for (const target of Object.values(perCh ?? {})) {
-                const rxPort = String((target as any).port);
-                const rxCh = String((target as any).channel);
-                const bins = fs?.[rxPort]?.[rxCh]?.rx ?? [];
-                for (const f of bins) {
-                    if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
-                }
+        // sum per unique RX endpoint to avoid double counting
+        // when multiple TX ports map to the same RX
+        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+            const bins = fs?.[rxPort]?.[rxCh]?.rx ?? [];
+            for (const f of bins) {
+                if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
             }
         }
     }
@@ -493,14 +491,11 @@ const get_rtt = (
 
     const series: Array<{ [t: string]: number }> = [];
     if (src) {
-        // use RX targets from mapping
-        for (const perCh of Object.values(port_mapping ?? {})) {
-            for (const target of Object.values(perCh ?? {})) {
-                const rxPort = String((target as any).port);
-                const rxCh = String((target as any).channel);
-                const s = src[rxPort]?.[rxCh];
-                if (s) series.push(s);
-            }
+        // use unique RX endpoints from the mapping so a shared RX target
+        // does not contribute the same series multiple times
+        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+            const s = src[rxPort]?.[rxCh];
+            if (s) series.push(s);
         }
     }
 

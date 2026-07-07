@@ -52,6 +52,9 @@
 - ⚠️ `GET:/api/histogram` now returns front panel port numbers with a channel map instead of dev port numbers, consistent with all other endpoints.
 - Fixed the Ports page breaking when a port/ARP configuration request or the config fetch failed.
 - Fixed the dashboard briefly showing the running state after a rejected start request.
+- Fixed remaining RX-side double counting in the dashboard when multiple TX ports map to the same RX endpoint. Lost/out-of-order frames, frame counts, frame size/type distributions, histogram bins, and RTT/IAT sample counts are now aggregated per unique RX endpoint, like the RX rates.
+- Added a counter-regression guard to the rate calculation. A data plane restart under a running controller no longer causes rate spikes or a crash of the monitoring task.
+- Fixed the IMIX rate split to weight by the on-wire (L1) frame size. Previously, 64B streams were ~23% under-represented compared to the intended 7:4:1 IMIX packet ratio.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.

@@ -1,4 +1,26 @@
-import { Encapsulation, GenerationUnit, PortInfo, Stream, StreamSettings } from "./Interfaces";
+import { Encapsulation, GenerationUnit, PortInfo, PortTxRxMap, Stream, StreamSettings } from "./Interfaces";
+
+/**
+ * Returns the unique RX (port, channel) pairs of a TX->RX mapping.
+ * Multiple TX ports can map to the same RX endpoint; statistics aggregated
+ * over RX must count each endpoint only once.
+ */
+export const uniqueRxPairs = (port_mapping: PortTxRxMap): Array<[string, string]> => {
+    const seen = new Set<string>();
+    const pairs: Array<[string, string]> = [];
+    Object.values(port_mapping ?? {}).forEach((perCh) => {
+        Object.values(perCh ?? {}).forEach((target: any) => {
+            const port = String(target.port);
+            const channel = String(target.channel);
+            const key = `${port}/${channel}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                pairs.push([port, channel]);
+            }
+        });
+    });
+    return pairs;
+};
 
 /**
  * Parses a JSON value from localStorage.

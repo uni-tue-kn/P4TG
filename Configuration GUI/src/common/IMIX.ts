@@ -23,9 +23,16 @@ export const IMIX_STREAM_SPECS: IMIXStreamSpec[] = [
 export const IMIX_STREAM_COUNT = IMIX_STREAM_SPECS.length;
 export const IMIX_DESCRIPTION = "7x64B, 4x512B, 1x1518B";
 
+// Preamble + inter-frame gap. Gbps stream rates have L1 semantics, so the
+// rate split must weight by the on-wire frame size to hit the intended
+// 7:4:1 packet ratio.
+const L1_OVERHEAD_BYTES = 20;
+
 export const splitImixRate = (totalRate: number, unit: GenerationUnit): number[] => {
     const weights = IMIX_STREAM_SPECS.map((spec) =>
-        unit === GenerationUnit.Mpps ? spec.packetWeight : spec.packetWeight * spec.frameSize
+        unit === GenerationUnit.Mpps
+            ? spec.packetWeight
+            : spec.packetWeight * (spec.frameSize + L1_OVERHEAD_BYTES)
     );
     const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
     const allocatedRates: number[] = [];

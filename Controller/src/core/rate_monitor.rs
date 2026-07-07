@@ -423,6 +423,20 @@ impl RateMonitor {
         (current_byte_count_l1, current_byte_count_l2, current_tstmp): (u64, u64, u64),
         last_rate: &DataRate,
     ) -> DataRate {
+        if current_byte_count_l1 < last_rate.byte_count_l1
+            || current_byte_count_l2 < last_rate.byte_count_l2
+        {
+            // Counter regression, e.g. after a data plane restart.
+            // Re-seed the measurement instead of underflowing the difference.
+            return DataRate::new(
+                current_byte_count_l1,
+                current_byte_count_l2,
+                current_tstmp,
+                last_rate.rate_l1,
+                last_rate.rate_l2,
+            );
+        }
+
         if current_tstmp > (last_rate.timestamp + (Duration::from_secs(1).as_nanos() as u64)) {
             let time_diff: f64 = (current_tstmp - last_rate.timestamp) as f64;
             let byte_diff_l1: f64 = (current_byte_count_l1 - last_rate.byte_count_l1) as f64;

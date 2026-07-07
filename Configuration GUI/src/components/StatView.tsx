@@ -26,7 +26,7 @@ import { formatBits } from "./SendReceiveMonitor";
 
 import styled from 'styled-components'
 import Visuals from "./Visuals";
-import { formatNanoSeconds, formatFrameCount } from '../common/Helper';
+import { formatNanoSeconds, formatFrameCount, uniqueRxPairs } from '../common/Helper';
 import InfoBox from './InfoBox';
 
 const Overline = styled.span`
@@ -70,17 +70,18 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         const ftd = stats.frame_type_data ?? {};
 
         for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
-            for (const [txCh, target] of Object.entries(perCh ?? {})) {
+            for (const txCh of Object.keys(perCh ?? {})) {
                 // TX: sum for (txPort, txCh)
                 const txVal = (ftd[txPort]?.[txCh]?.tx as any)?.[type];
                 if (typeof txVal === "number") ret.tx += txVal;
-
-                // RX: sum for mapped (rxPort, rxCh)
-                const rxPort = String((target as any).port);
-                const rxCh = String((target as any).channel);
-                const rxVal = (ftd[rxPort]?.[rxCh]?.rx as any)?.[type];
-                if (typeof rxVal === "number") ret.rx += rxVal;
             }
+        }
+
+        // RX: sum per unique RX endpoint to avoid double counting
+        // when multiple TX ports map to the same RX
+        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+            const rxVal = (ftd[rxPort]?.[rxCh]?.rx as any)?.[type];
+            if (typeof rxVal === "number") ret.rx += rxVal;
         }
 
         return ret;
@@ -89,22 +90,16 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
 
     const get_lost_packets = () => {
         let ret = 0;
-        for (const perCh of Object.values(port_mapping ?? {})) {
-            for (const t of Object.values(perCh ?? {})) {
-                const rp = String((t as any).port), rc = String((t as any).channel);
-                ret += stats.packet_loss?.[rp]?.[rc] ?? 0;
-            }
+        for (const [rp, rc] of uniqueRxPairs(port_mapping)) {
+            ret += stats.packet_loss?.[rp]?.[rc] ?? 0;
         }
         return ret;
     };
 
     const get_out_of_order_packets = () => {
         let ret = 0;
-        for (const perCh of Object.values(port_mapping ?? {})) {
-            for (const t of Object.values(perCh ?? {})) {
-                const rp = String((t as any).port), rc = String((t as any).channel);
-                ret += stats.out_of_order?.[rp]?.[rc] ?? 0;
-            }
+        for (const [rp, rc] of uniqueRxPairs(port_mapping)) {
+            ret += stats.out_of_order?.[rp]?.[rc] ?? 0;
         }
         return ret;
     };
@@ -127,15 +122,12 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                 }
             }
         } else {
-            // Sum bins for all mapped RX (port, channel) targets
-            for (const perCh of Object.values(port_mapping)) {
-                for (const target of Object.values(perCh ?? {})) {
-                    const rxPort = String((target as any).port);
-                    const rxCh = String((target as any).channel);
-                    const bins = fs?.[rxPort]?.[rxCh]?.rx ?? [];
-                    for (const f of bins) {
-                        if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
-                    }
+            // Sum bins per unique RX endpoint to avoid double counting
+            // when multiple TX ports map to the same RX
+            for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+                const bins = fs?.[rxPort]?.[rxCh]?.rx ?? [];
+                for (const f of bins) {
+                    if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
                 }
             }
         }
@@ -150,17 +142,18 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         let ret_rx = 0
 
         for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
-            for (const [txCh, target] of Object.entries(perCh ?? {})) {
+            for (const txCh of Object.keys(perCh ?? {})) {
                 // TX side: sum bins for (txPort, txCh)
                 const txBins = stats.frame_size?.[txPort]?.[txCh]?.tx ?? [];
                 ret_tx += txBins.reduce((s, f) => s + (f?.packets ?? 0), 0);
-
-                // RX side: sum bins for (rxPort, rxCh)
-                const rxPort = String((target as any).port);
-                const rxCh = String((target as any).channel);
-                const rxBins = stats.frame_size?.[rxPort]?.[rxCh]?.rx ?? [];
-                ret_rx += rxBins.reduce((s, f) => s + (f?.packets ?? 0), 0);
             }
+        }
+
+        // RX side: sum bins per unique RX endpoint to avoid double counting
+        // when multiple TX ports map to the same RX
+        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+            const rxBins = stats.frame_size?.[rxPort]?.[rxCh]?.rx ?? [];
+            ret_rx += rxBins.reduce((s, f) => s + (f?.packets ?? 0), 0);
         }
 
         set_iat_tx(calculateWeightedIATs("tx", stats))
@@ -180,20 +173,16 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         let all_max = 0
         let all_n = 0
 
-        for (const perCh of Object.values(port_mapping ?? {})) {
-            for (const target of Object.values(perCh ?? {})) {
-                const rxPort = String((target as any).port);
-                const rxCh = String((target as any).channel);
-                const r = stats.rtts?.[rxPort]?.[rxCh];
-                if (!r) continue;
+        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+            const r = stats.rtts?.[rxPort]?.[rxCh];
+            if (!r) continue;
 
-                all_mean += (r.mean ?? 0) * (r.n ?? 0);
-                all_std += (r.jitter ?? 0) * (r.n ?? 0);
-                all_min = Math.min(all_min, r.min ?? Infinity);
-                all_max = Math.max(all_max, r.max ?? -Infinity);
-                all_current += (r.current ?? 0) * (r.n ?? 0);
-                all_n += (r.n ?? 0);
-            }
+            all_mean += (r.mean ?? 0) * (r.n ?? 0);
+            all_std += (r.jitter ?? 0) * (r.n ?? 0);
+            all_min = Math.min(all_min, r.min ?? Infinity);
+            all_max = Math.max(all_max, r.max ?? -Infinity);
+            all_current += (r.current ?? 0) * (r.n ?? 0);
+            all_n += (r.n ?? 0);
         }
 
         if (all_n === 0) {
@@ -227,18 +216,14 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                 }
             }
         } else if (type === "rx") {
-            for (const perCh of Object.values(port_mapping ?? {})) {
-                for (const target of Object.values(perCh ?? {})) {
-                    const rxPort = String((target as any).port);
-                    const rxCh = String((target as any).channel);
-                    const i = stats.iats?.[rxPort]?.[rxCh]?.rx;
-                    if (!i) continue;
+            for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+                const i = stats.iats?.[rxPort]?.[rxCh]?.rx;
+                if (!i) continue;
 
-                    all_mean += (i.mean ?? 0) * (i.n ?? 0);
-                    all_mae.push(i.mae ?? 0);
-                    all_std += (i.std ?? 0) * (i.n ?? 0);
-                    all_n += i.n ?? 0;
-                }
+                all_mean += (i.mean ?? 0) * (i.n ?? 0);
+                all_mae.push(i.mae ?? 0);
+                all_std += (i.std ?? 0) * (i.n ?? 0);
+                all_n += i.n ?? 0;
             }
         }
 
@@ -269,19 +254,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     );
 
     // RX in summary must be grouped by RX endpoint, not by number of TX mappings.
-    const rxPairSet = new Set<string>();
-    const rxPairs: Array<[string, string]> = [];
-    Object.values(port_mapping ?? {}).forEach((perCh) => {
-        Object.values(perCh ?? {}).forEach((t: any) => {
-            const p = String(t.port);
-            const c = String(t.channel);
-            const key = `${p}/${c}`;
-            if (!rxPairSet.has(key)) {
-                rxPairSet.add(key);
-                rxPairs.push([p, c]);
-            }
-        });
-    });
+    const rxPairs = uniqueRxPairs(port_mapping);
 
     // Sums
     const tx_rate_l1 = addRatesByPairs(stats.tx_rate_l1, txPairs);
