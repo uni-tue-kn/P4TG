@@ -23,6 +23,12 @@ use crate::AppState;
 
 const MIN_THROUGHPUT_LOSS_OBSERVATION_SECS: u32 = 4;
 
+/// Minimum wait between trial start and the baseline sample. The statistics
+/// gauges are only refreshed by digests (one per MONITORING_PACKET_INTERVAL,
+/// 500 ms) and periodic table reads, so a baseline taken earlier can still
+/// contain the previous trial's counters and mask all loss of this trial.
+const TRIAL_STATS_SETTLE_SECS: u32 = 2;
+
 struct TrialSample {
     rx_rate_gbps: f64,
     lost_frames: u64,
@@ -43,7 +49,8 @@ impl ThroughputTrialLoss {
             Rfc2544LossToleranceUnit::Packets => self.lost_frames as f64 > tolerance,
             Rfc2544LossToleranceUnit::Percent => {
                 if self.tx_frames == 0 {
-                    return false;
+                    // Without TX evidence, never let observed loss pass as zero-loss.
+                    return self.lost_frames > 0;
                 }
                 (self.lost_frames as f64 * 100.0 / self.tx_frames as f64) > tolerance.min(100.0)
             }
@@ -174,19 +181,26 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
                 return 0;
             }
 
-            let warmup_secs = if config.warmup_once_per_mapping {
-                if warmup_pending.remove(&mapping_key(mapping)) {
-                    config.warmup_duration_secs
+            // Each trial waits for its warm-up or at least the statistics
+            // settle time before taking the baseline sample.
+            let pre_baseline_secs = if config.warmup_once_per_mapping {
+                let first_trial_secs = if warmup_pending.remove(&mapping_key(mapping)) {
+                    config.warmup_duration_secs.max(TRIAL_STATS_SETTLE_SECS)
                 } else {
-                    0
-                }
+                    TRIAL_STATS_SETTLE_SECS
+                };
+                first_trial_secs
+                    .saturating_add(TRIAL_STATS_SETTLE_SECS.saturating_mul(trials - 1))
             } else {
-                config.warmup_duration_secs.saturating_mul(trials)
+                config
+                    .warmup_duration_secs
+                    .max(TRIAL_STATS_SETTLE_SECS)
+                    .saturating_mul(trials)
             };
 
             trials
                 .saturating_mul(base_secs.saturating_add(config.cooldown_duration_secs))
-                .saturating_add(warmup_secs)
+                .saturating_add(pre_baseline_secs)
         };
 
     for mapping in &results.selected_mappings {
@@ -707,6 +721,41 @@ async fn maybe_warmup(
     }
 }
 
+/// Returns whether [maybe_warmup] will run a warm-up wait for the next trial.
+/// Must be evaluated before calling [maybe_warmup], which sets the done flag.
+fn warmup_will_run(config: &Rfc2544Config, mapping_warmup_done: bool) -> bool {
+    config.warmup_duration_secs > 0 && !(config.warmup_once_per_mapping && mapping_warmup_done)
+}
+
+/// Waits until the statistics monitors have published post-reset counters so
+/// that a following baseline sample cannot contain stale values from the
+/// previous trial. A warm-up wait of at least [TRIAL_STATS_SETTLE_SECS]
+/// seconds already covers this; otherwise wait for the remainder.
+async fn settle_statistics(
+    state: &Arc<AppState>,
+    config: &Rfc2544Config,
+    warmup_ran: bool,
+    cancel_token: &CancellationToken,
+) -> bool {
+    let waited_secs = if warmup_ran {
+        config.warmup_duration_secs
+    } else {
+        0
+    };
+    let remaining_secs = TRIAL_STATS_SETTLE_SECS.saturating_sub(waited_secs);
+    if remaining_secs == 0 {
+        return true;
+    }
+
+    if wait_with_cancel(Duration::from_secs(remaining_secs as u64), cancel_token).await {
+        true
+    } else {
+        stop_trial(state).await;
+        finish(state, "RFC2544 benchmark cancelled.".to_string()).await;
+        false
+    }
+}
+
 async fn trial_cooldown(
     state: &Arc<AppState>,
     config: &Rfc2544Config,
@@ -1103,6 +1152,7 @@ async fn run_fixed_rate_loss_trial(
         trial_count,
         rate_gbps
     );
+    let warmup_ran = warmup_will_run(config, *mapping_warmup_done);
     if !maybe_warmup(
         state,
         config,
@@ -1114,10 +1164,13 @@ async fn run_fixed_rate_loss_trial(
     {
         return None;
     }
+    if !settle_statistics(state, config, warmup_ran, cancel_token).await {
+        return None;
+    }
 
     let baseline = sample_trial(state, &trial).await;
-    let baseline_loss = baseline.lost_frames;
-    let baseline_tx = baseline.tx_frames;
+    let mut baseline_loss = baseline.lost_frames;
+    let mut baseline_tx = baseline.tx_frames;
     let measurement_start = Instant::now();
     let deadline = measurement_start + Duration::from_secs(config.trial_duration_secs as u64);
     let early_loss_stop_at = measurement_start
@@ -1135,6 +1188,11 @@ async fn run_fixed_rate_loss_trial(
         tokio::select! {
             _ = interval.tick() => {
                 let sample = sample_trial(state, &trial).await;
+                // Freshly reset counters can only grow; a sample below the
+                // baseline proves the baseline contained stale pre-reset
+                // values, which would otherwise mask all loss of this trial.
+                baseline_loss = baseline_loss.min(sample.lost_frames);
+                baseline_tx = baseline_tx.min(sample.tx_frames);
                 trial_loss = sample.lost_frames.saturating_sub(baseline_loss);
                 trial_tx = sample.tx_frames.saturating_sub(baseline_tx);
 
@@ -1163,8 +1221,24 @@ async fn run_fixed_rate_loss_trial(
         return None;
     }
     let sample = sample_trial(state, &trial).await;
+    baseline_loss = baseline_loss.min(sample.lost_frames);
+    baseline_tx = baseline_tx.min(sample.tx_frames);
     trial_loss = trial_loss.max(sample.lost_frames.saturating_sub(baseline_loss));
     trial_tx = trial_tx.max(sample.tx_frames.saturating_sub(baseline_tx));
+
+    if trial_tx == 0 {
+        error!(
+            "RFC2544 throughput trial at {rate_gbps:.3} Gbit/s observed no TX frames. Aborting benchmark."
+        );
+        finish(
+            state,
+            format!(
+                "RFC2544 throughput trial at {rate_gbps:.3} Gbit/s observed no TX frames. Traffic generation may not be running correctly."
+            ),
+        )
+        .await;
+        return None;
+    }
 
     Some(ThroughputTrialLoss {
         lost_frames: trial_loss,
@@ -1213,6 +1287,7 @@ async fn run_latency(
             repetition + 1,
             config.latency_repetitions
         );
+        let warmup_ran = warmup_will_run(config, *mapping_warmup_done);
         if !maybe_warmup(
             state,
             config,
@@ -1222,6 +1297,9 @@ async fn run_latency(
         )
         .await
         {
+            return false;
+        }
+        if !settle_statistics(state, config, warmup_ran, cancel_token).await {
             return false;
         }
         let baseline = sample_trial(state, &trial).await;
@@ -1309,6 +1387,7 @@ async fn run_frame_loss(
             mapping_count,
             mapping_label(mapping)
         );
+        let warmup_ran = warmup_will_run(config, *mapping_warmup_done);
         if !maybe_warmup(
             state,
             config,
@@ -1320,8 +1399,11 @@ async fn run_frame_loss(
         {
             return false;
         }
+        if !settle_statistics(state, config, warmup_ran, cancel_token).await {
+            return false;
+        }
 
-        let baseline = sample_trial(state, &trial).await;
+        let mut baseline = sample_trial(state, &trial).await;
         let completed = wait_with_cancel(
             Duration::from_secs(config.trial_duration_secs as u64),
             cancel_token,
@@ -1339,6 +1421,11 @@ async fn run_frame_loss(
             return false;
         }
         let sample = sample_trial(state, &trial).await;
+        // Freshly reset counters can only grow; a sample below the baseline
+        // proves the baseline contained stale pre-reset values.
+        baseline.tx_frames = baseline.tx_frames.min(sample.tx_frames);
+        baseline.rx_frames = baseline.rx_frames.min(sample.rx_frames);
+        baseline.lost_frames = baseline.lost_frames.min(sample.lost_frames);
         let tx_frames = sample.tx_frames.saturating_sub(baseline.tx_frames);
         let rx_frames = sample.rx_frames.saturating_sub(baseline.rx_frames);
         let lost_frames = sample.lost_frames.saturating_sub(baseline.lost_frames);
@@ -1646,6 +1733,7 @@ async fn run_reset(
         mapping_count,
         mapping_label(mapping)
     );
+    let warmup_ran = warmup_will_run(config, *mapping_warmup_done);
     if !maybe_warmup(
         state,
         config,
@@ -1655,6 +1743,11 @@ async fn run_reset(
     )
     .await
     {
+        return false;
+    }
+    // The reset detection reads the RX rate gauge, which could still contain
+    // a stale nonzero rate from the previous trial.
+    if !settle_statistics(state, config, warmup_ran, cancel_token).await {
         return false;
     }
 

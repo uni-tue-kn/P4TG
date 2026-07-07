@@ -40,6 +40,12 @@
 - Fixed frame size/type monitoring tasks silently dying on unexpected table data, which froze the statistics. Unexpected entries are now skipped with a warning.
 - Fixed settings import silently failing on malformed JSON files. An error toast is now shown.
 - Fixed the frontend crashing on corrupt local storage entries. Corrupt entries are now dropped and replaced with defaults.
+- Fixed RFC2544 zero-loss throughput trials sporadically reporting full line rate on lossy DUTs. The loss baseline could contain stale counters from the previous trial/repetition, masking all loss of the current trial:
+  - Loss/rate gauges and frame-size snapshots are now cleared on reset instead of waiting for the next digest.
+  - Trials now wait a short settle time (2s) before sampling the baseline if no warm-up covers it.
+  - Baselines self-correct if a sample proves them stale (counter regression).
+  - A throughput trial that observes no TX frames now aborts the benchmark instead of passing as zero-loss.
+  - The estimated remaining runtime accounts for the settle time.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.

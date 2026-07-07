@@ -233,6 +233,10 @@ impl TrafficGenEvent for FrameSizeMonitor {
     }
 
     async fn on_reset(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
+        // Drop the in-memory snapshot as well; it is only replaced every
+        // 300 ms by the monitoring loop, so a consumer sampling right after
+        // a reset would read the previous test's frame counts.
+        self.statistics = FrameSizeStatistics::default();
         self.configure(switch).await?;
         Ok(())
     }

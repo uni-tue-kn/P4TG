@@ -930,6 +930,19 @@ impl TrafficGenEvent for RateMonitor {
         self.time_statistics.out_of_order.clear();
         self.time_statistics.rtt.clear();
 
+        // Reset the in-memory gauges as well. They are only refreshed by
+        // digests (one per MONITORING_PACKET_INTERVAL), so without this a
+        // consumer sampling right after a reset reads the previous test's
+        // final values, e.g. as a baseline for RFC2544 loss measurements.
+        for port in self.port_mapping.keys() {
+            self.statistics.packet_loss.insert(*port, 0);
+            self.statistics.out_of_order.insert(*port, 0);
+            self.statistics.tx_rate_l1.insert(*port, 0.0);
+            self.statistics.tx_rate_l2.insert(*port, 0.0);
+            self.statistics.rx_rate_l1.insert(*port, 0.0);
+            self.statistics.rx_rate_l2.insert(*port, 0.0);
+        }
+
         let monitoring_registers = vec![
             "ingress.p4tg.rx_seq",
             "egress.tx_seq",
