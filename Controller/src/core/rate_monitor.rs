@@ -456,11 +456,12 @@ impl RateMonitor {
         index_mapping: &HashMap<u32, MonitoringMapping>,
         sample_mode: bool,
     ) {
+        // Tofino2 supports 15 generation apps (1..=15), Tofino1 supports 7 (1..=7).
         let app_ids: Vec<u32> = {
             if state.traffic_generator.lock().await.is_tofino2 {
-                (1..8).collect()
-            } else {
                 (1..16).collect()
+            } else {
+                (1..8).collect()
             }
         };
 

@@ -327,9 +327,9 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
             .into_response();
     }
 
-    let mac = if let Some(mac_string) = payload.mac.as_deref() {
+    let explicit_mac = if let Some(mac_string) = payload.mac.as_deref() {
         match MacAddr::from_str(mac_string) {
-            Ok(mac) => mac,
+            Ok(mac) => Some(mac),
             Err(_) => {
                 return (
                     StatusCode::BAD_REQUEST,
@@ -342,33 +342,46 @@ pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpRepl
             }
         }
     } else {
-        let configured_mac = state
-            .config
-            .lock()
-            .await
-            .get_mac_state(payload.front_panel_port, payload.channel);
+        None
+    };
 
-        match configured_mac
-            .as_deref()
-            .and_then(|m| MacAddr::from_str(m).ok())
-        {
-            Some(mac) => mac,
-            None => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(Error::new(format!(
-                        "No valid MAC address is configured for front panel port {}.",
-                        payload.front_panel_port
-                    ))),
-                )
-                    .into_response();
-            }
+    // Resolve the MAC per target channel. Without an explicit MAC, each
+    // channel of a channelized port keeps replying with its own configured
+    // address instead of the base port MAC.
+    let target_mappings: Vec<(_, MacAddr)> = {
+        let config = state.config.lock().await;
+        let mut mappings_with_mac = Vec::with_capacity(target_mappings.len());
+        for entry in target_mappings {
+            let mac = match explicit_mac {
+                Some(mac) => mac,
+                None => {
+                    match config
+                        .get_mac_state(payload.front_panel_port, Some(entry.channel))
+                        .as_deref()
+                        .and_then(|m| MacAddr::from_str(m).ok())
+                    {
+                        Some(mac) => mac,
+                        None => {
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                Json(Error::new(format!(
+                                    "No valid MAC address is configured for front panel port {}/{}.",
+                                    payload.front_panel_port, entry.channel
+                                ))),
+                            )
+                                .into_response();
+                        }
+                    }
+                }
+            };
+            mappings_with_mac.push((entry, mac));
         }
+        mappings_with_mac
     };
 
     match &state
         .arp_handler
-        .modify_arp(&state.switch, &target_mappings, payload.arp_reply, mac)
+        .modify_arp(&state.switch, &target_mappings, payload.arp_reply)
         .await
     {
         Ok(_) => {

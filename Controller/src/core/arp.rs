@@ -69,15 +69,17 @@ impl Arp {
         Ok(())
     }
 
+    /// Updates the ARP reply rules for the given port mappings.
+    /// Each mapping carries its own source MAC so that channels of a
+    /// channelized port keep replying with their individual addresses.
     pub async fn modify_arp(
         &self,
         switch: &SwitchConnection,
-        ports: &[PortMapping],
+        ports: &[(PortMapping, MacAddr)],
         active: bool,
-        mac: MacAddr,
     ) -> Result<(), RBFRTError> {
         let mut requests = vec![];
-        for port in ports {
+        for (port, mac) in ports {
             let req = table::Request::new(ARP_REPLY_TABLE)
                 .match_key(
                     "ig_intr_md.ingress_port",
@@ -89,8 +91,8 @@ impl Arp {
                 .action_data("valid", active);
             requests.push(req);
             info!(
-                "ARP reply rule for front panel port {}/{} (rx recirc {}) changed to {}.",
-                port.front_panel_port, port.channel, port.rx_recirculation, active
+                "ARP reply rule for front panel port {}/{} (rx recirc {}) changed to {} with MAC {}.",
+                port.front_panel_port, port.channel, port.rx_recirculation, active, mac
             );
         }
 

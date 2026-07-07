@@ -338,10 +338,17 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             // Reset the mode to 0 to detect when traffic generation actually starts
             set_mode(0)
 
-            await post({
+            const response = await post({
                 route: "/trafficgen",
                 body: serializeSavedConfigs()
             });
+
+            // Failed requests resolve to undefined (handled by the axios
+            // interceptor); don't show the running state for a rejected start.
+            if (response?.status !== 200) {
+                set_overlay(false)
+                return;
+            }
 
             set_running(true)
 

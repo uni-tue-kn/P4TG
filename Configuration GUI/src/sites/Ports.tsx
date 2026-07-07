@@ -67,7 +67,9 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
         if (stats?.status === 200) {
             set_ports(stats.data)
-            set_config(config?.data)
+            if (config?.status === 200) {
+                set_config(config.data)
+            }
             set_loaded(true)
         }
     }
@@ -104,7 +106,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             }
         })
 
-        if (update.status === 201) {
+        if (update?.status === 201) {
             refresh()
         }
     }

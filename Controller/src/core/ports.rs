@@ -103,7 +103,7 @@ fn build_recirculation_config(
                 if !used_recirc.insert(p) {
                     panic!("Recirculation port {p} is used more than once in config.");
                 }
-                if used_recirc.contains(&tg.port) {
+                if config.contains(p) {
                     panic!("Recirculation port {p} is also used as front panel TG port.");
                 }
             }
