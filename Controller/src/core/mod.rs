@@ -38,7 +38,7 @@ pub use multicast::create_simple_multicast_group;
 
 pub use traffic_gen::TrafficGen;
 
-pub use rate_monitor::RateMonitor;
+pub use rate_monitor::{unix_secs, RateMonitor, DIGEST_TIMEOUT_SECS};
 
 mod arp;
 pub mod config;

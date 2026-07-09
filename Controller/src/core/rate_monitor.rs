@@ -19,11 +19,12 @@
 
 use std::cmp::max;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use log::{info, warn};
+use log::{error, info, warn};
 use rbfrt::error::RBFRTError;
 use rbfrt::register::Register;
 use rbfrt::table::{MatchValue, ToBytes};
@@ -51,6 +52,18 @@ const RTT_IAT_DIGEST_NAME: &str = "pipe.SwitchIngressDeparser.digest_2";
 
 /// Number of RTTs that should be stored
 const RTT_STORAGE: usize = 50000;
+
+/// Monitoring packets create digests every 500 ms per port, independent of
+/// running tests. No digests for this long means the digest pipeline is dead.
+pub const DIGEST_TIMEOUT_SECS: u64 = 10;
+
+/// Seconds since the unix epoch.
+pub fn unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
 
 /// This module handles the initialization of the `egress.frame_size_monitor` table
 /// that counts the different frame sizes that are received/sent
@@ -540,10 +553,27 @@ impl RateMonitor {
             last_app_rx.insert(*index, DataRate::new(0, 0, 0, 0.0, 0.0));
         }
 
+        // Skip malformed digests instead of panicking; a panic here would
+        // silently kill this task and freeze all rate statistics.
+        macro_rules! field {
+            ($data:expr, $name:expr) => {
+                match $data.get($name) {
+                    Some(v) => v,
+                    None => {
+                        warn!("Digest without expected field {}. Digest skipped.", $name);
+                        continue;
+                    }
+                }
+            };
+        }
+
+        let mut stale_logged: Option<Instant> = None;
+
         // listen on the channel that receives digests
         loop {
             match state.switch.digest_queue.try_recv() {
                 Ok(digest) => {
+                    state.last_digest.store(unix_secs(), Ordering::Relaxed);
                     let (elapsed_time, running) = {
                         let exp = state.experiment.lock().await;
 
@@ -563,9 +593,7 @@ impl RateMonitor {
                     if digest.name == RATE_DIGEST_NAME {
                         let data = &digest.data;
 
-                        // we know how the digest is build
-                        // unwrap without error handling
-                        let port = data.get("port").unwrap().to_u32();
+                        let port = field!(data, "port").to_u32();
 
                         if !tx_reverse_mapping.contains_key(&port)
                             && !rx_reverse_mapping.contains_key(&port)
@@ -574,14 +602,14 @@ impl RateMonitor {
                             continue;
                         }
 
-                        let time = data.get("tstmp").unwrap().to_u64();
+                        let time = field!(data, "tstmp").to_u64();
 
-                        let l1_byte = data.get("byte_counter_l1").unwrap().to_u64();
-                        let l2_byte = data.get("byte_counter_l2").unwrap().to_u64();
-                        let app_byte = data.get("app_counter").unwrap().to_u64();
-                        let app_index = data.get("index").unwrap().to_u32();
-                        let packet_loss = data.get("packet_loss").unwrap().to_u64();
-                        let out_of_order = data.get("out_of_order").unwrap().to_u64();
+                        let l1_byte = field!(data, "byte_counter_l1").to_u64();
+                        let l2_byte = field!(data, "byte_counter_l2").to_u64();
+                        let app_byte = field!(data, "app_counter").to_u64();
+                        let app_index = field!(data, "index").to_u32();
+                        let packet_loss = field!(data, "packet_loss").to_u64();
+                        let out_of_order = field!(data, "out_of_order").to_u64();
 
                         // out of order packets are also counted as packet loss in the data plane
                         // therefore subtract them from the packet loss counter
@@ -753,7 +781,13 @@ impl RateMonitor {
                         if index_port_app_mapping.is_some() {
                             // we need to subtract 1 on the RX path of the app index
                             let app_index = if is_tx { app_index } else { app_index - 1 };
-                            let last_app = last_update_app.get(&app_index).unwrap();
+                            // guards against digests with an unexpected index;
+                            // index_mapping has the same key set, so the unwrap
+                            // below is covered by this check as well
+                            let Some(last_app) = last_update_app.get(&app_index) else {
+                                warn!("Digest with unexpected app index {app_index}. Digest skipped.");
+                                continue;
+                            };
 
                             if last_app.timestamp != 0 && last_app.byte_count_l2 <= app_byte {
                                 // catch overflow of 48 bit stream byte register
@@ -792,11 +826,9 @@ impl RateMonitor {
                     } else if digest.name == RTT_IAT_DIGEST_NAME {
                         let data = &digest.data;
 
-                        // we know how the digest is build
-                        // unwrap without error handling
-                        let port = data.get("port").unwrap().to_u32();
+                        let port = field!(data, "port").to_u32();
 
-                        let rtt = data.get("rtt").unwrap().to_u64();
+                        let rtt = field!(data, "rtt").to_u64();
 
                         // catch timestamp overflow
                         if rtt > 0
@@ -848,7 +880,7 @@ impl RateMonitor {
                                     .elapsed()
                                     .is_ok_and(|x| x > Duration::from_secs(3))
                             {
-                                let iat = data.get("iat").unwrap().to_u64();
+                                let iat = field!(data, "iat").to_u64();
 
                                 if iat > 0 && iat < (u32::MAX / 2) as u64 {
                                     // catch overflow
@@ -885,9 +917,30 @@ impl RateMonitor {
                         }
                     }
                 }
-                Err(_) => {
+                Err(e) => {
+                    if e.is_disconnected() {
+                        // The rbfrt digest stream died (e.g., gRPC stream error).
+                        // It cannot recover in-process; all digest-based statistics
+                        // freeze from now on.
+                        error!("Digest channel to the switch disconnected. Rate/loss/RTT statistics will no longer update. Restart the controller to recover.");
+                        return;
+                    }
+
                     // Sleep if there’s nothing to process. If we do not do this, the CPU load is very high.
                     sleep(Duration::from_millis(400)).await; // Sleep for 400ms before trying again
+
+                    // Watchdog: even a connected channel can starve if digest
+                    // delivery stalls on the switch side.
+                    let silent_for =
+                        unix_secs().saturating_sub(state.last_digest.load(Ordering::Relaxed));
+                    if silent_for > DIGEST_TIMEOUT_SECS {
+                        if stale_logged.is_none_or(|t| t.elapsed() >= Duration::from_secs(60)) {
+                            error!("No digests received from the switch for {silent_for}s. Statistics are stale; restart the controller if this persists.");
+                            stale_logged = Some(Instant::now());
+                        }
+                    } else {
+                        stale_logged = None;
+                    }
                 }
             }
             tokio::task::yield_now().await;

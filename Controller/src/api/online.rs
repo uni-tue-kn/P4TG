@@ -18,12 +18,14 @@
  */
 
 use crate::api::docs;
+use crate::core::{unix_secs, DIGEST_TIMEOUT_SECS};
 use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::Serialize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -39,6 +41,10 @@ pub struct Online {
     pub(crate) version: String,
     pub(crate) asic: Asic,
     pub(crate) loopback: bool,
+    /// False if no digest arrived from the switch recently. In that case the
+    /// digest pipeline is dead and all rate/loss/RTT statistics are frozen;
+    /// the controller needs a restart.
+    pub(crate) digests_alive: bool,
 }
 
 /// Online endpoint
@@ -65,6 +71,9 @@ pub async fn online(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Onl
                 Asic::Tofino1
             },
             loopback: state.loopback_mode,
+            digests_alive: unix_secs()
+                .saturating_sub(state.last_digest.load(Ordering::Relaxed))
+                <= DIGEST_TIMEOUT_SECS,
         }),
     )
 }

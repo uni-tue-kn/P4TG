@@ -83,6 +83,18 @@ const App = () => {
 
         validateLocalStorage()
         loadInfos()
+
+        // Keep the digest pipeline health (digests_alive) fresh; /online is
+        // otherwise only fetched once at page load
+        const interval = setInterval(async () => {
+            let stats = await get({ route: "/online" })
+
+            if (stats !== undefined && stats.status === 200) {
+                set_p4tg_infos(stats.data)
+            }
+        }, 5000)
+
+        return () => clearInterval(interval)
     }, [])
 
     useEffect(() => {
@@ -111,6 +123,10 @@ const App = () => {
       display: inline-block;
     `
 
+    const DigestWarning = styled(ASICVersion)`
+      background: var(--bs-danger);
+    `
+
     return <Loader loaded={loaded}>
         <Router basename={Config.BASE_PATH}>
             <Row>
@@ -123,6 +139,11 @@ const App = () => {
                         <Container fluid className={"pb-2"}>
                             <Wrapper>
                                 <ASICVersion>{p4tg_infos.asic}</ASICVersion>
+                                {p4tg_infos.digests_alive === false &&
+                                    <DigestWarning title="The controller no longer receives statistic digests from the switch. Rate, loss, and RTT values are frozen. Restart the controller to recover.">
+                                        &#9888; Statistics unavailable &mdash; restart controller
+                                    </DigestWarning>
+                                }
                                 {online ?
                                     <>
                                         <Routes>

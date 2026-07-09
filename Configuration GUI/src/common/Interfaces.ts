@@ -446,7 +446,10 @@ export interface P4TGInfos {
     status: String,
     version: String,
     asic: ASIC,
-    loopback: boolean
+    loopback: boolean,
+    // false if the controller no longer receives digests from the switch;
+    // rate/loss/RTT statistics are frozen and the controller needs a restart
+    digests_alive?: boolean
 }
 
 export interface TrafficGenData {

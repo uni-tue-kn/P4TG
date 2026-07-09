@@ -16,7 +16,7 @@
 /*
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
-use log::{info, warn};
+use log::{error, info, warn};
 use macaddr::MacAddr;
 use rbfrt::table::ActionData;
 use rbfrt::util::PortManager;
@@ -24,8 +24,10 @@ use rbfrt::{table, SwitchConnection};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::task::JoinSet;
 
 mod api;
 mod core;
@@ -39,8 +41,8 @@ use crate::core::traffic_gen_core::const_definitions::{
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::core::traffic_gen_core::types::{HistogramType, Rfc2544Results};
 use crate::core::{
-    configure_ports, Arp, Config, DurationMonitorTask, FrameSizeMonitor, FrameTypeMonitor,
-    HistogramMonitor, RateMonitor, TrafficGen,
+    configure_ports, unix_secs, Arp, Config, DurationMonitorTask, FrameSizeMonitor,
+    FrameTypeMonitor, HistogramMonitor, RateMonitor, TrafficGen,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -99,6 +101,9 @@ pub struct AppState {
     pub(crate) monitor_task: Mutex<DurationMonitorTask>,
     pub(crate) multiple_tests: MultiTest,
     pub(crate) rfc2544_results: Mutex<Option<Rfc2544Results>>,
+    /// Unix timestamp (seconds) of the last digest received from the switch.
+    /// Used to detect a dead digest pipeline (all rate statistics freeze).
+    pub(crate) last_digest: AtomicU64,
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -282,6 +287,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }),
         },
         rfc2544_results: Mutex::new(None),
+        last_digest: AtomicU64::new(unix_secs()),
     });
 
     state
@@ -297,57 +303,69 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .configure(&state.switch)
         .await?;
 
+    // Monitoring tasks are supposed to run forever. If one exits or panics,
+    // its statistics silently freeze — supervise them and log loudly.
+    let mut monitors: JoinSet<&'static str> = JoinSet::new();
+
     let monitoring_state = Arc::clone(&state);
 
     // start iat monitoring
-    tokio::spawn(async move {
-        let local_state = monitoring_state;
-
-        RateMonitor::monitor_iat(local_state).await;
+    monitors.spawn(async move {
+        RateMonitor::monitor_iat(monitoring_state).await;
+        "IAT monitor"
     });
 
     let monitoring_state = Arc::clone(&state);
 
     // start frame size monitoring
-    tokio::spawn(async move {
-        let local_state = monitoring_state;
-
-        FrameSizeMonitor::monitor_statistics(local_state).await;
+    monitors.spawn(async move {
+        FrameSizeMonitor::monitor_statistics(monitoring_state).await;
+        "Frame size monitor"
     });
 
     let monitoring_state = Arc::clone(&state);
 
     // start frame type monitoring
-    tokio::spawn(async move {
-        let local_state = monitoring_state;
-
-        FrameTypeMonitor::monitor_statistics(local_state).await;
+    monitors.spawn(async move {
+        FrameTypeMonitor::monitor_statistics(monitoring_state).await;
+        "Frame type monitor"
     });
 
     let monitoring_state = Arc::clone(&state);
 
     // start RTT histogram monitoring
-    tokio::spawn(async move {
-        let local_state = monitoring_state;
-
-        HistogramMonitor::monitor_histogram(local_state, HistogramType::Rtt).await;
+    monitors.spawn(async move {
+        HistogramMonitor::monitor_histogram(monitoring_state, HistogramType::Rtt).await;
+        "RTT histogram monitor"
     });
 
     let monitoring_state = Arc::clone(&state);
 
     // start IAT histogram monitoring
-    tokio::spawn(async move {
-        let local_state = monitoring_state;
-
-        HistogramMonitor::monitor_histogram(local_state, HistogramType::Iat).await;
+    monitors.spawn(async move {
+        HistogramMonitor::monitor_histogram(monitoring_state, HistogramType::Iat).await;
+        "IAT histogram monitor"
     });
 
     let monitoring_state = Arc::clone(&state);
 
     // start digest monitoring
+    monitors.spawn(async move {
+        RateMonitor::monitor_digests(monitoring_state, &index_mapping, sample_mode).await;
+        "Digest monitor"
+    });
+
     tokio::spawn(async move {
-        let local_state = monitoring_state;
-        RateMonitor::monitor_digests(local_state, &index_mapping, sample_mode).await;
+        while let Some(res) = monitors.join_next().await {
+            match res {
+                Ok(name) => error!(
+                    "{name} task exited. Its statistics no longer update; restart the controller."
+                ),
+                Err(e) => error!(
+                    "A monitoring task crashed: {e}. Statistics no longer update; restart the controller."
+                ),
+            }
+        }
     });
 
     // start rest API
