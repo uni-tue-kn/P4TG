@@ -163,6 +163,7 @@ const App = () => {
                                             show={toast.show}
                                             message={toast.message}
                                             bg={toast.bg as ToastVariant}
+                                            onClose={() => setToast(t => ({ ...t, show: false }))}
                                         />
                                     </>
                                     :

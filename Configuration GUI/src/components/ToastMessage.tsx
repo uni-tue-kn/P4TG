@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react"
 import { Toast, ToastContainer } from "react-bootstrap"
 import { ToastVariant } from "../common/Interfaces"
 
@@ -8,23 +7,15 @@ interface Props {
     delay?: number
     bg: ToastVariant
     time: string,
+    onClose: () => void
 }
 
-const ToastMessage = ({ message, show, delay = 3000, bg, time }: Props) => {
-    const [visible, setVisible] = useState(show)
-
-    useEffect(() => {
-        setVisible(show)
-    }, [show])
-
+const ToastMessage = ({ message, show, delay = 3000, bg, time, onClose }: Props) => {
     return (
         <ToastContainer position="top-end" className="p-3" style={{ zIndex: 9999 }}>
             <Toast
-                onClose={() => {
-                    setVisible(false)
-                    message = ""
-                }}
-                show={visible}
+                onClose={onClose}
+                show={show}
                 delay={delay}
                 autohide
                 bg={bg}

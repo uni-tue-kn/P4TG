@@ -951,6 +951,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         fileReader.readAsText(e.target.files[0], "UTF-8");
 
         fileReader.onload = (e: any) => {
+            // Reset the input so selecting the same file again re-triggers onChange
+            // @ts-ignore
+            ref.current.value = ""
+
             let data;
             try {
                 data = JSON.parse(e.target.result);
@@ -991,8 +995,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             for (const [name, config] of Object.entries(new_config)) {
                 if (!validateStreams(config.streams) || !validateStreamSettings(config.stream_settings)) {
                     showToast("Settings not valid for config " + name + ". Please check the file.", "danger")
-                    // @ts-ignore
-                    ref.current.value = ""
                     return;
                 } else if (!validatePorts(config.port_tx_rx_mapping, ports, p4tg_infos)) {
                     showToast("Settings not valid for config " + name + ". Configured front panel ports are not available on this device.", "danger")
@@ -1006,25 +1008,27 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             let toastType;
             for (const [cfgName, cfg] of Object.entries(migrated_config)) {
                 const normalized = normalizeStreamsForFrontend(cfg, p4tg_infos.asic);
-                migrated_config[cfgName] = normalized.config;
                 if (normalized.warning) {
                     toastMessage = normalized.warning;
                     toastType = "warning" as ToastVariant;
                 }
 
-                if (p4tg_infos.asic === ASIC.Tofino1 && Array.isArray(cfg.stream_settings)) {
-                    const normalizedSettings = normalizeTofino1StreamSettings(cfg.stream_settings);
-                    cfg.stream_settings = normalizedSettings.stream_settings;
+                if (p4tg_infos.asic === ASIC.Tofino1 && Array.isArray(normalized.config.stream_settings)) {
+                    const normalizedSettings = normalizeTofino1StreamSettings(normalized.config.stream_settings);
+                    normalized.config.stream_settings = normalizedSettings.stream_settings;
                     if (normalizedSettings.warning) {
                         toastMessage = normalizedSettings.warning;
                         toastType = "warning" as ToastVariant;
                     }
                 }
+
+                migrated_config[cfgName] = normalized.config;
             }
 
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(migrated_config))
 
-            const first_test = Object.values(migrated_config)[0];
+            const first_name = Object.keys(migrated_config)[0];
+            const first_test = migrated_config[first_name];
 
             localStorage.setItem("streams", JSON.stringify(first_test.streams))
             localStorage.setItem("gen-mode", String(first_test.mode))
@@ -1034,6 +1038,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             localStorage.setItem("rtt_histogram_config", first_test.rtt_histogram_config ? JSON.stringify(first_test.rtt_histogram_config) : "{}")
             localStorage.setItem("iat_histogram_config", first_test.iat_histogram_config ? JSON.stringify(first_test.iat_histogram_config) : "{}")
             localStorage.setItem("rfc2544_config", JSON.stringify(normalizeRfc2544Config(first_test.rfc2544)))
+
+            setSavedConfigs(migrated_config);
+            setActiveConfigName(first_name);
+            loadConfigToState(first_test);
 
             if (toastMessage !== undefined && toastType !== undefined) {
                 showToast(toastMessage, toastType);
