@@ -190,10 +190,22 @@ impl DurationMonitorTask {
 
     pub async fn copy_stats_to_history(state: &Arc<AppState>) {
         // Move stats into state where it is then moved into the history by the API later
-        let stats = get_statistics(state).await[0].clone();
+        // Index 0 holds the current test; a panic here would silently kill the
+        // multi-test task, so bail out loudly instead if the invariant breaks.
+        let Some(stats) = get_statistics(state).await.into_iter().next() else {
+            error!("No current statistics available; test not copied to history.");
+            return;
+        };
         let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
         stats_lock.push(stats);
-        let time_stats = get_time_statistics(state, Params { limit: None }).await[0].clone();
+        let Some(time_stats) = get_time_statistics(state, Params { limit: None })
+            .await
+            .into_iter()
+            .next()
+        else {
+            error!("No current time statistics available; test not copied to history.");
+            return;
+        };
         let mut time_stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
         time_stats_lock.push(time_stats);
     }
