@@ -37,6 +37,23 @@ import Loader from "./components/Loader";
 import { validateStreams, validateStreamSettings } from "./common/Validators";
 import { isUpdateAvailable } from './common/Helper'
 
+const Wrapper = styled.div``
+
+const ASICVersion = styled.div`
+  margin-right: 10px;
+  margin-bottom: 10px;
+  background: var(--color-primary);
+  padding: 5px 25px 5px 25px;
+  color: #FFF;
+  border-radius: 10px;
+  text-align: center;
+  display: inline-block;
+`
+
+const DigestWarning = styled(ASICVersion)`
+  background: var(--bs-danger);
+`
+
 const App = () => {
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
@@ -90,7 +107,11 @@ const App = () => {
             let stats = await get({ route: "/online" })
 
             if (stats !== undefined && stats.status === 200) {
-                set_p4tg_infos(stats.data)
+                // Keep the previous object if nothing changed so the poll
+                // does not trigger a re-render every 5 s
+                set_p4tg_infos(prev =>
+                    JSON.stringify(prev) === JSON.stringify(stats.data) ? prev : stats.data
+                )
             }
         }, 5000)
 
@@ -109,23 +130,6 @@ const App = () => {
         let time = now.getHours() + ":" + now.getMinutes();
         setToast({ time: time, show: true, message, bg })
     }
-
-    const Wrapper = styled.div``
-
-    const ASICVersion = styled.div`
-      margin-right: 10px;
-      margin-bottom: 10px;
-      background: var(--color-primary);
-      padding: 5px 25px 5px 25px;
-      color: #FFF;
-      border-radius: 10px;
-      text-align: center;
-      display: inline-block;
-    `
-
-    const DigestWarning = styled(ASICVersion)`
-      background: var(--bs-danger);
-    `
 
     return <Loader loaded={loaded}>
         <Router basename={Config.BASE_PATH}>
