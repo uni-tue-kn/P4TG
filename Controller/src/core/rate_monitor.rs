@@ -785,7 +785,9 @@ impl RateMonitor {
                             // index_mapping has the same key set, so the unwrap
                             // below is covered by this check as well
                             let Some(last_app) = last_update_app.get(&app_index) else {
-                                warn!("Digest with unexpected app index {app_index}. Digest skipped.");
+                                warn!(
+                                    "Digest with unexpected app index {app_index}. Digest skipped."
+                                );
                                 continue;
                             };
 

@@ -267,7 +267,7 @@ pub struct HistogramBinEntry {
     pub probability: f64,
 }
 
-#[derive(Serialize, Debug, Clone, ToSchema)]
+#[derive(Serialize, Debug, Clone, ToSchema, Default)]
 pub struct Histogram {
     pub config: HistogramConfig,
     pub data: HistogramPacketPath,
@@ -279,14 +279,6 @@ pub struct HistogramPacketPath {
     pub rx: HistogramData,
 }
 
-impl Histogram {
-    pub fn default() -> Histogram {
-        Histogram {
-            data: Default::default(),
-            config: Default::default(),
-        }
-    }
-}
 
 #[derive(Serialize, ToSchema, Clone)]
 pub struct Statistics {

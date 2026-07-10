@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use log::{info, warn};
@@ -28,6 +32,127 @@ pub struct HistogramMonitor {
     port_mapping: HashMap<u32, PortMapping>,
     pub histogram: HashMap<u32, Histogram>,
     pub hist_type: HistogramType,
+    /// Dev ports that transmit in the current test. Only these get entries on
+    /// their TX recirculation port; entries on other paths never match traffic.
+    pub tx_ports: HashSet<u32>,
+    /// Dev ports that receive in the current test. Only these get entries on
+    /// their RX recirculation port.
+    pub rx_ports: HashSet<u32>,
+}
+
+/// Number of ternary table entries needed to model all bins of `config`
+/// on a single ingress port.
+pub fn histogram_entry_count(config: &HistogramConfig) -> u32 {
+    let bin_width = config.get_bin_width();
+    let mut entries = 0;
+
+    for bin_index in 0..config.num_bins {
+        let start = config.min + bin_index * bin_width;
+        let mut end = start + bin_width - 1;
+        if end > config.max {
+            end = config.max;
+        }
+        entries += range_to_ternary(start, end).len() as u32;
+    }
+
+    entries
+}
+
+/// Derives the TX and RX roles (dev ports) from the TX -> RX dev port mapping.
+pub fn histogram_port_roles(
+    tx_rx_dev_mapping: &HashMap<String, u32>,
+) -> (HashSet<u32>, HashSet<u32>) {
+    let tx_ports = tx_rx_dev_mapping
+        .keys()
+        .filter_map(|tx| tx.parse().ok())
+        .collect();
+    let rx_ports = tx_rx_dev_mapping.values().copied().collect();
+    (tx_ports, rx_ports)
+}
+
+/// Resolves the front panel port + channel keyed histogram configs to dev ports.
+fn resolve_histogram_configs(
+    configs: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
+) -> HashMap<u32, HistogramConfig> {
+    let mut result = HashMap::new();
+
+    if let Some(configs) = configs {
+        for (front_panel_port, channel_map) in configs {
+            let Some(dev_port_base) = front_panel_port
+                .parse::<u32>()
+                .ok()
+                .and_then(|fp| front_panel_dev_port_mappings.get(&fp))
+            else {
+                continue;
+            };
+            for (channel, config) in channel_map {
+                let dev_port = dev_port_base + channel.parse::<u32>().unwrap_or(0);
+                result.insert(dev_port, config.clone());
+            }
+        }
+    }
+
+    result
+}
+
+/// Builds the dev port keyed IAT histogram configs that will be materialized as
+/// table entries. RX-keyed payload configs are propagated to TX mates without an
+/// own config; remaining active ports fall back to the default config.
+///
+/// Used by both the table writer and the request validator so that the
+/// validator counts exactly what gets written.
+pub fn build_iat_histogram_configs(
+    configs: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    tx_rx_dev_mapping: &HashMap<String, u32>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
+) -> HashMap<u32, HistogramConfig> {
+    let mut result = resolve_histogram_configs(configs, front_panel_dev_port_mappings);
+
+    // Propagate the RX port's config to its TX mates that have no own config.
+    // A single RX port may be the target of multiple TX ports.
+    let propagated: Vec<(u32, HistogramConfig)> = tx_rx_dev_mapping
+        .iter()
+        .filter_map(|(tx, rx)| {
+            let tx: u32 = tx.parse().ok()?;
+            if result.contains_key(&tx) {
+                return None;
+            }
+            result.get(rx).map(|config| (tx, config.clone()))
+        })
+        .collect();
+    result.extend(propagated);
+
+    // Default config for active ports without any config
+    for (tx, rx) in tx_rx_dev_mapping {
+        if let Ok(tx) = tx.parse::<u32>() {
+            result.entry(tx).or_default();
+        }
+        result.entry(*rx).or_default();
+    }
+
+    result
+}
+
+/// Builds the dev port keyed RTT histogram configs that will be materialized as
+/// table entries. RTT is only measured on the RX path, so only RX ports get a
+/// default config.
+///
+/// Used by both the table writer and the request validator so that the
+/// validator counts exactly what gets written.
+pub fn build_rtt_histogram_configs(
+    configs: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    tx_rx_dev_mapping: &HashMap<String, u32>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
+) -> HashMap<u32, HistogramConfig> {
+    let mut result = resolve_histogram_configs(configs, front_panel_dev_port_mappings);
+
+    // Default config for active RX ports without any config
+    for rx in tx_rx_dev_mapping.values() {
+        result.entry(*rx).or_default();
+    }
+
+    result
 }
 
 impl HistogramMonitor {
@@ -39,6 +164,8 @@ impl HistogramMonitor {
             port_mapping,
             histogram: Default::default(),
             hist_type,
+            tx_ports: Default::default(),
+            rx_ports: Default::default(),
         }
     }
 
@@ -56,6 +183,22 @@ impl HistogramMonitor {
         let mut requests = vec![];
 
         for (port, hist) in self.histogram.iter() {
+            let Some(mapping) = self.port_mapping.get(port) else {
+                continue;
+            };
+
+            // Only write entries for the recirculation paths that carry traffic
+            // for this port. TX IAT is measured on the TX recirculation port of
+            // sending ports, RX IAT/RTT on the RX recirculation port of
+            // receiving ports; entries on other paths never match.
+            let write_rx = self.rx_ports.contains(port);
+            let write_tx =
+                matches!(self.hist_type, HistogramType::Iat) && self.tx_ports.contains(port);
+
+            if !write_rx && !write_tx {
+                continue;
+            }
+
             let hist_config = &hist.config;
 
             // Calculate bin width based on config params
@@ -69,43 +212,63 @@ impl HistogramMonitor {
                     end = hist_config.max;
                 }
 
-                if let Some(mapping) = self.port_mapping.get(port) {
-                    let ternary_entries = range_to_ternary(start, end);
+                let ternary_entries = range_to_ternary(start, end);
 
+                if write_rx {
                     requests.extend(self.build_ternary_table_entries(
                         ternary_entries.clone(),
                         mapping.rx_recirculation,
                         bin_index,
                     ));
-                    if let HistogramType::Iat = self.hist_type {
-                        requests.extend(self.build_ternary_table_entries(
-                            ternary_entries,
-                            mapping.tx_recirculation,
-                            bin_index,
-                        ));
-                    }
+                }
+                if write_tx {
+                    requests.extend(self.build_ternary_table_entries(
+                        ternary_entries,
+                        mapping.tx_recirculation,
+                        bin_index,
+                    ));
                 }
             }
 
-            // Wildcard match on RTT per port. This entry catches outliers of the histogram
-            if let Some(mapping) = self.port_mapping.get(port) {
-                let req = match self.hist_type {
-                    HistogramType::Rtt => vec![Request::new(RTT_HISTOGRAM_TABLE)
-                        .match_key("ig_md.ig_port", MatchValue::exact(mapping.rx_recirculation))
-                        .match_key("ig_md.rtt", MatchValue::ternary(0, 0))
-                        .action("ingress.p4tg.rtt.count_missed_bin")],
-                    HistogramType::Iat => vec![
-                        Request::new(IAT_HISTOGRAM_TABLE)
-                            .match_key("ig_md.ig_port", MatchValue::exact(mapping.rx_recirculation))
-                            .match_key("ig_md.iat", MatchValue::ternary(0, 0))
-                            .action("ingress.p4tg.iat.count_missed_bin"),
-                        Request::new(IAT_HISTOGRAM_TABLE)
-                            .match_key("ig_md.ig_port", MatchValue::exact(mapping.tx_recirculation))
-                            .match_key("ig_md.iat", MatchValue::ternary(0, 0))
-                            .action("ingress.p4tg.iat.count_missed_bin"),
-                    ],
-                };
-                requests.extend(req);
+            // Wildcard match per port and path. This entry catches outliers of the histogram
+            match self.hist_type {
+                HistogramType::Rtt => {
+                    if write_rx {
+                        requests.push(
+                            Request::new(RTT_HISTOGRAM_TABLE)
+                                .match_key(
+                                    "ig_md.ig_port",
+                                    MatchValue::exact(mapping.rx_recirculation),
+                                )
+                                .match_key("ig_md.rtt", MatchValue::ternary(0, 0))
+                                .action("ingress.p4tg.rtt.count_missed_bin"),
+                        );
+                    }
+                }
+                HistogramType::Iat => {
+                    if write_rx {
+                        requests.push(
+                            Request::new(IAT_HISTOGRAM_TABLE)
+                                .match_key(
+                                    "ig_md.ig_port",
+                                    MatchValue::exact(mapping.rx_recirculation),
+                                )
+                                .match_key("ig_md.iat", MatchValue::ternary(0, 0))
+                                .action("ingress.p4tg.iat.count_missed_bin"),
+                        );
+                    }
+                    if write_tx {
+                        requests.push(
+                            Request::new(IAT_HISTOGRAM_TABLE)
+                                .match_key(
+                                    "ig_md.ig_port",
+                                    MatchValue::exact(mapping.tx_recirculation),
+                                )
+                                .match_key("ig_md.iat", MatchValue::ternary(0, 0))
+                                .action("ingress.p4tg.iat.count_missed_bin"),
+                        );
+                    }
+                }
             }
         }
 
@@ -211,7 +374,7 @@ impl HistogramMonitor {
         };
 
         // Map y-axis of histogram to probability from [0, 1]
-        for (_bin_index, entry) in bins_data.iter_mut() {
+        for entry in bins_data.values_mut() {
             entry.probability = if total_pkt_count > 0 {
                 entry.count as f64 / total_pkt_count as f64 * 100f64
             } else {
@@ -409,7 +572,7 @@ impl HistogramMonitor {
     }
 
     fn clear_data(&mut self) {
-        for (_, hist) in self.histogram.iter_mut() {
+        for hist in self.histogram.values_mut() {
             hist.data.rx.data_bins.clear();
             hist.data.rx.percentiles.clear();
             hist.data.rx.missed_bin_count = 0;

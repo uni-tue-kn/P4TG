@@ -22,14 +22,19 @@ use log::warn;
 use std::collections::HashMap;
 
 use crate::api::server::Error;
+use crate::core::histogram_monitor::{
+    build_iat_histogram_configs, build_rtt_histogram_configs, histogram_entry_count,
+    histogram_port_roles,
+};
 use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
-    IAT_HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
+    IAT_HISTOGRAM_TABLE, IAT_HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
     MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2, MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS,
     RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
 use crate::core::traffic_gen_core::helper::{
-    calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps, range_to_ternary,
+    calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps,
+    translate_fp_channel_to_dev_port_mapping,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
@@ -603,14 +608,27 @@ pub fn validate_request(
         ));
     }
 
-    if let Some(histogram_config) = rtt_histogram_config {
-        // Validate histogram configuration
-        validate_histogram(histogram_config, payload.name.clone(), HistogramType::Rtt)?;
-    }
-    if let Some(histogram_config) = iat_histogram_config {
-        // Validate histogram configuration
-        validate_histogram(histogram_config, payload.name.clone(), HistogramType::Iat)?;
-    }
+    // Validate histogram configurations. Runs even without explicit configs
+    // because active ports fall back to default configs that also consume
+    // table entries. Safe to translate here: all mapping ports were validated above.
+    let tx_rx_dev_mapping = translate_fp_channel_to_dev_port_mapping(
+        &payload.port_tx_rx_mapping,
+        &front_panel_dev_port_mappings,
+    );
+    validate_histogram(
+        rtt_histogram_config.as_ref(),
+        &tx_rx_dev_mapping,
+        &front_panel_dev_port_mappings,
+        payload.name.clone(),
+        HistogramType::Rtt,
+    )?;
+    validate_histogram(
+        iat_histogram_config.as_ref(),
+        &tx_rx_dev_mapping,
+        &front_panel_dev_port_mappings,
+        payload.name.clone(),
+        HistogramType::Iat,
+    )?;
 
     validate_patterns(&active_streams)?;
 
@@ -714,24 +732,24 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
 }
 
 pub fn validate_histogram(
-    request: &HashMap<String, HashMap<String, HistogramConfig>>,
+    request: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    tx_rx_dev_mapping: &HashMap<String, u32>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
     test_name: Option<String>,
     hist_type: HistogramType,
 ) -> Result<(), Error> {
-    let mut num_requests = 1; // 1 for default_action entry
-
     let mut t_name = "".to_string();
     if let Some(name) = test_name {
         t_name = format!(", Test: {name:?},");
     }
 
-    let max_table_size = match hist_type {
-        HistogramType::Rtt => RTT_HISTOGRAM_TABLE_SIZE,
-        HistogramType::Iat => IAT_HISTOGRAM_TABLE_SIZE,
+    let (table_name, max_table_size) = match hist_type {
+        HistogramType::Rtt => (RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE),
+        HistogramType::Iat => (IAT_HISTOGRAM_TABLE, IAT_HISTOGRAM_TABLE_SIZE),
     };
 
-    for (port, channel_map) in request.iter() {
-        num_requests += 1; // Missed bin action for this port.
+    // Per-config sanity checks
+    for (port, channel_map) in request.into_iter().flatten() {
         for config in channel_map.values() {
             let port: u32 = match port.parse() {
                 Ok(p) => p,
@@ -764,36 +782,149 @@ pub fn validate_histogram(
                 )));
                 }
             }
-
-            // Calculate bin width based on config params
-            let bin_width = config.get_bin_width();
-
-            for bin_index in 0..config.num_bins {
-                // For each bin, write table entries
-                let start = config.min + bin_index * bin_width;
-                let mut end = start + bin_width - 1;
-                if end > config.max {
-                    end = config.max;
-                }
-
-                let new_requests = range_to_ternary(start, end).len() as u32;
-
-                if let HistogramType::Iat = hist_type {
-                    // Double the number because we write entries for TX and RX
-                    num_requests += 2 * new_requests;
-                } else {
-                    // Only RX
-                    num_requests += new_requests;
-                }
-
-                if num_requests > max_table_size {
-                    return Err(Error::new(format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")));
-                }
-            }
         }
     }
 
+    // Count the table entries that will actually be written. This mirrors the
+    // table writer: configs (including defaults for unconfigured active ports)
+    // are resolved per dev port, and each port only gets entries for the
+    // recirculation paths matching its TX/RX role. Each written path costs the
+    // ternary bin entries plus one wildcard missed-bin entry.
+    let dev_port_configs = match hist_type {
+        HistogramType::Rtt => build_rtt_histogram_configs(
+            request,
+            tx_rx_dev_mapping,
+            front_panel_dev_port_mappings,
+        ),
+        HistogramType::Iat => build_iat_histogram_configs(
+            request,
+            tx_rx_dev_mapping,
+            front_panel_dev_port_mappings,
+        ),
+    };
+    let (tx_ports, rx_ports) = histogram_port_roles(tx_rx_dev_mapping);
+
+    let mut num_requests: u32 = 0;
+    for (dev_port, config) in dev_port_configs.iter() {
+        let mut num_paths = rx_ports.contains(dev_port) as u32;
+        if let HistogramType::Iat = hist_type {
+            num_paths += tx_ports.contains(dev_port) as u32;
+        }
+        num_requests += num_paths * (histogram_entry_count(config) + 1);
+    }
+
+    if num_requests > max_table_size {
+        return Err(Error::new(format!("Histogram config error {t_name}: Number of table entries ({num_requests}) exceeds available space ({max_table_size}) in table {table_name}. Reduce the number of bins or the histogram range.")));
+    }
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn histogram_request(
+        fp_port: &str,
+        config: HistogramConfig,
+    ) -> HashMap<String, HashMap<String, HistogramConfig>> {
+        HashMap::from([(
+            fp_port.to_string(),
+            HashMap::from([("0".to_string(), config)]),
+        )])
+    }
+
+    fn config_500_bins() -> HistogramConfig {
+        HistogramConfig {
+            min: 0,
+            max: 2500,
+            num_bins: 500,
+            percentiles: None,
+        }
+    }
+
+    /// Regression test: an IAT histogram with 500 bins over 0-2500ns on a single
+    /// unidirectional port pair needs 2 * (1250 + 1) = 2502 entries and fits into
+    /// the table (4196). The old validator counted the same, but the writer
+    /// produced twice as much and crashed the traffic generation start.
+    #[test]
+    fn iat_500_bins_unidirectional_is_accepted() {
+        let fp_mappings = HashMap::from([(1, 8), (2, 16)]);
+        let tx_rx = HashMap::from([("8".to_string(), 16)]);
+        let request = histogram_request("2", config_500_bins());
+
+        let result = validate_histogram(
+            Some(&request),
+            &tx_rx,
+            &fp_mappings,
+            None,
+            HistogramType::Iat,
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    /// Bidirectional with 500 bins on both ports needs 2 ports * 2 paths *
+    /// (1250 + 1) = 5004 entries and genuinely does not fit (4196). The
+    /// validator must reject this instead of letting the table write fail.
+    #[test]
+    fn iat_500_bins_bidirectional_is_rejected() {
+        let fp_mappings = HashMap::from([(1, 8), (2, 16)]);
+        let tx_rx = HashMap::from([("8".to_string(), 16), ("16".to_string(), 8)]);
+        let mut request = histogram_request("1", config_500_bins());
+        request.extend(histogram_request("2", config_500_bins()));
+
+        let result = validate_histogram(
+            Some(&request),
+            &tx_rx,
+            &fp_mappings,
+            None,
+            HistogramType::Iat,
+        );
+        assert!(result.is_err());
+    }
+
+    /// RTT only writes RX path entries, so 500 bins on both ports of a
+    /// bidirectional pair fit into the larger RTT table (8192).
+    #[test]
+    fn rtt_500_bins_bidirectional_is_accepted() {
+        let fp_mappings = HashMap::from([(1, 8), (2, 16)]);
+        let tx_rx = HashMap::from([("8".to_string(), 16), ("16".to_string(), 8)]);
+        let mut request = histogram_request("1", config_500_bins());
+        request.extend(histogram_request("2", config_500_bins()));
+
+        let result = validate_histogram(
+            Some(&request),
+            &tx_rx,
+            &fp_mappings,
+            None,
+            HistogramType::Rtt,
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn zero_bins_is_rejected() {
+        let fp_mappings = HashMap::from([(1, 8), (2, 16)]);
+        let tx_rx = HashMap::from([("8".to_string(), 16)]);
+        let request = histogram_request(
+            "2",
+            HistogramConfig {
+                min: 0,
+                max: 2500,
+                num_bins: 0,
+                percentiles: None,
+            },
+        );
+
+        let result = validate_histogram(
+            Some(&request),
+            &tx_rx,
+            &fp_mappings,
+            None,
+            HistogramType::Iat,
+        );
+        assert!(result.is_err());
+    }
 }
 
 pub fn validate_multiple_test(
