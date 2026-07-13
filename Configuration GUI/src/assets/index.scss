@@ -303,6 +303,13 @@ table {
     &:not(.sidebar-end):not(.show) {
         margin-left: inherit !important;
     }
+
+    // Below 992px CoreUI switches the sidebar to a fixed full-viewport
+    // overlay ("mobile mode"), which makes width: 100% span the whole screen
+    // and cover the page content. Keep it inside its navbar column instead.
+    @media (max-width: 991.98px) {
+        position: static;
+    }
 }
 
 .btn {

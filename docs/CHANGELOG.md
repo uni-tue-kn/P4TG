@@ -59,7 +59,8 @@
 - Added a warning in the settings when multiple TX ports are mapped to the same RX endpoint. Loss and out-of-order tracking works per RX port, so such fan-in mappings produce unreliable loss/out-of-order counters.
 - Fixed the digest pipeline silently dying after long controller uptime, which froze all rate/loss/RTT statistics at zero while traffic generation appeared to work. Via `rbfrt`: large gRPC error trailers from `bf_switchd` no longer tear down the whole connection (h2 `too_many_continuations` GOAWAY), and a failed notification stream at startup now returns an error instead of panicking. In the controller: a dead digest channel and malformed digests are now detected and logged instead of silently ignored, all monitoring tasks are supervised, and a digest watchdog reports pipeline health as `digests_alive` via `GET:/api/online`.
 - Fixed a crash of the monitoring thread when a stream with app ID 0 was configured directly via the REST API. The controller and frontend now reject such configs.
-- 
+- Fixed navbar taking all the space on small screens.
+
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.
 - Updated frontend and controller dependencies.
