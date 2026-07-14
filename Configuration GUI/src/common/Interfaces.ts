@@ -449,7 +449,9 @@ export interface P4TGInfos {
     loopback: boolean,
     // false if the controller no longer receives digests from the switch;
     // rate/loss/RTT statistics are frozen and the controller needs a restart
-    digests_alive?: boolean
+    digests_alive?: boolean,
+    // number of other clients with an open web session on this controller
+    connected_clients?: number
 }
 
 export interface TrafficGenData {

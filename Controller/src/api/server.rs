@@ -207,5 +207,12 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .await
         .unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{port}"));
 
-    axum::serve(listener, app).await.unwrap();
+    // Connect info exposes the client IP to handlers (used by /online to
+    // report concurrent web sessions)
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }

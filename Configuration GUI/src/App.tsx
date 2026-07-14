@@ -54,6 +54,11 @@ const DigestWarning = styled(ASICVersion)`
   background: var(--bs-danger);
 `
 
+const SessionWarning = styled(ASICVersion)`
+  background: var(--bs-warning);
+  color: #000;
+`
+
 const App = () => {
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
@@ -147,6 +152,11 @@ const App = () => {
                                     <DigestWarning title="The controller no longer receives statistic digests from the switch. Rate, loss, and RTT values are frozen. Restart the controller to recover.">
                                         &#9888; Statistics unavailable &mdash; restart controller
                                     </DigestWarning>
+                                }
+                                {(p4tg_infos.connected_clients ?? 0) > 0 &&
+                                    <SessionWarning>
+                                        &#9888; Currently, {p4tg_infos.connected_clients} other user{p4tg_infos.connected_clients! > 1 ? "s are" : " is"} connected to this P4TG instance
+                                    </SessionWarning>
                                 }
                                 {online ?
                                     <>

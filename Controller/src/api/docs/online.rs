@@ -8,7 +8,8 @@ lazy_static! {
             "version": "2.4.0",
             "asic": "Tofino2",
             "loopback": false,
-            "digests_alive": true
+            "digests_alive": true,
+            "connected_clients": 0
         }
     ])
     .to_string();

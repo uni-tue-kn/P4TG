@@ -25,8 +25,25 @@ import { ReactNode, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ToastVariant } from "./Interfaces";
 
+// Per-tab session id so the controller can count open web sessions even
+// when they share one IP (e.g. SSH tunnels). sessionStorage is per
+// tab/window; the controller subtracts the requester's own session, so a
+// single open tab shows no warning. crypto.randomUUID is unavailable
+// outside secure contexts (plain http), hence the Math.random fallback.
+const getSessionId = () => {
+    let id = sessionStorage.getItem("p4tg-session-id")
+    if (id === null) {
+        id = typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : Math.random().toString(36).slice(2) + Date.now().toString(36)
+        sessionStorage.setItem("p4tg-session-id", id)
+    }
+    return id
+}
+
 const instance = axios.create({
-    baseURL: Config.API_URL
+    baseURL: Config.API_URL,
+    headers: { "X-Session-Id": getSessionId() }
 })
 
 interface Request {

@@ -17,6 +17,7 @@
     - Minimum: choose the smallest value
 - Added RFC2544 API automation examples, result summaries, and plots to `p4tg_test_automation`.
 - Added controller-generated PDF reports for RFC2544 results or general P4TG statistics.
+- Added a warning in the GUI when other web sessions are connected to the same P4TG instance. `GET:/api/online` now reports the number of other active web sessions (`connected_clients`), tracked via a per-tab session id.
 
 ### Bug fixes
 - Fixed bug for square waves with low != 0 and very short high phases.

@@ -104,6 +104,8 @@ pub struct AppState {
     /// Unix timestamp (seconds) of the last digest received from the switch.
     /// Used to detect a dead digest pipeline (all rate statistics freeze).
     pub(crate) last_digest: AtomicU64,
+    /// Tracks concurrent GUI web sessions by client IP (see `api::sessions`).
+    pub(crate) connected_clients: api::sessions::SessionTracker,
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -288,6 +290,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         },
         rfc2544_results: Mutex::new(None),
         last_digest: AtomicU64::new(unix_secs()),
+        connected_clients: Default::default(),
     });
 
     state
