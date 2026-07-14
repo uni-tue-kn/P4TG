@@ -352,9 +352,21 @@ pub async fn start_single_test(
         Ok(streams) => {
             // store the settings for synchronization between multiple
             // GUI clients
+            // merge only the solver outputs into the original payload streams;
+            // the annotated streams also carry rewritten frame_size/traffic_rate
+            // values that must not be stored (restart & GUI sync re-feed them)
+            let mut stored_streams = payload.streams.clone();
+            for s in &mut stored_streams {
+                if let Some(annotated) = streams.iter().find(|a| a.app_id == s.app_id) {
+                    s.n_packets = annotated.n_packets;
+                    s.timeout = annotated.timeout;
+                    s.generation_accuracy = annotated.generation_accuracy;
+                    s.n_pipes = annotated.n_pipes;
+                }
+            }
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
             tg.stream_settings = payload.stream_settings.clone();
-            tg.streams = payload.streams.clone();
+            tg.streams = stored_streams;
             tg.rtt_histogram_config = payload.rtt_histogram_config.unwrap_or_default();
             tg.iat_histogram_config = payload.iat_histogram_config.unwrap_or_default();
             tg.rfc2544_config = payload.rfc2544;

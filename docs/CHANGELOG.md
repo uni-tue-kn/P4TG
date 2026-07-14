@@ -48,6 +48,7 @@
   - The estimated remaining runtime accounts for the settle time.
 - Fixed ARP replies on channelized ports answering with the base port MAC on all channels. Without an explicit MAC, each channel now replies with its own configured address.
 - Fixed config validation not detecting manually configured recirculation ports that collide with another TG front panel port.
+- Fixed `GET:/api/trafficgen` not exposing the computed send behaviour (`n_packets`, `timeout`, `generation_accuracy`, `n_pipes`). The solver results are now merged into the stored streams when a test starts.
 - Fixed swapped Tofino1/Tofino2 app ID ranges in rate monitoring, which caused phantom app rate entries on Tofino1 and missing initial app rate entries on Tofino2.
 - ⚠️ `GET:/api/histogram` now returns front panel port numbers with a channel map instead of dev port numbers, consistent with all other endpoints.
 - Fixed the Ports page breaking when a port/ARP configuration request or the config fetch failed.
