@@ -30,7 +30,8 @@ use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
     IAT_HISTOGRAM_TABLE, IAT_HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
     MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2, MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS,
-    RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
+    MAX_PATTERN_SAMPLE_RATE, RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE,
+    TG_MAX_RATE_TF2,
 };
 use crate::core::traffic_gen_core::helper::{
     calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps,
@@ -656,6 +657,20 @@ pub fn validate_request(
 pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
     for s in active_streams.iter() {
         if let Some(pattern) = &s.pattern {
+            if pattern.sample_rate == 0 || pattern.sample_rate > MAX_PATTERN_SAMPLE_RATE {
+                return Err(Error::new(format!(
+                    "Pattern sample rate in stream with ID #{} must be in [1, {}].",
+                    s.stream_id, MAX_PATTERN_SAMPLE_RATE
+                )));
+            }
+
+            if !pattern.period.is_finite() || pattern.period <= 0.0 {
+                return Err(Error::new(format!(
+                    "Pattern period in stream with ID #{} must be a finite value greater than zero.",
+                    s.stream_id
+                )));
+            }
+
             let period_secs = pattern.period / 1e9_f64; // convert from ns to s
 
             if let GenerationPattern::Flashcrowd = pattern.pattern_type {

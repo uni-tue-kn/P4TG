@@ -5,7 +5,18 @@ use log::warn;
 use macaddr::MacAddr;
 use rbfrt::util::{AutoNegotiation, Speed, FEC};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, error::Error, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+    str::FromStr,
+};
+
+fn invalid_config(message: impl Into<String>) -> Box<dyn Error> {
+    Box::new(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        message.into(),
+    ))
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(untagged)]
@@ -183,6 +194,67 @@ impl Config {
     }
 
     pub(crate) fn validate(&self, num_ports: u32, is_tofino2: bool) -> Result<(), Box<dyn Error>> {
+        if self.tg_ports.is_empty() {
+            return Err(invalid_config(
+                "At least one traffic-generation port must be configured.",
+            ));
+        }
+
+        let mut tg_ports = HashSet::new();
+        for port in &self.tg_ports {
+            if port.port == 0 || port.port > num_ports {
+                return Err(invalid_config(format!(
+                    "Traffic-generation port {} is outside the available front-panel range 1..={num_ports}.",
+                    port.port
+                )));
+            }
+            if !tg_ports.insert(port.port) {
+                return Err(invalid_config(format!(
+                    "Traffic-generation port {} is configured more than once.",
+                    port.port
+                )));
+            }
+        }
+
+        let mut used_recirculation_ports = HashSet::new();
+        for port in &self.tg_ports {
+            if let Some(pair) = &port.recirculation_ports {
+                for recirculation_port in [pair.tx_port, pair.rx_port] {
+                    if recirculation_port == 0 || recirculation_port > num_ports {
+                        return Err(invalid_config(format!(
+                            "Recirculation port {recirculation_port} for traffic-generation port {} is outside the available front-panel range 1..={num_ports}.",
+                            port.port
+                        )));
+                    }
+                    if tg_ports.contains(&recirculation_port) {
+                        return Err(invalid_config(format!(
+                            "Recirculation port {recirculation_port} is also configured as a traffic-generation port."
+                        )));
+                    }
+                    if !used_recirculation_ports.insert(recirculation_port) {
+                        return Err(invalid_config(format!(
+                            "Recirculation port {recirculation_port} is used more than once."
+                        )));
+                    }
+                }
+            }
+        }
+
+        let automatically_mapped_ports = self
+            .tg_ports
+            .iter()
+            .filter(|port| port.recirculation_ports.is_none())
+            .count();
+        let free_ports = (1..=num_ports)
+            .filter(|port| !tg_ports.contains(port) && !used_recirculation_ports.contains(port))
+            .count();
+        let required_free_ports = automatically_mapped_ports.saturating_mul(2);
+        if free_ports < required_free_ports {
+            return Err(invalid_config(format!(
+                "Not enough free recirculation ports: need {required_free_ports}, have {free_ports} after reserving manual mappings."
+            )));
+        }
+
         for port in &self.tg_ports {
             if MacAddr::from_str(&port.mac).is_err() {
                 return Err(Box::new(std::io::Error::new(
@@ -255,23 +327,6 @@ impl Config {
                     );
                 }
             }
-        }
-
-        // Each port requires two recirculation ports. so floor(num_ports / 3) are actually available
-        let num_availabe_tg_ports = num_ports / 3;
-        if !(self.tg_ports.len() <= num_availabe_tg_ports as usize
-            && self
-                .tg_ports
-                .clone()
-                .into_iter()
-                .filter(|p| p.port > num_ports)
-                .collect::<Vec<_>>()
-                .is_empty())
-        {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Too many ports or invalid port number used".to_string(),
-            )));
         }
 
         Ok(())

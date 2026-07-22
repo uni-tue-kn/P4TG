@@ -91,7 +91,7 @@ fn build_recirculation_config(
     config: &Config,
     recirculation_ports: &[u32],
     auto_tg_ports: &[u32],
-) -> HashMap<u32, RecirculationPair> {
+) -> Result<HashMap<u32, RecirculationPair>, RBFRTError> {
     // --- Build choices for each TG: config-first, then auto from remaining pool ---
     let mut recirc_ports_per_tg_choice: HashMap<u32, RecirculationPair> = HashMap::new();
     let mut used_recirc: HashSet<u32> = HashSet::new();
@@ -101,10 +101,18 @@ fn build_recirculation_config(
         if let Some(rec) = &tg.recirculation_ports {
             for &p in &[rec.tx_port, rec.rx_port] {
                 if !used_recirc.insert(p) {
-                    panic!("Recirculation port {p} is used more than once in config.");
+                    return Err(RBFRTError::GenericError {
+                        message: format!(
+                            "Recirculation port {p} is used more than once in config."
+                        ),
+                    });
                 }
                 if config.contains(p) {
-                    panic!("Recirculation port {p} is also used as front panel TG port.");
+                    return Err(RBFRTError::GenericError {
+                        message: format!(
+                            "Recirculation port {p} is also used as front panel TG port."
+                        ),
+                    });
                 }
             }
             recirc_ports_per_tg_choice.insert(
@@ -126,11 +134,13 @@ fn build_recirculation_config(
 
     let needed = auto_tg_ports.len() * 2;
     if free.len() < needed {
-        panic!(
-            "Not enough recirculation ports: need {}, have {} (after reserving manual mappings).",
-            needed,
-            free.len()
-        );
+        return Err(RBFRTError::GenericError {
+            message: format!(
+                "Not enough recirculation ports: need {}, have {} (after reserving manual mappings).",
+                needed,
+                free.len()
+            ),
+        });
     }
 
     // Assign pairs (2*i, 2*i+1) from the filtered pool
@@ -146,7 +156,7 @@ fn build_recirculation_config(
         used_recirc.insert(free[2 * i + 1]);
     }
 
-    recirc_ports_per_tg_choice
+    Ok(recirc_ports_per_tg_choice)
 }
 
 pub fn configure_recirculation_ports(
@@ -262,7 +272,9 @@ fn build_tg_recirc_mapping(
     let mut seen_dev: HashSet<u32> = HashSet::new();
     for m in port_mapping.values() {
         if !seen_dev.insert(m.tx_recirculation) || !seen_dev.insert(m.rx_recirculation) {
-            panic!("Recirculation ports not unique.");
+            return Err(RBFRTError::GenericError {
+                message: "Recirculation ports not unique.".to_owned(),
+            });
         }
     }
 
@@ -289,7 +301,7 @@ pub async fn configure_ports(
 
     // Build recirculation port assignments based on config and auto assignment
     let recirc_ports_per_tg_choice =
-        build_recirculation_config(config, recirculation_ports, &tg_port_config.auto_tg_ports);
+        build_recirculation_config(config, recirculation_ports, &tg_port_config.auto_tg_ports)?;
 
     // Build Port requests to configure recirculation ports
     let recirculation_port_requests = configure_recirculation_ports(

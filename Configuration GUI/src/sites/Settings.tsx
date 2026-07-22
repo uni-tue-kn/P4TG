@@ -55,6 +55,8 @@ import { PortStatus } from './Ports';
 import { getTotalActiveStreamRate, getTotalRatePerPort, loadFromStorage } from '../common/Helper';
 import IMIXModal from '../components/settings/IMIXModal';
 import { IMIXConfig, IMIX_DESCRIPTION, IMIX_STREAM_COUNT, IMIX_STREAM_SPECS, splitImixRate } from '../common/IMIX';
+import { startPolling } from '../common/Polling';
+import { migrateTrafficGenData } from '../common/StorageMigration';
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -99,8 +101,8 @@ const normalizeStreamsForFrontend = (
     config: TrafficGenData,
     asic: ASIC,
 ): { config: TrafficGenData; warning?: string } => {
-    const streams = (config.streams ?? []).map((stream) => ({ ...stream }));
-    validateStreams(streams);
+    const migratedConfig = migrateTrafficGenData(config) ?? config;
+    const streams = (migratedConfig.streams ?? []).map((stream) => ({ ...stream }));
 
     let warning: string | undefined;
 
@@ -168,7 +170,7 @@ const normalizeStreamsForFrontend = (
 
     return {
         config: {
-            ...config,
+            ...migratedConfig,
             streams: normalizedStreams,
         },
         warning,
@@ -413,12 +415,20 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     }, [streams]);
 
     useEffect(() => {
-        refresh()
+        let disposed = false;
+        let stopPolling = () => { };
 
-        const interval = setInterval(loadGen, 2000);
+        const initialize = async () => {
+            await refresh();
+            if (!disposed) {
+                stopPolling = startPolling(loadGen, 2000);
+            }
+        };
+        void initialize();
 
         return () => {
-            clearInterval(interval)
+            disposed = true;
+            stopPolling();
         }
     }, [])
 
@@ -939,60 +949,71 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     }
 
     function isSingleTrafficGenData(val: unknown): val is TrafficGenData {
-        return typeof val === 'object' && val !== null
-            && 'streams' in val
-            && 'stream_settings' in val
+        return typeof val === 'object' && val !== null && !Array.isArray(val)
+            && 'streams' in val && Array.isArray(val.streams)
+            && 'stream_settings' in val && Array.isArray(val.stream_settings)
     }
 
-    const loadSettings = (e: any) => {
+    const loadSettings = (e: React.ChangeEvent<HTMLInputElement>) => {
         e.preventDefault()
 
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) {
+            showToast("No settings file selected.", "danger")
+            return;
+        }
+
         const fileReader = new FileReader();
-        fileReader.readAsText(e.target.files[0], "UTF-8");
+        fileReader.readAsText(file, "UTF-8");
 
-        fileReader.onload = (e: any) => {
-            // Reset the input so selecting the same file again re-triggers onChange
-            // @ts-ignore
-            ref.current.value = ""
-
-            let data;
+        fileReader.onload = (event) => {
+            let data: unknown;
             try {
-                data = JSON.parse(e.target.result);
+                if (typeof event.target?.result !== "string") {
+                    throw new Error("FileReader returned non-text content");
+                }
+                data = JSON.parse(event.target.result);
             } catch {
                 showToast("Could not parse file content. Please check the file.", "danger")
                 return;
             }
             let new_config: Record<string, TrafficGenData> = {};
 
-            if (typeof data === 'object' && data !== null) {
-                if (Object.values(data).every(isSingleTrafficGenData)) {
-                    // It's Record<string, TrafficGenData>, old format
-                    const typedData = data as Record<string, TrafficGenData>;
-                    for (let [key, value] of Object.entries(typedData)) {
-                        // Use the name in the test object as a key.
-                        // This deflates the POST:/api/trafficgen format back to the savedConfig format.
-                        if (value.name && typeof value.name === "string") {
-                            if (key !== value.name) {
-                                new_config[value.name] = value;
-                            } else {
-                                new_config[key] = value;
-                            }
-                        } else {
-                            // fallback if no name property
-                            new_config[key] = value;
-                        }
-                    }
+            const addConfig = (fallbackName: string, value: TrafficGenData) => {
+                const importedName = typeof value.name === "string" && value.name.trim()
+                    ? value.name.trim()
+                    : fallbackName;
+                new_config[importedName] = value;
+            };
 
-                } else if (isSingleTrafficGenData(data)) {
-                    // It's a single TrafficGenData
-                    new_config = { [DEFAULT_CONFIG_NAME]: data }
-                } else {
+            if (Array.isArray(data)) {
+                if (data.length === 0 || !data.every(isSingleTrafficGenData)) {
+                    showToast("Settings file does not contain any valid configurations.", "danger")
+                    return;
+                }
+                data.forEach((value, index) => addConfig(`Test ${index + 1}`, value));
+            } else if (isSingleTrafficGenData(data)) {
+                addConfig(DEFAULT_CONFIG_NAME, data);
+            } else if (typeof data === "object" && data !== null) {
+                const entries = Object.entries(data);
+                if (entries.length === 0 || !entries.every(([, value]) => isSingleTrafficGenData(value))) {
                     showToast("Could not serialize file content. Please check the file.", "danger")
                     return;
                 }
+                entries.forEach(([name, value]) => addConfig(name, value as TrafficGenData));
+            } else {
+                showToast("Could not serialize file content. Please check the file.", "danger")
+                return;
             }
 
-            for (const [name, config] of Object.entries(new_config)) {
+            const migrated_config = migrateImportedConfig(new_config)
+            if (Object.keys(migrated_config).length === 0) {
+                showToast("Settings file does not contain any configurations.", "danger")
+                return;
+            }
+
+            for (const [name, config] of Object.entries(migrated_config)) {
                 if (!validateStreams(config.streams) || !validateStreamSettings(config.stream_settings)) {
                     showToast("Settings not valid for config " + name + ". Please check the file.", "danger")
                     return;
@@ -1001,8 +1022,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     return;
                 }
             };
-
-            const migrated_config = migrateImportedConfig(new_config)
 
             let toastMessage;
             let toastType;
@@ -1027,8 +1046,12 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(migrated_config))
 
-            const first_name = Object.keys(migrated_config)[0];
-            const first_test = migrated_config[first_name];
+            const firstEntry = Object.entries(migrated_config)[0];
+            if (!firstEntry) {
+                showToast("Settings file does not contain any configurations.", "danger")
+                return;
+            }
+            const [first_name, first_test] = firstEntry;
 
             localStorage.setItem("streams", JSON.stringify(first_test.streams))
             localStorage.setItem("gen-mode", String(first_test.mode))
@@ -1049,6 +1072,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 showToast("Settings imported successfully.", "success")
             }
 
+        }
+
+        fileReader.onerror = () => {
+            showToast("Could not read settings file.", "danger")
         }
     }
 

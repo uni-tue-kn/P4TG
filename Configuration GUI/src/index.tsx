@@ -27,7 +27,9 @@ import 'bootstrap/dist/css/bootstrap.min.css'
 import "bootstrap-icons/font/bootstrap-icons.css";
 
 import './assets/index.scss'
+import { migrateStoredConfiguration } from './common/StorageMigration';
 
+migrateStoredConfiguration();
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement

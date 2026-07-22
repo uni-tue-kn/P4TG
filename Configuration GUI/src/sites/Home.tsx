@@ -42,6 +42,7 @@ import {
 import styled from "styled-components";
 import SummaryView from '../components/SummaryView';
 import { loadFromStorage } from '../common/Helper';
+import { startPolling } from '../common/Polling';
 
 styled(Row)`
     display: flex;
@@ -191,16 +192,26 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             set_loaded(true)
         }
 
-        refresh()
+        let disposed = false;
+        let stopStatisticsPolling = () => { };
+        let stopLoadGenPolling = () => { };
+        let stopTimeStatisticsPolling = () => { };
 
-        const interval_stats = setInterval(async () => await Promise.all([loadStatistics()]), 500);
-        const interval_loadgen = setInterval(async () => await Promise.all([loadGen()]), 2000);
-        const inverval_timestats = setInterval(async () => await Promise.all([loadTimeStatistics()]), 2000);
+        const initialize = async () => {
+            await refresh();
+            if (!disposed) {
+                stopStatisticsPolling = startPolling(loadStatistics, 500);
+                stopLoadGenPolling = startPolling(loadGen, 2000);
+                stopTimeStatisticsPolling = startPolling(loadTimeStatistics, 2000);
+            }
+        };
+        void initialize();
 
         return () => {
-            clearInterval(interval_stats)
-            clearInterval(interval_loadgen)
-            clearInterval(inverval_timestats)
+            disposed = true;
+            stopStatisticsPolling()
+            stopLoadGenPolling()
+            stopTimeStatisticsPolling()
         }
 
     }, [])

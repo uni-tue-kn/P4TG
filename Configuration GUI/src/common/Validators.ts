@@ -20,6 +20,22 @@
 
 import { ASIC, DefaultStream, DefaultStreamSettings, MPLSHeader, P4TGInfos, PortInfo, PortTxRxMap, RxTarget, Stream, StreamSettings } from "./Interfaces";
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+const copyDefault = <T,>(value: T): T => {
+    if (Array.isArray(value)) {
+        return [...value] as T;
+    }
+    if (isRecord(value)) {
+        return { ...value } as T;
+    }
+    return value;
+};
+
+const matchesDefaultType = (value: unknown, defaultValue: unknown) =>
+    defaultValue === null || typeof value === typeof defaultValue;
+
 export const validateMAC = (mac: string) => {
     let regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
 
@@ -107,24 +123,28 @@ export const validateTEID = (value: number) => {
 
 export const validateStreams = (s: Stream[]) => {
     const defaultStream = DefaultStream(1)
-    if (!s) {
+    if (!Array.isArray(s) || !s.every(isRecord)) {
         return false
     }
 
     // Ensure backward compatibility with older P4TG versions by inserting the 
     // default values for missing keys into the stream settings
-    const missingKeys: string[] = [];
     s.forEach(stream => {
-        Object.keys(defaultStream).forEach(key => {
-            if (!Object.prototype.hasOwnProperty.call(stream, key)) {
-                missingKeys.push(key); // Track the missing key
-                // @ts-ignore: Add the key with the default value
-                stream[key] = defaultStream[key];
+        const streamRecord = stream as unknown as Record<string, unknown>;
+        Object.entries(defaultStream).forEach(([key, defaultValue]) => {
+            if (!Object.prototype.hasOwnProperty.call(streamRecord, key)) {
+                streamRecord[key] = copyDefault(defaultValue);
             }
         });
     });
 
-    return s.every(s => Object.keys(defaultStream).every(key => Object.keys(s).includes(key)))
+    return s.every(stream => {
+        const streamRecord = stream as unknown as Record<string, unknown>;
+        return Object.entries(defaultStream).every(([key, defaultValue]) =>
+            Object.prototype.hasOwnProperty.call(streamRecord, key)
+            && matchesDefaultType(streamRecord[key], defaultValue)
+        );
+    })
 }
 
 export const validatePorts = (
@@ -141,8 +161,18 @@ export const validatePorts = (
 
     // Configured (port/channel) pairs: all TX and mapped RX targets
     const configured = new Set<string>();
-    for (const [txPort, perCh] of Object.entries(port_tx_rx_mapping ?? {})) {
-        for (const [txCh, target] of Object.entries(perCh ?? {})) {
+    if (!isRecord(port_tx_rx_mapping)) {
+        return false;
+    }
+
+    for (const [txPort, perCh] of Object.entries(port_tx_rx_mapping)) {
+        if (!isRecord(perCh)) {
+            return false;
+        }
+        for (const [txCh, target] of Object.entries(perCh)) {
+            if (!isRecord(target) || typeof target.port !== "number" || typeof target.channel !== "number") {
+                return false;
+            }
             configured.add(`${txPort}/${txCh}`);
             const t = target as RxTarget;
             configured.add(`${t.port}/${t.channel}`);
@@ -154,45 +184,42 @@ export const validatePorts = (
 
 
 export const validateStreamSettings = (setting: StreamSettings[]) => {
-    const defaultStreamSetting = DefaultStreamSettings(1, 5, 0)
-
-    if (!setting) {
+    if (!Array.isArray(setting) || !setting.every(isRecord)) {
         return false
     }
 
-    if (Array.isArray(setting)) {
-        setting.forEach((streamSetting, _) => {
-            // Verify and add missing fields in the main stream settings object
-            Object.keys(defaultStreamSetting).forEach(key => {
-                // @ts-ignore
-                if (!Object.prototype.hasOwnProperty.call(streamSetting, key) || streamSetting[key] === null) {
-                    // @ts-ignore: Add missing key with default value
-                    streamSetting[key] = defaultStreamSetting[key];
-                }
-            });
+    for (const streamSetting of setting) {
+        const settingRecord = streamSetting as unknown as Record<string, unknown>;
+        const defaultStreamSetting = DefaultStreamSettings(
+            typeof streamSetting.stream_id === "number" ? streamSetting.stream_id : 1,
+            typeof streamSetting.port === "number" ? streamSetting.port : 5,
+            typeof streamSetting.channel === "number" ? streamSetting.channel : 0,
+        ) as unknown as Record<string, unknown>;
 
-            // Validate and add missing keys in specific nested properties (e.g., vlan, ethernet, ip, vxlan, gtpu)
-            Object.keys(defaultStreamSetting).every(key => {
-                // @ts-ignore
-                if (!streamSetting[key]) {
-                    // If the nested key is completely missing, add it
-                    // @ts-ignore: Add the entire nested key with defaults
-                    streamSetting[key] = defaultStreamSetting[key];
-                } else {
-                    // If the nested key exists, validate and add individual missing keys
-                    // @ts-ignore
-                    Object.keys(defaultStreamSetting[key]).forEach(settingKey => {
-                        // @ts-ignore
-                        if (!Object.prototype.hasOwnkey.call(streamSetting[key], settingKey)) {
-                            // @ts-ignore: Add the missing key with its default value
-                            streamSetting[key][settingKey] = defaultStreamSetting[key][settingKey];
-                        }
-                    });
+        for (const [key, defaultValue] of Object.entries(defaultStreamSetting)) {
+            const currentValue = settingRecord[key];
+            if (!Object.prototype.hasOwnProperty.call(settingRecord, key) || currentValue === null) {
+                settingRecord[key] = copyDefault(defaultValue);
+                continue;
+            }
+
+            if (isRecord(defaultValue)) {
+                if (!isRecord(currentValue)) {
+                    return false;
                 }
-            });
-        });
-        return true;
-    } else {
-        return false
+                for (const [nestedKey, nestedDefault] of Object.entries(defaultValue)) {
+                    const nestedValue = currentValue[nestedKey];
+                    if (!Object.prototype.hasOwnProperty.call(currentValue, nestedKey) || nestedValue === null) {
+                        currentValue[nestedKey] = copyDefault(nestedDefault);
+                    } else if (!matchesDefaultType(nestedValue, nestedDefault)) {
+                        return false;
+                    }
+                }
+            } else if (!matchesDefaultType(currentValue, defaultValue)) {
+                return false;
+            }
+        }
     }
+
+    return true;
 }

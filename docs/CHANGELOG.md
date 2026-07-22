@@ -62,6 +62,13 @@
 - Fixed the digest pipeline silently dying after long controller uptime, which froze all rate/loss/RTT statistics at zero while traffic generation appeared to work. Via `rbfrt`: large gRPC error trailers from `bf_switchd` no longer tear down the whole connection (h2 `too_many_continuations` GOAWAY), and a failed notification stream at startup now returns an error instead of panicking. In the controller: a dead digest channel and malformed digests are now detected and logged instead of silently ignored, all monitoring tasks are supervised, and a digest watchdog reports pipeline health as `digests_alive` via `GET:/api/online`.
 - Fixed a crash of the monitoring thread when a stream with app ID 0 was configured directly via the REST API. The controller and frontend now reject such configs.
 - Fixed navbar taking all the space on small screens.
+- Rejected traffic-generation requests no longer cancel a running test or clear its collected results.
+- Bounded pattern sample rates and rejected zero, excessive, or invalid pattern periods to prevent excessive controller resource usage.
+- Hardened startup config validation against empty/duplicate TG ports, conflicting recirculation mappings, and insufficient free recirculation ports.
+- Replaced recirculation mapping panics with recoverable configuration errors.
+- Serialized frontend polling requests so slow responses cannot cause overlapping request buildup.
+- Hardened settings import and migration against empty or malformed files and restored all missing nested defaults.
+- Added automatic migration for v2.7 browser settings and cache headers that prevent stale frontend bundles after upgrades.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.

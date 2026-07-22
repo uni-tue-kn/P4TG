@@ -31,11 +31,10 @@ import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
 import Offline from "./sites/Offline"
 import Tables from "./sites/Tables";
-import { ASIC, P4TGInfos, StreamSettings, ToastVariant } from "./common/Interfaces";
-import { Stream } from "./common/Interfaces";
+import { ASIC, P4TGInfos, ToastVariant } from "./common/Interfaces";
 import Loader from "./components/Loader";
-import { validateStreams, validateStreamSettings } from "./common/Validators";
 import { isUpdateAvailable } from './common/Helper'
+import { startPolling } from './common/Polling'
 
 const Wrapper = styled.div``
 
@@ -68,29 +67,6 @@ const App = () => {
     const [showUpdateModal, setShowUpdateModal] = useState(false)
 
     useEffect(() => {
-        // Validates the stored streams and stream settings in the local storage
-        // Clears local storage if some streams/settings are not valid
-        // This may be needed if the UI got an update (new stream properties), but the local storage
-        // holds "old" streams/settings without the new property
-        const validateLocalStorage = () => {
-            try {
-                let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
-                let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
-
-                if (!validateStreams(stored_streams) || !validateStreamSettings(stored_settings)) {
-                    showToast("Incompatible stream description found. This may be due to an update. Resetting local storage.", "danger")
-                    localStorage.clear()
-                    window.location.reload()
-                    return
-                }
-            }
-            catch {
-                showToast("Error in reading local storage. Resetting local storage.", "danger")
-                localStorage.clear()
-                window.location.reload()
-            }
-        }
-
         const loadInfos = async () => {
             let stats = await get({ route: "/online" })
 
@@ -103,12 +79,12 @@ const App = () => {
             set_loaded(true)
         }
 
-        validateLocalStorage()
-        loadInfos()
+        let disposed = false
+        let stopPolling = () => { }
 
         // Keep the digest pipeline health (digests_alive) fresh; /online is
         // otherwise only fetched once at page load
-        const interval = setInterval(async () => {
+        const pollInfos = async () => {
             let stats = await get({ route: "/online" })
 
             if (stats !== undefined && stats.status === 200) {
@@ -118,9 +94,20 @@ const App = () => {
                     JSON.stringify(prev) === JSON.stringify(stats.data) ? prev : stats.data
                 )
             }
-        }, 5000)
+        }
 
-        return () => clearInterval(interval)
+        const initialize = async () => {
+            await loadInfos()
+            if (!disposed) {
+                stopPolling = startPolling(pollInfos, 5000)
+            }
+        }
+        void initialize()
+
+        return () => {
+            disposed = true
+            stopPolling()
+        }
     }, [])
 
     useEffect(() => {

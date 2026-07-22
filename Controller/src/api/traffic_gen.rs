@@ -133,28 +133,6 @@ pub async fn configure_traffic_gen(
     State(state): State<Arc<AppState>>,
     payload: Json<TrafficGenTests>,
 ) -> Response {
-    // Cancel any existing duration monitor task
-    state
-        .monitor_task
-        .lock()
-        .await
-        .cancel_existing_monitoring_task()
-        .await;
-    state
-        .multiple_tests
-        .multiple_test_monitor_task
-        .lock()
-        .await
-        .cancel_existing_monitoring_task()
-        .await;
-
-    // Clear History statistics
-    let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
-    stats_lock.clear();
-    let mut stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
-    stats_lock.clear();
-    *state.rfc2544_results.lock().await = None;
-
     let port_mapping = &state.port_mapping;
 
     match payload {
@@ -164,6 +142,7 @@ pub async fn configure_traffic_gen(
             match validate_request(&traffic_gen_data, port_mapping, is_tofino2) {
                 Ok(active_streams) => {
                     info!("Test validation successful.");
+                    prepare_for_new_test(&state).await;
                     traffic_gen_data.streams = normalize_stream_patterns(traffic_gen_data.streams);
 
                     if traffic_gen_data.mode == GenerationMode::Rfc2544 {
@@ -223,6 +202,7 @@ pub async fn configure_traffic_gen(
             // Request validation
             match validate_multiple_test(traffic_gen_datas.clone(), port_mapping, is_tofino2) {
                 Ok(_) => {
+                    prepare_for_new_test(&state).await;
                     for test in &mut traffic_gen_datas {
                         test.streams = normalize_stream_patterns(test.streams.clone());
                     }
@@ -244,6 +224,39 @@ pub async fn configure_traffic_gen(
             }
         }
     }
+}
+
+/// Stops the current orchestration and clears results only after the replacement
+/// request has passed validation. Cancelling the outer task first prevents a
+/// multi-test runner from advancing while its per-test duration task is stopped.
+async fn prepare_for_new_test(state: &Arc<AppState>) {
+    state
+        .multiple_tests
+        .multiple_test_monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
+    state
+        .monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
+
+    state
+        .multiple_tests
+        .collected_statistics
+        .lock()
+        .await
+        .clear();
+    state
+        .multiple_tests
+        .collected_time_statistics
+        .lock()
+        .await
+        .clear();
+    *state.rfc2544_results.lock().await = None;
 }
 
 pub async fn start_single_test(
