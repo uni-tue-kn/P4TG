@@ -411,7 +411,7 @@ const PatternModal = ({
                         <Form.Control
                             type="number"
                             min={1}
-                            max={1000}
+                            max={10000}
                             step={1}
                             value={tmp_data.sample_rate}
                             onChange={(e) => handleNumberChange("sample_rate", e.target.value)}
