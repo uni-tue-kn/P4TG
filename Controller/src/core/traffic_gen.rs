@@ -74,6 +74,8 @@ pub struct TrafficGen {
     pub num_pipes: u32,
     /// Duration of this test in seconds. 0 for unlimited
     pub duration: Option<u32>,
+    /// Number of times this test is executed by the multi-test orchestrator.
+    pub repetitions: u32,
     /// Mapping between RX port and RTT histogram config. The first index is the front panel port, the second is the channel.
     pub(crate) rtt_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
     /// Mapping between RX port and IAT histogram config. The first index is the front panel port, the second is the channel.
@@ -96,6 +98,7 @@ impl TrafficGen {
             is_tofino2,
             num_pipes,
             duration: None,
+            repetitions: 1,
             rtt_histogram_config: HashMap::new(),
             iat_histogram_config: HashMap::new(),
             rfc2544_config: None,

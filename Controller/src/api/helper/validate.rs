@@ -93,6 +93,22 @@ pub fn validate_request(
     available_ports: &HashMap<u32, PortMapping>,
     is_tofino2: bool,
 ) -> Result<Vec<Stream>, Error> {
+    if payload.repetitions == 0 {
+        return Err(Error::new("Test repetitions must be greater than 0."));
+    }
+
+    if payload.mode == GenerationMode::Rfc2544 && payload.repetitions != 1 {
+        return Err(Error::new(
+            "RFC2544 tests do not support the general repetitions parameter.",
+        ));
+    }
+
+    if payload.repetitions > 1 && payload.duration.unwrap_or(0) == 0 {
+        return Err(Error::new(
+            "Repeated tests require a test duration greater than 0.",
+        ));
+    }
+
     let front_panel_dev_port_mappings =
         generate_front_panel_to_dev_port_mappings(available_ports, is_tofino2);
 

@@ -93,8 +93,7 @@ pub async fn online(
                 Asic::Tofino1
             },
             loopback: state.loopback_mode,
-            digests_alive: unix_secs()
-                .saturating_sub(state.last_digest.load(Ordering::Relaxed))
+            digests_alive: unix_secs().saturating_sub(state.last_digest.load(Ordering::Relaxed))
                 <= DIGEST_TIMEOUT_SECS,
             connected_clients,
         }),

@@ -460,10 +460,13 @@ export interface TrafficGenData {
     stream_settings: StreamSettings[],
     port_tx_rx_mapping: PortTxRxMap,
     duration: number,
+    repetitions: number,
     rtt_histogram_config: HistogramConfigMap,
     iat_histogram_config: HistogramConfigMap,
     rfc2544?: Rfc2544Config,
     name?: string,
+    // Response-only orchestration state from GET /trafficgen.
+    cooldown?: boolean,
 }
 
 export interface Rfc2544Config {

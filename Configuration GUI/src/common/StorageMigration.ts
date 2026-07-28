@@ -2,13 +2,14 @@ import { GenerationMode, TrafficGenData } from "./Interfaces";
 import { validateStreams, validateStreamSettings } from "./Validators";
 
 const STORAGE_SCHEMA_KEY = "p4tg.storageSchema";
-const STORAGE_SCHEMA_VERSION = "1";
+const STORAGE_SCHEMA_VERSION = "2";
 const CONFIG_STORAGE_KEYS = [
     "saved_configs",
     "streams",
     "streamSettings",
     "gen-mode",
     "duration",
+    "repetitions",
     "port_tx_rx_mapping",
     "rtt_histogram_config",
     "iat_histogram_config",
@@ -35,6 +36,11 @@ export const migrateTrafficGenData = (value: unknown): TrafficGenData | null => 
 
     config.mode = typeof config.mode === "number" ? config.mode : GenerationMode.NONE;
     config.duration = typeof config.duration === "number" ? config.duration : 0;
+    config.repetitions = config.mode === GenerationMode.RFC2544
+        ? 1
+        : typeof config.repetitions === "number" && Number.isInteger(config.repetitions) && config.repetitions > 0
+            ? config.repetitions
+            : 1;
     config.port_tx_rx_mapping = isRecord(config.port_tx_rx_mapping) ? config.port_tx_rx_mapping : {};
     config.rtt_histogram_config = isRecord(config.rtt_histogram_config) ? config.rtt_histogram_config : {};
     config.iat_histogram_config = isRecord(config.iat_histogram_config) ? config.iat_histogram_config : {};

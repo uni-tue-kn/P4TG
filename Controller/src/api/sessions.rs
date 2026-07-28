@@ -13,6 +13,10 @@
  * limitations under the License.
  */
 
+/*
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
+ */
+
 //! Tracks concurrent GUI web sessions so the frontend can warn when
 //! multiple users work on the same P4TG instance. A "session" is a client
 //! that recently polled `/api/online` (every open GUI tab does so every

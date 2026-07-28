@@ -29,7 +29,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
 use rbfrt::error::RBFRTError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -53,6 +53,14 @@ pub struct StopTrafficGenParams {
     pub skip: Option<bool>,
 }
 
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct TrafficGenStatus {
+    #[serde(flatten)]
+    configuration: TrafficGenData,
+    /// True while a multi-test sequence is waiting before its next run.
+    cooldown: bool,
+}
+
 /// Method called on GET /trafficgen
 /// Returns the currently configured traffic generation
 #[utoipa::path(
@@ -61,7 +69,7 @@ pub struct StopTrafficGenParams {
         responses(
             (status = 200,
             description = "Returns the currently configured traffic generation.",
-            body = TrafficGenData,
+            body = TrafficGenStatus,
             examples(("Example 1" = (summary = "First example", value = json!(*EXAMPLE_GET_1))),
                      ("Example 2" = (summary = "Second example", value = json!(*EXAMPLE_GET_2)))
             )
@@ -76,9 +84,24 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
         .await
         .as_ref()
         .is_some_and(|results| results.running);
+    let multiple_tests_running = state
+        .multiple_tests
+        .multiple_test_monitor_task
+        .lock()
+        .await
+        .handle
+        .as_ref()
+        .is_some_and(|handle| !handle.is_finished());
+    let multiple_tests_between_runs = multiple_tests_running
+        && !state
+            .multiple_tests
+            .collected_statistics
+            .lock()
+            .await
+            .is_empty();
     let tg = &state.traffic_generator.lock().await;
 
-    if !tg.running && !rfc2544_running {
+    if !tg.running && !rfc2544_running && !multiple_tests_between_runs {
         (
             StatusCode::ACCEPTED,
             Json(EmptyResponse {
@@ -93,13 +116,20 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             streams: tg.streams.clone(),
             port_tx_rx_mapping: tg.port_mapping.clone(),
             duration: tg.duration,
+            repetitions: tg.repetitions,
             rtt_histogram_config: Some(tg.rtt_histogram_config.clone()),
             iat_histogram_config: Some(tg.iat_histogram_config.clone()),
             rfc2544: tg.rfc2544_config.clone(),
             name: tg.name.clone(),
         };
-
-        (StatusCode::OK, Json(tg_data)).into_response()
+        (
+            StatusCode::OK,
+            Json(TrafficGenStatus {
+                configuration: tg_data,
+                cooldown: !tg.running && multiple_tests_between_runs,
+            }),
+        )
+            .into_response()
     }
 }
 
@@ -162,6 +192,7 @@ pub async fn configure_traffic_gen(
                             tg.rfc2544_config = traffic_gen_data.rfc2544.clone();
                             tg.mode = traffic_gen_data.mode;
                             tg.duration = traffic_gen_data.duration;
+                            tg.repetitions = 1;
                             tg.name = traffic_gen_data.name.clone();
                         }
                         state.experiment.lock().await.start = SystemTime::now();
@@ -174,6 +205,17 @@ pub async fn configure_traffic_gen(
                             .start_rfc2544(&state, traffic_gen_data)
                             .await;
 
+                        return (StatusCode::OK, Json(active_streams)).into_response();
+                    }
+
+                    if traffic_gen_data.repetitions > 1 {
+                        state
+                            .multiple_tests
+                            .multiple_test_monitor_task
+                            .lock()
+                            .await
+                            .start_multiple_tests(&state, vec![traffic_gen_data])
+                            .await;
                         return (StatusCode::OK, Json(active_streams)).into_response();
                     }
 
@@ -385,6 +427,7 @@ pub async fn start_single_test(
             tg.rfc2544_config = payload.rfc2544;
             tg.mode = payload.mode;
             tg.duration = payload.duration;
+            tg.repetitions = payload.repetitions;
             tg.name = payload.name;
 
             // experiment starts now
@@ -424,18 +467,11 @@ pub async fn stop_traffic_gen(
     let tg = &state.traffic_generator;
     let switch = &state.switch;
 
-    // Cancel any existing duration monitor task
-    state
-        .monitor_task
-        .lock()
-        .await
-        .cancel_existing_monitoring_task()
-        .await;
-
     let skip_current_test = params.skip.unwrap_or(false);
 
     if !skip_current_test {
-        // Cancel the multiple test monitor task if skip is set to false
+        // Stop the outer orchestrator first so it cannot advance to another
+        // test while the current duration monitor is being cancelled.
         state
             .multiple_tests
             .multiple_test_monitor_task
@@ -445,7 +481,25 @@ pub async fn stop_traffic_gen(
             .await;
     }
 
-    match tg.lock().await.stop(switch).await {
+    // Cancel the monitor for the current run. For skip=true the outer
+    // orchestrator remains active and will advance after this run stops.
+    state
+        .monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
+
+    let stop_result = {
+        let mut tg = tg.lock().await;
+        if tg.running {
+            tg.stop(switch).await
+        } else {
+            Ok(())
+        }
+    };
+
+    match stop_result {
         Ok(_) => {
             info!("Traffic generation stopped.");
             state.experiment.lock().await.running = false;

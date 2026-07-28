@@ -44,6 +44,9 @@ import SummaryView from '../components/SummaryView';
 import { loadFromStorage } from '../common/Helper';
 import { startPolling } from '../common/Polling';
 
+const RUN_NAME_SUFFIX = /\s*\[\d+\/\d+\]$/;
+const baseConfigName = (name: string) => name.replace(RUN_NAME_SUFFIX, "");
+
 styled(Row)`
     display: flex;
     align-items: center;
@@ -64,8 +67,8 @@ const StyledLink = styled.a`
 
 const TestNumber = styled.span`
     margin-right: 10px;
-    min-width: 140px;
-    max-width: 140px;
+    min-width: 180px;
+    max-width: 180px;
     text-align: center;
     margin-bottom: 10px;
     background: var(--color-secondary);
@@ -123,6 +126,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const [loaded, set_loaded] = useState(false)
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
+    const [cooldown, set_cooldown] = useState(false)
     const [visual, set_visual] = useState(true)
     const [rfc2544_runtime_countdown, set_rfc2544_runtime_countdown] = useState<number | null>(null)
 
@@ -137,7 +141,8 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
         const configs = loadFromStorage<Record<string, TrafficGenData>>("saved_configs", {});
         const filteredConfigs = Object.fromEntries(
             Object.entries(configs).filter(([name, config]) =>
-                !(config.mode === GenerationMode.RFC2544 && /^RFC2544 \d+B$/.test(name))
+                !RUN_NAME_SUFFIX.test(name)
+                && !(config.mode === GenerationMode.RFC2544 && /^RFC2544 \d+B$/.test(name))
             )
         ) as Record<string, TrafficGenData>;
 
@@ -156,14 +161,29 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     );
     const [statistics, set_statistics] = useState<Statistics>([StatisticsObject])
     const [time_statistics, set_time_statistics] = useState<TimeStatistics>([TimeStatisticsObject])
+    const resultStatistics = running
+        ? statistics.slice(1)
+        : [...statistics.slice(1), statistics[0]];
+    const resultNames = Array.from(new Set(
+        resultStatistics
+            .map(entry => entry?.name)
+            .filter((name): name is string => Boolean(name))
+    ));
+    const totalPlannedRuns = Object.values(savedConfigs).reduce(
+        (total, config) => total + (
+            config.mode === GenerationMode.RFC2544 ? 1 : Math.max(1, config.repetitions ?? 1)
+        ),
+        0
+    );
 
     const NumTests = ({ running }: { running: boolean }) => {
-        const total_tests = Object.keys(savedConfigs).length;
-        let num_avail_stats = Object.keys(statistics || {}).length;
+        const num_avail_stats = Math.min(Object.keys(statistics || {}).length, totalPlannedRuns);
 
         return (
             <TestNumber>
-                {running ? (
+                {cooldown ? (
+                    <i className="bi bi-pause-circle-fill" />
+                ) : running ? (
                     <span
                         className="spinner-border spinner-border-sm"
                         role="status"
@@ -173,14 +193,15 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                             animationDuration: '0.5s'
                         }}
                     />
-                ) : !running && (num_avail_stats !== total_tests) ? (
+                ) : !running && (num_avail_stats !== totalPlannedRuns) ? (
                     <i className="bi bi-pause-circle-fill" />
-                ) : !running && num_avail_stats === total_tests ? (
+                ) : !running && num_avail_stats === totalPlannedRuns ? (
                     <i className="bi bi-check-circle-fill" />
                 )
                     : null}
                 &nbsp;
-                Test {num_avail_stats} / {total_tests}
+                {cooldown ? "Cooldown · " : null}
+                Run {num_avail_stats} / {totalPlannedRuns}
             </TestNumber>
         );
     }
@@ -201,7 +222,9 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             await refresh();
             if (!disposed) {
                 stopStatisticsPolling = startPolling(loadStatistics, 500);
-                stopLoadGenPolling = startPolling(loadGen, 2000);
+                // The between-run cooldown is short, so poll often enough for
+                // its explicit paused state to remain visible in the UI.
+                stopLoadGenPolling = startPolling(loadGen, 500);
                 stopTimeStatisticsPolling = startPolling(loadTimeStatistics, 2000);
             }
         };
@@ -224,11 +247,15 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
         }
     }, [mode]);
 
-    // Update activeTab when `running` changes
+    // Keep the live tab selected while running and select the first returned
+    // result when orchestration finishes.
     useEffect(() => {
-        // Either switch to the first tab, or stay at the active tab if its not the "Running" one 
-        setActiveTab(running ? "current" : activeTab === "current" ? Object.keys(savedConfigs)[0] : activeTab);
-    }, [running]);
+        if (running) {
+            setActiveTab("current");
+        } else if (!resultNames.includes(activeTab)) {
+            setActiveTab(resultNames[0] ?? Object.keys(savedConfigs)[0]);
+        }
+    }, [running, resultNames.join("\u0000")]);
 
     useEffect(() => {
         const rfc = statistics?.[0]?.rfc2544;
@@ -274,7 +301,8 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
         if (Object.keys(savedConfigs).length === 1) {
             // If there is only one config, return it as an object
             // This triggers the singleTest behaviour in the backend
-            return withActiveStreamSettingsOnly(Object.values(savedConfigs)[0]);
+            const [name, config] = Object.entries(savedConfigs)[0];
+            return { ...withActiveStreamSettingsOnly(config), name };
         } else {
             // Set the name of each config to the key
             // and return an array of objects
@@ -294,6 +322,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
         if (running) {
             await del({ route: "/trafficgen" })
+            set_cooldown(false)
             set_running(false)
             set_overlay(false)
         } else {
@@ -326,10 +355,22 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                         set_overlay(false)
                         return;
                     }
-                } else if (overall_rate > maxRate) {
-                    showToast("Sum of active stream rates > " + maxRate + " Gbit/s for test " + name + "!", "danger")
-                    set_overlay(false)
-                    return;
+                } else {
+                    if (!Number.isInteger(config.repetitions) || config.repetitions < 1) {
+                        showToast("Repetitions must be at least 1 for test " + name + ".", "danger")
+                        set_overlay(false)
+                        return;
+                    }
+                    if (config.repetitions > 1 && config.duration <= 0) {
+                        showToast("Repeated test " + name + " requires a finite test duration.", "danger")
+                        set_overlay(false)
+                        return;
+                    }
+                    if (overall_rate > maxRate) {
+                        showToast("Sum of active stream rates > " + maxRate + " Gbit/s for test " + name + "!", "danger")
+                        set_overlay(false)
+                        return;
+                    }
                 }
                 if (config.streams.length === 0 && config.mode !== GenerationMode.ANALYZE) {
                     showToast("You need to define at least one traffic configuration for " + name + ".", "danger")
@@ -361,6 +402,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                 return;
             }
 
+            set_cooldown(false)
             set_running(true)
 
             // For multiple tests, overlay will be hidden in the loadGen function
@@ -400,6 +442,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             set_streams(stats.data.streams)
             set_rtt_histogram_settings(stats.data.rtt_histogram_config)
             set_iat_histogram_settings(stats.data.iat_histogram_config)
+            set_cooldown(Boolean(stats.data.cooldown))
 
             localStorage.setItem("streams", JSON.stringify(stats.data.streams))
             localStorage.setItem("gen-mode", String(stats.data.mode))
@@ -412,12 +455,19 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
             // This copies TrafficGenData from the GET response into localStorage and config.
             // It's needed to keep the state consistent if multiple tests were started directly via the REST API
-            if (stats.data.name && stats.data.mode !== GenerationMode.RFC2544) {
+            if (
+                stats.data.name
+                && stats.data.mode !== GenerationMode.RFC2544
+                && !RUN_NAME_SUFFIX.test(stats.data.name)
+            ) {
                 setSavedConfigs(prev => {
                     const updatedConfigs = {
                         ...prev,
                         // @ts-ignore
-                        [stats.data.name]: stats.data,
+                        [stats.data.name]: {
+                            ...stats.data,
+                            cooldown: undefined,
+                        },
                     };
                     localStorage.setItem("saved_configs", JSON.stringify(updatedConfigs));
                     return updatedConfigs;
@@ -426,6 +476,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
             set_running(true)
         } else {
+            set_cooldown(false)
             set_running(false)
         }
     }
@@ -450,13 +501,29 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     }
 
     const export_json = async () => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(time_statistics, null, 2));
+        const [statisticsResponse, timeStatisticsResponse] = await Promise.all([
+            get({ route: "/statistics" }),
+            get({ route: "/time_statistics" }),
+        ]);
+
+        if (statisticsResponse?.status !== 200 || timeStatisticsResponse?.status !== 200) {
+            showToast("JSON export failed.", "danger");
+            return;
+        }
+
+        const exportData = {
+            statistics: statisticsResponse.data,
+            time_statistics: timeStatisticsResponse.data,
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+        const url = window.URL.createObjectURL(blob);
         const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", "p4tg_time_statistics.json");
+        downloadAnchorNode.setAttribute("href", url);
+        downloadAnchorNode.setAttribute("download", "p4tg_results.json");
         document.body.appendChild(downloadAnchorNode);
         downloadAnchorNode.click();
         downloadAnchorNode.remove();
+        window.URL.revokeObjectURL(url);
     }
 
     const rfc2544Status = statistics?.[0]?.rfc2544;
@@ -493,11 +560,11 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     return <Loader loaded={loaded} overlay={overlay}>
         <form onSubmit={onSubmit}>
             <Row className={"mb-3"}>
-                <SendReceiveMonitor stats={statistics[0]} running={running} />
+                <SendReceiveMonitor stats={statistics[0]} running={running && !cooldown} />
                 <Col className={"text-end col-4"}>
-                    {savedConfigs && Object.keys(savedConfigs).length > 1 &&
+                    {savedConfigs && totalPlannedRuns > 1 &&
                         <>
-                            {running &&
+                            {running && !cooldown &&
                                 <Button onClick={skip} className="mb-1" variant="warning"><i
                                     className="bi bi-skip-forward-fill" /> Skip </Button>
                             }
@@ -511,12 +578,12 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                             <Button type={"submit"} className="mb-1" variant="danger"><i
                                 className="bi bi-stop-fill" /> Stop</Button>
                             {" "}
-                            <Button onClick={restart} className="mb-1" variant="primary"><i
+                            <Button onClick={restart} disabled={cooldown} className="mb-1" variant="primary"><i
                                 className="bi bi-arrow-clockwise" /> Restart </Button>
                         </>
                         :
                         <>
-                            {time_statistics && time_statistics[0].tx_rate_l1 && Object.keys(time_statistics[0].tx_rate_l1).length > 0 ?
+                            {hasReportData ?
                                 <Button onClick={export_json} className="mb-1" variant="dark"><i
                                     className="bi bi-file-earmark-arrow-down-fill" /> Export JSON </Button>
                                 : null}
@@ -576,8 +643,6 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
         {statistics && Object.keys(statistics).length > 1 ? (
             (() => {
-                const savedConfigKeys = Object.keys(savedConfigs);
-
                 return (
                     <Tab.Container activeKey={activeTab} onSelect={(key) => key && setActiveTab(key)}>
                         <Nav variant="tabs" className="mt-3">
@@ -587,7 +652,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                                     <Nav.Link eventKey={"current"}>Running</Nav.Link>
                                 </Nav.Item>
                             }
-                            {savedConfigKeys.map((name) => (
+                            {resultNames.map((name) => (
                                 <Nav.Item key={name}>
                                     <Nav.Link eventKey={name}>{name}</Nav.Link>
                                 </Nav.Item>
@@ -609,15 +674,20 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                                 </Tab.Pane>
                             }
 
-                            {savedConfigKeys.map((name) => {
-                                /// Find the statistics for the current test identified by the name field
-                                const statData = Object.values(statistics || {}).find(
-                                    (stat: any) => stat.name === name
-                                ) ?? StatisticsObject;
-                                const timeStatsData = Object.values(time_statistics || {}).find(
-                                    (stat: any) => stat.name === name
-                                ) ?? TimeStatisticsObject;
-                                const config = savedConfigs[name];
+                            {resultNames.map((name) => {
+                                const latestRunForName = <T extends { name?: string }>(entries: T[], runName: string): T | undefined => {
+                                    if (entries[0]?.name === runName) {
+                                        return entries[0];
+                                    }
+                                    return entries.slice(1).reverse().find((entry) => entry.name === runName);
+                                };
+                                const statData = latestRunForName(Object.values(statistics || {}), name) ?? StatisticsObject;
+                                const timeStatsData = latestRunForName(Object.values(time_statistics || {}), name) ?? TimeStatisticsObject;
+                                const config = savedConfigs[baseConfigName(name)] ?? savedConfigs[name];
+
+                                if (!config) {
+                                    return null;
+                                }
 
                                 return (
                                     <Tab.Pane eventKey={name} key={name}>

@@ -34,7 +34,7 @@ use utoipa::{
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::{
-    add_port, config, configure_traffic_gen, online, ports, reset, restart, statistics,
+    add_port, config, configure_traffic_gen, online, ports, qsfp, reset, restart, statistics,
     stop_traffic_gen, traffic_gen,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -64,6 +64,7 @@ use crate::core::traffic_gen_core::types::*;
         reset::reset,
         ports::ports,
         ports::add_port,
+        crate::api::qsfp::qsfp,
         histogram::config,
         online::online
     ),
@@ -100,7 +101,8 @@ use crate::core::traffic_gen_core::types::*;
         crate::core::statistics::TypeCount,
         crate::core::statistics::IATStatistics,
         crate::core::statistics::RTTStatistics,
-        crate::core::statistics::IATValues
+        crate::core::statistics::IATValues,
+        crate::api::qsfp::QsfpResponse
         ),
     ),
     info(
@@ -184,6 +186,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/ports", get(ports))
         .route("/ports", post(add_port))
         .route("/ports/arp", post(arp_reply))
+        .route("/qsfp", get(qsfp))
         .route("/tables", get(tables))
         .route("/config", get(config))
         .route("/histogram", get(histogram::config))

@@ -124,7 +124,12 @@ def run_tests(api: P4TG, payload, payload_path, show_plots, rfc2544_timeout, rep
         logging.info("Stopping indefinite traffic generation after automation timeout.")
         api.stop_traffic_gen()
     else:
-        total_duration = sum(t.get("duration", 0) for t in tests) + 3 * len(tests)
+        total_runs = sum(max(1, int(t.get("repetitions", 1))) for t in tests)
+        total_duration = (
+            sum(t.get("duration", 0) * max(1, int(t.get("repetitions", 1))) for t in tests)
+            + 3 * max(0, total_runs - 1)
+            + 3
+        )
         logging.info("Waiting %.0fs for configured test duration plus settling time.", total_duration)
         sleep_with_progress(total_duration, desc="Running tests")
     

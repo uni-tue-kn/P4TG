@@ -32,6 +32,8 @@ use super::traffic_gen_core::types::TrafficGenData;
 use crate::api::traffic_gen::start_single_test;
 use crate::core::rfc2544;
 
+const TEST_COOLDOWN: Duration = Duration::from_secs(3);
+
 pub struct DurationMonitorTask {
     pub handle: Option<JoinHandle<()>>,
     pub cancel_token: Option<CancellationToken>,
@@ -53,6 +55,17 @@ impl DurationMonitorTask {
 
         loop {
             tokio::select! {
+                biased;
+
+                _ = cancel_token.cancelled() => {
+                    info!("Monitor task received cancellation request. Exiting...");
+                    // The caller that cancels a duration monitor owns the
+                    // replacement/stop operation. Returning here avoids a
+                    // second hardware stop racing with that operation and
+                    // ensures a multi-test cooldown starts after the explicit
+                    // stop has completed.
+                    return;
+                }
                 _ = interval.tick() => {
                     let running = {
                         let experiment = state.experiment.lock().await;
@@ -69,10 +82,6 @@ impl DurationMonitorTask {
                         break;
                     }
                 }
-                _ = cancel_token.cancelled() => {
-                    info!("Monitor task received cancellation request. Exiting...");
-                    break;
-                }
             }
         }
 
@@ -83,18 +92,23 @@ impl DurationMonitorTask {
 
         if running {
             // Perform the shutdown
-            let tg = &state.traffic_generator;
             let switch = &state.switch;
+            let stop_result = {
+                let mut tg = state.traffic_generator.lock().await;
+                tg.stop(switch).await
+            };
 
-            match tg.lock().await.stop(switch).await {
-                Ok(_) => {
-                    info!("Traffic generation stopped after duration.");
-                    state.experiment.lock().await.running = false;
-                }
+            match stop_result {
+                Ok(_) => info!("Traffic generation stopped after duration."),
                 Err(e) => {
                     error!("Error while stopping traffic generation: {e}");
                 }
             }
+
+            // Never leave the orchestration waiting forever if hardware
+            // shutdown fails. A subsequent run will retry stop as part of
+            // start_traffic_generation and abort the sequence if that fails.
+            state.experiment.lock().await.running = false;
         }
     }
 
@@ -130,44 +144,72 @@ impl DurationMonitorTask {
 
         let handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(100));
-            let num_tests = payloads.len();
+            let num_runs: u64 = payloads
+                .iter()
+                .map(|payload| u64::from(payload.repetitions))
+                .sum();
+            let mut run_idx = 0_u64;
 
-            #[allow(clippy::never_loop)]
-            'outer: for (idx, traffic_gen_data) in payloads.iter().enumerate() {
-                // Start the test
-                let idx = idx + 1;
+            'outer: for traffic_gen_data in &payloads {
+                for repetition_idx in 0..traffic_gen_data.repetitions {
+                    if cancel_token.is_cancelled() {
+                        info!("Monitor task received cancellation request. Exiting...");
+                        break 'outer;
+                    }
 
-                let _ = start_single_test(&state_clone, traffic_gen_data.clone()).await;
+                    run_idx += 1;
+                    let mut run_data = traffic_gen_data.clone();
+                    if traffic_gen_data.repetitions > 1 {
+                        let base_name = run_data.name.as_deref().unwrap_or("Test");
+                        run_data.name = Some(format!(
+                            "{base_name} [{}/{}]",
+                            repetition_idx + 1,
+                            traffic_gen_data.repetitions
+                        ));
+                    }
+                    if let Err(err) = start_single_test(&state_clone, run_data).await {
+                        error!("Failed to start test run {run_idx} of {num_runs}: {err}");
+                        state_clone.experiment.lock().await.running = false;
+                        break 'outer;
+                    }
 
-                loop {
-                    tokio::select! {
-                        _ = interval.tick() => {
-                            let running = {
-                                let experiment = state_clone.experiment.lock().await;
-                                experiment.running
-                            };
+                    loop {
+                        tokio::select! {
+                            _ = interval.tick() => {
+                                let running = {
+                                    let experiment = state_clone.experiment.lock().await;
+                                    experiment.running
+                                };
 
-                            if !running {
-                                // This condition is true if the other DurationMonitor stops the traffic generation, i.e. time has elapsed
-                                info!("Test {idx} of {num_tests} done.");
-                                break;
+                                if !running {
+                                    // This condition is true if the other DurationMonitor stops the traffic generation, i.e. time has elapsed
+                                    info!("Test run {run_idx} of {num_runs} done.");
+                                    break;
+                                }
+                            }
+                            _ = cancel_token.cancelled() => {
+                                // Cancel both loops when stopping. This cancels all experiments
+                                info!("Monitor task received cancellation request. Exiting...");
+                                break 'outer;
                             }
                         }
-                        _ = cancel_token.cancelled() => {
-                            // Cancel both loops when stopping. This cancels all experiments
-                            info!("Monitor task received cancellation request. Exiting...");
-                            break 'outer;
+                    }
+
+                    if run_idx != num_runs {
+                        // Do not copy the last test to history, otherwise it is duplicate
+                        Self::copy_stats_to_history(&state_clone).await;
+
+                        // Allow in-flight packets and counters to settle before
+                        // starting the next test or repetition.
+                        tokio::select! {
+                            _ = tokio::time::sleep(TEST_COOLDOWN) => {}
+                            _ = cancel_token.cancelled() => {
+                                info!("Monitor task cancelled during test cooldown.");
+                                break 'outer;
+                            }
                         }
                     }
                 }
-
-                if idx != payloads.len() {
-                    // Do not copy the last test to history, otherwise it is duplicate
-                    Self::copy_stats_to_history(&state_clone).await;
-                }
-
-                // Wait 2s between tests
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         });
 
@@ -196,8 +238,6 @@ impl DurationMonitorTask {
             error!("No current statistics available; test not copied to history.");
             return;
         };
-        let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
-        stats_lock.push(stats);
         let Some(time_stats) = get_time_statistics(state, Params { limit: None })
             .await
             .into_iter()
@@ -206,8 +246,22 @@ impl DurationMonitorTask {
             error!("No current time statistics available; test not copied to history.");
             return;
         };
-        let mut time_stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
-        time_stats_lock.push(time_stats);
+
+        // Do not retain either history mutex across an await or while acquiring
+        // the other history mutex. This keeps history writes out of lock-order
+        // dependencies with API reads and resets.
+        state
+            .multiple_tests
+            .collected_statistics
+            .lock()
+            .await
+            .push(stats);
+        state
+            .multiple_tests
+            .collected_time_statistics
+            .lock()
+            .await
+            .push(time_stats);
     }
 
     /// Check if a duration monitor task is running and cancels it using its CancellationToken

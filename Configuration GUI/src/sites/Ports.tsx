@@ -20,7 +20,7 @@
 import React, { useEffect, useState } from 'react'
 import Loader from "../components/Loader";
 import { get, post } from '../common/API'
-import { Button, Col, Dropdown, Form, OverlayTrigger, Row, Table, Tooltip } from "react-bootstrap";
+import { Alert, Button, Col, Dropdown, Form, Modal, OverlayTrigger, Row, Spinner, Table, Tooltip } from "react-bootstrap";
 import styled from "styled-components";
 import InfoBox from "../components/InfoBox";
 import { ASIC, FEC, P4TGConfig, P4TGInfos, SPEED } from "../common/Interfaces";
@@ -59,6 +59,13 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const [ports, set_ports] = useState([])
     const [config, set_config] = useState<P4TGConfig>({ tg_ports: [] })
     const [macInput, setMacInput] = useState<Record<string, string>>({})
+    const [showQsfp, setShowQsfp] = useState(false)
+    const [qsfpLoading, setQsfpLoading] = useState(false)
+    const [qsfpOutput, setQsfpOutput] = useState("")
+    const [qsfpError, setQsfpError] = useState("")
+    const [qsfpCommand, setQsfpCommand] = useState("")
+    const [qsfpView, setQsfpView] = useState<"overview" | "module">("overview")
+    const [qsfpPort, setQsfpPort] = useState("")
 
 
     const loadPorts = async () => {
@@ -240,7 +247,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     const mustUseRsFec = (speed: string, channelCount: number | null): boolean =>
         speed == SPEED.BF_SPEED_400G ||
-        (speed == SPEED.BF_SPEED_50G && channelCount !== 4) ||
+        (speed == SPEED.BF_SPEED_50G && channelCount === 8) ||
         (channelCount === 4 && speed == SPEED.BF_SPEED_100G)
 
     const getArpReply = (port: number, channel: number) => {
@@ -260,6 +267,48 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         loadPorts()
     }
 
+    const loadQsfp = async () => {
+        setShowQsfp(true)
+        setQsfpLoading(true)
+        setQsfpError("")
+        setQsfpView("overview")
+
+        const response = await get({ route: "/qsfp" })
+        if (response?.status === 200) {
+            setQsfpOutput(response.data.output)
+            setQsfpCommand(response.data.command)
+        } else {
+            setQsfpOutput("")
+            setQsfpCommand("")
+            setQsfpError("QSFP information is unavailable. Check that the bf_switchd CLI is listening on port 9999 and that the platform BSP provides the `bf_pltfm → qsfp` uCLI node.")
+        }
+        setQsfpLoading(false)
+    }
+
+    const loadQsfpModule = async () => {
+        const port = Number(qsfpPort)
+        if (!Number.isInteger(port) || port < 1 || port > 256) {
+            setQsfpError("Enter a front-panel port between 1 and 256.")
+            return
+        }
+
+        setShowQsfp(true)
+        setQsfpLoading(true)
+        setQsfpError("")
+        setQsfpView("module")
+
+        const response = await get({ route: `/qsfp?port=${port}&channel=0` })
+        if (response?.status === 200) {
+            setQsfpOutput(response.data.output)
+            setQsfpCommand(response.data.command)
+        } else {
+            setQsfpOutput("")
+            setQsfpCommand("")
+            setQsfpError(`Detailed QSFP information is unavailable for front-panel port ${port}.`)
+        }
+        setQsfpLoading(false)
+    }
+
     useEffect(() => {
         loadPorts()
 
@@ -273,6 +322,12 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         })
         setMacInput(values)
     }, [config, ports])
+
+    useEffect(() => {
+        if (config.tg_ports.length > 0) {
+            setQsfpPort(current => current === "" ? config.tg_ports[0].port.toString() : current)
+        }
+    }, [config])
 
 
     return <Loader loaded={loaded}>
@@ -602,8 +657,80 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
         <Row>
             <Col>
                 <Button onClick={refresh} className={"ml-3"}><i className="bi bi-arrow-clockwise" /> Refresh</Button>
+                <Button onClick={loadQsfp} className={"ms-2"}>
+                    <i className="bi bi-info-square" /> QSFP Information
+                </Button>
             </Col>
         </Row>
+
+        <Modal show={showQsfp} onHide={() => setShowQsfp(false)} size="xl" centered>
+            <Modal.Header closeButton>
+                <Modal.Title>QSFP Hardware Information</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+                <Row className="g-2 align-items-end mb-3">
+                    <Col xs="auto">
+                        <Button
+                            variant={qsfpView === "overview" ? "primary" : "outline-secondary"}
+                            onClick={loadQsfp}
+                            disabled={qsfpLoading}
+                        >
+                            Module Overview
+                        </Button>
+                    </Col>
+                    <Col xs={4} md={3}>
+                        <Form.Label className="mb-1">Front-panel port</Form.Label>
+                        <Form.Control
+                            type="number"
+                            min={1}
+                            max={256}
+                            value={qsfpPort}
+                            onChange={event => setQsfpPort(event.target.value)}
+                        />
+                    </Col>
+                    <Col xs="auto">
+                        <Button
+                            variant={qsfpView === "module" ? "primary" : "outline-secondary"}
+                            onClick={loadQsfpModule}
+                            disabled={qsfpLoading}
+                        >
+                            Module Details
+                        </Button>
+                    </Col>
+                </Row>
+                {qsfpLoading &&
+                    <div className="text-center p-4">
+                        <Spinner animation="border" role="status" />
+                        <div className="mt-2">Querying the switch platform...</div>
+                    </div>
+                }
+                {!qsfpLoading && qsfpError &&
+                    <Alert variant="danger" className="mb-0">{qsfpError}</Alert>
+                }
+                {!qsfpLoading && !qsfpError &&
+                    <>
+                        <div className="small text-body-secondary mb-1">
+                            <code>{`ucli → bf_pltfm → qsfp → ${qsfpCommand}`}</code>
+                        </div>
+                        <pre
+                            className="bg-dark text-light rounded p-3 mb-0"
+                            style={{ maxHeight: "65vh", overflow: "auto", whiteSpace: "pre" }}
+                        >
+                            {qsfpOutput}
+                        </pre>
+                    </>
+                }
+            </Modal.Body>
+            <Modal.Footer>
+                <Button variant="secondary" onClick={() => setShowQsfp(false)}>Close</Button>
+                <Button
+                    onClick={qsfpView === "module" ? loadQsfpModule : loadQsfp}
+                    disabled={qsfpLoading}
+                >
+                    <i className="bi bi-arrow-clockwise" /> Refresh
+                </Button>
+            </Modal.Footer>
+        </Modal>
 
         <GitHub />
 

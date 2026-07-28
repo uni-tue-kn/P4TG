@@ -1,3 +1,22 @@
+/* Copyright 2022-present University of Tuebingen, Chair of Communication Networks
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
+ */
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -184,7 +203,7 @@ fn build_pdf(input: ReportInput) -> Result<Vec<u8>, String> {
     };
 
     write_cover(&mut pdf, &input);
-    for entry in &input.stats {
+    for (index, entry) in input.stats.iter().enumerate() {
         if let Some(rfc) = entry.rfc2544.as_ref() {
             pdf.new_page();
             pdf.heading(&format!(
@@ -206,7 +225,7 @@ fn build_pdf(input: ReportInput) -> Result<Vec<u8>, String> {
             write_p4tg_additional(
                 &mut pdf,
                 entry,
-                matching_time_stats(entry, &input.time_stats),
+                matching_time_stats(entry, index, &input.time_stats),
             );
         }
     }
@@ -1529,11 +1548,16 @@ fn min_max(values: impl Iterator<Item = f64>) -> Option<(f64, f64)> {
 
 fn matching_time_stats<'a>(
     stats: &StatisticsApi,
+    index: usize,
     time_stats: &'a [TimeStatisticsApi],
 ) -> Option<&'a TimeStatisticsApi> {
-    // No fallback to another entry: rendering a different test's time series
-    // is worse than omitting the charts.
-    time_stats.iter().find(|entry| entry.name == stats.name)
+    // Statistics and time statistics use the same current-plus-history order.
+    // Prefer the aligned entry so repeated runs with the same name retain
+    // their own time series.
+    time_stats
+        .get(index)
+        .filter(|entry| entry.name == stats.name)
+        .or_else(|| time_stats.iter().find(|entry| entry.name == stats.name))
 }
 
 fn aggregate_rate_series(time_stats: &TimeStatisticsApi) -> Vec<ChartSeries> {

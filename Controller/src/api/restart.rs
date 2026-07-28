@@ -51,10 +51,18 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
     let front_panel_dev_port_mappings =
         generate_front_panel_to_dev_port_mappings(port_mapping, state.tofino2);
 
+    // Claim the active run before reading its state. Otherwise the duration
+    // monitor can expire between the UI click and the running check below.
+    state
+        .monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
+
     // Collect the current configuration and release the traffic generator lock
-    // before cancelling the monitor tasks: a cancelled RFC2544 task needs this
-    // lock to stop its running trial, so holding it across the cancellation
-    // deadlocks the controller.
+    // before potentially cancelling the RFC2544 task, which needs this lock to
+    // stop its running trial.
     let (tx_rx_port_mapping, active_stream_settings, active_streams, mode, duration) = {
         let tg = state.traffic_generator.lock().await;
 
@@ -108,22 +116,26 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
         )
     };
 
-    state.experiment.lock().await.running = false;
-
-    // Cancel any existing duration monitor task
-    state
-        .monitor_task
-        .lock()
-        .await
-        .cancel_existing_monitoring_task()
-        .await;
-    state
+    let multiple_tests_running = state
         .multiple_tests
         .multiple_test_monitor_task
         .lock()
         .await
-        .cancel_existing_monitoring_task()
-        .await;
+        .handle
+        .as_ref()
+        .is_some_and(|handle| !handle.is_finished());
+    let keep_multiple_test_running = multiple_tests_running && mode != GenerationMode::Rfc2544;
+
+    if !keep_multiple_test_running {
+        state
+            .multiple_tests
+            .multiple_test_monitor_task
+            .lock()
+            .await
+            .cancel_existing_monitoring_task()
+            .await;
+        state.experiment.lock().await.running = false;
+    }
 
     match state
         .traffic_generator
@@ -154,10 +166,22 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
 
             (StatusCode::OK, Json(streams)).into_response()
         }
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(Error::new(format!("{err:#?}"))),
-        )
-            .into_response(),
+        Err(err) => {
+            if keep_multiple_test_running {
+                state
+                    .multiple_tests
+                    .multiple_test_monitor_task
+                    .lock()
+                    .await
+                    .cancel_existing_monitoring_task()
+                    .await;
+                state.experiment.lock().await.running = false;
+            }
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Error::new(format!("{err:#?}"))),
+            )
+                .into_response()
+        }
     }
 }

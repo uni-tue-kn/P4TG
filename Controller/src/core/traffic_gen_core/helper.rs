@@ -336,7 +336,7 @@ pub(crate) fn sanitize_fec(speed: &Speed, channel_count: Option<u8>, requested: 
 
 fn requires_rs(speed: &Speed, channel_count: Option<u8>) -> bool {
     *speed == Speed::BF_SPEED_400G
-        || (*speed == Speed::BF_SPEED_50G && effective_channel_count(channel_count) != 4)
+        || (*speed == Speed::BF_SPEED_50G && effective_channel_count(channel_count) == 8)
         || (*speed == Speed::BF_SPEED_100G && effective_channel_count(channel_count) == 4)
 }
 

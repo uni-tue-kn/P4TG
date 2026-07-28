@@ -165,6 +165,10 @@ pub fn default_rfc2544_frame_sizes() -> Vec<u32> {
     vec![64, 128, 256, 512, 1024, 1280, 1518]
 }
 
+fn default_repetitions() -> u32 {
+    1
+}
+
 fn default_rfc2544_line_rate_gbps() -> f32 {
     100.0
 }
@@ -434,6 +438,9 @@ pub struct TrafficGenData {
     /// The duration of this test in seconds.
     #[serde(default)]
     pub(crate) duration: Option<u32>,
+    /// Number of times this test is executed. RFC2544 uses its own repetition settings.
+    #[serde(default = "default_repetitions")]
+    pub(crate) repetitions: u32,
     /// Mapping between RX port and RTT histogram config.
     #[serde(default)]
     pub(crate) rtt_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,

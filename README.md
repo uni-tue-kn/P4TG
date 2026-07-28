@@ -155,6 +155,7 @@ The control plane docker image:
 - `LOOPBACK=true` → enable loopback testing mode
 - `P4TG_PORT=8000` → changes the controller port
 - `NUM_PORTS=32` → set number of front panel ports of your device
+- `BFSHELL_HOST=127.0.0.1` / `BFSHELL_PORT=9999` → changes the bf_switchd CLI used for hardware QSFP queries
 
 
 **Config file:** `Controller/config.json`  
@@ -215,6 +216,7 @@ Notes:
 - Backward compatibility: `breakout_mode: true` is deprecated, logs a warning, and is interpreted as legacy 4-channel breakout. `breakout_mode: false` is deprecated, logs a warning, and disables channelization.
 - ARP reply and MAC can be changed at runtime per `port/channel` in the Ports GUI or via `POST /api/ports/arp` (optional `channel` field).
 - Runtime ARP/MAC changes are kept in controller memory and are reset to `config.json` values on controller restart.
+- Hardware QSFP details are available from the Ports GUI or `GET /api/qsfp`. Add `?port=1&channel=0` to retrieve the detailed `module-show 1/0` view. The endpoint navigates `ucli -> bf_pltfm -> qsfp` through bf_switchd's TCP CLI and requires a BSP that provides those commands.
 - Default/mandatory FEC rules:
   - `400G`, `4x100G`, and `8x50G` use `BF_FEC_TYP_REED_SOLOMON`
   - `4x10G`, `4x25G`, `1x10G`, `1x25G`, `1x40G`, `1x50G`, and `1x100G` default to `BF_FEC_TYP_NONE`

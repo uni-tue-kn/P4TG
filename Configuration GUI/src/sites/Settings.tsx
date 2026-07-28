@@ -75,6 +75,7 @@ const Rfc2544Panel = styled.div`
 
 const CONFIG_STORAGE_KEY = "saved_configs";
 const DEFAULT_CONFIG_NAME = "Test 1";
+const RUN_NAME_SUFFIX = /\s*\[\d+\/\d+\]$/;
 
 const rfc2544NeedsThroughput = (config: Partial<Rfc2544Config>): boolean =>
     Boolean(config.latency || config.reset || config.system_recovery);
@@ -244,6 +245,11 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
+    const [repetitions, set_repetitions] = useState(() => {
+        const storedRepetitions = parseInt(localStorage.getItem("repetitions") || String(1));
+        return Number.isInteger(storedRepetitions) && storedRepetitions > 0 ? storedRepetitions : 1;
+    })
+    const [repetitionsInput, setRepetitionsInput] = useState(String(repetitions))
     const [loaded, set_loaded] = useState(false)
     const ref = useRef<HTMLInputElement>(null)
     const streamsRef = useRef<Stream[]>(streams);
@@ -273,6 +279,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_stream_settings(config.stream_settings);
         set_mode(config.mode);
         set_duration(config.duration);
+        set_repetitions(config.repetitions);
         set_port_tx_rx_mapping(config.port_tx_rx_mapping);
         set_rtt_histogram_settings(config.rtt_histogram_config);
         set_iat_histogram_settings(config.iat_histogram_config);
@@ -282,6 +289,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         localStorage.setItem("streamSettings", JSON.stringify(config.stream_settings));
         localStorage.setItem("gen-mode", String(config.mode));
         localStorage.setItem("duration", String(config.duration));
+        localStorage.setItem("repetitions", String(config.repetitions));
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(config.port_tx_rx_mapping));
         localStorage.setItem("rtt_histogram_config", JSON.stringify(config.rtt_histogram_config));
         localStorage.setItem("iat_histogram_config", JSON.stringify(config.iat_histogram_config));
@@ -303,6 +311,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             ...(savedConfigs[activeConfigName] ?? {
                 mode: GenerationMode.NONE,
                 duration: 0,
+                repetitions: 1,
                 streams: [],
                 stream_settings: [],
                 port_tx_rx_mapping: {},
@@ -314,6 +323,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             stream_settings: nextStreamSettings,
             mode,
             duration,
+            repetitions,
             port_tx_rx_mapping,
             rtt_histogram_config: rtt_histogram_settings,
             iat_histogram_config: iat_histogram_settings,
@@ -379,6 +389,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 if (old_streams != JSON.stringify(nextStreams)) {
                     set_mode(normalized.config.mode)
                     set_duration(normalized.config.duration)
+                    set_repetitions(normalized.config.repetitions)
                     set_port_tx_rx_mapping(normalized.config.port_tx_rx_mapping)
                     set_stream_settings(normalized.config.stream_settings)
                     set_streams(nextStreams)
@@ -389,6 +400,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     localStorage.setItem("streams", JSON.stringify(nextStreams))
                     localStorage.setItem("gen-mode", String(normalized.config.mode))
                     localStorage.setItem("duration", String(normalized.config.duration ?? 0))
+                    localStorage.setItem("repetitions", String(normalized.config.repetitions ?? 1))
                     localStorage.setItem("streamSettings", JSON.stringify(normalized.config.stream_settings))
                     localStorage.setItem("port_tx_rx_mapping", JSON.stringify(normalized.config.port_tx_rx_mapping))
                     localStorage.setItem("rtt_histogram_config", JSON.stringify(normalized.config.rtt_histogram_config))
@@ -415,6 +427,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     }, [streams]);
 
     useEffect(() => {
+        setRepetitionsInput(String(repetitions));
+    }, [repetitions]);
+
+    useEffect(() => {
         let disposed = false;
         let stopPolling = () => { };
 
@@ -439,7 +455,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
         configs = Object.fromEntries(
             Object.entries(configs).filter(([name, config]) =>
-                !((config as TrafficGenData).mode === GenerationMode.RFC2544 && /^RFC2544 \d+B$/.test(name))
+                !RUN_NAME_SUFFIX.test(name)
+                && !((config as TrafficGenData).mode === GenerationMode.RFC2544 && /^RFC2544 \d+B$/.test(name))
             )
         );
 
@@ -448,6 +465,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             const defaultConfig: TrafficGenData = {
                 mode: GenerationMode.NONE,
                 duration: 0,
+                repetitions: 1,
                 streams: [],
                 stream_settings: [],
                 port_tx_rx_mapping: {},
@@ -500,6 +518,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
         set_mode(config.mode ?? GenerationMode.NONE);
         set_duration(config.duration ?? 0);
+        set_repetitions(config.repetitions ?? 1);
         set_port_tx_rx_mapping(config.port_tx_rx_mapping || {});
         set_rtt_histogram_settings(config.rtt_histogram_config ?? {});
         set_iat_histogram_settings(config.iat_histogram_config ?? {});
@@ -527,6 +546,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 set_stream_settings([]);
                 set_mode(GenerationMode.NONE);
                 set_duration(0);
+                set_repetitions(1);
                 set_port_tx_rx_mapping({});
                 set_rtt_histogram_settings({});
                 set_iat_histogram_settings({});
@@ -607,6 +627,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         localStorage.setItem("streams", JSON.stringify(streams))
         localStorage.setItem("gen-mode", String(mode))
         localStorage.setItem("duration", String(duration))
+        localStorage.setItem("repetitions", String(repetitions))
         localStorage.setItem("streamSettings", JSON.stringify(reconciledSettings))
         localStorage.setItem("rtt_histogram_config", JSON.stringify(filteredRTTHistogramSettings))
         localStorage.setItem("iat_histogram_config", JSON.stringify(filteredIATHistogramSettings))
@@ -617,6 +638,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             streams: streams,
             mode: mode,
             duration: duration,
+            repetitions: mode === GenerationMode.RFC2544 ? 1 : repetitions,
             stream_settings: reconciledSettings,
             rtt_histogram_config: filteredRTTHistogramSettings,
             iat_histogram_config: filteredIATHistogramSettings,
@@ -649,11 +671,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_rfc2544_config(DefaultRfc2544Config())
         set_mode(GenerationMode.NONE)
         set_duration(0)
+        set_repetitions(1)
         set_port_tx_rx_mapping({})
 
         const defaultConfig: TrafficGenData = {
             mode: GenerationMode.NONE,
             duration: 0,
+            repetitions: 1,
             streams: [],
             stream_settings: [],
             port_tx_rx_mapping: {},
@@ -734,6 +758,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             ...(savedConfigs[activeConfigName] ?? {
                 mode: GenerationMode.NONE,
                 duration: 0,
+                repetitions: 1,
                 streams: [],
                 stream_settings: [],
                 port_tx_rx_mapping: {},
@@ -742,6 +767,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             }),
             mode: nextMode,
             duration: 0,
+            repetitions: 1,
             streams: nextStreams,
             stream_settings: nextStreamSettings,
             port_tx_rx_mapping: {},
@@ -1056,6 +1082,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             localStorage.setItem("streams", JSON.stringify(first_test.streams))
             localStorage.setItem("gen-mode", String(first_test.mode))
             localStorage.setItem("duration", first_test.duration ? String(first_test.duration) : "0")
+            localStorage.setItem("repetitions", String(first_test.repetitions ?? 1))
             localStorage.setItem("streamSettings", JSON.stringify(first_test.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(first_test.port_tx_rx_mapping))
             localStorage.setItem("rtt_histogram_config", first_test.rtt_histogram_config ? JSON.stringify(first_test.rtt_histogram_config) : "{}")
@@ -1334,6 +1361,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                 const defaultConfig: TrafficGenData = {
                                     mode: GenerationMode.NONE,
                                     duration: 0,
+                                    repetitions: 1,
                                     streams: [],
                                     stream_settings: [],
                                     port_tx_rx_mapping: {},
@@ -1450,6 +1478,44 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                             placeholder={duration > 0 ? String(duration) + " s" : "∞ s"}
                                             disabled={running} type={"number"} />
 
+                                    </Col>
+                                    <Col className={"col-auto"}>
+                                        <div>
+                                            <span>Repetitions     </span>
+                                            <InfoBox>
+                                                <>
+                                                    <h5>Repetitions</h5>
+
+                                                    <p>Number of times this test is executed. P4TG waits 3 seconds between repetitions. Repeated tests require a finite test duration.</p>
+                                                </>
+                                            </InfoBox>
+                                        </div>
+                                    </Col>
+
+                                    <Col className={"col-auto"}>
+                                        <Form.Control
+                                            className={"col-3 text-start"}
+                                            value={repetitionsInput}
+                                            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                                                const value = event.target.value;
+                                                setRepetitionsInput(value);
+
+                                                const parsed = Number(value);
+                                                if (Number.isInteger(parsed) && parsed >= 1) {
+                                                    set_repetitions(parsed);
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                const parsed = Number(repetitionsInput);
+                                                const normalized = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+                                                set_repetitions(normalized);
+                                                setRepetitionsInput(String(normalized));
+                                            }}
+                                            min={1}
+                                            step={1}
+                                            disabled={running}
+                                            type={"number"}
+                                        />
                                     </Col>
                                 </>
                                 : null}
