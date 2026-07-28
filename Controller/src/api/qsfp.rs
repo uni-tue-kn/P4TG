@@ -32,6 +32,7 @@ use utoipa::{IntoParams, ToSchema};
 const DEFAULT_BFSHELL_HOST: &str = "127.0.0.1";
 const DEFAULT_BFSHELL_PORT: u16 = 9999;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
+const PROMPT_TIMEOUT_ERROR: &str = "timed out waiting for the bf_switchd CLI prompt";
 
 #[derive(Deserialize, IntoParams)]
 pub struct QsfpParams {
@@ -142,9 +143,28 @@ async fn query_qsfp(command: &QsfpCommand) -> Result<String, String> {
     // bf_switchd's CLI server is a raw TCP terminal. Waiting for each prompt
     // keeps commands ordered and avoids bundling the SDE's bfshell executable
     // and shared libraries into the controller container.
-    read_until_prompt(&mut stream, Duration::from_secs(5))
-        .await
-        .map_err(|err| format!("while waiting for the initial bfshell prompt: {err}"))?;
+    // Older bf_switchd CLI servers can remain silent until a terminal sends its
+    // first newline. Give servers which announce themselves a chance to do so
+    // before sending a harmless empty command as a compatibility wake-up.
+    match read_until_prompt(&mut stream, Duration::from_secs(2)).await {
+        Ok(_) => {}
+        Err(err) if err.starts_with(PROMPT_TIMEOUT_ERROR) => {
+            stream
+                .write_all(b"\r\n")
+                .await
+                .map_err(|err| format!("cannot wake the bf_switchd CLI: {err}"))?;
+            read_until_prompt(&mut stream, Duration::from_secs(10))
+                .await
+                .map_err(|err| {
+                    format!("while waiting for the initial bfshell prompt after wake-up: {err}")
+                })?;
+        }
+        Err(err) => {
+            return Err(format!(
+                "while waiting for the initial bfshell prompt: {err}"
+            ));
+        }
+    }
 
     stream
         .write_all(b"ucli\n")
@@ -238,30 +258,121 @@ async fn read_until_prompt(
     let deadline = Instant::now() + maximum_wait;
     let mut output = Vec::new();
     let mut buffer = [0_u8; 4096];
+    let mut telnet_decoder = TelnetDecoder::default();
 
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            return Err("timed out waiting for the bf_switchd CLI prompt".to_owned());
+            return Err(prompt_timeout_error(&output));
         }
 
         let bytes_read = timeout(remaining, stream.read(&mut buffer))
             .await
-            .map_err(|_| "timed out waiting for the bf_switchd CLI prompt".to_owned())?
+            .map_err(|_| prompt_timeout_error(&output))?
             .map_err(|err| format!("cannot read from the bf_switchd CLI: {err}"))?;
 
         if bytes_read == 0 {
             return Err("the bf_switchd CLI closed the connection".to_owned());
         }
 
-        if output.len() + bytes_read > MAX_RESPONSE_BYTES {
+        let (decoded, reply) = telnet_decoder.decode(&buffer[..bytes_read]);
+        if !reply.is_empty() {
+            stream
+                .write_all(&reply)
+                .await
+                .map_err(|err| format!("cannot answer bf_switchd Telnet negotiation: {err}"))?;
+        }
+
+        if output.len() + decoded.len() > MAX_RESPONSE_BYTES {
             return Err("the bf_switchd CLI response exceeded 1 MiB".to_owned());
         }
 
-        output.extend_from_slice(&buffer[..bytes_read]);
+        output.extend_from_slice(&decoded);
         if ends_with_prompt(&output) {
             return Ok(output);
         }
+    }
+}
+
+fn prompt_timeout_error(output: &[u8]) -> String {
+    if output.is_empty() {
+        return format!("{PROMPT_TIMEOUT_ERROR} (received no data)");
+    }
+
+    let cleaned = strip_terminal_control_sequences(&String::from_utf8_lossy(output));
+    let trailing_output_reversed: String = cleaned.chars().rev().take(240).collect();
+    let trailing_output: String = trailing_output_reversed.chars().rev().collect();
+
+    format!(
+        "{PROMPT_TIMEOUT_ERROR} (received {} bytes; trailing output: {:?})",
+        output.len(),
+        trailing_output
+    )
+}
+
+#[derive(Default)]
+struct TelnetDecoder {
+    state: TelnetState,
+}
+
+#[derive(Default)]
+enum TelnetState {
+    #[default]
+    Data,
+    Command,
+    Negotiate(Option<u8>),
+    Subnegotiation,
+    SubnegotiationIac,
+}
+
+impl TelnetDecoder {
+    /// Removes Telnet protocol bytes and declines optional features. Newer
+    /// bf_switchd versions expose plain TCP, while some older builds negotiate
+    /// Telnet options before emitting their first prompt.
+    fn decode(&mut self, input: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        const IAC: u8 = 255;
+        const DONT: u8 = 254;
+        const DO: u8 = 253;
+        const WONT: u8 = 252;
+        const WILL: u8 = 251;
+        const SB: u8 = 250;
+        const SE: u8 = 240;
+
+        let mut output = Vec::with_capacity(input.len());
+        let mut reply = Vec::new();
+
+        for &byte in input {
+            self.state = match self.state {
+                TelnetState::Data if byte == IAC => TelnetState::Command,
+                TelnetState::Data => {
+                    output.push(byte);
+                    TelnetState::Data
+                }
+                TelnetState::Command => match byte {
+                    IAC => {
+                        output.push(IAC);
+                        TelnetState::Data
+                    }
+                    WILL => TelnetState::Negotiate(Some(DONT)),
+                    DO => TelnetState::Negotiate(Some(WONT)),
+                    WONT | DONT => TelnetState::Negotiate(None),
+                    SB => TelnetState::Subnegotiation,
+                    _ => TelnetState::Data,
+                },
+                TelnetState::Negotiate(response) => {
+                    if let Some(response) = response {
+                        reply.extend_from_slice(&[IAC, response, byte]);
+                    }
+                    TelnetState::Data
+                }
+                TelnetState::Subnegotiation if byte == IAC => TelnetState::SubnegotiationIac,
+                TelnetState::Subnegotiation => TelnetState::Subnegotiation,
+                TelnetState::SubnegotiationIac if byte == SE => TelnetState::Data,
+                TelnetState::SubnegotiationIac => TelnetState::Subnegotiation,
+            };
+        }
+
+        (output, reply)
     }
 }
 
