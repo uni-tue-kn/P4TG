@@ -1764,7 +1764,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                             />
                                                         </Col>
                                                         <Col className="col-12 col-sm-6">
-                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Throughput search steps", "Number of binary-search refinement trials after the initial line-rate throughput trial.")}</Form.Label>
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Throughput search steps", "Number of fixed-rate binary refinement trials after a zero-to-line-rate sawtooth sweep finds a padded coarse window around the first observed loss.")}</Form.Label>
                                                             <Form.Control
                                                                 size="sm"
                                                                 type="number"

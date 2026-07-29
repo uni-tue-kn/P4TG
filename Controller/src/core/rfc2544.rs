@@ -7,7 +7,7 @@ use log::{error, info, warn};
 use tokio_util::sync::CancellationToken;
 
 use crate::api::traffic_gen::start_single_test;
-use crate::core::traffic_gen_core::const_definitions::BATCH_FACTOR;
+use crate::core::traffic_gen_core::const_definitions::{BATCH_FACTOR, MONITORING_PACKET_INTERVAL};
 use crate::core::traffic_gen_core::helper::{
     calculate_overhead, generate_front_panel_to_dev_port_mappings, get_num_pipes,
     translate_fp_channel_to_dev_port_mapping,
@@ -22,6 +22,8 @@ use crate::core::traffic_gen_core::types::{
 use crate::AppState;
 
 const MIN_THROUGHPUT_LOSS_OBSERVATION_SECS: u32 = 4;
+const THROUGHPUT_SWEEP_SAMPLE_RATE: u32 = 128;
+const THROUGHPUT_SWEEP_PADDING_SAMPLES: usize = 4;
 
 /// Minimum wait between trial start and the baseline sample. The statistics
 /// gauges are only refreshed by digests (one per MONITORING_PACKET_INTERVAL,
@@ -44,6 +46,7 @@ fn effective_cooldown_secs(config: &Rfc2544Config) -> u32 {
 }
 
 struct TrialSample {
+    tx_rate_gbps: f64,
     rx_rate_gbps: f64,
     lost_frames: u64,
     tx_frames: u128,
@@ -54,6 +57,25 @@ struct TrialSample {
 struct ThroughputTrialLoss {
     lost_frames: u64,
     tx_frames: u128,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ThroughputSweepPoint {
+    rate_gbps: f64,
+    exceeds_tolerance: bool,
+    lost_frames: u64,
+}
+
+#[derive(Debug)]
+enum ThroughputSweepOutcome {
+    Loss {
+        low_rate_gbps: f64,
+        high_rate_gbps: f64,
+        lost_frames: u64,
+    },
+    NoLoss {
+        highest_rate_gbps: f64,
+    },
 }
 
 impl ThroughputTrialLoss {
@@ -86,6 +108,51 @@ fn usable_trial_rate(rate_gbps: f64, config: &Rfc2544Config) -> f64 {
         line_rate
     } else {
         0.001
+    }
+}
+
+fn padded_sweep_outcome(
+    points: &[ThroughputSweepPoint],
+    line_rate_gbps: f64,
+) -> ThroughputSweepOutcome {
+    let line_rate_gbps = line_rate_gbps.max(0.0);
+    let Some(first_loss_index) = points.iter().position(|point| point.exceeds_tolerance) else {
+        let highest_rate_gbps = points
+            .iter()
+            .map(|point| point.rate_gbps)
+            .filter(|rate| rate.is_finite())
+            .fold(0.0_f64, f64::max)
+            .clamp(0.0, line_rate_gbps);
+        return ThroughputSweepOutcome::NoLoss { highest_rate_gbps };
+    };
+
+    let last_pass_index = points[..first_loss_index]
+        .iter()
+        .rposition(|point| !point.exceeds_tolerance);
+    let low_rate_gbps = last_pass_index
+        .and_then(|index| index.checked_sub(THROUGHPUT_SWEEP_PADDING_SAMPLES))
+        .and_then(|index| points.get(index))
+        .map(|point| point.rate_gbps)
+        .unwrap_or(0.0)
+        .clamp(0.0, line_rate_gbps);
+
+    let requested_high_index = first_loss_index.saturating_add(THROUGHPUT_SWEEP_PADDING_SAMPLES);
+    let high_rate_gbps = if requested_high_index < points.len() {
+        points[first_loss_index..=requested_high_index]
+            .iter()
+            .map(|point| point.rate_gbps)
+            .filter(|rate| rate.is_finite())
+            .fold(0.0_f64, f64::max)
+            .clamp(0.0, line_rate_gbps)
+    } else {
+        line_rate_gbps
+    }
+    .max(low_rate_gbps);
+
+    ThroughputSweepOutcome::Loss {
+        low_rate_gbps,
+        high_rate_gbps,
+        lost_frames: points[first_loss_index].lost_frames,
     }
 }
 
@@ -176,7 +243,9 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
         config.throughput || config.latency || config.reset || config.system_recovery;
     let throughput_trials = config
         .throughput_search_steps
-        .saturating_add(1)
+        // One sawtooth sweep, the configured fixed-rate refinements, and a
+        // possible line-rate confirmation when the sweep observes no loss.
+        .saturating_add(2)
         .saturating_mul(config.throughput_repetitions.max(1));
     let recovery_duration = config
         .system_recovery_overload_duration_secs
@@ -203,8 +272,7 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
                 } else {
                     TRIAL_STATS_SETTLE_SECS
                 };
-                first_trial_secs
-                    .saturating_add(TRIAL_STATS_SETTLE_SECS.saturating_mul(trials - 1))
+                first_trial_secs.saturating_add(TRIAL_STATS_SETTLE_SECS.saturating_mul(trials - 1))
             } else {
                 config
                     .warmup_duration_secs
@@ -520,6 +588,20 @@ fn square_pattern(
     }
 }
 
+fn sawtooth_pattern(duration_secs: u32) -> GenerationPatternConfig {
+    GenerationPatternConfig {
+        pattern_type: GenerationPattern::Sawtooth,
+        period: duration_secs.max(1) as f64 * 1_000_000_000.0,
+        sample_rate: THROUGHPUT_SWEEP_SAMPLE_RATE,
+        inverted: Some(false),
+        fc_quiet_until: None,
+        fc_ramp_until: None,
+        fc_decay_rate: None,
+        square_low: None,
+        square_high_until: None,
+    }
+}
+
 async fn system_recovery_period_error(
     state: &Arc<AppState>,
     trial: &TrafficGenData,
@@ -598,6 +680,18 @@ async fn sample_trial(state: &Arc<AppState>, payload: &TrafficGenData) -> TrialS
     let (tx_ports, rx_ports) = trial_ports(state, payload);
 
     let rate_monitor = state.rate_monitor.lock().await;
+    let tx_rate_gbps = tx_ports
+        .iter()
+        .map(|port| {
+            rate_monitor
+                .statistics
+                .tx_rate_l1
+                .get(port)
+                .copied()
+                .unwrap_or(0.0)
+        })
+        .sum::<f64>()
+        / 1e9_f64;
     let rx_rate_gbps = rx_ports
         .iter()
         .map(|port| {
@@ -643,6 +737,7 @@ async fn sample_trial(state: &Arc<AppState>, payload: &TrafficGenData) -> TrialS
         .sum();
 
     TrialSample {
+        tx_rate_gbps,
         rx_rate_gbps,
         lost_frames,
         tx_frames,
@@ -922,6 +1017,177 @@ fn representative_throughput_repetition(
         .expect("throughput aggregation requires at least one repetition")
 }
 
+async fn run_throughput_sweep(
+    state: &Arc<AppState>,
+    base: &TrafficGenData,
+    config: &Rfc2544Config,
+    mapping: &Rfc2544PortMapping,
+    mapping_index: usize,
+    mapping_count: usize,
+    frame_size: u32,
+    repetition_index: u32,
+    repetition_count: u32,
+    mapping_warmup_done: &mut bool,
+    cancel_token: &CancellationToken,
+) -> Option<ThroughputSweepOutcome> {
+    let line_rate_gbps = config.line_rate_gbps as f64;
+    let pattern = sawtooth_pattern(config.trial_duration_secs);
+    let sweep = build_trial_payload(base, frame_size, line_rate_gbps, Some(pattern));
+    let context = format!(
+        "Throughput sweep | mapping {}/{} | {} | {frame_size} B | repetition {}/{}",
+        mapping_index,
+        mapping_count,
+        mapping_label(mapping),
+        repetition_index,
+        repetition_count
+    );
+
+    // A configured warm-up must not consume the beginning of the measured
+    // zero-to-line-rate ramp. Run it as a separate instance of the same
+    // traffic pattern, then restart the sweep with fresh counters.
+    if warmup_will_run(config, *mapping_warmup_done) {
+        if let Err(err) = start_single_test(state, sweep.clone()).await {
+            error!("RFC2544 throughput sweep warm-up failed: {err}");
+            finish(
+                state,
+                format!("RFC2544 throughput sweep warm-up failed: {err}"),
+            )
+            .await;
+            return None;
+        }
+        if !maybe_warmup(
+            state,
+            config,
+            mapping_warmup_done,
+            context.clone(),
+            cancel_token,
+        )
+        .await
+        {
+            return None;
+        }
+        stop_trial(state).await;
+        if !trial_cooldown(state, config, context.clone(), cancel_token).await {
+            return None;
+        }
+    }
+
+    set_status(
+        state,
+        format!(
+            "RFC2544 throughput sweep | mapping {}/{} | {} | {frame_size} B | repetition {}/{} | 0 to {:.3} Gbit/s",
+            mapping_index,
+            mapping_count,
+            mapping_label(mapping),
+            repetition_index,
+            repetition_count,
+            line_rate_gbps
+        ),
+    )
+    .await;
+
+    if let Err(err) = start_single_test(state, sweep.clone()).await {
+        error!("RFC2544 throughput sweep failed: {err}");
+        finish(state, format!("RFC2544 throughput sweep failed: {err}")).await;
+        return None;
+    }
+
+    // Unlike fixed-rate trials, the sweep cannot wait before taking its
+    // baseline without discarding the low-rate portion. Reset clears the
+    // gauges, and the regression guards below correct a stale first sample.
+    let baseline = sample_trial(state, &sweep).await;
+    let mut baseline_loss = baseline.lost_frames;
+    let mut baseline_tx = baseline.tx_frames;
+    let mut last_raw_loss = baseline.lost_frames;
+    let mut trial_tx = 0_u128;
+    let mut points = Vec::new();
+    let mut first_loss_index = None;
+    let deadline = Instant::now() + Duration::from_secs(config.trial_duration_secs as u64);
+    let sample_interval = Duration::from_nanos(MONITORING_PACKET_INTERVAL as u64);
+    let mut interval = tokio::time::interval(sample_interval);
+    interval.tick().await;
+
+    let completed = loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                let sample = sample_trial(state, &sweep).await;
+                if sample.lost_frames < last_raw_loss {
+                    // A counter regression means earlier points belonged to a
+                    // stale pre-reset digest. Discard their apparent transition.
+                    points.clear();
+                    first_loss_index = None;
+                    baseline_loss = sample.lost_frames;
+                }
+                last_raw_loss = sample.lost_frames;
+                baseline_loss = baseline_loss.min(sample.lost_frames);
+                baseline_tx = baseline_tx.min(sample.tx_frames);
+                let lost_frames = sample.lost_frames.saturating_sub(baseline_loss);
+                trial_tx = sample.tx_frames.saturating_sub(baseline_tx);
+                let exceeds_tolerance = (ThroughputTrialLoss {
+                    lost_frames,
+                    tx_frames: trial_tx,
+                })
+                .exceeds_tolerance(config);
+
+                let rate_gbps = if sample.tx_rate_gbps.is_finite() {
+                    sample.tx_rate_gbps.clamp(0.0, line_rate_gbps)
+                } else {
+                    0.0
+                };
+                points.push(ThroughputSweepPoint {
+                    rate_gbps,
+                    exceeds_tolerance,
+                    lost_frames,
+                });
+
+                if exceeds_tolerance && first_loss_index.is_none() {
+                    first_loss_index = Some(points.len() - 1);
+                }
+
+                if first_loss_index.is_some_and(|index| {
+                    points.len() > index.saturating_add(THROUGHPUT_SWEEP_PADDING_SAMPLES)
+                }) {
+                    break true;
+                }
+
+                if Instant::now() >= deadline {
+                    break true;
+                }
+            }
+            _ = cancel_token.cancelled() => {
+                break false;
+            }
+        }
+    };
+
+    stop_trial(state).await;
+    if !completed {
+        finish(state, "RFC2544 benchmark cancelled.".to_string()).await;
+        return None;
+    }
+    if !trial_cooldown(state, config, context, cancel_token).await {
+        return None;
+    }
+
+    let final_sample = sample_trial(state, &sweep).await;
+    baseline_tx = baseline_tx.min(final_sample.tx_frames);
+    trial_tx = trial_tx.max(final_sample.tx_frames.saturating_sub(baseline_tx));
+    if trial_tx == 0 {
+        error!(
+            "RFC2544 throughput sweep for {frame_size} byte frames observed no TX frames. Aborting benchmark."
+        );
+        finish(
+            state,
+            "RFC2544 throughput sweep observed no TX frames. Traffic generation may not be running correctly."
+                .to_string(),
+        )
+        .await;
+        return None;
+    }
+
+    Some(padded_sweep_outcome(&points, line_rate_gbps))
+}
+
 async fn run_throughput_repetition(
     state: &Arc<AppState>,
     base: &TrafficGenData,
@@ -949,41 +1215,126 @@ async fn run_throughput_repetition(
     .await;
 
     let line_rate_gbps = config.line_rate_gbps as f64;
-    let total_trials = config.throughput_search_steps.saturating_add(1);
-    let line_rate_loss = run_fixed_rate_loss_trial(
+    let total_trials = config.throughput_search_steps.saturating_add(2);
+    let sweep_outcome = run_throughput_sweep(
         state,
         base,
         config,
-        frame_size,
-        line_rate_gbps,
         mapping,
         mapping_index,
         mapping_count,
+        frame_size,
         repetition_index,
         repetition_count,
-        1,
-        total_trials,
         mapping_warmup_done,
         cancel_token,
     )
     .await?;
 
-    let (zero_loss_rate_gbps, first_loss_rate, result_lost_frames) = if !line_rate_loss
-        .exceeds_tolerance(config)
-    {
-        (line_rate_gbps, None, 0)
-    } else {
-        let mut low_rate = 0.0;
-        let mut high_rate = line_rate_gbps;
-        let mut first_loss_rate = Some(line_rate_gbps);
-        let mut result_lost_frames = line_rate_loss.lost_frames;
+    let (
+        mut low_rate,
+        mut high_rate,
+        mut first_loss_rate,
+        mut result_lost_frames,
+        mut next_trial,
+        mut fixed_loss_observed,
+    ) = match sweep_outcome {
+        ThroughputSweepOutcome::Loss {
+            low_rate_gbps,
+            high_rate_gbps,
+            lost_frames,
+        } => (
+            low_rate_gbps,
+            high_rate_gbps,
+            Some(high_rate_gbps),
+            lost_frames,
+            2,
+            false,
+        ),
+        ThroughputSweepOutcome::NoLoss { highest_rate_gbps } => {
+            let line_rate_loss = run_fixed_rate_loss_trial(
+                state,
+                base,
+                config,
+                frame_size,
+                line_rate_gbps,
+                mapping,
+                mapping_index,
+                mapping_count,
+                repetition_index,
+                repetition_count,
+                2,
+                total_trials,
+                mapping_warmup_done,
+                cancel_token,
+            )
+            .await?;
+            if !line_rate_loss.exceeds_tolerance(config) {
+                return Some(Rfc2544ThroughputRepetitionResult {
+                    repetition: repetition_index,
+                    zero_loss_rate_gbps: line_rate_gbps,
+                    first_loss_rate_gbps: None,
+                    lost_frames: 0,
+                });
+            }
+            (
+                highest_rate_gbps,
+                line_rate_gbps,
+                Some(line_rate_gbps),
+                line_rate_loss.lost_frames,
+                3,
+                true,
+            )
+        }
+    };
 
-        for step in 0..config.throughput_search_steps {
+    let mut confirmed_zero_loss_rate = None;
+    for _ in 0..config.throughput_search_steps {
+        let mid_rate = (low_rate + high_rate) / 2.0;
+        if !positive_rate(mid_rate) || (high_rate - low_rate).abs() < 0.001 {
+            break;
+        }
+
+        let mid_loss = run_fixed_rate_loss_trial(
+            state,
+            base,
+            config,
+            frame_size,
+            mid_rate,
+            mapping,
+            mapping_index,
+            mapping_count,
+            repetition_index,
+            repetition_count,
+            next_trial,
+            total_trials,
+            mapping_warmup_done,
+            cancel_token,
+        )
+        .await?;
+        next_trial = next_trial.saturating_add(1);
+
+        if !mid_loss.exceeds_tolerance(config) {
+            low_rate = mid_rate;
+            confirmed_zero_loss_rate = Some(mid_rate);
+        } else {
+            high_rate = mid_rate;
+            first_loss_rate = Some(mid_rate);
+            result_lost_frames = mid_loss.lost_frames;
+            fixed_loss_observed = true;
+        }
+    }
+
+    // The coarse lower bound is deliberately padded, but it is still based on
+    // a dynamic-rate observation. If every fixed refinement loses, widen the
+    // search toward zero and require a fixed-rate pass before reporting ZLT.
+    if confirmed_zero_loss_rate.is_none() && positive_rate(high_rate) {
+        low_rate = 0.0;
+        for _ in 0..config.throughput_search_steps {
             let mid_rate = (low_rate + high_rate) / 2.0;
             if !positive_rate(mid_rate) || (high_rate - low_rate).abs() < 0.001 {
                 break;
             }
-
             let mid_loss = run_fixed_rate_loss_trial(
                 state,
                 base,
@@ -995,33 +1346,136 @@ async fn run_throughput_repetition(
                 mapping_count,
                 repetition_index,
                 repetition_count,
-                step + 2,
-                total_trials,
+                next_trial,
+                next_trial,
                 mapping_warmup_done,
                 cancel_token,
             )
             .await?;
+            next_trial = next_trial.saturating_add(1);
 
             if !mid_loss.exceeds_tolerance(config) {
                 low_rate = mid_rate;
+                confirmed_zero_loss_rate = Some(mid_rate);
             } else {
                 high_rate = mid_rate;
                 first_loss_rate = Some(mid_rate);
                 result_lost_frames = mid_loss.lost_frames;
+                fixed_loss_observed = true;
             }
         }
+    }
 
-        let zero_loss_rate_gbps = if positive_rate(low_rate) {
-            low_rate
+    // Loss during a ramp is only a coarse upper bound. If every midpoint
+    // passed, verify that bound at a fixed rate. If it also passes, widen
+    // upward to line rate instead of under-reporting throughput.
+    if confirmed_zero_loss_rate.is_some() && !fixed_loss_observed {
+        let high_loss = run_fixed_rate_loss_trial(
+            state,
+            base,
+            config,
+            frame_size,
+            high_rate,
+            mapping,
+            mapping_index,
+            mapping_count,
+            repetition_index,
+            repetition_count,
+            next_trial,
+            next_trial.saturating_add(1),
+            mapping_warmup_done,
+            cancel_token,
+        )
+        .await?;
+        next_trial = next_trial.saturating_add(1);
+
+        if high_loss.exceeds_tolerance(config) {
+            first_loss_rate = Some(high_rate);
+            result_lost_frames = high_loss.lost_frames;
+        } else if (line_rate_gbps - high_rate).abs() < 0.001 {
+            return Some(Rfc2544ThroughputRepetitionResult {
+                repetition: repetition_index,
+                zero_loss_rate_gbps: line_rate_gbps,
+                first_loss_rate_gbps: None,
+                lost_frames: 0,
+            });
         } else {
-            warn!(
-                "RFC2544 throughput for {frame_size} byte frames did not find a positive no-loss fixed-rate trial; using half of first positive loss rate for follow-up trials."
-            );
-            usable_trial_rate(high_rate / 2.0, config)
-        };
+            let line_rate_loss = run_fixed_rate_loss_trial(
+                state,
+                base,
+                config,
+                frame_size,
+                line_rate_gbps,
+                mapping,
+                mapping_index,
+                mapping_count,
+                repetition_index,
+                repetition_count,
+                next_trial,
+                next_trial.saturating_add(1),
+                mapping_warmup_done,
+                cancel_token,
+            )
+            .await?;
+            next_trial = next_trial.saturating_add(1);
 
-        (zero_loss_rate_gbps, first_loss_rate, result_lost_frames)
-    };
+            if !line_rate_loss.exceeds_tolerance(config) {
+                return Some(Rfc2544ThroughputRepetitionResult {
+                    repetition: repetition_index,
+                    zero_loss_rate_gbps: line_rate_gbps,
+                    first_loss_rate_gbps: None,
+                    lost_frames: 0,
+                });
+            }
+
+            low_rate = high_rate;
+            high_rate = line_rate_gbps;
+            confirmed_zero_loss_rate = Some(low_rate);
+            first_loss_rate = Some(line_rate_gbps);
+            result_lost_frames = line_rate_loss.lost_frames;
+
+            for _ in 0..config.throughput_search_steps {
+                let mid_rate = (low_rate + high_rate) / 2.0;
+                if (high_rate - low_rate).abs() < 0.001 {
+                    break;
+                }
+                let mid_loss = run_fixed_rate_loss_trial(
+                    state,
+                    base,
+                    config,
+                    frame_size,
+                    mid_rate,
+                    mapping,
+                    mapping_index,
+                    mapping_count,
+                    repetition_index,
+                    repetition_count,
+                    next_trial,
+                    next_trial,
+                    mapping_warmup_done,
+                    cancel_token,
+                )
+                .await?;
+                next_trial = next_trial.saturating_add(1);
+
+                if mid_loss.exceeds_tolerance(config) {
+                    high_rate = mid_rate;
+                    first_loss_rate = Some(mid_rate);
+                    result_lost_frames = mid_loss.lost_frames;
+                } else {
+                    low_rate = mid_rate;
+                    confirmed_zero_loss_rate = Some(mid_rate);
+                }
+            }
+        }
+    }
+
+    let zero_loss_rate_gbps = confirmed_zero_loss_rate.unwrap_or_else(|| {
+        warn!(
+            "RFC2544 throughput for {frame_size} byte frames did not find a positive no-loss fixed-rate trial; using half of first positive loss rate for follow-up trials."
+        );
+        usable_trial_rate(high_rate / 2.0, config)
+    });
 
     Some(Rfc2544ThroughputRepetitionResult {
         repetition: repetition_index,

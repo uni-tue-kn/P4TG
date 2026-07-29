@@ -141,7 +141,13 @@ fn cat_factor(k: u32, sampling_rate: u32) -> f64 {
 }
 
 fn sawtooth_factor(k: u32, sampling_rate: u32, inverted: bool) -> f64 {
-    let factor = k as f64 / sampling_rate as f64;
+    // Include both endpoints for multi-sample ramps. Dividing by
+    // `sampling_rate` never reached the configured peak rate.
+    let factor = if sampling_rate <= 1 {
+        0.0
+    } else {
+        k.min(sampling_rate - 1) as f64 / (sampling_rate - 1) as f64
+    };
     if inverted {
         1.0 - factor
     } else {
