@@ -189,6 +189,10 @@ pub struct TimeStatistics {
     pub(crate) tx_rate_l1: HashMap<u32, BTreeMap<u32, f64>>,
     /// L1 receive rates per test and port
     pub(crate) rx_rate_l1: HashMap<u32, BTreeMap<u32, f64>>,
+    /// L2 send rates per port, application ID, and time
+    pub(crate) app_tx_l2: HashMap<u32, HashMap<u32, BTreeMap<u32, f64>>>,
+    /// L2 receive rates per port, application ID, and time
+    pub(crate) app_rx_l2: HashMap<u32, HashMap<u32, BTreeMap<u32, f64>>>,
     /// Number of lost packets per test and port
     pub(crate) packet_loss: HashMap<u32, BTreeMap<u32, u64>>,
     /// Number of out-of-order packets per test and port
@@ -205,6 +209,8 @@ impl TimeStatistics {
         TimeStatistics {
             tx_rate_l1: Default::default(),
             rx_rate_l1: Default::default(),
+            app_tx_l2: Default::default(),
+            app_rx_l2: Default::default(),
             packet_loss: Default::default(),
             out_of_order: Default::default(),
             rtt: Default::default(),
@@ -279,7 +285,6 @@ pub struct HistogramPacketPath {
     pub rx: HistogramData,
 }
 
-
 #[derive(Serialize, ToSchema, Clone)]
 pub struct Statistics {
     /// Indicates whether the sample mode is used or not.
@@ -302,6 +307,8 @@ pub struct Statistics {
     /// L2 receive rate per stream and port.
     /// The number corresponds to the app_id in the Stream description.
     pub(crate) app_rx_l2: HashMap<u32, HashMap<u32, f64>>,
+    /// Number of L2 bytes counted per generated frame, keyed by application ID.
+    pub(crate) app_l2_frame_sizes: HashMap<u32, u32>,
     /// Statistics what kind of packets have been received per port
     pub(crate) frame_type_data: HashMap<u32, TypeCount>,
     /// Statistics of the inter arrival times per port.

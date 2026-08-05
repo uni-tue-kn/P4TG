@@ -134,6 +134,7 @@ export type StatisticsEntry = {
             [channel: string]: { [appId: string]: number };
         };
     };
+    app_l2_frame_sizes: { [appId: string]: number };
 
     elapsed_time: number;
 
@@ -159,6 +160,7 @@ export const StatisticsObject: StatisticsEntry = {
     packet_loss: {},
     app_tx_l2: {},
     app_rx_l2: {},
+    app_l2_frame_sizes: {},
     out_of_order: {},
     elapsed_time: 0,
     rtt_histogram: {},
@@ -181,15 +183,40 @@ export type TimeStatisticsEntry = {
             };
         };
     };
+    app_tx_l2: {
+        [port: number]: {
+            [channel: number]: {
+                [appId: number]: {
+                    [time: number]: number;
+                };
+            };
+        };
+    };
+    app_rx_l2: {
+        [port: number]: {
+            [channel: number]: {
+                [appId: number]: {
+                    [time: number]: number;
+                };
+            };
+        };
+    };
     name?: string;
 };
 
 export type RxTarget = { port: number; channel: number };
 export type PortTxRxMap = { [port: string]: { [channel: string]: RxTarget } };
 
+export enum RxMappingMode {
+    PerTxPort = "per_tx_port",
+    PerStream = "per_stream",
+}
+
 export const TimeStatisticsObject: TimeStatisticsEntry = {
     tx_rate_l1: {},
-    rx_rate_l1: {}
+    rx_rate_l1: {},
+    app_tx_l2: {},
+    app_rx_l2: {},
 }
 
 export interface StreamSettings {
@@ -197,6 +224,7 @@ export interface StreamSettings {
     port: number,
     channel: number,
     stream_id: number,
+    rx_target?: RxTarget,
     vlan?: {
         vlan_id: number,
         pcp: number,
@@ -456,6 +484,7 @@ export interface P4TGInfos {
 
 export interface TrafficGenData {
     mode: GenerationMode,
+    rx_mapping_mode: RxMappingMode,
     streams: Stream[],
     stream_settings: StreamSettings[],
     port_tx_rx_mapping: PortTxRxMap,

@@ -9,10 +9,15 @@ lazy_static! {
     pub static ref EXAMPLE_GET_1: TrafficGenData = TrafficGenData {
         name: None,
         mode: GenerationMode::Cbr,
+        rx_mapping_mode: RxMappingMode::PerStream,
         stream_settings: vec![StreamSetting {
             port: 1,
             channel: None,
             stream_id: 1,
+            rx_target: Some(RxTarget {
+                port: 2,
+                channel: 0,
+            }),
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string(),
@@ -64,16 +69,7 @@ lazy_static! {
             detnet_seq_num_length: None,
             mna_post_stack: None,
         }],
-        port_tx_rx_mapping: HashMap::from([(
-            "1".to_string(),
-            HashMap::from([(
-                "0".to_string(),
-                RxTarget {
-                    port: 2,
-                    channel: 0
-                }
-            )])
-        )]),
+        port_tx_rx_mapping: HashMap::new(),
         duration: Some(10),
         repetitions: 1,
         rtt_histogram_config: Some(HashMap::from([(
@@ -93,11 +89,13 @@ lazy_static! {
     };
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
+        rx_mapping_mode: RxMappingMode::PerTxPort,
         name: None,
         stream_settings: vec![StreamSetting {
             port: 1,
             channel: None,
             stream_id: 1,
+            rx_target: None,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string()
@@ -204,10 +202,12 @@ lazy_static! {
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
         mode: GenerationMode::Cbr,
+        rx_mapping_mode: RxMappingMode::PerTxPort,
         stream_settings: vec![StreamSetting {
             port: 1,
             channel: None,
             stream_id: 1,
+            rx_target: None,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string()
@@ -290,10 +290,12 @@ lazy_static! {
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
         mode: GenerationMode::Cbr,
+        rx_mapping_mode: RxMappingMode::PerTxPort,
         stream_settings: vec![StreamSetting {
             port: 1,
             channel: None,
             stream_id: 1,
+            rx_target: None,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string(),
@@ -398,6 +400,7 @@ lazy_static! {
     }];
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Poisson,
+        rx_mapping_mode: RxMappingMode::PerTxPort,
         name: Some("Poisson".to_string()),
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -427,6 +430,7 @@ lazy_static! {
             mpls_stack: None,
             port: 1,
             stream_id: 1,
+            rx_target: None,
             vlan: None,
             vxlan: None,
             gtpu: None,
@@ -490,10 +494,12 @@ lazy_static! {
     pub static ref EXAMPLE_POST_4_REQUEST: Vec<TrafficGenData> = vec![
         TrafficGenData {
             mode: GenerationMode::Cbr,
+            rx_mapping_mode: RxMappingMode::PerTxPort,
             stream_settings: vec![StreamSetting {
                 port: 1,
                 channel: None,
                 stream_id: 1,
+                rx_target: None,
                 ethernet: Ethernet {
                     eth_src: "32:D5:42:2A:F6:92".to_string(),
                     eth_dst: "81:E7:9D:E3:AD:47".to_string()
@@ -579,10 +585,12 @@ lazy_static! {
         },
         TrafficGenData {
             mode: GenerationMode::Cbr,
+            rx_mapping_mode: RxMappingMode::PerTxPort,
             stream_settings: vec![StreamSetting {
                 port: 1,
                 channel: None,
                 stream_id: 1,
+                rx_target: None,
                 ethernet: Ethernet {
                     eth_src: "32:D5:42:2A:F6:92".to_string(),
                     eth_dst: "81:E7:9D:E3:AD:47".to_string()

@@ -17,16 +17,23 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-import { P4TGInfos, PortInfo, Stream, StreamSettings } from "../../common/Interfaces";
+import { HistogramConfig, HistogramConfigMap, P4TGInfos, PortInfo, RxMappingMode, RxTarget, Stream, StreamSettings } from "../../common/Interfaces";
 import StreamSettingsElement from "./StreamSettingsElement";
 import React from "react";
 
-const StreamSettingsList = ({ stream_settings, streams, running, p4tg_infos, port }: {
+const StreamSettingsList = ({ stream_settings, streams, running, p4tg_infos, port, ports, rx_mapping_mode, onUpdate, rtt_histogram_settings, iat_histogram_settings, set_rtt_histogram_settings, set_iat_histogram_settings }: {
     stream_settings: StreamSettings[],
     streams: Stream[],
     running: boolean,
     p4tg_infos: P4TGInfos,
     port: PortInfo
+    ports: PortInfo[],
+    rx_mapping_mode: RxMappingMode,
+    onUpdate: (setting: StreamSettings, updates: Partial<Pick<StreamSettings, "active" | "rx_target">>) => void,
+    rtt_histogram_settings: HistogramConfigMap,
+    iat_histogram_settings: HistogramConfigMap,
+    set_rtt_histogram_settings: (pid: number, channel: number, updated: HistogramConfig) => void,
+    set_iat_histogram_settings: (pid: number, channel: number, updated: HistogramConfig) => void,
 }) => {
     return <>
         {stream_settings.map((s: StreamSettings, i: number) => {
@@ -43,7 +50,13 @@ const StreamSettingsList = ({ stream_settings, streams, running, p4tg_infos, por
             }
             if (s.port == port.port && s.channel == port.channel && stream != null) {
                 return <StreamSettingsElement key={i} running={running} port_status={port.status} stream_data={stream}
-                    stream={s} p4tg_infos={p4tg_infos} />
+                    stream={s} p4tg_infos={p4tg_infos} ports={ports} rx_mapping_mode={rx_mapping_mode}
+                    onActiveChange={(active) => onUpdate(s, { active })}
+                    onRxTargetChange={(rx_target: RxTarget | undefined) => onUpdate(s, { rx_target })}
+                    rtt_histogram_settings={rtt_histogram_settings}
+                    iat_histogram_settings={iat_histogram_settings}
+                    set_rtt_histogram_settings={set_rtt_histogram_settings}
+                    set_iat_histogram_settings={set_iat_histogram_settings} />
             }
 
         })}

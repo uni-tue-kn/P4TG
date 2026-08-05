@@ -188,9 +188,8 @@ function getTimeUnit(value: number): [value: number, unit: string] {
 
 const generateLineData = (
     data_key: string,
-    use_key: boolean,
     data: TimeStatisticsEntry,
-    port_mapping: { [port: string]: { [channel: string]: { port: number; channel: number } } }
+    pairs: Array<[string, string]>,
 ): [string[], number[]] => {
     // data[data_key]: { [port]: { [channel]: { [time]: number } } }
     const source = (data as any)[data_key] as
@@ -199,20 +198,9 @@ const generateLineData = (
 
     const series: Array<{ [time: string]: number }> = [];
     if (source) {
-        if (use_key) {
-            // TX: iterate mapping keys (tx port/channel)
-            for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
-                for (const txCh of Object.keys(perCh ?? {})) {
-                    const s = source[txPort]?.[txCh];
-                    if (s) series.push(s);
-                }
-            }
-        } else {
-            // RX: group by RX endpoint to avoid double counting when multiple TX map to the same RX.
-            for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
-                const s = source[rxPort]?.[rxCh];
-                if (s) series.push(s);
-            }
+        for (const [port, channel] of pairs) {
+            const s = source[port]?.[channel];
+            if (s) series.push(s);
         }
     }
 
@@ -233,6 +221,34 @@ const generateLineData = (
     const values = times.map((t) => merged[String(t)]);
 
     return [labels, values];
+};
+
+const generateAppLineData = (
+    dataKey: "app_tx_l2" | "app_rx_l2",
+    data: TimeStatisticsEntry,
+    pairs: Array<[string, string]>,
+    appIds: number[],
+    l2FrameSizes: Record<number, number>,
+): [string[], number[]] => {
+    const source = data[dataKey];
+    const merged: Record<string, number> = {};
+
+    for (const [port, channel] of pairs) {
+        for (const appId of appIds) {
+            const series = source?.[Number(port)]?.[Number(channel)]?.[appId];
+            const l2FrameSize = l2FrameSizes[appId];
+            const l1Factor = l2FrameSize > 0 ? (l2FrameSize + 20) / l2FrameSize : 1;
+            for (const [time, rateL2] of Object.entries(series ?? {})) {
+                merged[time] = (merged[time] ?? 0) + rateL2 * l1Factor;
+            }
+        }
+    }
+
+    const times = Object.keys(merged).map(Number).sort((left, right) => left - right);
+    return [
+        times.map((time) => secondsToTime(time)),
+        times.map((time) => merged[String(time)]),
+    ];
 };
 
 
@@ -416,7 +432,8 @@ const getPercentileAnnotations = (
 
 const get_frame_types = (
     stats: StatisticsEntry,
-    port_mapping: PortTxRxMap,
+    txPairs: Array<[string, string]>,
+    rxPairs: Array<[string, string]>,
     type: string
 ): { tx: number; rx: number } => {
     const ret = { tx: 0, rx: 0 };
@@ -424,17 +441,12 @@ const get_frame_types = (
 
     if (!ftd) return ret;
 
-    for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
-        for (const txCh of Object.keys(perCh ?? {})) {
-            // TX side: use (txPort, txCh)
-            const txVal = (ftd[txPort]?.[txCh]?.tx as any)?.[type];
-            if (typeof txVal === "number") ret.tx += txVal;
-        }
+    for (const [txPort, txCh] of txPairs) {
+        const txVal = (ftd[txPort]?.[txCh]?.tx as any)?.[type];
+        if (typeof txVal === "number") ret.tx += txVal;
     }
 
-    // RX side: sum per unique RX endpoint to avoid double counting
-    // when multiple TX ports map to the same RX
-    for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+    for (const [rxPort, rxCh] of rxPairs) {
         const rxVal = (ftd[rxPort]?.[rxCh]?.rx as any)?.[type];
         if (typeof rxVal === "number") ret.rx += rxVal;
     }
@@ -445,7 +457,8 @@ const get_frame_types = (
 
 const get_frame_stats = (
     stats: StatisticsEntry,
-    port_mapping: PortTxRxMap,
+    txPairs: Array<[string, string]>,
+    rxPairs: Array<[string, string]>,
     type: "tx" | "rx",
     low: number,
     high: number
@@ -453,22 +466,15 @@ const get_frame_stats = (
     let ret = 0;
     const fs = stats.frame_size ?? {};
 
-    if (!port_mapping) return 0;
-
     if (type === "tx") {
-        // sum for all mapped TX (port, channel)
-        for (const [txPort, perCh] of Object.entries(port_mapping)) {
-            for (const txCh of Object.keys(perCh ?? {})) {
-                const bins = fs?.[txPort]?.[txCh]?.tx ?? [];
-                for (const f of bins) {
-                    if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
-                }
+        for (const [txPort, txCh] of txPairs) {
+            const bins = fs?.[txPort]?.[txCh]?.tx ?? [];
+            for (const f of bins) {
+                if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
             }
         }
     } else if (type === "rx") {
-        // sum per unique RX endpoint to avoid double counting
-        // when multiple TX ports map to the same RX
-        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+        for (const [rxPort, rxCh] of rxPairs) {
             const bins = fs?.[rxPort]?.[rxCh]?.rx ?? [];
             for (const f of bins) {
                 if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
@@ -482,7 +488,7 @@ const get_frame_stats = (
 
 const get_rtt = (
     data: TimeStatisticsEntry,
-    port_mapping: PortTxRxMap
+    rxPairs: Array<[string, string]>,
 ): [string[], number[]] => {
     // data.rtt: { [port]: { [channel]: { [time]: number } } }
     const src = (data as any).rtt as
@@ -491,9 +497,7 @@ const get_rtt = (
 
     const series: Array<{ [t: string]: number }> = [];
     if (src) {
-        // use unique RX endpoints from the mapping so a shared RX target
-        // does not contribute the same series multiple times
-        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+        for (const [rxPort, rxCh] of rxPairs) {
             const s = src[rxPort]?.[rxCh];
             if (s) series.push(s);
         }
@@ -526,12 +530,34 @@ const get_rtt = (
     return [labels, values];
 };
 
-const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: TimeStatisticsEntry, stats: StatisticsEntry, port_mapping: PortTxRxMap, is_summary: boolean, rx_port: number }) => {
-    const [labels_tx, line_data_tx] = generateLineData("tx_rate_l1", true, data, port_mapping)
-    const [labels_rx, line_data_rx] = generateLineData("rx_rate_l1", false, data, port_mapping)
-    const [labels_loss, line_data_loss] = generateLineData("packet_loss", false, data, port_mapping)
-    const [labels_out_of_order, line_data_out_of_order] = generateLineData("out_of_order", false, data, port_mapping)
-    const [labels_rtt, line_data_rtt] = get_rtt(data, port_mapping)
+const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metrics_reliable = true, tx_pairs, rx_pairs, route_app_ids = [], app_l2_frame_sizes = {}, rate_only = false, rx_rate_unambiguous = true }: {
+    data: TimeStatisticsEntry,
+    stats: StatisticsEntry,
+    port_mapping: PortTxRxMap,
+    is_summary: boolean,
+    rx_port: number,
+    sequence_metrics_reliable?: boolean,
+    tx_pairs?: Array<[string, string]>,
+    rx_pairs?: Array<[string, string]>,
+    route_app_ids?: number[],
+    app_l2_frame_sizes?: Record<number, number>,
+    rate_only?: boolean,
+    rx_rate_unambiguous?: boolean,
+}) => {
+    const txPairs = tx_pairs ?? Object.entries(port_mapping ?? {}).flatMap(
+        ([port, perChannel]) => Object.keys(perChannel ?? {}).map((channel) => [port, channel] as [string, string])
+    );
+    const rxPairs = rx_pairs ?? uniqueRxPairs(port_mapping);
+    const filterAppRates = route_app_ids.length > 0 && data.app_tx_l2 !== undefined && data.app_rx_l2 !== undefined;
+    const [labels_tx, line_data_tx] = filterAppRates
+        ? generateAppLineData("app_tx_l2", data, txPairs, route_app_ids, app_l2_frame_sizes)
+        : generateLineData("tx_rate_l1", data, txPairs)
+    const [labels_rx, line_data_rx] = filterAppRates
+        ? generateAppLineData("app_rx_l2", data, rxPairs, route_app_ids, app_l2_frame_sizes)
+        : generateLineData("rx_rate_l1", data, rxPairs)
+    const [labels_loss, line_data_loss] = generateLineData("packet_loss", data, rxPairs)
+    const [labels_out_of_order, line_data_out_of_order] = generateLineData("out_of_order", data, rxPairs)
+    const [labels_rtt, line_data_rtt] = get_rtt(data, rxPairs)
     const [labels_rtt_hist, hist_data_rtt_tx, hist_data_rtt_rx] = generateHistogram(stats.rtt_histogram, port_mapping, false);
     const [labels_iat_hist, hist_data_iat_tx, hist_data_iat_rx] = generateHistogram(stats.iat_histogram, port_mapping, true);
     const percentileRTTAnnotations = getPercentileAnnotations(stats.rtt_histogram, port_mapping, false);
@@ -540,24 +566,25 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
     const [visual_select, set_visual_select] = useState("rate")
     const [showPercentiles, set_show_percentiles] = useState(true)
 
+    const rateDatasets = [
+        {
+            fill: true,
+            label: 'TX rate',
+            data: line_data_tx.map(val => val * 10 ** -9),
+            borderColor: 'rgb(53, 162, 235)',
+            backgroundColor: 'rgba(53, 162, 235, 0.5)',
+        },
+        ...(rx_rate_unambiguous ? [{
+            fill: true,
+            label: 'RX rate',
+            data: line_data_rx.map(val => val * 10 ** -9),
+            borderColor: 'rgb(183,85,40)',
+            backgroundColor: 'rgb(250,122,64, 0.5)',
+        }] : []),
+    ];
     const rate_data = {
         labels: labels_tx,
-        datasets: [
-            {
-                fill: true,
-                label: 'TX rate',
-                data: line_data_tx.map(val => val * 10 ** -9),
-                borderColor: 'rgb(53, 162, 235)',
-                backgroundColor: 'rgba(53, 162, 235, 0.5)',
-            },
-            {
-                fill: true,
-                label: 'RX rate',
-                data: line_data_rx.map(val => val * 10 ** -9),
-                borderColor: 'rgb(183,85,40)',
-                backgroundColor: 'rgb(250,122,64, 0.5)',
-            },
-        ],
+        datasets: rateDatasets,
     }
 
     const loss_data = {
@@ -600,10 +627,10 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
         datasets: [
             {
                 label: 'TX frame types',
-                data: [get_frame_types(stats, port_mapping, "multicast").tx,
-                get_frame_types(stats, port_mapping, "broadcast").tx,
-                get_frame_types(stats, port_mapping, "unicast").tx,
-                get_frame_types(stats, port_mapping, "vxlan").tx],
+                data: [get_frame_types(stats, txPairs, rxPairs, "multicast").tx,
+                get_frame_types(stats, txPairs, rxPairs, "broadcast").tx,
+                get_frame_types(stats, txPairs, rxPairs, "unicast").tx,
+                get_frame_types(stats, txPairs, rxPairs, "vxlan").tx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
@@ -614,10 +641,10 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
             },
             {
                 label: 'RX frame types',
-                data: [get_frame_types(stats, port_mapping, "multicast").rx,
-                get_frame_types(stats, port_mapping, "broadcast").rx,
-                get_frame_types(stats, port_mapping, "unicast").rx,
-                get_frame_types(stats, port_mapping, "vxlan").rx],
+                data: [get_frame_types(stats, txPairs, rxPairs, "multicast").rx,
+                get_frame_types(stats, txPairs, rxPairs, "broadcast").rx,
+                get_frame_types(stats, txPairs, rxPairs, "unicast").rx,
+                get_frame_types(stats, txPairs, rxPairs, "vxlan").rx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
@@ -637,13 +664,13 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
             {
                 label: 'TX ethernet types',
                 data: [
-                    get_frame_types(stats, port_mapping, "vlan").tx,
-                    get_frame_types(stats, port_mapping, "qinq").tx,
-                    get_frame_types(stats, port_mapping, "ipv4").tx,
-                    get_frame_types(stats, port_mapping, "ipv6").tx,
-                    get_frame_types(stats, port_mapping, "mpls").tx,
-                    get_frame_types(stats, port_mapping, "arp").tx,
-                    get_frame_types(stats, port_mapping, "unknown").tx],
+                    get_frame_types(stats, txPairs, rxPairs, "vlan").tx,
+                    get_frame_types(stats, txPairs, rxPairs, "qinq").tx,
+                    get_frame_types(stats, txPairs, rxPairs, "ipv4").tx,
+                    get_frame_types(stats, txPairs, rxPairs, "ipv6").tx,
+                    get_frame_types(stats, txPairs, rxPairs, "mpls").tx,
+                    get_frame_types(stats, txPairs, rxPairs, "arp").tx,
+                    get_frame_types(stats, txPairs, rxPairs, "unknown").tx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
@@ -658,13 +685,13 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
             {
                 label: 'RX ethernet types',
                 data: [
-                    get_frame_types(stats, port_mapping, "vlan").rx,
-                    get_frame_types(stats, port_mapping, "qinq").rx,
-                    get_frame_types(stats, port_mapping, "ipv4").rx,
-                    get_frame_types(stats, port_mapping, "ipv6").rx,
-                    get_frame_types(stats, port_mapping, "mpls").rx,
-                    get_frame_types(stats, port_mapping, "arp").rx,
-                    get_frame_types(stats, port_mapping, "unknown").rx],
+                    get_frame_types(stats, txPairs, rxPairs, "vlan").rx,
+                    get_frame_types(stats, txPairs, rxPairs, "qinq").rx,
+                    get_frame_types(stats, txPairs, rxPairs, "ipv4").rx,
+                    get_frame_types(stats, txPairs, rxPairs, "ipv6").rx,
+                    get_frame_types(stats, txPairs, rxPairs, "mpls").rx,
+                    get_frame_types(stats, txPairs, rxPairs, "arp").rx,
+                    get_frame_types(stats, txPairs, rxPairs, "unknown").rx],
                 backgroundColor: [
                     'rgb(255, 99, 132)',
                     'rgb(54, 162, 235)',
@@ -687,7 +714,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
             {
                 label: 'TX frame sizes',
                 data: [[0, 63], [64, 64], [65, 127], [128, 255], [256, 511], [512, 1023], [1024, 1518], [1519, 21519]].map((v, i) => {
-                    return get_frame_stats(stats, port_mapping, "tx", v[0], v[1])
+                    return get_frame_stats(stats, txPairs, rxPairs, "tx", v[0], v[1])
                 }),
                 backgroundColor: [
                     'rgb(255, 99, 132)',
@@ -704,7 +731,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
             {
                 label: 'RX frame sizes',
                 data: [[0, 63], [64, 64], [65, 127], [128, 255], [256, 511], [512, 1023], [1024, 1518], [1519, 21519]].map((v, i) => {
-                    return get_frame_stats(stats, port_mapping, "rx", v[0], v[1])
+                    return get_frame_stats(stats, txPairs, rxPairs, "rx", v[0], v[1])
                 }),
                 backgroundColor: [
                     'rgb(255, 99, 132)',
@@ -839,7 +866,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
             null
         }
 
-        {visual_select == "loss" ?
+        {visual_select == "loss" && sequence_metrics_reliable ?
             <Line options={loss_options} data={loss_data} />
             :
             null
@@ -907,7 +934,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
             null
         }
 
-        <Row className={"text-center mb-3 mt-3"}>
+        {!rate_only ? <Row className={"text-center mb-3 mt-3"}>
             <Form onChange={(event: any) => set_visual_select(event.target.id)}>
                 <Form.Check
                     inline
@@ -917,14 +944,14 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
                     checked={visual_select == "rate"}
                     id={`rate`}
                 />
-                <Form.Check
+                {sequence_metrics_reliable ? <Form.Check
                     inline
                     label="Packet loss/Out of order"
                     type="radio"
                     name={"visuals"}
                     checked={visual_select == "loss"}
                     id={`loss`}
-                />
+                /> : null}
                 <Form.Check
                     inline
                     label="RTT"
@@ -960,7 +987,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port }: { data: Tim
                     id={`frame`}
                 />
             </Form>
-        </Row>
+        </Row> : null}
     </>
 }
 

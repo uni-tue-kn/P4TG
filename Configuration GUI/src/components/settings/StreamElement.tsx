@@ -62,6 +62,7 @@ const StreamElement = ({
     running,
     data,
     remove,
+    update,
     mode,
     stream_settings,
     p4tg_infos
@@ -69,6 +70,7 @@ const StreamElement = ({
     running: boolean,
     data: Stream,
     remove: (id: number) => void,
+    update: (stream: Stream, streamSettings: StreamSettings[]) => void,
     mode: GenerationMode,
     stream_settings: StreamSettings[],
     p4tg_infos: P4TGInfos
@@ -345,30 +347,30 @@ const StreamElement = ({
             ? 4
             : data.ip_version;
 
-        data.detnet_cw = updated.detnet_cw;
-        data.detnet_seq_num_length = updated.detnet_cw
-            ? (updated.detnet_seq_num_length ?? DetNetSeqNumLength.TwentyEight)
-            : null;
-        data.mna_in_stack = updated.mna_in_stack;
-        data.mna_post_stack = updated.mna_post_stack;
-        data.ip_version = nextIpVersion;
-
-        const nextFormData: Partial<Stream> = {
-            detnet_cw: data.detnet_cw,
-            detnet_seq_num_length: data.detnet_seq_num_length,
-            mna_in_stack: data.mna_in_stack,
+        const nextStream: Stream = {
+            ...data,
+            detnet_cw: updated.detnet_cw,
+            detnet_seq_num_length: updated.detnet_cw
+                ? (updated.detnet_seq_num_length ?? DetNetSeqNumLength.TwentyEight)
+                : null,
+            mna_in_stack: updated.mna_in_stack,
+            mna_post_stack: updated.mna_post_stack,
             ip_version: nextIpVersion,
         };
 
+        let nextStreamSettings = stream_settings;
         if (hadPostStack && !updated.mna_post_stack) {
-            clearPostStackMNA(nextFormData);
-            return;
+            nextStreamSettings = stream_settings.map((setting) => setting.stream_id === data.stream_id
+                ? {
+                    ...setting,
+                    mpls_stack: stripPostStackEncoding(setting.mpls_stack, data.number_of_lse),
+                }
+                : setting
+            );
         }
 
-        updateFormData({
-            ...nextFormData,
-            mna_post_stack: data.mna_post_stack,
-        });
+        updateFormData(nextStream);
+        update(nextStream, nextStreamSettings);
     };
 
     const handlePatternTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {

@@ -62,7 +62,11 @@ const App = () => {
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
     const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({ status: "", version: "", asic: ASIC.Tofino1, loopback: false })
-    const [toast, setToast] = useState({ time: "00:00", show: false, message: "", bg: "success" })
+    const [toast, setToast] = useState<{ show: boolean, message: string, bg: ToastVariant }>({
+        show: false,
+        message: "",
+        bg: "success",
+    })
     const [updateAvailable, setUpdateAvailable] = useState(false)
     const [showUpdateModal, setShowUpdateModal] = useState(false)
 
@@ -118,9 +122,7 @@ const App = () => {
 
 
     const showToast = (message: string, bg: ToastVariant) => {
-        let now = new Date();
-        let time = now.getHours() + ":" + now.getMinutes();
-        setToast({ time: time, show: true, message, bg })
+        setToast({ show: true, message, bg })
     }
 
     return <Loader loaded={loaded}>
@@ -156,7 +158,6 @@ const App = () => {
                                             <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} />} />
                                         </Routes>
                                         <ToastMessage
-                                            time={toast.time}
                                             show={toast.show}
                                             message={toast.message}
                                             bg={toast.bg as ToastVariant}

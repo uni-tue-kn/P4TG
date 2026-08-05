@@ -1,13 +1,33 @@
-import { GenerationMode, TrafficGenData } from "./Interfaces";
+/* Copyright 2022-present University of Tuebingen, Chair of Communication Networks
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
+ */
+
+import { GenerationMode, RxMappingMode, TrafficGenData } from "./Interfaces";
 import { validateStreams, validateStreamSettings } from "./Validators";
 
 const STORAGE_SCHEMA_KEY = "p4tg.storageSchema";
-const STORAGE_SCHEMA_VERSION = "2";
+const STORAGE_SCHEMA_VERSION = "3";
 const CONFIG_STORAGE_KEYS = [
     "saved_configs",
     "streams",
     "streamSettings",
     "gen-mode",
+    "rx_mapping_mode",
     "duration",
     "repetitions",
     "port_tx_rx_mapping",
@@ -35,6 +55,9 @@ export const migrateTrafficGenData = (value: unknown): TrafficGenData | null => 
     }
 
     config.mode = typeof config.mode === "number" ? config.mode : GenerationMode.NONE;
+    config.rx_mapping_mode = Object.values(RxMappingMode).includes(config.rx_mapping_mode)
+        ? config.rx_mapping_mode
+        : RxMappingMode.PerTxPort;
     config.duration = typeof config.duration === "number" ? config.duration : 0;
     config.repetitions = config.mode === GenerationMode.RFC2544
         ? 1

@@ -38,6 +38,7 @@ import {
     ToastVariant,
     TrafficGenData,
     HistogramConfig
+    , RxMappingMode
 } from '../common/Interfaces'
 import styled from "styled-components";
 import SummaryView from '../components/SummaryView';
@@ -133,6 +134,9 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const [streams, set_streams] = useState<Stream[]>(loadFromStorage<Stream[]>("streams", []))
     const [stream_settings, set_stream_settings] = useState<StreamSettings[]>(loadFromStorage<StreamSettings[]>("streamSettings", []))
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
+    const [rx_mapping_mode, set_rx_mapping_mode] = useState<RxMappingMode>(
+        loadFromStorage<RxMappingMode>("rx_mapping_mode", RxMappingMode.PerTxPort)
+    )
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
     const [rtt_histogram_settings, set_rtt_histogram_settings] = useState<Record<string, HistogramConfig>>(loadFromStorage<Record<string, HistogramConfig>>("rtt_histogram_config", {}))
     const [iat_histogram_settings, set_iat_histogram_settings] = useState<Record<string, HistogramConfig>>(loadFromStorage<Record<string, HistogramConfig>>("iat_histogram_config", {}))
@@ -436,6 +440,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
         if (stats !== undefined && Object.keys(stats.data).length > 1) {
             set_mode(stats.data.mode)
+            set_rx_mapping_mode(stats.data.rx_mapping_mode ?? RxMappingMode.PerTxPort)
             set_duration(stats.data.duration)
             set_port_tx_rx_mapping(stats.data.port_tx_rx_mapping)
             set_stream_settings(stats.data.stream_settings)
@@ -446,6 +451,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
             localStorage.setItem("streams", JSON.stringify(stats.data.streams))
             localStorage.setItem("gen-mode", String(stats.data.mode))
+            localStorage.setItem("rx_mapping_mode", JSON.stringify(stats.data.rx_mapping_mode ?? RxMappingMode.PerTxPort))
             localStorage.setItem("duration", String(stats.data.duration))
             localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
@@ -666,6 +672,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                                         statistics={statistics[0]}
                                         time_statistics={time_statistics[0]}
                                         port_tx_rx_mapping={port_tx_rx_mapping}
+                                        rx_mapping_mode={rx_mapping_mode}
                                         visual={visual}
                                         mode={mode}
                                         stream_settings={stream_settings}
@@ -696,6 +703,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                                                 statistics={statData}
                                                 time_statistics={timeStatsData}
                                                 port_tx_rx_mapping={config.port_tx_rx_mapping}
+                                                rx_mapping_mode={config.rx_mapping_mode ?? RxMappingMode.PerTxPort}
                                                 visual={visual}
                                                 mode={config.mode}
                                                 stream_settings={config.stream_settings}
@@ -716,6 +724,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                     statistics={statistics[0]}
                     time_statistics={time_statistics[0]}
                     port_tx_rx_mapping={port_tx_rx_mapping}
+                    rx_mapping_mode={rx_mapping_mode}
                     visual={visual}
                     mode={mode}
                     stream_settings={stream_settings}

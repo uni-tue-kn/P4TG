@@ -807,6 +807,20 @@ impl RateMonitor {
                                         .get_mut(port)
                                         .unwrap()
                                         .insert(mapping.app_id as u32, new_app_rate.rate_l2);
+
+                                    if running {
+                                        state
+                                            .rate_monitor
+                                            .lock()
+                                            .await
+                                            .time_statistics
+                                            .app_tx_l2
+                                            .entry(*port)
+                                            .or_default()
+                                            .entry(mapping.app_id as u32)
+                                            .or_default()
+                                            .insert(elapsed_time, new_app_rate.rate_l2);
+                                    }
                                 } else {
                                     state
                                         .rate_monitor
@@ -817,6 +831,20 @@ impl RateMonitor {
                                         .get_mut(port)
                                         .unwrap()
                                         .insert(mapping.app_id as u32, new_app_rate.rate_l2);
+
+                                    if running {
+                                        state
+                                            .rate_monitor
+                                            .lock()
+                                            .await
+                                            .time_statistics
+                                            .app_rx_l2
+                                            .entry(*port)
+                                            .or_default()
+                                            .entry(mapping.app_id as u32)
+                                            .or_default()
+                                            .insert(elapsed_time, new_app_rate.rate_l2);
+                                    }
                                 }
 
                                 last_update_app.insert(app_index, new_app_rate);
@@ -963,6 +991,8 @@ impl TrafficGenEvent for RateMonitor {
 
         self.time_statistics.tx_rate_l1.clear();
         self.time_statistics.rx_rate_l1.clear();
+        self.time_statistics.app_tx_l2.clear();
+        self.time_statistics.app_rx_l2.clear();
 
         // allow iat generation
         let req = table::Request::new(MONITOR_IAT_TABLE)
@@ -996,6 +1026,8 @@ impl TrafficGenEvent for RateMonitor {
         self.rx_iat_storage.clear();
         self.time_statistics.tx_rate_l1.clear();
         self.time_statistics.rx_rate_l1.clear();
+        self.time_statistics.app_tx_l2.clear();
+        self.time_statistics.app_rx_l2.clear();
         self.time_statistics.packet_loss.clear();
         self.time_statistics.out_of_order.clear();
         self.time_statistics.rtt.clear();
@@ -1011,6 +1043,12 @@ impl TrafficGenEvent for RateMonitor {
             self.statistics.tx_rate_l2.insert(*port, 0.0);
             self.statistics.rx_rate_l1.insert(*port, 0.0);
             self.statistics.rx_rate_l2.insert(*port, 0.0);
+            if let Some(app_rates) = self.statistics.app_tx_l2.get_mut(port) {
+                app_rates.values_mut().for_each(|rate| *rate = 0.0);
+            }
+            if let Some(app_rates) = self.statistics.app_rx_l2.get_mut(port) {
+                app_rates.values_mut().for_each(|rate| *rate = 0.0);
+            }
         }
 
         let monitoring_registers = vec![

@@ -23,8 +23,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::api::server::Error;
 use crate::core::histogram_monitor::{
-    build_iat_histogram_configs, build_rtt_histogram_configs, histogram_entry_count,
-    histogram_port_roles,
+    build_iat_histogram_configs_for_edges, build_rtt_histogram_configs_for_rx_ports,
+    histogram_edge_roles, histogram_entry_count,
 };
 use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
@@ -33,6 +33,7 @@ use crate::core::traffic_gen_core::const_definitions::{
     MAX_PATTERN_SAMPLE_RATE, RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE,
     TG_MAX_RATE_TF2,
 };
+use crate::core::traffic_gen_core::expected_routes::resolve_per_stream_topology;
 use crate::core::traffic_gen_core::helper::{
     calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps,
     translate_fp_channel_to_dev_port_mapping,
@@ -93,6 +94,17 @@ pub fn validate_request(
     available_ports: &HashMap<u32, PortMapping>,
     is_tofino2: bool,
 ) -> Result<Vec<Stream>, Error> {
+    if payload.rx_mapping_mode == RxMappingMode::PerStream
+        && matches!(
+            payload.mode,
+            GenerationMode::Analyze | GenerationMode::Rfc2544
+        )
+    {
+        return Err(Error::new(
+            "Per-stream RX mapping is not supported in Analyze or RFC2544 mode.",
+        ));
+    }
+
     if payload.repetitions == 0 {
         return Err(Error::new("Test repetitions must be greater than 0."));
     }
@@ -134,6 +146,26 @@ pub fn validate_request(
         if !channel_configured(available_ports, setting.port, channel) {
             return Err(Error::new(format!("Channel {} is not configured for port {} in StreamSettings. Try resetting your local storage.", channel, setting.port)));
         }
+        if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            let rx_target = setting.rx_target.ok_or_else(|| {
+                Error::new(format!(
+                    "Active stream {} on TX port {}/{} requires an RX target in per-stream mapping mode.",
+                    setting.stream_id, setting.port, channel
+                ))
+            })?;
+            if !front_panel_dev_port_mappings.contains_key(&rx_target.port) {
+                return Err(Error::new(format!(
+                    "No mapping for front panel RX port {} in StreamSettings.",
+                    rx_target.port
+                )));
+            }
+            if !channel_configured(available_ports, rx_target.port, rx_target.channel) {
+                return Err(Error::new(format!(
+                    "Channel {} is not configured for RX port {} in StreamSettings.",
+                    rx_target.channel, rx_target.port
+                )));
+            }
+        }
     }
 
     let active_stream_ids: Vec<u8> = active_stream_settings.iter().map(|s| s.stream_id).collect();
@@ -144,6 +176,13 @@ pub fn validate_request(
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
     let active_streams = normalize_stream_patterns(active_streams);
+    let per_stream_topology = resolve_per_stream_topology(
+        payload.rx_mapping_mode,
+        &active_stream_settings,
+        &active_streams,
+        &front_panel_dev_port_mappings,
+    )
+    .map_err(Error::new)?;
 
     // App id 0 is reserved for the monitoring packet application. A stream with
     // app id 0 overwrites its pktgen entry in hardware, which permanently kills
@@ -168,7 +207,10 @@ pub fn validate_request(
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
     // Validate that front panel port and channel are available
-    for (tx, channel) in tx_rx_port_mapping.iter() {
+    for (tx, channel) in tx_rx_port_mapping
+        .iter()
+        .filter(|_| payload.rx_mapping_mode == RxMappingMode::PerTxPort)
+    {
         let tx_port = tx.parse().unwrap_or(u32::MAX);
         if !front_panel_dev_port_mappings.contains_key(&tx_port) {
             return Err(Error::new(format!(
@@ -646,24 +688,41 @@ pub fn validate_request(
     // Validate histogram configurations. Runs even without explicit configs
     // because active ports fall back to default configs that also consume
     // table entries. Safe to translate here: all mapping ports were validated above.
-    let tx_rx_dev_mapping = translate_fp_channel_to_dev_port_mapping(
-        &payload.port_tx_rx_mapping,
-        &front_panel_dev_port_mappings,
-    );
-    validate_histogram(
-        rtt_histogram_config.as_ref(),
-        &tx_rx_dev_mapping,
-        &front_panel_dev_port_mappings,
-        payload.name.clone(),
-        HistogramType::Rtt,
-    )?;
-    validate_histogram(
-        iat_histogram_config.as_ref(),
-        &tx_rx_dev_mapping,
-        &front_panel_dev_port_mappings,
-        payload.name.clone(),
-        HistogramType::Iat,
-    )?;
+    if payload.rx_mapping_mode == RxMappingMode::PerStream {
+        validate_histogram_for_edges(
+            rtt_histogram_config.as_ref(),
+            &per_stream_topology.edges,
+            &front_panel_dev_port_mappings,
+            payload.name.clone(),
+            HistogramType::Rtt,
+        )?;
+        validate_histogram_for_edges(
+            iat_histogram_config.as_ref(),
+            &per_stream_topology.edges,
+            &front_panel_dev_port_mappings,
+            payload.name.clone(),
+            HistogramType::Iat,
+        )?;
+    } else {
+        let tx_rx_dev_mapping = translate_fp_channel_to_dev_port_mapping(
+            &payload.port_tx_rx_mapping,
+            &front_panel_dev_port_mappings,
+        );
+        validate_histogram(
+            rtt_histogram_config.as_ref(),
+            &tx_rx_dev_mapping,
+            &front_panel_dev_port_mappings,
+            payload.name.clone(),
+            HistogramType::Rtt,
+        )?;
+        validate_histogram(
+            iat_histogram_config.as_ref(),
+            &tx_rx_dev_mapping,
+            &front_panel_dev_port_mappings,
+            payload.name.clone(),
+            HistogramType::Iat,
+        )?;
+    }
 
     validate_patterns(&active_streams)?;
 
@@ -787,6 +846,26 @@ pub fn validate_histogram(
     test_name: Option<String>,
     hist_type: HistogramType,
 ) -> Result<(), Error> {
+    let edges: HashSet<(u32, u32)> = tx_rx_dev_mapping
+        .iter()
+        .filter_map(|(tx, rx)| tx.parse().ok().map(|tx| (tx, *rx)))
+        .collect();
+    validate_histogram_for_edges(
+        request,
+        &edges,
+        front_panel_dev_port_mappings,
+        test_name,
+        hist_type,
+    )
+}
+
+pub fn validate_histogram_for_edges(
+    request: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    edges: &HashSet<(u32, u32)>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
+    test_name: Option<String>,
+    hist_type: HistogramType,
+) -> Result<(), Error> {
     let mut t_name = "".to_string();
     if let Some(name) = test_name {
         t_name = format!(", Test: {name:?},");
@@ -840,14 +919,16 @@ pub fn validate_histogram(
     // recirculation paths matching its TX/RX role. Each written path costs the
     // ternary bin entries plus one wildcard missed-bin entry.
     let dev_port_configs = match hist_type {
-        HistogramType::Rtt => {
-            build_rtt_histogram_configs(request, tx_rx_dev_mapping, front_panel_dev_port_mappings)
-        }
+        HistogramType::Rtt => build_rtt_histogram_configs_for_rx_ports(
+            request,
+            &histogram_edge_roles(edges).1,
+            front_panel_dev_port_mappings,
+        ),
         HistogramType::Iat => {
-            build_iat_histogram_configs(request, tx_rx_dev_mapping, front_panel_dev_port_mappings)
+            build_iat_histogram_configs_for_edges(request, edges, front_panel_dev_port_mappings)
         }
     };
-    let (tx_ports, rx_ports) = histogram_port_roles(tx_rx_dev_mapping);
+    let (tx_ports, rx_ports) = histogram_edge_roles(edges);
 
     let mut num_requests: u32 = 0;
     for (dev_port, config) in dev_port_configs.iter() {

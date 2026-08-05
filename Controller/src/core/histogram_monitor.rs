@@ -70,6 +70,15 @@ pub fn histogram_port_roles(
     (tx_ports, rx_ports)
 }
 
+/// Derives histogram roles from a topology that may contain multiple RX ports
+/// for the same TX port.
+pub fn histogram_edge_roles(edges: &HashSet<(u32, u32)>) -> (HashSet<u32>, HashSet<u32>) {
+    (
+        edges.iter().map(|(tx, _)| *tx).collect(),
+        edges.iter().map(|(_, rx)| *rx).collect(),
+    )
+}
+
 /// Resolves the front panel port + channel keyed histogram configs to dev ports.
 fn resolve_histogram_configs(
     configs: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
@@ -107,27 +116,40 @@ pub fn build_iat_histogram_configs(
     tx_rx_dev_mapping: &HashMap<String, u32>,
     front_panel_dev_port_mappings: &HashMap<u32, u32>,
 ) -> HashMap<u32, HistogramConfig> {
+    let edges: HashSet<(u32, u32)> = tx_rx_dev_mapping
+        .iter()
+        .filter_map(|(tx, rx)| tx.parse().ok().map(|tx| (tx, *rx)))
+        .collect();
+    build_iat_histogram_configs_for_edges(configs, &edges, front_panel_dev_port_mappings)
+}
+
+pub fn build_iat_histogram_configs_for_edges(
+    configs: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    edges: &HashSet<(u32, u32)>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
+) -> HashMap<u32, HistogramConfig> {
     let mut result = resolve_histogram_configs(configs, front_panel_dev_port_mappings);
 
-    // Propagate the RX port's config to its TX mates that have no own config.
-    // A single RX port may be the target of multiple TX ports.
-    let propagated: Vec<(u32, HistogramConfig)> = tx_rx_dev_mapping
+    // Propagate an RX config only when a TX has one unambiguous RX mate.
+    let mut targets_by_tx: HashMap<u32, HashSet<u32>> = HashMap::new();
+    for (tx, rx) in edges {
+        targets_by_tx.entry(*tx).or_default().insert(*rx);
+    }
+    let propagated: Vec<(u32, HistogramConfig)> = targets_by_tx
         .iter()
-        .filter_map(|(tx, rx)| {
-            let tx: u32 = tx.parse().ok()?;
+        .filter_map(|(tx, targets)| {
             if result.contains_key(&tx) {
                 return None;
             }
-            result.get(rx).map(|config| (tx, config.clone()))
+            let rx = targets.iter().next().filter(|_| targets.len() == 1)?;
+            result.get(rx).map(|config| (*tx, config.clone()))
         })
         .collect();
     result.extend(propagated);
 
     // Default config for active ports without any config
-    for (tx, rx) in tx_rx_dev_mapping {
-        if let Ok(tx) = tx.parse::<u32>() {
-            result.entry(tx).or_default();
-        }
+    for (tx, rx) in edges {
+        result.entry(*tx).or_default();
         result.entry(*rx).or_default();
     }
 
@@ -145,10 +167,19 @@ pub fn build_rtt_histogram_configs(
     tx_rx_dev_mapping: &HashMap<String, u32>,
     front_panel_dev_port_mappings: &HashMap<u32, u32>,
 ) -> HashMap<u32, HistogramConfig> {
+    let rx_ports = tx_rx_dev_mapping.values().copied().collect();
+    build_rtt_histogram_configs_for_rx_ports(configs, &rx_ports, front_panel_dev_port_mappings)
+}
+
+pub fn build_rtt_histogram_configs_for_rx_ports(
+    configs: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    rx_ports: &HashSet<u32>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
+) -> HashMap<u32, HistogramConfig> {
     let mut result = resolve_histogram_configs(configs, front_panel_dev_port_mappings);
 
     // Default config for active RX ports without any config
-    for rx in tx_rx_dev_mapping.values() {
+    for rx in rx_ports {
         result.entry(*rx).or_default();
     }
 

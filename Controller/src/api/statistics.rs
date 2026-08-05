@@ -51,6 +51,7 @@ pub struct StatisticsApi {
     pub rx_rate_l2: HashMap<u32, HashMap<u8, f64>>,
     pub app_tx_l2: HashMap<u32, HashMap<u8, HashMap<u32, f64>>>,
     pub app_rx_l2: HashMap<u32, HashMap<u8, HashMap<u32, f64>>>,
+    pub app_l2_frame_sizes: HashMap<u32, u32>,
     pub frame_type_data: HashMap<u32, HashMap<u8, TypeCount>>,
     pub iats: HashMap<u32, HashMap<u8, IATStatistics>>,
     pub rtts: HashMap<u32, HashMap<u8, RTTStatistics>>,
@@ -83,6 +84,7 @@ impl StatisticsApi {
             rx_rate_l2: remap_port_map(&core.rx_rate_l2, &dev_to_fpch),
             app_tx_l2: remap_app_map(&core.app_tx_l2, &dev_to_fpch),
             app_rx_l2: remap_app_map(&core.app_rx_l2, &dev_to_fpch),
+            app_l2_frame_sizes: core.app_l2_frame_sizes.clone(),
             frame_type_data: remap_port_map(&core.frame_type_data, &dev_to_fpch),
             iats: remap_port_map(&core.iats, &dev_to_fpch),
             rtts: remap_port_map(&core.rtts, &dev_to_fpch),
@@ -125,6 +127,8 @@ impl StatisticsApi {
 pub struct TimeStatisticsApi {
     pub(crate) tx_rate_l1: HashMap<u32, HashMap<u8, BTreeMap<u32, f64>>>,
     pub(crate) rx_rate_l1: HashMap<u32, HashMap<u8, BTreeMap<u32, f64>>>,
+    pub(crate) app_tx_l2: HashMap<u32, HashMap<u8, HashMap<u32, BTreeMap<u32, f64>>>>,
+    pub(crate) app_rx_l2: HashMap<u32, HashMap<u8, HashMap<u32, BTreeMap<u32, f64>>>>,
     pub(crate) packet_loss: HashMap<u32, HashMap<u8, BTreeMap<u32, u64>>>,
     pub(crate) out_of_order: HashMap<u32, HashMap<u8, BTreeMap<u32, u64>>>,
     pub(crate) rtt: HashMap<u32, HashMap<u8, BTreeMap<u32, u64>>>,
@@ -143,6 +147,8 @@ impl TimeStatisticsApi {
         TimeStatisticsApi {
             tx_rate_l1: remap_port_map(&core.tx_rate_l1, &dev_to_fpch),
             rx_rate_l1: remap_port_map(&core.rx_rate_l1, &dev_to_fpch),
+            app_tx_l2: remap_app_map(&core.app_tx_l2, &dev_to_fpch),
+            app_rx_l2: remap_app_map(&core.app_rx_l2, &dev_to_fpch),
             packet_loss: remap_port_map(&core.packet_loss, &dev_to_fpch),
             out_of_order: remap_port_map(&core.out_of_order, &dev_to_fpch),
             rtt: remap_port_map(&core.rtt, &dev_to_fpch),
@@ -158,6 +164,8 @@ impl TimeStatisticsApi {
     ) -> TimeStatisticsApi {
         filter_map_for_keys(&mut stats.tx_rate_l1, &used_ports);
         filter_map_for_keys(&mut stats.rx_rate_l1, &used_ports);
+        filter_map_for_keys(&mut stats.app_tx_l2, &used_ports);
+        filter_map_for_keys(&mut stats.app_rx_l2, &used_ports);
         filter_map_for_keys(&mut stats.packet_loss, &used_ports);
         filter_map_for_keys(&mut stats.out_of_order, &used_ports);
         filter_map_for_keys(&mut stats.rtt, &used_ports);
@@ -200,6 +208,7 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
         rx_rate_l2: Default::default(),
         app_tx_l2: Default::default(),
         app_rx_l2: Default::default(),
+        app_l2_frame_sizes: Default::default(),
         iats: Default::default(),
         rtts: Default::default(),
         packet_loss: Default::default(),
@@ -225,7 +234,9 @@ pub async fn get_statistics(state: &Arc<AppState>) -> Vec<StatisticsApi> {
             .clone();
         stats.rtt_histogram = rtt_histogram_monitor.lock().await.histogram.clone();
         stats.iat_histogram = iat_histogram_monitor.lock().await.histogram.clone();
-        stats.name = state.traffic_generator.lock().await.name.clone();
+        let traffic_generator = state.traffic_generator.lock().await;
+        stats.name = traffic_generator.name.clone();
+        stats.app_l2_frame_sizes = traffic_generator.app_l2_frame_sizes.clone();
     }
 
     let monitor_statistics = rate_monitor.lock().await.statistics.clone();
@@ -340,9 +351,9 @@ pub struct Params {
         ("limit" = Option<usize>, Query, description = "Only retrieve the last *limit* entries")
     ),
     responses(
-        (status = 200,
+    (status = 200,
         description = "Returns the statistics over time.",
-        body = Vec<TimeStatistics>,
+        body = Vec<TimeStatisticsApi>,
         example = json!(*docs::statistics::EXAMPLE_GET_2)
         ))
 )]
@@ -408,6 +419,50 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
         })
         .collect();
 
+    let app_tx_l2: HashMap<u32, HashMap<u32, BTreeMap<u32, f64>>> = stats
+        .app_tx_l2
+        .clone()
+        .into_iter()
+        .map(|(port, apps)| {
+            (
+                port,
+                apps.into_iter()
+                    .map(|(app_id, series)| {
+                        (
+                            app_id,
+                            series
+                                .into_iter()
+                                .filter(|(time, _)| *time % (step as u32) == 0)
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+
+    let app_rx_l2: HashMap<u32, HashMap<u32, BTreeMap<u32, f64>>> = stats
+        .app_rx_l2
+        .clone()
+        .into_iter()
+        .map(|(port, apps)| {
+            (
+                port,
+                apps.into_iter()
+                    .map(|(app_id, series)| {
+                        (
+                            app_id,
+                            series
+                                .into_iter()
+                                .filter(|(time, _)| *time % (step as u32) == 0)
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+
     let packet_loss: HashMap<u32, BTreeMap<u32, u64>> = stats
         .packet_loss
         .clone()
@@ -454,6 +509,8 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
     let new_time_stats = TimeStatistics {
         tx_rate_l1,
         rx_rate_l1,
+        app_tx_l2,
+        app_rx_l2,
         packet_loss,
         out_of_order,
         rtt,

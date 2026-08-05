@@ -28,6 +28,7 @@ import styled from 'styled-components'
 import Visuals from "./Visuals";
 import { formatNanoSeconds, formatFrameCount, uniqueRxPairs } from '../common/Helper';
 import InfoBox from './InfoBox';
+import { ExpectedRoute } from '../common/ExpectedRoutes';
 
 const Overline = styled.span`
   text-decoration: overline;
@@ -49,7 +50,20 @@ const RFC2544_CHART_COLORS = [
     "rgb(26, 188, 156)",
 ];
 
-const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port }: { stats: StatisticsEntry, time_stats: TimeStatisticsEntry, port_mapping: PortTxRxMap, mode: GenerationMode, visual: boolean, is_summary: boolean, rx_port: number }) => {
+const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port, expected_routes = [], sequence_metrics_reliable = true, route_app_ids = [], app_l2_frame_sizes = {}, rx_rate_unambiguous = true }: {
+    stats: StatisticsEntry,
+    time_stats: TimeStatisticsEntry,
+    port_mapping: PortTxRxMap,
+    mode: GenerationMode,
+    visual: boolean,
+    is_summary: boolean,
+    rx_port: number,
+    expected_routes?: ExpectedRoute[],
+    sequence_metrics_reliable?: boolean,
+    route_app_ids?: number[],
+    app_l2_frame_sizes?: Record<number, number>,
+    rx_rate_unambiguous?: boolean,
+}) => {
     const [total_tx, set_total_tx] = useState(0);
     const [total_rx, set_total_rx] = useState(0);
     const [iat_tx, set_iat_tx] = useState({ "mean": 0, "std": 0, "n": 0, "mae": 0 });
@@ -58,6 +72,32 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     const [lost_packets, set_lost_packets] = useState(0);
     const [out_of_order_packets, set_out_of_order_packets] = useState(0);
     const [rfc2544RateUnit, setRfc2544RateUnit] = useState<"mpps" | "gbit">("mpps");
+
+    const uniquePairs = (pairs: Array<[string, string]>) =>
+        Array.from(new Map(pairs.map((pair) => [`${pair[0]}/${pair[1]}`, pair])).values());
+    const pairsFromStats = (...objects: Array<Record<string, Record<string, unknown>> | undefined>) =>
+        uniquePairs(objects.flatMap((object) => Object.entries(object ?? {}).flatMap(
+            ([port, perChannel]) => Object.keys(perChannel ?? {}).map((channel) => [port, channel] as [string, string])
+        )));
+    const allTxPairs = pairsFromStats(
+        stats.tx_rate_l1, stats.tx_rate_l2, time_stats.tx_rate_l1, stats.app_tx_l2,
+        stats.frame_size, stats.iats, stats.frame_type_data,
+    );
+    const allRxPairs = pairsFromStats(
+        stats.rx_rate_l1, stats.rx_rate_l2, time_stats.rx_rate_l1, stats.app_rx_l2,
+        stats.frame_size, stats.iats, stats.frame_type_data, stats.rtts,
+        stats.packet_loss, stats.out_of_order,
+    );
+    const mappedTxPairs: Array<[string, string]> = expected_routes.length > 0
+        ? uniquePairs(expected_routes.map((route) => [String(route.txPort), String(route.txChannel)]))
+        : Object.entries(port_mapping ?? {}).flatMap(
+            ([txPort, perCh]) => Object.keys(perCh ?? {}).map((txCh) => [txPort, txCh] as [string, string])
+        );
+    const mappedRxPairs: Array<[string, string]> = expected_routes.length > 0
+        ? uniquePairs(expected_routes.map((route) => [String(route.rxPort), String(route.rxChannel)]))
+        : uniqueRxPairs(port_mapping);
+    const txPairs = is_summary && allTxPairs.length > 0 ? allTxPairs : mappedTxPairs;
+    const rxPairs = is_summary && allRxPairs.length > 0 ? allRxPairs : mappedRxPairs;
 
     const renderTooltip = (props: any, message: string) => (
         <Tooltip id="tooltip-disabled" {...props}>
@@ -69,17 +109,14 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         const ret = { tx: 0, rx: 0 };
         const ftd = stats.frame_type_data ?? {};
 
-        for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
-            for (const txCh of Object.keys(perCh ?? {})) {
-                // TX: sum for (txPort, txCh)
-                const txVal = (ftd[txPort]?.[txCh]?.tx as any)?.[type];
-                if (typeof txVal === "number") ret.tx += txVal;
-            }
+        for (const [txPort, txCh] of txPairs) {
+            const txVal = (ftd[txPort]?.[txCh]?.tx as any)?.[type];
+            if (typeof txVal === "number") ret.tx += txVal;
         }
 
         // RX: sum per unique RX endpoint to avoid double counting
         // when multiple TX ports map to the same RX
-        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+        for (const [rxPort, rxCh] of rxPairs) {
             const rxVal = (ftd[rxPort]?.[rxCh]?.rx as any)?.[type];
             if (typeof rxVal === "number") ret.rx += rxVal;
         }
@@ -90,7 +127,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
 
     const get_lost_packets = () => {
         let ret = 0;
-        for (const [rp, rc] of uniqueRxPairs(port_mapping)) {
+        for (const [rp, rc] of rxPairs) {
             ret += stats.packet_loss?.[rp]?.[rc] ?? 0;
         }
         return ret;
@@ -98,7 +135,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
 
     const get_out_of_order_packets = () => {
         let ret = 0;
-        for (const [rp, rc] of uniqueRxPairs(port_mapping)) {
+        for (const [rp, rc] of rxPairs) {
             ret += stats.out_of_order?.[rp]?.[rc] ?? 0;
         }
         return ret;
@@ -113,18 +150,16 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
 
         if (type === "tx") {
             // Sum bins for all mapped TX (port, channel)
-            for (const [txPort, perCh] of Object.entries(port_mapping)) {
-                for (const txCh of Object.keys(perCh ?? {})) {
-                    const bins = fs?.[txPort]?.[txCh]?.tx ?? [];
-                    for (const f of bins) {
-                        if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
-                    }
+            for (const [txPort, txCh] of txPairs) {
+                const bins = fs?.[txPort]?.[txCh]?.tx ?? [];
+                for (const f of bins) {
+                    if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
                 }
             }
         } else {
             // Sum bins per unique RX endpoint to avoid double counting
             // when multiple TX ports map to the same RX
-            for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+            for (const [rxPort, rxCh] of rxPairs) {
                 const bins = fs?.[rxPort]?.[rxCh]?.rx ?? [];
                 for (const f of bins) {
                     if (f?.low === low && f?.high === high) ret += f?.packets ?? 0;
@@ -141,17 +176,14 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         let ret_tx = 0
         let ret_rx = 0
 
-        for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
-            for (const txCh of Object.keys(perCh ?? {})) {
-                // TX side: sum bins for (txPort, txCh)
-                const txBins = stats.frame_size?.[txPort]?.[txCh]?.tx ?? [];
-                ret_tx += txBins.reduce((s, f) => s + (f?.packets ?? 0), 0);
-            }
+        for (const [txPort, txCh] of txPairs) {
+            const txBins = stats.frame_size?.[txPort]?.[txCh]?.tx ?? [];
+            ret_tx += txBins.reduce((s, f) => s + (f?.packets ?? 0), 0);
         }
 
         // RX side: sum bins per unique RX endpoint to avoid double counting
         // when multiple TX ports map to the same RX
-        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+        for (const [rxPort, rxCh] of rxPairs) {
             const rxBins = stats.frame_size?.[rxPort]?.[rxCh]?.rx ?? [];
             ret_rx += rxBins.reduce((s, f) => s + (f?.packets ?? 0), 0);
         }
@@ -173,7 +205,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         let all_max = 0
         let all_n = 0
 
-        for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+        for (const [rxPort, rxCh] of rxPairs) {
             const r = stats.rtts?.[rxPort]?.[rxCh];
             if (!r) continue;
 
@@ -204,19 +236,17 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
 
 
         if (type === "tx") {
-            for (const [txPort, perCh] of Object.entries(port_mapping ?? {})) {
-                for (const [txCh, _target] of Object.entries(perCh ?? {})) {
-                    const i = stats.iats?.[txPort]?.[txCh]?.tx;
-                    if (!i) continue;
+            for (const [txPort, txCh] of txPairs) {
+                const i = stats.iats?.[txPort]?.[txCh]?.tx;
+                if (!i) continue;
 
-                    all_mean += (i.mean ?? 0) * (i.n ?? 0);
-                    all_mae.push(i.mae ?? 0);
-                    all_std += (i.std ?? 0) * (i.n ?? 0);
-                    all_n += i.n ?? 0;
-                }
+                all_mean += (i.mean ?? 0) * (i.n ?? 0);
+                all_mae.push(i.mae ?? 0);
+                all_std += (i.std ?? 0) * (i.n ?? 0);
+                all_n += i.n ?? 0;
             }
         } else if (type === "rx") {
-            for (const [rxPort, rxCh] of uniqueRxPairs(port_mapping)) {
+            for (const [rxPort, rxCh] of rxPairs) {
                 const i = stats.iats?.[rxPort]?.[rxCh]?.rx;
                 if (!i) continue;
 
@@ -248,19 +278,33 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     ) =>
         pairs.reduce((sum, [p, c]) => sum + (object?.[p]?.[c] ?? 0), 0);
 
-    // Build (port,channel) pairs from mapping
-    const txPairs: Array<[string, string]> = Object.entries(port_mapping ?? {}).flatMap(
-        ([txPort, perCh]) => Object.keys(perCh ?? {}).map((txCh) => [txPort, txCh] as [string, string])
-    );
-
-    // RX in summary must be grouped by RX endpoint, not by number of TX mappings.
-    const rxPairs = uniqueRxPairs(port_mapping);
+    const addAppRatesByPairs = (
+        object: { [port: string]: { [ch: string]: { [appId: string]: number } } } | undefined,
+        pairs: Array<[string, string]>,
+        layer1: boolean,
+    ) => pairs.reduce((sum, [port, channel]) =>
+        sum + route_app_ids.reduce((appSum, appId) => {
+            const l2Rate = object?.[port]?.[channel]?.[String(appId)] ?? 0;
+            const l2FrameSize = app_l2_frame_sizes[appId];
+            return appSum + (layer1 && l2FrameSize > 0
+                ? l2Rate * (l2FrameSize + 20) / l2FrameSize
+                : l2Rate);
+        }, 0), 0);
 
     // Sums
-    const tx_rate_l1 = addRatesByPairs(stats.tx_rate_l1, txPairs);
-    const tx_rate_l2 = addRatesByPairs(stats.tx_rate_l2, txPairs);
-    const rx_rate_l1 = addRatesByPairs(stats.rx_rate_l1, rxPairs);
-    const rx_rate_l2 = addRatesByPairs(stats.rx_rate_l2, rxPairs);
+    const routeRatesFiltered = !is_summary && route_app_ids.length > 0;
+    const tx_rate_l1 = routeRatesFiltered
+        ? addAppRatesByPairs(stats.app_tx_l2, txPairs, true)
+        : addRatesByPairs(stats.tx_rate_l1, txPairs);
+    const tx_rate_l2 = routeRatesFiltered
+        ? addAppRatesByPairs(stats.app_tx_l2, txPairs, false)
+        : addRatesByPairs(stats.tx_rate_l2, txPairs);
+    const rx_rate_l1 = routeRatesFiltered && rx_rate_unambiguous
+        ? addAppRatesByPairs(stats.app_rx_l2, rxPairs, true)
+        : addRatesByPairs(stats.rx_rate_l1, rxPairs);
+    const rx_rate_l2 = routeRatesFiltered && rx_rate_unambiguous
+        ? addAppRatesByPairs(stats.app_rx_l2, rxPairs, false)
+        : addRatesByPairs(stats.rx_rate_l2, rxPairs);
     const rfc2544 = stats.rfc2544;
     const formatGbps = (gbps: number) => formatBits(gbps * 1_000_000_000);
     const rfc2544FrameSizes = rfc2544?.selected_frame_sizes ?? [];
@@ -483,7 +527,10 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
 
     const generalStatsView = <>
         {visual ?
-            <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary} rx_port={rx_port} />
+            <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary}
+                rx_port={rx_port} sequence_metrics_reliable={sequence_metrics_reliable}
+                tx_pairs={txPairs} rx_pairs={rxPairs} route_app_ids={route_app_ids}
+                app_l2_frame_sizes={app_l2_frame_sizes} rx_rate_unambiguous={rx_rate_unambiguous} />
             :
             null
         }
@@ -501,9 +548,9 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                     <tbody>
                         <tr>
                             <td>{formatBits(tx_rate_l1)}</td>
-                            <td>{formatBits(rx_rate_l1)}</td>
+                            <td>{rx_rate_unambiguous ? formatBits(rx_rate_l1) : "Unavailable"}</td>
                             <td>{formatBits(tx_rate_l2)}</td>
-                            <td>{formatBits(rx_rate_l2)}</td>
+                            <td>{rx_rate_unambiguous ? formatBits(rx_rate_l2) : "Unavailable"}</td>
                         </tr>
                     </tbody>
                 </Table>
@@ -572,8 +619,15 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
             </Col>
 
         </Row>
+        {!rx_rate_unambiguous ? <Row>
+            <Col>
+                <div className="alert alert-warning">
+                    Route-specific RX rates are unavailable because the same application ID is aggregated at this RX endpoint from multiple TX sources.
+                </div>
+            </Col>
+        </Row> : null}
         <Row>
-            <Col className={"col-12 col-sm-12 col-md-4"}>
+            {sequence_metrics_reliable ? <Col className={"col-12 col-sm-12 col-md-4"}>
                 <Table striped bordered hover size="sm" className={`mt-3 mb-3 ${mode == GenerationMode.ANALYZE ? "opacity-50" : ""}`}>
                     <thead className={"table-dark"}>
                         <tr>
@@ -606,7 +660,11 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                         </tr>
                     </tbody>
                 </Table>
-            </Col>
+            </Col> : <Col className="col-12 col-sm-12 col-md-4 mt-3 mb-3">
+                <div className="alert alert-warning mb-0">
+                    Packet loss and out-of-order counters are hidden because sequence tracking is per physical port.
+                </div>
+            </Col>}
             <Col className={"col-12 col-md-8"}>
                 <Table striped bordered hover size="sm" className={`mt-3 mb-3 ${mode == GenerationMode.ANALYZE ? "opacity-50" : ""}`}>
                     <thead className={"table-dark"}>

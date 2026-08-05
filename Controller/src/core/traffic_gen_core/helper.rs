@@ -83,11 +83,11 @@ pub(crate) fn remap_port_map<V: Clone>(
     out
 }
 
-pub(crate) fn remap_app_map(
-    src: &HashMap<u32, HashMap<u32, f64>>, // dev_port -> app_id -> f64
+pub(crate) fn remap_app_map<V: Clone>(
+    src: &HashMap<u32, HashMap<u32, V>>, // dev_port -> app_id -> value
     dev_to_fpch: &HashMap<u32, (u32, u8)>,
-) -> HashMap<u32, HashMap<u8, HashMap<u32, f64>>> {
-    let mut out: HashMap<u32, HashMap<u8, HashMap<u32, f64>>> = HashMap::new();
+) -> HashMap<u32, HashMap<u8, HashMap<u32, V>>> {
+    let mut out: HashMap<u32, HashMap<u8, HashMap<u32, V>>> = HashMap::new();
     for (&dev, per_app) in src {
         if let Some(&(fp, ch)) = dev_to_fpch.get(&dev) {
             out.entry(fp).or_default().insert(ch, per_app.clone());
@@ -108,33 +108,41 @@ where
 /// Those ports are either contained in one of the stream settings, or in the TX/RX port mapping.
 /// This function obtains a lock on the state.
 pub(crate) async fn get_used_ports(state: &Arc<AppState>) -> HashSet<u32> {
+    let traffic_generator = state.traffic_generator.lock().await;
+    collect_used_ports(
+        traffic_generator.rx_mapping_mode,
+        &traffic_generator.stream_settings,
+        &traffic_generator.port_mapping,
+    )
+}
+
+fn collect_used_ports(
+    rx_mapping_mode: RxMappingMode,
+    stream_settings: &[StreamSetting],
+    port_mapping: &HashMap<String, HashMap<String, RxTarget>>,
+) -> HashSet<u32> {
     let mut used_ports: HashSet<u32> = HashSet::new();
 
-    // Collect ports from active stream settings
-    state
-        .traffic_generator
-        .lock()
-        .await
-        .stream_settings
-        .iter()
-        .filter(|s| s.active)
-        .for_each(|s| {
-            used_ports.insert(s.port);
-        });
-
-    // Collect ports from port_mapping
-    state
-        .traffic_generator
-        .lock()
-        .await
-        .port_mapping
-        .iter()
-        .for_each(|(tx, channel)| {
-            used_ports.insert(tx.parse().unwrap_or(1));
-            for rx_target in channel.values() {
+    for setting in stream_settings.iter().filter(|setting| setting.active) {
+        used_ports.insert(setting.port);
+        if rx_mapping_mode == RxMappingMode::PerStream {
+            if let Some(rx_target) = setting.rx_target {
                 used_ports.insert(rx_target.port);
             }
-        });
+        }
+    }
+
+    if rx_mapping_mode == RxMappingMode::PerTxPort {
+        for (tx, channels) in port_mapping {
+            if let Ok(tx_port) = tx.parse() {
+                used_ports.insert(tx_port);
+            }
+            for rx_target in channels.values() {
+                used_ports.insert(rx_target.port);
+            }
+        }
+    }
+
     used_ports
 }
 

@@ -20,8 +20,10 @@
 use crate::api::helper::validate::{
     normalize_stream_patterns, validate_multiple_test, validate_request,
 };
+use crate::core::traffic_gen_core::expected_routes::resolve_per_stream_topology;
 use crate::core::traffic_gen_core::helper::{
-    generate_front_panel_to_dev_port_mappings, translate_fp_channel_to_dev_port_mapping,
+    create_packet, generate_front_panel_to_dev_port_mappings,
+    translate_fp_channel_to_dev_port_mapping,
 };
 use axum::debug_handler;
 use axum::extract::{Query, State};
@@ -36,7 +38,9 @@ use std::time::SystemTime;
 
 use crate::api::server::Error;
 use crate::core::histogram_monitor::{
-    build_iat_histogram_configs, build_rtt_histogram_configs, histogram_port_roles,
+    build_iat_histogram_configs, build_iat_histogram_configs_for_edges,
+    build_rtt_histogram_configs, build_rtt_histogram_configs_for_rx_ports, histogram_edge_roles,
+    histogram_port_roles,
 };
 use crate::core::statistics::{Histogram, HistogramPacketPath};
 use crate::AppState;
@@ -114,6 +118,7 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             mode: tg.mode,
             stream_settings: tg.stream_settings.clone(),
             streams: tg.streams.clone(),
+            rx_mapping_mode: tg.rx_mapping_mode,
             port_tx_rx_mapping: tg.port_mapping.clone(),
             duration: tg.duration,
             repetitions: tg.repetitions,
@@ -179,6 +184,7 @@ pub async fn configure_traffic_gen(
                         {
                             let mut tg = state.traffic_generator.lock().await;
                             tg.port_mapping = traffic_gen_data.port_tx_rx_mapping.clone();
+                            tg.rx_mapping_mode = traffic_gen_data.rx_mapping_mode;
                             tg.stream_settings = traffic_gen_data.stream_settings.clone();
                             tg.streams = traffic_gen_data.streams.clone();
                             tg.rtt_histogram_config = traffic_gen_data
@@ -335,6 +341,14 @@ pub async fn start_single_test(
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
 
+    let per_stream_topology = resolve_per_stream_topology(
+        payload.rx_mapping_mode,
+        &payload.stream_settings,
+        &active_streams,
+        &front_panel_dev_port_mappings,
+    )
+    .map_err(|message| RBFRTError::from(crate::error::P4TGError::Error { message }))?;
+
     // contains the mapping of Send->Receive ports. Uses the channel info to calculate dev ports
     // required for analyze mode
     let tx_rx_port_mapping = translate_fp_channel_to_dev_port_mapping(
@@ -344,7 +358,12 @@ pub async fn start_single_test(
 
     // TX/RX roles of the active dev ports. They control which recirculation
     // paths get histogram table entries.
-    let (histogram_tx_ports, histogram_rx_ports) = histogram_port_roles(&tx_rx_port_mapping);
+    let (histogram_tx_ports, histogram_rx_ports) =
+        if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            histogram_edge_roles(&per_stream_topology.edges)
+        } else {
+            histogram_port_roles(&tx_rx_port_mapping)
+        };
 
     // Write IAT histogram config into state. The tables will be later populated by init_histogram_config
     {
@@ -353,11 +372,19 @@ pub async fn start_single_test(
         histogram_monitor.tx_ports = histogram_tx_ports.clone();
         histogram_monitor.rx_ports = histogram_rx_ports.clone();
 
-        let iat_configs = build_iat_histogram_configs(
-            payload.iat_histogram_config.as_ref(),
-            &tx_rx_port_mapping,
-            &front_panel_dev_port_mappings,
-        );
+        let iat_configs = if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            build_iat_histogram_configs_for_edges(
+                payload.iat_histogram_config.as_ref(),
+                &per_stream_topology.edges,
+                &front_panel_dev_port_mappings,
+            )
+        } else {
+            build_iat_histogram_configs(
+                payload.iat_histogram_config.as_ref(),
+                &tx_rx_port_mapping,
+                &front_panel_dev_port_mappings,
+            )
+        };
         for (dev_port, config) in iat_configs {
             histogram_monitor.histogram.insert(
                 dev_port,
@@ -376,11 +403,19 @@ pub async fn start_single_test(
         histogram_monitor.tx_ports = histogram_tx_ports;
         histogram_monitor.rx_ports = histogram_rx_ports;
 
-        let rtt_configs = build_rtt_histogram_configs(
-            payload.rtt_histogram_config.as_ref(),
-            &tx_rx_port_mapping,
-            &front_panel_dev_port_mappings,
-        );
+        let rtt_configs = if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            build_rtt_histogram_configs_for_rx_ports(
+                payload.rtt_histogram_config.as_ref(),
+                &per_stream_topology.rx_ports,
+                &front_panel_dev_port_mappings,
+            )
+        } else {
+            build_rtt_histogram_configs(
+                payload.rtt_histogram_config.as_ref(),
+                &tx_rx_port_mapping,
+                &front_panel_dev_port_mappings,
+            )
+        };
         for (dev_port, config) in rtt_configs {
             histogram_monitor.histogram.insert(
                 dev_port,
@@ -420,7 +455,17 @@ pub async fn start_single_test(
                 }
             }
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
+            tg.rx_mapping_mode = payload.rx_mapping_mode;
             tg.stream_settings = payload.stream_settings.clone();
+            tg.app_l2_frame_sizes = streams
+                .iter()
+                .map(|stream| {
+                    (
+                        stream.app_id as u32,
+                        create_packet(stream, false).len() as u32,
+                    )
+                })
+                .collect();
             tg.streams = stored_streams;
             tg.rtt_histogram_config = payload.rtt_histogram_config.unwrap_or_default();
             tg.iat_histogram_config = payload.iat_histogram_config.unwrap_or_default();

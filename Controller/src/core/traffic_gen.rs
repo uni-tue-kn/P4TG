@@ -25,7 +25,7 @@ use std::str::FromStr;
 use crate::core::multicast::delete_simple_multicast_group;
 use crate::core::patterns::build_pattern_config_entry;
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
-use crate::core::traffic_gen_core::types::{Stream, StreamSetting};
+use crate::core::traffic_gen_core::types::{RxMappingMode, Stream, StreamSetting};
 use crate::core::{build_pattern_generation_entries, create_simple_multicast_group};
 use crate::error::P4TGError;
 use crate::{AppState, PortMapping};
@@ -60,6 +60,10 @@ pub struct TrafficGen {
     /// The streams are received by the REST API and stored to synchronize multiple configuration clients
     /// (e.g., multiple open web browsers) to the same settings.
     pub streams: Vec<Stream>,
+    /// Exact number of bytes counted by the per-application L2 counters for each frame.
+    pub app_l2_frame_sizes: HashMap<u32, u32>,
+    /// Selects whether RX targets are configured per TX port or per stream/TX pair.
+    pub rx_mapping_mode: RxMappingMode,
     /// The generation mode is received by the REST API and stored to synchronize multiple configuration clients
     /// (e.g., multiple open web browsers) to the same settings.
     pub mode: GenerationMode,
@@ -93,6 +97,8 @@ impl TrafficGen {
             running: false,
             stream_settings: vec![],
             streams: vec![],
+            app_l2_frame_sizes: HashMap::new(),
+            rx_mapping_mode: RxMappingMode::PerTxPort,
             mode: GenerationMode::Cbr,
             port_mapping: HashMap::new(),
             is_tofino2,

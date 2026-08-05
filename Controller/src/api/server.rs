@@ -72,6 +72,7 @@ use crate::core::traffic_gen_core::types::*;
         schemas(TrafficGenData,
         PortConfiguration,
         GenerationMode,
+        RxMappingMode,
         Encapsulation,
         StreamSetting,
         Stream,

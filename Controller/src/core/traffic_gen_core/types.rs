@@ -58,6 +58,17 @@ pub enum GenerationMode {
     Rfc2544 = 5,
 }
 
+/// Selects how expected RX ports are assigned to generated traffic.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RxMappingMode {
+    /// One expected RX port/channel is configured for each TX port/channel.
+    #[default]
+    PerTxPort,
+    /// Every active TX port/channel and stream pair configures its own RX target.
+    PerStream,
+}
+
 /// Describes the unit for a generated traffic stream
 #[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug, Clone, Copy, ToSchema)]
 #[repr(u8)]
@@ -431,6 +442,9 @@ pub struct TrafficGenData {
     /// This also configures which streams are replicated to which ports.
     pub(crate) stream_settings: Vec<StreamSetting>,
     pub(crate) streams: Vec<Stream>,
+    /// Selects whether RX targets are configured per TX port or per stream/TX pair.
+    #[serde(default)]
+    pub(crate) rx_mapping_mode: RxMappingMode,
     /// Mapping between TX (send) ports, and RX (receive) ports.
     /// Traffic send on port TX are expected to be received on port RX.
     /// Mapping from TX-front_panel/channel to RX-front-panel/channel
@@ -537,6 +551,9 @@ pub struct StreamSetting {
     pub channel: Option<u8>,
     /// ID of the stream. This stream_id maps to the stream_id in the Stream description.
     pub stream_id: u8,
+    /// Expected receive port for this stream/TX pair in per-stream mapping mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rx_target: Option<RxTarget>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vlan: Option<Vlan>,
     /// An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.

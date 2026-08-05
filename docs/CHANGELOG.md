@@ -20,6 +20,9 @@
 - Added controller-generated PDF reports for RFC2544 results or general P4TG statistics.
 - Added a warning in the GUI when other web sessions are connected to the same P4TG instance. `GET:/api/online` now reports the number of other active web sessions (`connected_clients`), tracked via a per-tab session id.
 - Added on-demand hardware QSFP information to the Ports GUI and `GET:/api/qsfp`, using the platform's `ucli -> bf_pltfm -> qsfp` commands through the bf_switchd TCP CLI. A validated `port`/`channel` query returns detailed module identity, cabling, memory-map, checksum, and supported-interface information.
+- Status toast messages now hover at the bottom of the screen, not blocking the traffic generation control buttons anymore.
+- The TX/RX port mapping can now be additionally selected on a per-stream basis, at the cost of packet loss and out-of-order measurements.
+- `POST:api/time_statistics` now also includes the per stream rates. This allows to render per-stream TX/RX rates in the frontend.
 
 ### Bug fixes
 - Fixed JSON result exports containing only the locally cached time-series data. JSON downloads now fetch and include the complete statistics and unabridged time-series history for all runs.

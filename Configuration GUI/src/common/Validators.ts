@@ -18,7 +18,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { ASIC, DefaultStream, DefaultStreamSettings, MPLSHeader, P4TGInfos, PortInfo, PortTxRxMap, RxTarget, Stream, StreamSettings } from "./Interfaces";
+import { ASIC, DefaultStream, DefaultStreamSettings, MPLSHeader, P4TGInfos, PortInfo, PortTxRxMap, RxMappingMode, RxTarget, Stream, StreamSettings } from "./Interfaces";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
@@ -182,6 +182,24 @@ export const validatePorts = (
     return configured.size === 0 || Array.from(configured).every(k => allowed.has(k));
 };
 
+export const validateStreamRxTargets = (
+    mode: RxMappingMode,
+    settings: StreamSettings[],
+    availablePorts: PortInfo[],
+    p4tgInfos: P4TGInfos,
+) => {
+    if (mode !== RxMappingMode.PerStream) return true;
+    const allowed = new Set(
+        availablePorts
+            .filter((port) => port.loopback === "BF_LPBK_NONE" || p4tgInfos.loopback)
+            .map((port) => `${port.port}/${port.channel}`),
+    );
+    return settings
+        .filter((setting) => setting.active)
+        .every((setting) => setting.rx_target
+            && allowed.has(`${setting.rx_target.port}/${setting.rx_target.channel}`));
+};
+
 
 export const validateStreamSettings = (setting: StreamSettings[]) => {
     if (!Array.isArray(setting) || !setting.every(isRecord)) {
@@ -190,6 +208,13 @@ export const validateStreamSettings = (setting: StreamSettings[]) => {
 
     for (const streamSetting of setting) {
         const settingRecord = streamSetting as unknown as Record<string, unknown>;
+        if (settingRecord.rx_target !== undefined) {
+            if (!isRecord(settingRecord.rx_target)
+                || typeof settingRecord.rx_target.port !== "number"
+                || typeof settingRecord.rx_target.channel !== "number") {
+                return false;
+            }
+        }
         const defaultStreamSetting = DefaultStreamSettings(
             typeof streamSetting.stream_id === "number" ? streamSetting.stream_id : 1,
             typeof streamSetting.port === "number" ? streamSetting.port : 5,

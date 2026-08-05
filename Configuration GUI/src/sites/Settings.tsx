@@ -36,6 +36,7 @@ import {
     HistogramConfig,
     RFC2544_FRAME_SIZES,
     Rfc2544Config,
+    RxMappingMode,
     speedToGbps,
     Stream,
     StreamSettings, ToastVariant, TrafficGenData,
@@ -49,7 +50,7 @@ import { GitHub } from "./Home";
 import StreamSettingsList from "../components/settings/StreamSettingsList";
 import StreamElement from "../components/settings/StreamElement";
 import { ensureDefaults, stripUnusedFields } from "../components/settings/SettingsModal";
-import { validateIPv6RandomMask, validatePorts, validateStreams, validateStreamSettings } from "../common/Validators";
+import { validateIPv6RandomMask, validatePorts, validateStreamRxTargets, validateStreams, validateStreamSettings } from "../common/Validators";
 import HistogramSettings from '../components/settings/HistogramSettings';
 import { PortStatus } from './Ports';
 import { getTotalActiveStreamRate, getTotalRatePerPort, loadFromStorage } from '../common/Helper';
@@ -57,6 +58,7 @@ import IMIXModal from '../components/settings/IMIXModal';
 import { IMIXConfig, IMIX_DESCRIPTION, IMIX_STREAM_COUNT, IMIX_STREAM_SPECS, splitImixRate } from '../common/IMIX';
 import { startPolling } from '../common/Polling';
 import { migrateTrafficGenData } from '../common/StorageMigration';
+import { expectedRoutes, sequenceMetricsReliable } from '../common/ExpectedRoutes';
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -226,22 +228,15 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     )
 
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(loadFromStorage<PortTxRxMap>("port_tx_rx_mapping", {}))
+    const [rx_mapping_mode, set_rx_mapping_mode] = useState<RxMappingMode>(
+        loadFromStorage<RxMappingMode>("rx_mapping_mode", RxMappingMode.PerTxPort)
+    )
 
     // RX endpoints that are targeted by more than one TX port. Loss and
     // out-of-order tracking works per RX port in the data plane, so such
     // fan-in mappings produce unreliable loss/out-of-order counters.
-    const fanInRxEndpoints = (() => {
-        const counts = new Map<string, number>();
-        Object.values(port_tx_rx_mapping ?? {}).forEach((perCh: any) => {
-            Object.values(perCh ?? {}).forEach((target: any) => {
-                const key = `${target.port}/${target.channel}`;
-                counts.set(key, (counts.get(key) ?? 0) + 1);
-            });
-        });
-        return Array.from(counts.entries())
-            .filter(([, count]) => count > 1)
-            .map(([key]) => key);
-    })();
+    const configuredRoutes = expectedRoutes(rx_mapping_mode, port_tx_rx_mapping, streams, stream_settings);
+    const unreliableSequenceMetrics = !sequenceMetricsReliable(configuredRoutes);
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
@@ -253,6 +248,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const [loaded, set_loaded] = useState(false)
     const ref = useRef<HTMLInputElement>(null)
     const streamsRef = useRef<Stream[]>(streams);
+    const rxMappingModeRef = useRef<RxMappingMode>(rx_mapping_mode);
     const loadGenWarningRef = useRef<string | null>(null);
 
     const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>({});
@@ -281,6 +277,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_duration(config.duration);
         set_repetitions(config.repetitions);
         set_port_tx_rx_mapping(config.port_tx_rx_mapping);
+        set_rx_mapping_mode(config.rx_mapping_mode ?? RxMappingMode.PerTxPort);
         set_rtt_histogram_settings(config.rtt_histogram_config);
         set_iat_histogram_settings(config.iat_histogram_config);
         set_rfc2544_config(normalizeRfc2544Config(config.rfc2544));
@@ -291,6 +288,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         localStorage.setItem("duration", String(config.duration));
         localStorage.setItem("repetitions", String(config.repetitions));
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(config.port_tx_rx_mapping));
+        localStorage.setItem("rx_mapping_mode", JSON.stringify(config.rx_mapping_mode ?? RxMappingMode.PerTxPort));
         localStorage.setItem("rtt_histogram_config", JSON.stringify(config.rtt_histogram_config));
         localStorage.setItem("iat_histogram_config", JSON.stringify(config.iat_histogram_config));
         localStorage.setItem("rfc2544_config", JSON.stringify(normalizeRfc2544Config(config.rfc2544)));
@@ -310,6 +308,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         const nextConfig: TrafficGenData = {
             ...(savedConfigs[activeConfigName] ?? {
                 mode: GenerationMode.NONE,
+                rx_mapping_mode: RxMappingMode.PerTxPort,
                 duration: 0,
                 repetitions: 1,
                 streams: [],
@@ -322,6 +321,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             streams: nextStreams,
             stream_settings: nextStreamSettings,
             mode,
+            rx_mapping_mode,
             duration,
             repetitions,
             port_tx_rx_mapping,
@@ -331,6 +331,30 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         };
 
         setActiveDraftConfig(nextConfig);
+    };
+
+    const updateStreamSetting = (
+        target: StreamSettings,
+        updates: Partial<Pick<StreamSettings, "active" | "rx_target">>,
+    ) => {
+        set_stream_settings((current) => current.map((setting) =>
+            setting.port === target.port
+                && setting.channel === target.channel
+                && setting.stream_id === target.stream_id
+                ? { ...setting, ...updates }
+                : setting
+        ));
+    };
+
+    const changeRxMappingMode = (nextMode: RxMappingMode) => {
+        if (nextMode === RxMappingMode.PerStream) {
+            set_stream_settings((current) => current.map((setting) => {
+                if (setting.rx_target) return setting;
+                const target = port_tx_rx_mapping?.[String(setting.port)]?.[String(setting.channel)];
+                return target ? { ...setting, rx_target: { ...target } } : setting;
+            }));
+        }
+        set_rx_mapping_mode(nextMode);
     };
 
     const appendStreams = (newStreams: Stream[]) => {
@@ -385,6 +409,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     streams: mergedStreams,
                 }, p4tg_infos.asic);
                 const nextStreams = normalized.config.streams ?? [];
+                const backendRxMappingMode = normalized.config.rx_mapping_mode ?? RxMappingMode.PerTxPort;
+
+                if (rxMappingModeRef.current !== backendRxMappingMode) {
+                    rxMappingModeRef.current = backendRxMappingMode;
+                    set_rx_mapping_mode(backendRxMappingMode);
+                    localStorage.setItem("rx_mapping_mode", JSON.stringify(backendRxMappingMode));
+                }
 
                 if (old_streams != JSON.stringify(nextStreams)) {
                     set_mode(normalized.config.mode)
@@ -427,6 +458,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     }, [streams]);
 
     useEffect(() => {
+        rxMappingModeRef.current = rx_mapping_mode;
+    }, [rx_mapping_mode]);
+
+    useEffect(() => {
         setRepetitionsInput(String(repetitions));
     }, [repetitions]);
 
@@ -464,6 +499,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         if (Object.keys(configs).length === 0) {
             const defaultConfig: TrafficGenData = {
                 mode: GenerationMode.NONE,
+                rx_mapping_mode: RxMappingMode.PerTxPort,
                 duration: 0,
                 repetitions: 1,
                 streams: [],
@@ -517,6 +553,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_stream_settings(config.stream_settings || []);
 
         set_mode(config.mode ?? GenerationMode.NONE);
+        set_rx_mapping_mode(config.rx_mapping_mode ?? RxMappingMode.PerTxPort);
         set_duration(config.duration ?? 0);
         set_repetitions(config.repetitions ?? 1);
         set_port_tx_rx_mapping(config.port_tx_rx_mapping || {});
@@ -586,13 +623,19 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const save = (do_alert: boolean = false) => {
 
+        if (rx_mapping_mode === RxMappingMode.PerStream
+            && stream_settings.some((setting) => setting.active && !setting.rx_target)) {
+            showToast("Every active stream requires an RX port/channel in per-stream mapping mode.", "warning");
+            return;
+        }
+
         // Iterate histogram settings and remove any entry which key (port) is not a value in port_tx_rx_mapping
         // Build allowed (port/channel) set from mapping values
-        const allowed = new Set(
-            Object.values(port_tx_rx_mapping ?? {}).flatMap(perCh =>
+        const allowed = new Set(rx_mapping_mode === RxMappingMode.PerStream
+            ? configuredRoutes.map((route) => `${route.rxPort}/${route.rxChannel}`)
+            : Object.values(port_tx_rx_mapping ?? {}).flatMap(perCh =>
                 Object.values(perCh ?? {}).map((t: any) => `${t.port}/${t.channel}`)
-            )
-        );
+            ));
 
         // Filter histogram_settings: keep only allowed (port,channel) pairs
         const filteredRTTHistogramSettings: HistogramConfigMap = {};
@@ -626,6 +669,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
         localStorage.setItem("streams", JSON.stringify(streams))
         localStorage.setItem("gen-mode", String(mode))
+        localStorage.setItem("rx_mapping_mode", JSON.stringify(rx_mapping_mode))
         localStorage.setItem("duration", String(duration))
         localStorage.setItem("repetitions", String(repetitions))
         localStorage.setItem("streamSettings", JSON.stringify(reconciledSettings))
@@ -637,6 +681,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         const newConfig: TrafficGenData = {
             streams: streams,
             mode: mode,
+            rx_mapping_mode,
             duration: duration,
             repetitions: mode === GenerationMode.RFC2544 ? 1 : repetitions,
             stream_settings: reconciledSettings,
@@ -670,12 +715,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_iat_histogram_settings({})
         set_rfc2544_config(DefaultRfc2544Config())
         set_mode(GenerationMode.NONE)
+        set_rx_mapping_mode(RxMappingMode.PerTxPort)
         set_duration(0)
         set_repetitions(1)
         set_port_tx_rx_mapping({})
 
         const defaultConfig: TrafficGenData = {
             mode: GenerationMode.NONE,
+            rx_mapping_mode: RxMappingMode.PerTxPort,
             duration: 0,
             repetitions: 1,
             streams: [],
@@ -757,6 +804,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         const nextConfig: TrafficGenData = {
             ...(savedConfigs[activeConfigName] ?? {
                 mode: GenerationMode.NONE,
+                rx_mapping_mode: RxMappingMode.PerTxPort,
                 duration: 0,
                 repetitions: 1,
                 streams: [],
@@ -766,6 +814,9 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 iat_histogram_config: {},
             }),
             mode: nextMode,
+            rx_mapping_mode: nextMode === GenerationMode.ANALYZE || nextMode === GenerationMode.RFC2544
+                ? RxMappingMode.PerTxPort
+                : rx_mapping_mode,
             duration: 0,
             repetitions: 1,
             streams: nextStreams,
@@ -854,6 +905,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             stream_settings.filter(v => v.stream_id != id)
         )
     }
+
+    const updateStream = (updated: Stream, updatedSettings: StreamSettings[]) => {
+        updateDraftState(
+            streams.map((stream) => stream.stream_id === updated.stream_id ? updated : stream),
+            updatedSettings,
+        );
+    };
 
     const exportSettings = () => {
         const settings = savedConfigs
@@ -1043,7 +1101,9 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 if (!validateStreams(config.streams) || !validateStreamSettings(config.stream_settings)) {
                     showToast("Settings not valid for config " + name + ". Please check the file.", "danger")
                     return;
-                } else if (!validatePorts(config.port_tx_rx_mapping, ports, p4tg_infos)) {
+                } else if (config.rx_mapping_mode === RxMappingMode.PerStream
+                    ? !validateStreamRxTargets(config.rx_mapping_mode, config.stream_settings, ports, p4tg_infos)
+                    : !validatePorts(config.port_tx_rx_mapping, ports, p4tg_infos)) {
                     showToast("Settings not valid for config " + name + ". Configured front panel ports are not available on this device.", "danger")
                     return;
                 }
@@ -1081,6 +1141,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
             localStorage.setItem("streams", JSON.stringify(first_test.streams))
             localStorage.setItem("gen-mode", String(first_test.mode))
+            localStorage.setItem("rx_mapping_mode", JSON.stringify(first_test.rx_mapping_mode ?? RxMappingMode.PerTxPort))
             localStorage.setItem("duration", first_test.duration ? String(first_test.duration) : "0")
             localStorage.setItem("repetitions", String(first_test.repetitions ?? 1))
             localStorage.setItem("streamSettings", JSON.stringify(first_test.stream_settings))
@@ -1360,6 +1421,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                 // Create new default config for the new tab
                                 const defaultConfig: TrafficGenData = {
                                     mode: GenerationMode.NONE,
+                                    rx_mapping_mode: RxMappingMode.PerTxPort,
                                     duration: 0,
                                     repetitions: 1,
                                     streams: [],
@@ -2041,7 +2103,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         <tbody>
                                             {streams.map((v, i) => {
                                                 v.app_id = i + 1;
-                                                return <StreamElement key={i} mode={mode} data={v} remove={removeStream} running={running}
+                                                return <StreamElement key={i} mode={mode} data={v} remove={removeStream} update={updateStream} running={running}
                                                     stream_settings={stream_settings} p4tg_infos={p4tg_infos} />
                                             })}
 
@@ -2112,17 +2174,44 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                             onConfirm={addIMIXStreams}
                         />
 
-
                         {streams.length > 0 || mode == GenerationMode.ANALYZE ?
                             <Row>
                                 <Col>
                                     <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
                                         <thead className={"table-dark"}>
                                             <tr>
+                                                <th colSpan={1 + streams.length + (rx_mapping_mode === RxMappingMode.PerTxPort ? 1 : 0)}>
+                                                    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                                        <span>Port and stream mapping</span>
+                                                        {streams.length > 0
+                                                            && mode !== GenerationMode.ANALYZE
+                                                            && mode !== GenerationMode.RFC2544 ?
+                                                            <InputGroup size="sm" style={{ maxWidth: 500 }}>
+                                                                <InputGroup.Text>Expected RX mapping</InputGroup.Text>
+                                                                <Form.Select
+                                                                    aria-label="Expected RX mapping mode"
+                                                                    disabled={running}
+                                                                    value={rx_mapping_mode}
+                                                                    onChange={(event) => changeRxMappingMode(event.target.value as RxMappingMode)}
+                                                                >
+                                                                    <option value={RxMappingMode.PerTxPort}>One RX per TX port</option>
+                                                                    <option value={RxMappingMode.PerStream}>One RX per stream and TX port</option>
+                                                                </Form.Select>
+                                                            </InputGroup>
+                                                            : null}
+                                                    </div>
+                                                </th>
+                                            </tr>
+                                            <tr>
                                                 <th>TX Port</th>
-                                                <th>RX Port</th>
+                                                {rx_mapping_mode === RxMappingMode.PerTxPort ? <th>RX Port</th> : null}
                                                 {streams.map((v, i) => {
-                                                    return <th key={i}>{mode === GenerationMode.RFC2544 ? "Enabled" : `Stream ${v.app_id}`}</th>
+                                                    return <th key={i}>
+                                                        {mode === GenerationMode.RFC2544 ? "Enabled" : `Stream ${v.app_id}`}
+                                                        {rx_mapping_mode === RxMappingMode.PerStream ?
+                                                            <small className="d-block fw-normal">Enabled · Expected RX</small>
+                                                            : null}
+                                                    </th>
                                                 })}
                                             </tr>
                                         </thead>
@@ -2176,58 +2265,67 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                             </StyledCol>
 
 
-                                                            <StyledCol className="d-flex align-items-center gap-2">
-                                                                <Form.Select
-                                                                    disabled={running || !v.status}
-                                                                    required
-                                                                    value={defaultValue}
-                                                                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
-                                                                        const value = event.target.value;
-                                                                        // clone shallowly, then the nested level we modify
-                                                                        const updated = {
-                                                                            ...port_tx_rx_mapping,
-                                                                            [txKey]: { ...(port_tx_rx_mapping?.[txKey] ?? {}) },
-                                                                        };
-
-                                                                        if (value === "-1") {
-                                                                            // remove this (txPort, txCh) mapping
-                                                                            delete updated[txKey][chKey];
-                                                                            // clean up empty port entry
-                                                                            if (Object.keys(updated[txKey]).length === 0) {
-                                                                                delete updated[txKey];
-                                                                            }
-                                                                        } else {
-                                                                            const [rxPortStr, rxChStr] = value.split("/");
-                                                                            updated[txKey][chKey] = {
-                                                                                port: Number(rxPortStr),
-                                                                                channel: Number(rxChStr),
+                                                            {rx_mapping_mode === RxMappingMode.PerTxPort ?
+                                                                <StyledCol className="d-flex align-items-center gap-2">
+                                                                    <Form.Select
+                                                                        disabled={running || !v.status}
+                                                                        required
+                                                                        value={defaultValue}
+                                                                        onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                                                                            const value = event.target.value;
+                                                                            // clone shallowly, then the nested level we modify
+                                                                            const updated = {
+                                                                                ...port_tx_rx_mapping,
+                                                                                [txKey]: { ...(port_tx_rx_mapping?.[txKey] ?? {}) },
                                                                             };
-                                                                        }
 
-                                                                        set_port_tx_rx_mapping(updated);
-                                                                    }}
-                                                                >
-                                                                    <option value="-1">Select RX Port/Channel</option>
-                                                                    {ports.map((p) => {
-                                                                        if (p.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
-                                                                            const optionValue = `${p.port}/${p.channel}`;
-                                                                            return (
-                                                                                <option key={p.pid} value={optionValue}>
-                                                                                    {p.port}/{p.channel} ({p.pid})
-                                                                                </option>
-                                                                            )
-                                                                        };
-                                                                    })}
-                                                                </Form.Select>
+                                                                            if (value === "-1") {
+                                                                                // remove this (txPort, txCh) mapping
+                                                                                delete updated[txKey][chKey];
+                                                                                // clean up empty port entry
+                                                                                if (Object.keys(updated[txKey]).length === 0) {
+                                                                                    delete updated[txKey];
+                                                                                }
+                                                                            } else {
+                                                                                const [rxPortStr, rxChStr] = value.split("/");
+                                                                                updated[txKey][chKey] = {
+                                                                                    port: Number(rxPortStr),
+                                                                                    channel: Number(rxChStr),
+                                                                                };
+                                                                            }
 
-                                                                <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} iat_data={iat_histogram_settings} rtt_data={rtt_histogram_settings} set_rtt_data={updateRTTHistogramSettings} set_iat_data={updateIATHistogramSettings} />
-                                                            </StyledCol>
+                                                                            set_port_tx_rx_mapping(updated);
+                                                                        }}
+                                                                    >
+                                                                        <option value="-1">Select RX Port/Channel</option>
+                                                                        {ports.map((p) => {
+                                                                            if (p.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback) {
+                                                                                const optionValue = `${p.port}/${p.channel}`;
+                                                                                return (
+                                                                                    <option key={p.pid} value={optionValue}>
+                                                                                        {p.port}/{p.channel} ({p.pid})
+                                                                                    </option>
+                                                                                )
+                                                                            };
+                                                                        })}
+                                                                    </Form.Select>
+
+                                                                    <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} iat_data={iat_histogram_settings} rtt_data={rtt_histogram_settings} set_rtt_data={updateRTTHistogramSettings} set_iat_data={updateIATHistogramSettings} />
+                                                                </StyledCol>
+                                                                : null}
 
                                                             <StreamSettingsList
                                                                 stream_settings={stream_settings}
                                                                 streams={streams}
                                                                 running={running}
                                                                 port={v}
+                                                                ports={eligiblePorts}
+                                                                rx_mapping_mode={rx_mapping_mode}
+                                                                onUpdate={updateStreamSetting}
+                                                                rtt_histogram_settings={rtt_histogram_settings}
+                                                                iat_histogram_settings={iat_histogram_settings}
+                                                                set_rtt_histogram_settings={updateRTTHistogramSettings}
+                                                                set_iat_histogram_settings={updateIATHistogramSettings}
                                                                 p4tg_infos={p4tg_infos}
                                                             />
                                                         </tr>
@@ -2244,13 +2342,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                             null
                         }
 
-                        {fanInRxEndpoints.length > 0 ?
+                        {unreliableSequenceMetrics ?
                             <Row>
                                 <Col>
                                     <Alert variant="warning" className="mt-2">
-                                        <i className="bi bi-exclamation-triangle-fill" /> Multiple TX ports are mapped to RX {fanInRxEndpoints.join(", ")}.
-                                        Packet loss and out-of-order tracking works per RX port; interleaved sequence
-                                        numbers from multiple TX ports make these counters unreliable for such mappings.
+                                        <i className="bi bi-exclamation-triangle-fill" /> Packet loss and out-of-order
+                                        tracking works per physical port. These counters are unreliable when one TX is
+                                        split across RX ports or several TX ports feed one RX port, and will be hidden
+                                        in the result view.
                                     </Alert>
                                 </Col>
                             </Row>
