@@ -24,7 +24,7 @@ use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::{timeout, Instant};
 use utoipa::{IntoParams, ToSchema};
@@ -146,8 +146,8 @@ async fn query_qsfp(command: &QsfpCommand) -> Result<String, String> {
     // Older bf_switchd CLI servers can remain silent until a terminal sends its
     // first newline. Give servers which announce themselves a chance to do so
     // before sending a harmless empty command as a compatibility wake-up.
-    match read_until_prompt(&mut stream, Duration::from_secs(2)).await {
-        Ok(_) => {}
+    let initial_output = match read_until_prompt(&mut stream, Duration::from_secs(2)).await {
+        Ok(output) => output,
         Err(err) if err.starts_with(PROMPT_TIMEOUT_ERROR) => {
             stream
                 .write_all(b"\r\n")
@@ -157,37 +157,28 @@ async fn query_qsfp(command: &QsfpCommand) -> Result<String, String> {
                 .await
                 .map_err(|err| {
                     format!("while waiting for the initial bfshell prompt after wake-up: {err}")
-                })?;
+                })?
         }
         Err(err) => {
             return Err(format!(
                 "while waiting for the initial bfshell prompt: {err}"
             ));
         }
-    }
+    };
 
-    stream
-        .write_all(b"ucli\n")
-        .await
-        .map_err(|err| format!("cannot enter uCLI: {err}"))?;
-    let ucli_output = read_until_prompt(&mut stream, Duration::from_secs(5))
-        .await
-        .map_err(|err| format!("while entering uCLI: {err}"))?;
-    let mut prompt = terminal_prompt(&ucli_output).unwrap_or_default();
+    let initial_prompt = terminal_prompt(&initial_output)
+        .ok_or_else(|| "the bf_switchd CLI returned no recognizable initial prompt".to_owned())?;
+    let prompt = if initial_prompt == "bfshell>" {
+        enter_ucli(&mut stream).await?
+    } else {
+        initial_prompt
+    };
 
-    // Platform BSPs do not all start uCLI at the same depth. Some enter the
-    // QSFP node automatically, while others start at the bf-sde root.
-    if !is_ucli_node_or_descendant(&prompt, "bf_pltfm") {
-        prompt = enter_ucli_node(&mut stream, "bf_pltfm", Duration::from_secs(5)).await?;
-    }
-    if !is_ucli_node_or_descendant(&prompt, "bf_pltfm.qsfp") {
-        prompt = enter_ucli_node(&mut stream, "qsfp", Duration::from_secs(5)).await?;
-    }
-    if !is_ucli_node_or_descendant(&prompt, "bf_pltfm.qsfp") {
-        return Err(format!(
-            "the `bf_pltfm.qsfp` uCLI node is unavailable (received prompt `{prompt}`)"
-        ));
-    }
+    // The bf_switchd TCP CLI can preserve the uCLI node selected by another
+    // client. Always unwind that state before entering the platform hierarchy;
+    // commands such as `bf_pltfm` are not available below unrelated nodes like
+    // `bf-sde.pm>`.
+    enter_qsfp_node(&mut stream, prompt).await?;
 
     let output = match command {
         QsfpCommand::Show => run_qsfp_command(&mut stream, "show").await?,
@@ -216,7 +207,88 @@ async fn query_qsfp(command: &QsfpCommand) -> Result<String, String> {
     }
 }
 
-async fn run_qsfp_command(stream: &mut TcpStream, command: &str) -> Result<String, String> {
+async fn enter_ucli<S>(stream: &mut S) -> Result<String, String>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    stream
+        .write_all(b"ucli\n")
+        .await
+        .map_err(|err| format!("cannot enter uCLI: {err}"))?;
+    let output = read_until_prompt(stream, Duration::from_secs(5))
+        .await
+        .map_err(|err| format!("while entering uCLI: {err}"))?;
+    terminal_prompt(&output).ok_or_else(|| "uCLI returned no recognizable prompt".to_owned())
+}
+
+async fn enter_qsfp_node<S>(stream: &mut S, prompt: String) -> Result<(), String>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    return_to_ucli_root(stream, prompt).await?;
+
+    let prompt = enter_ucli_node(stream, "bf_pltfm", Duration::from_secs(5)).await?;
+    if !is_ucli_node_or_descendant(&prompt, "bf_pltfm") {
+        return Err(format!(
+            "the `bf_pltfm` uCLI node is unavailable (received prompt `{prompt}`)"
+        ));
+    }
+
+    let prompt = enter_ucli_node(stream, "qsfp", Duration::from_secs(5)).await?;
+    if !is_ucli_node_or_descendant(&prompt, "bf_pltfm.qsfp") {
+        return Err(format!(
+            "the `bf_pltfm.qsfp` uCLI node is unavailable (received prompt `{prompt}`)"
+        ));
+    }
+
+    Ok(())
+}
+
+async fn return_to_ucli_root<S>(stream: &mut S, mut prompt: String) -> Result<String, String>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    const MAX_UCLI_DEPTH: usize = 16;
+
+    for _ in 0..MAX_UCLI_DEPTH {
+        if prompt == "bf-sde>" {
+            return Ok(prompt);
+        }
+        if prompt == "bfshell>" {
+            prompt = enter_ucli(stream).await?;
+            continue;
+        }
+        if !is_ucli_prompt(&prompt) {
+            return Err(format!(
+                "cannot return to the uCLI root from unexpected prompt `{prompt}`"
+            ));
+        }
+
+        stream
+            .write_all(b"..\n")
+            .await
+            .map_err(|err| format!("cannot leave uCLI node `{prompt}`: {err}"))?;
+        let output = read_until_prompt(stream, Duration::from_secs(5))
+            .await
+            .map_err(|err| format!("while leaving uCLI node `{prompt}`: {err}"))?;
+        prompt = terminal_prompt(&output).ok_or_else(|| {
+            format!("leaving uCLI node `{prompt}` returned no recognizable prompt")
+        })?;
+    }
+
+    if prompt == "bf-sde>" {
+        Ok(prompt)
+    } else {
+        Err(format!(
+            "cannot return to the uCLI root after {MAX_UCLI_DEPTH} navigation steps (received prompt `{prompt}`)"
+        ))
+    }
+}
+
+async fn run_qsfp_command<S>(stream: &mut S, command: &str) -> Result<String, String>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     stream
         .write_all(format!("{command}\n").as_bytes())
         .await
@@ -235,11 +307,14 @@ fn decoded_module_line(output: &str) -> Option<&str> {
     })
 }
 
-async fn enter_ucli_node(
-    stream: &mut TcpStream,
+async fn enter_ucli_node<S>(
+    stream: &mut S,
     node: &str,
     maximum_wait: Duration,
-) -> Result<String, String> {
+) -> Result<String, String>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     stream
         .write_all(format!("{node}\n").as_bytes())
         .await
@@ -251,10 +326,10 @@ async fn enter_ucli_node(
         .ok_or_else(|| format!("the `{node}` uCLI node returned no recognizable prompt"))
 }
 
-async fn read_until_prompt(
-    stream: &mut TcpStream,
-    maximum_wait: Duration,
-) -> Result<Vec<u8>, String> {
+async fn read_until_prompt<S>(stream: &mut S, maximum_wait: Duration) -> Result<Vec<u8>, String>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let deadline = Instant::now() + maximum_wait;
     let mut output = Vec::new();
     let mut buffer = [0_u8; 4096];
@@ -403,6 +478,13 @@ fn is_ucli_node_or_descendant(prompt: &str, node: &str) -> bool {
     path == node || path.starts_with(&format!("{node}."))
 }
 
+fn is_ucli_prompt(prompt: &str) -> bool {
+    prompt == "bf-sde>"
+        || prompt
+            .strip_prefix("bf-sde.")
+            .is_some_and(|path| path.ends_with('>'))
+}
+
 fn clean_command_output(output: &[u8], command: &str) -> String {
     let cleaned = strip_terminal_control_sequences(&String::from_utf8_lossy(output));
     let mut lines: Vec<&str> = cleaned.lines().collect();
@@ -444,4 +526,62 @@ fn strip_terminal_control_sequences(input: &str) -> String {
     }
 
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::enter_qsfp_node;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
+
+    async fn emulate_ucli(
+        mut stream: DuplexStream,
+        transitions: Vec<(&'static [u8], &'static [u8])>,
+    ) {
+        for (expected_command, response) in transitions {
+            let mut command = vec![0; expected_command.len()];
+            stream.read_exact(&mut command).await.unwrap();
+            assert_eq!(command, expected_command);
+            stream.write_all(response).await.unwrap();
+        }
+    }
+
+    async fn assert_qsfp_navigation(
+        initial_prompt: &str,
+        transitions: Vec<(&'static [u8], &'static [u8])>,
+    ) {
+        let (mut controller, cli) = tokio::io::duplex(1024);
+        let cli_task = tokio::spawn(emulate_ucli(cli, transitions));
+
+        enter_qsfp_node(&mut controller, initial_prompt.to_owned())
+            .await
+            .unwrap();
+        cli_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn qsfp_navigation_returns_from_unrelated_node_to_root() {
+        assert_qsfp_navigation(
+            "bf-sde.pm>",
+            vec![
+                (b"..\n", b"..\r\nbf-sde>\r\n"),
+                (b"bf_pltfm\n", b"bf_pltfm\r\nbf-sde.bf_pltfm>\r\n"),
+                (b"qsfp\n", b"qsfp\r\nbf-sde.bf_pltfm.qsfp>\r\n"),
+            ],
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn qsfp_navigation_returns_multiple_levels_to_root() {
+        assert_qsfp_navigation(
+            "bf-sde.bf_pltfm.qsfp>",
+            vec![
+                (b"..\n", b"..\r\nbf-sde.bf_pltfm>\r\n"),
+                (b"..\n", b"..\r\nbf-sde>\r\n"),
+                (b"bf_pltfm\n", b"bf_pltfm\r\nbf-sde.bf_pltfm>\r\n"),
+                (b"qsfp\n", b"qsfp\r\nbf-sde.bf_pltfm.qsfp>\r\n"),
+            ],
+        )
+        .await;
+    }
 }
