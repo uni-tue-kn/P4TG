@@ -119,15 +119,18 @@ const CloseButton = styled.button`
     margin: 0.1rem 0 0 0.25rem;
 `
 
+const ERROR_TOAST_DELAY = 12_000
+
 const ToastMessage = ({ message, show, delay = 4000, bg, onClose }: Props) => {
     const variant = variants[bg]
+    const toastDelay = bg === "danger" ? ERROR_TOAST_DELAY : delay
 
     return (
         <LowerToastContainer>
             <FloatingToast
                 onClose={onClose}
                 show={show}
-                delay={delay}
+                delay={toastDelay}
                 autohide
                 $accent={variant.accent}
                 role={bg === "danger" ? "alert" : "status"}

@@ -527,7 +527,7 @@ export interface Rfc2544LossTolerance {
     value: number,
 }
 
-export type Rfc2544ThroughputAggregation = "clustered" | "median" | "minimum";
+export type Rfc2544ThroughputAggregation = "raw" | "clustered" | "median" | "minimum";
 
 export const RFC2544_FRAME_SIZES = [64, 128, 256, 512, 1024, 1280, 1518];
 

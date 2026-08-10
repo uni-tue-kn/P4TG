@@ -22,6 +22,25 @@ import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
 
 type HistogramType = "rtt" | "iat";
+type EditableHistogramConfig = Omit<HistogramConfig, "min" | "max" | "num_bins"> & {
+    min: number | "";
+    max: number | "";
+    num_bins: number | "";
+};
+
+const MAX_HISTOGRAM_VALUE = 2 ** 32 - 1;
+
+const isPowerOfTwo = (value: number) =>
+    Number.isSafeInteger(value) && value > 0 && Number.isInteger(Math.log2(value));
+
+const nextPowerOfTwo = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return null;
+
+    const optimizedValue = 2 ** Math.ceil(Math.log2(Math.ceil(value)));
+    return optimizedValue <= MAX_HISTOGRAM_VALUE ? optimizedValue : null;
+};
+
+const conciseNumber = (value: number) => Number(value.toPrecision(12));
 
 
 const HistogramModal = ({
@@ -47,14 +66,14 @@ const HistogramModal = ({
 }) => {
 
     const defaultPercentiles = [0.25, 0.5, 0.75, 0.9];
-    const buildConfig = (cfg?: HistogramConfig): HistogramConfig => ({
+    const buildConfig = (cfg?: HistogramConfig): EditableHistogramConfig => ({
         min: cfg?.min ?? 1500,
         max: cfg?.max ?? 2500,
         num_bins: cfg?.num_bins ?? 10,
         percentiles: cfg?.percentiles ?? defaultPercentiles,
     });
 
-    const [tmpConfigs, setTmpConfigs] = useState<{ rtt: HistogramConfig; iat: HistogramConfig }>(() => ({
+    const [tmpConfigs, setTmpConfigs] = useState<{ rtt: EditableHistogramConfig; iat: EditableHistogramConfig }>(() => ({
         rtt: buildConfig(rtt_data),
         iat: buildConfig(iat_data),
     }));
@@ -114,20 +133,21 @@ const HistogramModal = ({
             ...prev,
             [type]: {
                 ...prev[type],
-                min: prev[type].min * factor,
-                max: prev[type].max * factor,
+                min: prev[type].min === "" ? "" : prev[type].min * factor,
+                max: prev[type].max === "" ? "" : prev[type].max * factor,
             },
         }));
 
         setUnitSelection(prev => ({ ...prev, [type]: newUnit }));
     };
 
-    const validateConfig = (config: HistogramConfig, unit: string, label: string): HistogramConfig | null => {
-        const min = config.min * getMultiplier(unit);
-        const max = config.max * getMultiplier(unit);
+    const validateConfig = (config: EditableHistogramConfig, unit: string, label: string): HistogramConfig | null => {
+        const min = config.min === "" ? NaN : config.min * getMultiplier(unit);
+        const max = config.max === "" ? NaN : config.max * getMultiplier(unit);
+        const numBins = config.num_bins === "" ? NaN : config.num_bins;
         const percentiles = (config.percentiles && config.percentiles.length > 0 ? config.percentiles : defaultPercentiles);
 
-        if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(config.num_bins)) {
+        if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(numBins)) {
             setAlertMessage(`${label}: All fields must be valid numbers.`);
             return null;
         }
@@ -136,11 +156,11 @@ const HistogramModal = ({
             setAlertMessage(`${label}: Minimum value must be less than maximum value of range.`);
             return null;
         }
-        if (config.num_bins > 500) {
-            setAlertMessage(`${label}: 500 bins per port are supported at maximum.`);
+        if (!Number.isInteger(numBins) || numBins <= 0) {
+            setAlertMessage(`${label}: Number of bins must be a positive integer.`);
             return null;
         }
-        if (config.num_bins > (max - min)) {
+        if (numBins > (max - min)) {
             setAlertMessage(`${label}: Too many bins for too less of range. Increase range, or decrease number of bins.`);
             return null;
         }
@@ -165,7 +185,7 @@ const HistogramModal = ({
         }
 
         return {
-            num_bins: config.num_bins,
+            num_bins: numBins,
             min,
             max,
             percentiles: percentiles,
@@ -189,15 +209,42 @@ const HistogramModal = ({
         //updateConfig(pid, min, max, tmp_data.num_bins)
     }
 
-    const handleChange = (type: HistogramType, field: keyof HistogramConfig, value: string) => {
+    const handleChange = (type: HistogramType, field: "min" | "max" | "num_bins", value: string) => {
         setTmpConfigs(prev => ({
             ...prev,
-            [type]: { ...prev[type], [field]: Number(value) },
+            [type]: { ...prev[type], [field]: value === "" ? "" : Number(value) },
+        }));
+    };
+
+    const useOptimizedRange = (type: HistogramType, optimizedMaxNanoseconds: number) => {
+        const multiplier = getMultiplier(unitSelection[type]);
+
+        setTmpConfigs(prev => ({
+            ...prev,
+            [type]: {
+                ...prev[type],
+                min: 0,
+                max: conciseNumber(optimizedMaxNanoseconds / multiplier),
+            },
         }));
     };
 
     const renderHistogramControls = (type: HistogramType, label: string, description: string) => {
         const config = tmpConfigs[type];
+        const multiplier = getMultiplier(unitSelection[type]);
+        const minNanoseconds = config.min === "" ? NaN : config.min * multiplier;
+        const maxNanoseconds = config.max === "" ? NaN : config.max * multiplier;
+        const optimizedMaxNanoseconds = nextPowerOfTwo(maxNanoseconds);
+        const rangeIsOptimized = minNanoseconds === 0
+            && optimizedMaxNanoseconds !== null
+            && maxNanoseconds === optimizedMaxNanoseconds;
+        const optimizedMaxInSelectedUnit = optimizedMaxNanoseconds === null
+            ? null
+            : conciseNumber(optimizedMaxNanoseconds / multiplier);
+        const optimizedExponent = optimizedMaxNanoseconds === null
+            ? null
+            : Math.log2(optimizedMaxNanoseconds);
+        const binCountIsPowerOfTwo = config.num_bins !== "" && isPowerOfTwo(config.num_bins);
 
         return <>
             <h5 className="mb-2">{label}</h5>
@@ -237,6 +284,41 @@ const HistogramModal = ({
                 </Col>
             </Form.Group>
 
+            {optimizedMaxNanoseconds !== null && optimizedMaxInSelectedUnit !== null && (
+                <div className="histogram-optimization-hint mb-3">
+                    <span className="histogram-optimization-copy">
+                        {rangeIsOptimized ? (
+                            <>
+                                <i
+                                    className="bi bi-check-circle-fill histogram-optimization-icon histogram-optimization-icon-aligned"
+                                    aria-hidden="true"
+                                />
+                                Binary-aligned range (2<sup>{optimizedExponent}</sup> ns).
+                            </>
+                        ) : (
+                            <>
+                                <i
+                                    className="bi bi-exclamation-circle-fill histogram-optimization-icon histogram-optimization-icon-suggestion"
+                                    aria-hidden="true"
+                                />
+                                Suggested range: <strong>0 – {optimizedMaxInSelectedUnit} {unitSelection[type]}</strong>
+                                {" "}(2<sup>{optimizedExponent}</sup> ns). With power-of-two bins, each bin uses one ternary entry.
+                            </>
+                        )}
+                    </span>
+                    {!rangeIsOptimized && (
+                        <button
+                            type="button"
+                            className="histogram-optimization-action"
+                            disabled={disabled}
+                            onClick={() => useOptimizedRange(type, optimizedMaxNanoseconds)}
+                        >
+                            Use suggestion
+                        </button>
+                    )}
+                </div>
+            )}
+
             <Form.Group as={Row} className="mb-3">
                 <Form.Label column sm={2}>Number of bins</Form.Label>
                 <Col sm={8}>
@@ -248,6 +330,13 @@ const HistogramModal = ({
                         required
                         disabled={disabled}
                     />
+                    {config.num_bins !== "" && (
+                        <Form.Text className="histogram-bin-hint">
+                            {binCountIsPowerOfTwo
+                                ? "Power-of-two bin count."
+                                : "Tip: use a power-of-two bin count (1, 2, 4, 8, …) for efficient ternary matching."}
+                        </Form.Text>
+                    )}
                 </Col>
             </Form.Group>
 

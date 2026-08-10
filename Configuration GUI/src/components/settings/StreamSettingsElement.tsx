@@ -66,70 +66,72 @@ const StreamSettingsElement = ({
     return <>
         <SettingsModal running={running || !port_status} data={stream} stream={stream_data} show={show} hide={() => set_show(false)} p4tg_infos={p4tg_infos} />
         <StyledCol>
-            <Form.Check
-                className={"d-inline"}
-                disabled={running || !isActive && (running || !port_status)}
-                checked={isActive}
-                type={"switch"}
-                onChange={(event) => {
-                    setIsActive(event.target.checked);
-                    onActiveChange(event.target.checked)
-                }}
-            />
+            <div className="d-inline-flex align-items-center">
+                <Form.Check
+                    className={"d-inline"}
+                    disabled={running || !isActive && (running || !port_status)}
+                    checked={isActive}
+                    type={"switch"}
+                    onChange={(event) => {
+                        setIsActive(event.target.checked);
+                        onActiveChange(event.target.checked)
+                    }}
+                />
 
-            {rx_mapping_mode === RxMappingMode.PerStream ?
-                <>
-                    <Form.Select
-                        className="d-inline-block ms-2"
-                        style={{ width: "auto", minWidth: 130 }}
-                        size="sm"
-                        aria-label={`RX target for stream ${stream_data.app_id}`}
-                        disabled={running || !port_status || !isActive}
-                        isInvalid={isActive && !stream.rx_target}
-                        value={stream.rx_target ? `${stream.rx_target.port}/${stream.rx_target.channel}` : ""}
-                        onChange={(event) => {
-                            if (!event.target.value) {
-                                onRxTargetChange(undefined);
-                                return;
-                            }
-                            const [port, channel] = event.target.value.split("/").map(Number);
-                            onRxTargetChange({ port, channel });
-                        }}
-                    >
-                        <option value="">Select RX</option>
-                        {ports.map((port) =>
-                            <option key={port.pid} value={`${port.port}/${port.channel}`}>
-                                {port.port}/{port.channel} ({port.pid})
-                            </option>
-                        )}
-                    </Form.Select>
-                    <span className="d-inline-block ms-2">
-                        <HistogramSettings
-                            compact
-                            target={stream.rx_target}
+                {rx_mapping_mode === RxMappingMode.PerStream ?
+                    <>
+                        <Form.Select
+                            className="d-inline-block ms-2"
+                            style={{ width: "auto", minWidth: 130 }}
+                            size="sm"
+                            aria-label={`RX target for stream ${stream_data.app_id}`}
                             disabled={running || !port_status || !isActive}
-                            rtt_data={rtt_histogram_settings}
-                            iat_data={iat_histogram_settings}
-                            set_rtt_data={set_rtt_histogram_settings}
-                            set_iat_data={set_iat_histogram_settings}
-                        />
-                    </span>
-                </>
-                : null}
+                            isInvalid={isActive && !stream.rx_target}
+                            value={stream.rx_target ? `${stream.rx_target.port}/${stream.rx_target.channel}` : ""}
+                            onChange={(event) => {
+                                if (!event.target.value) {
+                                    onRxTargetChange(undefined);
+                                    return;
+                                }
+                                const [port, channel] = event.target.value.split("/").map(Number);
+                                onRxTargetChange({ port, channel });
+                            }}
+                        >
+                            <option value="">Select RX</option>
+                            {ports.map((port) =>
+                                <option key={port.pid} value={`${port.port}/${port.channel}`}>
+                                    {port.port}/{port.channel} ({port.pid})
+                                </option>
+                            )}
+                        </Form.Select>
+                        <span className="d-inline-block ms-2">
+                            <HistogramSettings
+                                compact
+                                target={stream.rx_target}
+                                disabled={running || !port_status || !isActive}
+                                rtt_data={rtt_histogram_settings}
+                                iat_data={iat_histogram_settings}
+                                set_rtt_data={set_rtt_histogram_settings}
+                                set_iat_data={set_iat_histogram_settings}
+                            />
+                        </span>
+                    </>
+                    : null}
 
-            <OverlayTrigger
-                placement="top"
-                overlay={<Tooltip id="tooltip-stream-settings">Stream settings</Tooltip>}
-            >
-                <button
-                    type="button"
-                    onClick={() => set_show(true)}
-                    className="btn btn-config border-0 p-0 ms-3"
-                    aria-label="Stream settings"
+                <OverlayTrigger
+                    placement="top"
+                    overlay={<Tooltip id="tooltip-stream-settings">Stream settings</Tooltip>}
                 >
-                    <i className="bi bi-gear-wide-connected" />
-                </button>
-            </OverlayTrigger>
+                    <button
+                        type="button"
+                        onClick={() => set_show(true)}
+                        className="btn btn-config border-0 p-0 ms-3"
+                        aria-label="Stream settings"
+                    >
+                        <i className="bi bi-gear-wide-connected" />
+                    </button>
+                </OverlayTrigger>
+            </div>
         </StyledCol>
 
     </>

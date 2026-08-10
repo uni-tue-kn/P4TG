@@ -19,7 +19,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Col, Form, InputGroup, Modal, Nav, OverlayTrigger, Row, Tab, Table, Tabs, Tooltip } from "react-bootstrap";
+import { Alert, Button, Col, Form, InputGroup, Modal, Nav, OverlayTrigger, Row, Tab, Table, Tabs, ToggleButton, Tooltip } from "react-bootstrap";
 import { get } from "../common/API";
 import Loader from "../components/Loader";
 import {
@@ -78,6 +78,9 @@ const Rfc2544Panel = styled.div`
 const CONFIG_STORAGE_KEY = "saved_configs";
 const DEFAULT_CONFIG_NAME = "Test 1";
 const RUN_NAME_SUFFIX = /\s*\[\d+\/\d+\]$/;
+type Rfc2544NumericField = {
+    [Key in keyof Rfc2544Config]: Rfc2544Config[Key] extends number ? Key : never
+}[keyof Rfc2544Config];
 
 const rfc2544NeedsThroughput = (config: Partial<Rfc2544Config>): boolean =>
     Boolean(config.latency || config.reset || config.system_recovery);
@@ -226,6 +229,8 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const [rfc2544_config, set_rfc2544_config] = useState<Rfc2544Config>(
         normalizeRfc2544Config(loadFromStorage<Rfc2544Config | null>("rfc2544_config", null) || undefined)
     )
+    const [rfc2544NumericInputs, setRfc2544NumericInputs] = useState<Partial<Record<Rfc2544NumericField, string>>>({});
+    const [rfc2544LossToleranceInput, setRfc2544LossToleranceInput] = useState<string | null>(null);
 
     const [port_tx_rx_mapping, set_port_tx_rx_mapping] = useState<PortTxRxMap>(loadFromStorage<PortTxRxMap>("port_tx_rx_mapping", {}))
     const [rx_mapping_mode, set_rx_mapping_mode] = useState<RxMappingMode>(
@@ -1239,6 +1244,50 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_rfc2544_config((prev) => enforceRfc2544ThroughputDependencies({ ...prev, ...updates }));
     };
 
+    const rfc2544NumericValue = (field: Rfc2544NumericField): string | number =>
+        rfc2544NumericInputs[field] ?? rfc2544_config[field];
+
+    const updateRfc2544NumericInput = (field: Rfc2544NumericField, value: string) => {
+        setRfc2544NumericInputs((prev) => ({ ...prev, [field]: value }));
+
+        if (value !== "") {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) {
+                updateRfc2544Config({ [field]: parsed } as Partial<Rfc2544Config>);
+            }
+        }
+    };
+
+    const finishRfc2544NumericInput = (field: Rfc2544NumericField) => {
+        setRfc2544NumericInputs((prev) => {
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
+    };
+
+    const updateRfc2544LossToleranceInput = (value: string) => {
+        setRfc2544LossToleranceInput(value);
+
+        if (value !== "") {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) {
+                updateRfc2544Config({
+                    throughput_loss_tolerance: {
+                        ...rfc2544_config.throughput_loss_tolerance,
+                        value: parsed,
+                    },
+                });
+            }
+        }
+    };
+
+    const setRfc2544ModalVisibility = (show: boolean) => {
+        setRfc2544NumericInputs({});
+        setRfc2544LossToleranceInput(null);
+        setShowRfc2544Modal(show);
+    };
+
     const toggleRfc2544FrameSize = (frameSize: number, checked: boolean) => {
         set_rfc2544_config((prev) => {
             const nextFrameSizes = checked
@@ -1615,7 +1664,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                             : "RFC2544 results are reported per active TX/RX mapping."}
                                                     </div>
                                                 </div>
-                                                <Button variant="primary" onClick={() => setShowRfc2544Modal(true)}>
+                                                <Button variant="primary" onClick={() => setRfc2544ModalVisibility(true)}>
                                                     <i className="bi bi-sliders" /> RFC2544 settings
                                                 </Button>
                                             </div>
@@ -1650,7 +1699,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                     </Col>
                                 </Row>
 
-                                <Modal show={showRfc2544Modal} onHide={() => setShowRfc2544Modal(false)} size="lg" centered scrollable>
+                                <Modal show={showRfc2544Modal} onHide={() => setRfc2544ModalVisibility(false)} size="lg" centered scrollable>
                                     <Modal.Header closeButton>
                                         <Modal.Title>RFC2544 settings</Modal.Title>
                                     </Modal.Header>
@@ -1732,14 +1781,20 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                 </div>
                                                 <div className="d-flex flex-wrap gap-3">
                                                     {RFC2544_FRAME_SIZES.map((frameSize) => (
-                                                        <Form.Check
+                                                        <ToggleButton
                                                             key={frameSize}
+                                                            id={`rfc2544-frame-size-${frameSize}`}
                                                             type="checkbox"
-                                                            label={rfc2544HoverLabel(`${frameSize} B`, `Run the selected RFC2544 tests with ${frameSize} byte Ethernet frames.`)}
+                                                            size="sm"
+                                                            variant="outline-primary"
+                                                            className="rfc2544-frame-size-toggle"
+                                                            value={frameSize}
                                                             checked={rfc2544_config.frame_sizes.includes(frameSize)}
                                                             disabled={running}
                                                             onChange={(event) => toggleRfc2544FrameSize(frameSize, event.target.checked)}
-                                                        />
+                                                        >
+                                                            {rfc2544HoverLabel(`${frameSize} B`, `Run the selected RFC2544 tests with ${frameSize} byte Ethernet frames.`)}
+                                                        </ToggleButton>
                                                     ))}
                                                 </div>
                                             </Tab>
@@ -1764,9 +1819,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                             min={0.001}
                                                             max={maxRate}
                                                             step="any"
-                                                            value={rfc2544_config.line_rate_gbps}
+                                                            value={rfc2544NumericValue("line_rate_gbps")}
                                                             disabled={running}
-                                                            onChange={(event) => updateRfc2544Config({ line_rate_gbps: Number(event.target.value) })}
+                                                            onChange={(event) => updateRfc2544NumericInput("line_rate_gbps", event.target.value)}
+                                                            onBlur={() => finishRfc2544NumericInput("line_rate_gbps")}
                                                         />
                                                     </Col>
                                                 </Row>
@@ -1781,9 +1837,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={0}
                                                                 step={1}
-                                                                value={rfc2544_config.warmup_duration_secs}
+                                                                value={rfc2544NumericValue("warmup_duration_secs")}
                                                                 disabled={running}
-                                                                onChange={(event) => updateRfc2544Config({ warmup_duration_secs: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("warmup_duration_secs", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("warmup_duration_secs")}
                                                             />
                                                         </Col>
                                                         <Col className="col-12 col-sm-4">
@@ -1802,9 +1859,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={0}
                                                                 step={1}
-                                                                value={rfc2544_config.cooldown_duration_secs}
+                                                                value={rfc2544NumericValue("cooldown_duration_secs")}
                                                                 disabled={running}
-                                                                onChange={(event) => updateRfc2544Config({ cooldown_duration_secs: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("cooldown_duration_secs", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("cooldown_duration_secs")}
                                                             />
                                                         </Col>
                                                     </Row>
@@ -1820,9 +1878,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={1}
                                                                 step={1}
-                                                                value={rfc2544_config.trial_duration_secs}
+                                                                value={rfc2544NumericValue("trial_duration_secs")}
                                                                 disabled={running || (!rfc2544_config.throughput && !rfc2544_config.frame_loss)}
-                                                                onChange={(event) => updateRfc2544Config({ trial_duration_secs: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("trial_duration_secs", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("trial_duration_secs")}
                                                             />
                                                         </Col>
                                                         <Col className="col-12 col-sm-6">
@@ -1832,9 +1891,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={1}
                                                                 step={1}
-                                                                value={rfc2544_config.throughput_search_steps}
+                                                                value={rfc2544NumericValue("throughput_search_steps")}
                                                                 disabled={running || !rfc2544_config.throughput}
-                                                                onChange={(event) => updateRfc2544Config({ throughput_search_steps: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("throughput_search_steps", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("throughput_search_steps")}
                                                             />
                                                         </Col>
                                                     </Row>
@@ -1846,19 +1906,21 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={1}
                                                                 step={1}
-                                                                value={rfc2544_config.throughput_repetitions}
+                                                                value={rfc2544NumericValue("throughput_repetitions")}
                                                                 disabled={running || !rfc2544_config.throughput}
-                                                                onChange={(event) => updateRfc2544Config({ throughput_repetitions: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("throughput_repetitions", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("throughput_repetitions")}
                                                             />
                                                         </Col>
                                                         <Col className="col-12 col-sm-4">
-                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Aggregation mode", "Select how repeated zero-loss throughput searches are reduced to the reported value. Clustered mode groups rates within the configured tolerance and selects the largest stable group. Repeated or clustered ZLT is pragmatic and may deviate from strict RFC2544 single-run interpretation.")}</Form.Label>
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Aggregation mode", "Select how repeated zero-loss throughput searches are reported. Raw preserves every measured value without calculating an aggregate; the legacy scalar and follow-up procedures use the final repetition. Clustered mode groups rates within the configured tolerance and selects the largest stable group. Repeated or clustered ZLT is pragmatic and may deviate from strict RFC2544 single-run interpretation.")}</Form.Label>
                                                             <Form.Select
                                                                 size="sm"
                                                                 value={rfc2544_config.throughput_aggregation}
                                                                 disabled={running || !rfc2544_config.throughput || rfc2544_config.throughput_repetitions <= 1}
-                                                                onChange={(event) => updateRfc2544Config({ throughput_aggregation: event.target.value as "clustered" | "median" | "minimum" })}
+                                                                onChange={(event) => updateRfc2544Config({ throughput_aggregation: event.target.value as "raw" | "clustered" | "median" | "minimum" })}
                                                             >
+                                                                <option value="raw">Raw (all repetitions)</option>
                                                                 <option value="clustered">Clustered</option>
                                                                 <option value="median">Median</option>
                                                                 <option value="minimum">Minimum</option>
@@ -1871,9 +1933,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={0.001}
                                                                 step="any"
-                                                                value={rfc2544_config.throughput_cluster_tolerance_gbps}
+                                                                value={rfc2544NumericValue("throughput_cluster_tolerance_gbps")}
                                                                 disabled={running || !rfc2544_config.throughput || rfc2544_config.throughput_repetitions <= 1 || rfc2544_config.throughput_aggregation !== "clustered"}
-                                                                onChange={(event) => updateRfc2544Config({ throughput_cluster_tolerance_gbps: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("throughput_cluster_tolerance_gbps", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("throughput_cluster_tolerance_gbps")}
                                                             />
                                                         </Col>
                                                     </Row>
@@ -1886,14 +1949,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                     min={0}
                                                                     max={rfc2544_config.throughput_loss_tolerance.unit === "percent" ? 100 : undefined}
                                                                     step={rfc2544_config.throughput_loss_tolerance.unit === "percent" ? 0.0001 : 1}
-                                                                    value={rfc2544_config.throughput_loss_tolerance.value}
+                                                                    value={rfc2544LossToleranceInput ?? rfc2544_config.throughput_loss_tolerance.value}
                                                                     disabled={running || !rfc2544_config.throughput}
-                                                                    onChange={(event) => updateRfc2544Config({
-                                                                        throughput_loss_tolerance: {
-                                                                            ...rfc2544_config.throughput_loss_tolerance,
-                                                                            value: Number(event.target.value),
-                                                                        }
-                                                                    })}
+                                                                    onChange={(event) => updateRfc2544LossToleranceInput(event.target.value)}
+                                                                    onBlur={() => setRfc2544LossToleranceInput(null)}
                                                                 />
                                                                 <Form.Select
                                                                     style={{ width: "auto", flex: "0 0 auto", minWidth: "fit-content", whiteSpace: "nowrap" }}
@@ -1924,9 +1983,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={1}
                                                                 step={1}
-                                                                value={rfc2544_config.latency_duration_secs}
+                                                                value={rfc2544NumericValue("latency_duration_secs")}
                                                                 disabled={running || !rfc2544_config.latency}
-                                                                onChange={(event) => updateRfc2544Config({ latency_duration_secs: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("latency_duration_secs", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("latency_duration_secs")}
                                                             />
                                                         </Col>
                                                         <Col className="col-12 col-sm-6">
@@ -1936,9 +1996,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={1}
                                                                 step={1}
-                                                                value={rfc2544_config.latency_repetitions}
+                                                                value={rfc2544NumericValue("latency_repetitions")}
                                                                 disabled={running || !rfc2544_config.latency}
-                                                                onChange={(event) => updateRfc2544Config({ latency_repetitions: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("latency_repetitions", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("latency_repetitions")}
                                                             />
                                                         </Col>
                                                     </Row>
@@ -1954,9 +2015,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={1}
                                                                 step={1}
-                                                                value={rfc2544_config.reset_timeout_secs}
+                                                                value={rfc2544NumericValue("reset_timeout_secs")}
                                                                 disabled={running || !rfc2544_config.reset}
-                                                                onChange={(event) => updateRfc2544Config({ reset_timeout_secs: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("reset_timeout_secs", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("reset_timeout_secs")}
                                                             />
                                                         </Col>
                                                     </Row>
@@ -1972,9 +2034,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={1}
                                                                 step={1}
-                                                                value={rfc2544_config.system_recovery_overload_duration_secs}
+                                                                value={rfc2544NumericValue("system_recovery_overload_duration_secs")}
                                                                 disabled={running || !rfc2544_config.system_recovery}
-                                                                onChange={(event) => updateRfc2544Config({ system_recovery_overload_duration_secs: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("system_recovery_overload_duration_secs", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("system_recovery_overload_duration_secs")}
                                                             />
                                                         </Col>
                                                         <Col className="col-12 col-sm-6">
@@ -1984,9 +2047,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                 type="number"
                                                                 min={1}
                                                                 step={1}
-                                                                value={rfc2544_config.system_recovery_observation_duration_secs}
+                                                                value={rfc2544NumericValue("system_recovery_observation_duration_secs")}
                                                                 disabled={running || !rfc2544_config.system_recovery}
-                                                                onChange={(event) => updateRfc2544Config({ system_recovery_observation_duration_secs: Number(event.target.value) })}
+                                                                onChange={(event) => updateRfc2544NumericInput("system_recovery_observation_duration_secs", event.target.value)}
+                                                                onBlur={() => finishRfc2544NumericInput("system_recovery_observation_duration_secs")}
                                                             />
                                                         </Col>
                                                     </Row>
@@ -1995,7 +2059,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         </Tabs>
                                     </Modal.Body>
                                     <Modal.Footer>
-                                        <Button variant="secondary" onClick={() => setShowRfc2544Modal(false)}>Close</Button>
+                                        <Button variant="secondary" onClick={() => setRfc2544ModalVisibility(false)}>Close</Button>
                                     </Modal.Footer>
                                 </Modal>
                             </>

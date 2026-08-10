@@ -886,9 +886,6 @@ pub fn validate_histogram_for_edges(
             if config.min >= config.max {
                 return Err(Error::new(format!("Histogram config error {t_name} port {port}: Minimum value must be less than maximum value of range.")));
             }
-            if config.num_bins > 500 {
-                return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins. 500 bins per port are supported at maximum.")));
-            }
             if config.num_bins > (config.max - config.min) {
                 return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
             }
@@ -930,17 +927,35 @@ pub fn validate_histogram_for_edges(
     };
     let (tx_ports, rx_ports) = histogram_edge_roles(edges);
 
-    let mut num_requests: u32 = 0;
+    let mut num_requests: u64 = 0;
     for (dev_port, config) in dev_port_configs.iter() {
-        let mut num_paths = rx_ports.contains(dev_port) as u32;
+        let mut num_paths = rx_ports.contains(dev_port) as u64;
         if let HistogramType::Iat = hist_type {
-            num_paths += tx_ports.contains(dev_port) as u32;
+            num_paths += tx_ports.contains(dev_port) as u64;
         }
-        num_requests += num_paths * (histogram_entry_count(config) + 1);
-    }
 
-    if num_requests > max_table_size {
-        return Err(Error::new(format!("Histogram config error {t_name}: Number of table entries ({num_requests}) exceeds available space ({max_table_size}) in table {table_name}. Reduce the number of bins or the histogram range.")));
+        // Explicit configs for inactive ports are retained by the config
+        // resolver, but the table writer skips them because neither path can
+        // match traffic. Skip them here as well so an unused, very large bin
+        // count cannot trigger unnecessary expansion work during validation.
+        if num_paths == 0 {
+            continue;
+        }
+
+        // Every bin needs at least one ternary entry. Reject configurations
+        // that cannot possibly fit before calculating their exact expansion;
+        // without a fixed bin cap, this also keeps validation work bounded by
+        // the table's actual capacity.
+        let minimum_requests = num_paths * (u64::from(config.num_bins) + 1);
+        if num_requests + minimum_requests > u64::from(max_table_size) {
+            return Err(Error::new(format!("Histogram config error {t_name}: Number of table entries requires at least {} entries, which exceeds available space ({max_table_size}) in table {table_name}. Reduce the number of bins or the histogram range.", num_requests + minimum_requests)));
+        }
+
+        num_requests += num_paths * (u64::from(histogram_entry_count(config)) + 1);
+
+        if num_requests > u64::from(max_table_size) {
+            return Err(Error::new(format!("Histogram config error {t_name}: Number of table entries ({num_requests}) exceeds available space ({max_table_size}) in table {table_name}. Reduce the number of bins or the histogram range.")));
+        }
     }
 
     Ok(())

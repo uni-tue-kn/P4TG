@@ -352,9 +352,12 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     const rfc2544ResetSelected = rfc2544 ? (rfc2544.reset_selected ?? rfc2544.reset.length > 0) : false;
     const rfc2544FrameLossSelected = rfc2544 ? (rfc2544.frame_loss_selected ?? rfc2544.frame_loss.length > 0) : false;
     const rfc2544SystemRecoverySelected = rfc2544 ? (rfc2544.system_recovery_selected ?? rfc2544SystemRecovery.length > 0) : false;
+    const showRfc2544ThroughputAggregation = rfc2544?.throughput.some((row) => row.repetition_count > 1) ?? false;
     const formatOptionalGbps = (gbps: number | undefined) => gbps !== undefined ? formatGbps(gbps) : "-";
     const formatThroughputAggregation = (aggregation: string | undefined) => {
         switch (aggregation) {
+            case "raw":
+                return "Raw";
             case "clustered":
                 return "Clustered";
             case "median":
@@ -409,6 +412,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         scales: {
             x: {
                 type: linearX ? "linear" as const : "category" as const,
+                offset: !linearX && rfc2544FrameSizes.length === 1,
                 title: {
                     display: true,
                     text: xTitle,
@@ -501,6 +505,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
             <ButtonGroup size="sm">
                 <ToggleButton
                     id={`rfc2544-rate-unit-mpps-${idSuffix}`}
+                    className="rfc2544-rate-unit-toggle"
                     type="radio"
                     variant={rfc2544RateUnit === "mpps" ? "primary" : "outline-secondary"}
                     name="rfc2544-rate-unit"
@@ -512,6 +517,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                 </ToggleButton>
                 <ToggleButton
                     id={`rfc2544-rate-unit-gbit-${idSuffix}`}
+                    className="rfc2544-rate-unit-toggle"
                     type="radio"
                     variant={rfc2544RateUnit === "gbit" ? "primary" : "outline-secondary"}
                     name="rfc2544-rate-unit"
@@ -873,7 +879,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                             <th>Zero Loss Throughput</th>
                             <th>First Loss Rate</th>
                             <th>Lost Frames</th>
-                            <th>Aggregation</th>
+                            {showRfc2544ThroughputAggregation ? <th>Aggregation</th> : null}
                             <th>Repetitions</th>
                         </tr>
                     </thead>
@@ -886,7 +892,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                                 <td>{formatOptionalGbps(row?.zero_loss_rate_gbps)}</td>
                                 <td>{formatOptionalGbps(row?.first_loss_rate_gbps)}</td>
                                 <td>{row ? formatFrameCount(row.lost_frames) : "-"}</td>
-                                <td>{formatThroughputAggregation(row?.aggregation)}</td>
+                                {showRfc2544ThroughputAggregation ? <td>{formatThroughputAggregation(row?.aggregation)}</td> : null}
                                 <td>{row?.repetition_count ?? "-"}</td>
                             </tr>
                         }))}
@@ -901,7 +907,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                             <InfoBox>
                                 <>
                                     <h5>ZLT Repetitions</h5>
-                                    <p>Repeated zero-loss throughput runs are aggregated into the reported value. Clustered mode groups rates within the configured Gbit/s tolerance and uses the largest stable group.</p>
+                                    <p>Every repeated zero-loss throughput measurement is shown here. Raw mode performs no reduction and uses the final repetition only for the legacy scalar value and follow-up procedures. Clustered mode groups rates within the configured Gbit/s tolerance and uses the largest stable group.</p>
                                 </>
                             </InfoBox>
                         </Rfc2544Caption>

@@ -255,6 +255,7 @@ pub struct Rfc2544LossTolerance {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Rfc2544ThroughputAggregation {
+    Raw,
     Clustered,
     Median,
     Minimum,
