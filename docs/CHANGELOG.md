@@ -26,6 +26,10 @@
 - `POST:api/time_statistics` now also includes the per stream rates. This allows to render per-stream TX/RX rates in the frontend.
 - Removed the limit of 500 bins for histograms. Validation of the histogram configuration is applied on traffic generation start.
 - Added suggestion for the next power-of-two aligned histogram maximum, bin width, and pattern shaping entries. Power-of-two aligned values greatly reduce the number of required shaping entries.
+- Added `channel_count: 2`, which splits a front panel port into two equally sized halves of the cage: channels `0,4` on Tofino 2 (`2x10G`, `2x25G`, `2x40G`, `2x50G`, `2x100G`, `2x200G`) and channels `0,2` on Tofino 1 (`2x10G`, `2x25G`, `2x50G`). 
+- Added `BF_SPEED_200G` to the GUI speed selection. It was already accepted by the controller for `1x` but could not be selected.
+- Added `4x50G` on Tofino 2, and unified the `channel_count: 4` channel layout so that every mode's channel layout is now independent of the configured speed. Runtime speed changes therefore never require a controller restart. Only a `channel_count` change does.
+  - ⚠️ **Breaking change:** on Tofino 2, `4x10G` and `4x25G` move from channels `0,1,2,3` (lanes 0-3) to channels `0,2,4,6` (lanes 0, 2, 4, 6). This matches a 4-way QSFP-DD breakout cable, whose legs carry two lanes each. Setups that rely on the previous packing into lanes 0-3, for example a QSFP28 cable that only carries four lanes, can use `channel_count: 8` and leave channels 4-7 unused.
 
 ### Bug fixes
 - Fixed JSON result exports containing only the locally cached time-series data. JSON downloads now fetch and include the complete statistics and unabridged time-series history for all runs.
@@ -58,6 +62,8 @@
   - A throughput trial that observes no TX frames now aborts the benchmark instead of passing as zero-loss.
   - The estimated remaining runtime accounts for the settle time.
 - Fixed ARP replies on channelized ports answering with the base port MAC on all channels. Without an explicit MAC, each channel now replies with its own configured address.
+- Fixed `BF_SPEED_200G` being accepted on Tofino 1, which only supports up to 100G.
+- Fixed the mixed breakout rate warning only inspecting channels numbered below `channel_count`. For `4x100G`, whose channels are `0,2,4,6`, a differing speed on channel `4` or `6` was never reported.
 - Fixed config validation not detecting manually configured recirculation ports that collide with another TG front panel port.
 - Fixed `GET:/api/trafficgen` not exposing the computed send behaviour (`n_packets`, `timeout`, `generation_accuracy`, `n_pipes`). The solver results are now merged into the stored streams when a test starts.
 - Fixed swapped Tofino1/Tofino2 app ID ranges in rate monitoring, which caused phantom app rate entries on Tofino1 and missing initial app rate entries on Tofino2.

@@ -165,30 +165,33 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     }
 
     const getBreakoutTooltip = (): string =>
-        "Configure `channel_count` in config.json and restart the controller to split a port into 4 or 8 channels."
+        "Configure `channel_count` in config.json and restart the controller to split a port into 2, 4, or 8 channels."
 
     const getMixedBreakoutWarningTooltip = (): string =>
         "Warning: Mixed breakout rates on a single front-panel port may link up but can cause packet loss under load. Prefer homogeneous breakout operation."
 
-    const getTargetChannels = (speed: string, channelCount: number | null): number[] => {
+    // The cage is split into `channelCount` equally sized slots, each addressed
+    // by its starting lane. No layout depends on the speed, so a speed change
+    // never alters the channel layout.
+    const getTargetChannels = (channelCount: number | null): number[] => {
         if (channelCount === 8) {
             return [0, 1, 2, 3, 4, 5, 6, 7]
         }
 
         if (channelCount === 4) {
-            if (speed === SPEED.BF_SPEED_100G) {
-                return [0, 2, 4, 6]
-            }
+            return p4tg_infos.asic == ASIC.Tofino2 ? [0, 2, 4, 6] : [0, 1, 2, 3]
+        }
 
-            return [0, 1, 2, 3]
+        if (channelCount === 2) {
+            return p4tg_infos.asic == ASIC.Tofino2 ? [0, 4] : [0, 2]
         }
 
         return [0]
     }
 
-    const hasCompatibleRuntimeLayout = (port: number, speed: string, channelCount: number | null): boolean => {
+    const hasCompatibleRuntimeLayout = (port: number, channelCount: number | null): boolean => {
         const currentChannels = getActiveChannels(port)
-        const targetChannels = getTargetChannels(speed, channelCount)
+        const targetChannels = getTargetChannels(channelCount)
 
         if (currentChannels.length === 0) {
             return true
@@ -206,15 +209,38 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
             )
         }
 
+        // Two lane slots on Tofino2, one lane slots on Tofino1.
         if (channelCount === 4) {
             if (speed == SPEED.BF_SPEED_10G || speed == SPEED.BF_SPEED_25G) {
                 return true
             }
 
-            return p4tg_infos.asic == ASIC.Tofino2 && speed == SPEED.BF_SPEED_100G
+            // 40G is excluded: the SDE has no working 40G-R2, so it cannot fit
+            // a 2-lane slot.
+            return (
+                p4tg_infos.asic == ASIC.Tofino2 &&
+                (speed == SPEED.BF_SPEED_50G || speed == SPEED.BF_SPEED_100G)
+            )
         }
 
-        if (speed == SPEED.BF_SPEED_400G && p4tg_infos.asic != ASIC.Tofino2) {
+        // A speed fits a half if its default lane count does: four lanes on
+        // Tofino2, two on Tofino1 (where 40G and 100G default to R4).
+        if (channelCount === 2) {
+            if (p4tg_infos.asic == ASIC.Tofino2) {
+                return speed != SPEED.BF_SPEED_400G
+            }
+
+            return (
+                speed == SPEED.BF_SPEED_10G ||
+                speed == SPEED.BF_SPEED_25G ||
+                speed == SPEED.BF_SPEED_50G
+            )
+        }
+
+        if (
+            (speed == SPEED.BF_SPEED_400G || speed == SPEED.BF_SPEED_200G) &&
+            p4tg_infos.asic != ASIC.Tofino2
+        ) {
             return false
         }
 
@@ -222,7 +248,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     }
 
     const getSpeedTooltip = (port: number, speed: string, channelCount: number | null): string => {
-        if (!hasCompatibleRuntimeLayout(port, speed, channelCount)) {
+        if (!hasCompatibleRuntimeLayout(port, channelCount)) {
             return "This speed cannot be applied at runtime because it requires a different channel layout. Update config.json and restart the controller."
         }
 
@@ -232,14 +258,22 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
         if (channelCount === 4) {
             if (p4tg_infos.asic == ASIC.Tofino2) {
-                return "Only 10G, 25G, and 100G are available with channel_count 4 on Tofino2."
+                return "Only 10G, 25G, 50G, and 100G are available with channel_count 4 on Tofino2. 40G needs 4 lanes and does not fit a 2-lane channel."
             }
 
-            return "Only 10G and 25G are available with channel_count 4 on Tofino1."
+            return "Only 10G and 25G are available with channel_count 4 on Tofino1; the other speeds need more than one lane."
         }
 
-        if (speed == SPEED.BF_SPEED_400G) {
-            return "400G is only available on Tofino2."
+        if (channelCount === 2) {
+            if (p4tg_infos.asic == ASIC.Tofino2) {
+                return "400G is not available with channel_count 2 because it needs all 8 lanes."
+            }
+
+            return "Only 10G, 25G, and 50G are available with channel_count 2 on Tofino1; 40G and 100G need all 4 lanes."
+        }
+
+        if (speed == SPEED.BF_SPEED_400G || speed == SPEED.BF_SPEED_200G) {
+            return `${speed_mapping[speed]} is only available on Tofino2.`
         }
 
         return "This speed is not available for the current port mode."
@@ -247,6 +281,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
     const mustUseRsFec = (speed: string, channelCount: number | null): boolean =>
         speed == SPEED.BF_SPEED_400G ||
+        speed == SPEED.BF_SPEED_200G ||
         (speed == SPEED.BF_SPEED_50G && channelCount === 8) ||
         (channelCount === 4 && speed == SPEED.BF_SPEED_100G)
 
@@ -337,7 +372,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                     <th>PID</th>
                     <th>Port/Channel</th>
                     <th>Breakout &nbsp; <InfoBox>
-                        <p>In channelized mode, the port is split across multiple channels, e.g., 4x25G, 4x100G, or 8x50G. Configure `channel_count` in config.json and restart the controller.</p>
+                        <p>In channelized mode, the port is split across multiple channels, e.g., 2x200G, 4x100G, or 8x50G. Configure `channel_count` in config.json and restart the controller. With `channel_count: 2` the port is split into two halves of the cage, and each half's speed can be changed at runtime.</p>
                     </InfoBox>
                     </th>
                     <th>Speed</th>
@@ -401,13 +436,21 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                     <Dropdown.Menu className="w-100">
                                         {Object.keys(speed_mapping)
                                             .filter(f => {
+                                                // Speeds the ASIC cannot do at all are hidden.
+                                                // Speeds that are only unavailable in the current
+                                                // channel layout stay visible but disabled, so the
+                                                // tooltip can explain why.
+                                                if (p4tg_infos.asic != ASIC.Tofino2) {
+                                                    return f != SPEED.BF_SPEED_200G && f != SPEED.BF_SPEED_400G
+                                                }
+
                                                 return true
                                             })
                                             .map(f => {
                                                 const channelCount = getChannelCount(v.port)
                                                 const disabled =
                                                     !isSpeedAllowed(f, channelCount) ||
-                                                    !hasCompatibleRuntimeLayout(v.port, f, channelCount)
+                                                    !hasCompatibleRuntimeLayout(v.port, channelCount)
                                                 const tooltip = getSpeedTooltip(v.port, f, channelCount)
 
                                                 const handleClick = async () => {
@@ -473,7 +516,7 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
                                                             )
                                                         }
                                                     >
-                                                        <span className="d-inline-block">{item}</span>
+                                                        <span className="d-block">{item}</span>
                                                     </OverlayTrigger>
                                                 )
                                             })}

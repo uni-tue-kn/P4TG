@@ -278,12 +278,12 @@ impl Config {
             let speed = port.speed_or_default(is_tofino2);
             let channel_count = port.channel_count;
 
-            if !is_tofino2 && speed == Speed::BF_SPEED_400G {
+            if !is_tofino2 && matches!(speed, Speed::BF_SPEED_200G | Speed::BF_SPEED_400G) {
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     format!(
-                        "Port {} uses BF_SPEED_400G, which is only supported on Tofino 2.",
-                        port.port
+                        "Port {} uses {:?}, which is only supported on Tofino 2.",
+                        port.port, speed
                     ),
                 )));
             }

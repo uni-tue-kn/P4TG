@@ -228,7 +228,7 @@ pub async fn add_port(
                 pm,
                 &state.switch,
                 payload.front_panel_port,
-                payload.channel_count,
+                &resolved_mode.channels,
             )
             .await;
 
@@ -242,17 +242,16 @@ pub async fn add_port(
     }
 }
 
+/// `channels` are the active channels of the port's resolved mode. Channelized
+/// modes are not contiguous (`4x100G` is `0,2,4,6`, `2x` is `0,4` or `0,2`), so
+/// membership is tested instead of comparing against the channel count.
 async fn warn_on_mixed_breakout_rates(
     pm: &rbfrt::util::PortManager,
     switch: &rbfrt::SwitchConnection,
     front_panel_port: u32,
-    channel_count: Option<u8>,
+    channels: &[u8],
 ) {
-    let Some(channel_count) = channel_count else {
-        return;
-    };
-
-    if channel_count <= 1 {
+    if channels.len() <= 1 {
         return;
     }
 
@@ -264,7 +263,7 @@ async fn warn_on_mixed_breakout_rates(
 
     for port in ports.into_iter().filter(|port| {
         let (port_number, channel) = port.get_frontpanel_port();
-        port_number == front_panel_port && channel < channel_count
+        port_number == front_panel_port && channels.contains(&channel)
     }) {
         active_speeds.insert(format!("{:?}", port.get_speed()));
     }

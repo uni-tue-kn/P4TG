@@ -442,6 +442,7 @@ export enum SPEED {
     BF_SPEED_40G = "BF_SPEED_40G",
     BF_SPEED_50G = "BF_SPEED_50G",
     BF_SPEED_100G = "BF_SPEED_100G",
+    BF_SPEED_200G = "BF_SPEED_200G",
     BF_SPEED_400G = "BF_SPEED_400G"
 }
 
@@ -452,6 +453,7 @@ export const SPEED_GBPS: Record<SPEED, number> = {
     [SPEED.BF_SPEED_40G]: 40,
     [SPEED.BF_SPEED_50G]: 50,
     [SPEED.BF_SPEED_100G]: 100,
+    [SPEED.BF_SPEED_200G]: 200,
     [SPEED.BF_SPEED_400G]: 400,
 };
 

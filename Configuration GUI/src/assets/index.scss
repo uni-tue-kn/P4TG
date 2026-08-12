@@ -508,6 +508,25 @@ table {
             color: #fff;
         }
     }
+
+    /* Bootstrap's invalid state stacks a validation icon next to the caret and
+       widens the padding for it, which changes the width of the control and
+       shifts everything around it (e.g. the port mapping table). Drop the icon
+       and keep the original geometry; the invalid state is signalled by the red
+       border and a glow, neither of which affects layout. The selectors mirror
+       Bootstrap's own to win on specificity. */
+    &.is-invalid:not([multiple]):not([size]),
+    &.is-invalid:not([multiple])[size="1"] {
+        --bs-form-select-bg-icon: none;
+
+        padding-right: 2.25rem;
+        background-position: right 0.75rem center;
+        background-size: 16px 12px;
+    }
+
+    &.is-invalid {
+        box-shadow: 0 0 0 0.15rem rgba(var(--bs-danger-rgb), 0.25);
+    }
 }
 
 .modal-title,

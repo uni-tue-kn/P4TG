@@ -275,6 +275,11 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const eligiblePorts = ports.filter((port) => port.loopback == "BF_LPBK_NONE" || p4tg_infos.loopback);
 
+    // A TX port that sends traffic without an RX port assigned still generates
+    // traffic, but nothing measures it. Flag the RX selection in that case.
+    const hasActiveStream = (port: PortInfo) => stream_settings.some((setting) =>
+        setting.active && setting.port === port.port && setting.channel === port.channel);
+
     const setActiveDraftConfig = (config: TrafficGenData) => {
         set_streams(config.streams);
         set_stream_settings(config.stream_settings);
@@ -2334,6 +2339,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                     <Form.Select
                                                                         disabled={running || !v.status}
                                                                         required
+                                                                        isInvalid={hasActiveStream(v) && !current}
                                                                         value={defaultValue}
                                                                         onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
                                                                             const value = event.target.value;

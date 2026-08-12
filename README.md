@@ -24,6 +24,7 @@
   - [Quick Start](#quick-start)
   - [Configuration](#configuration)
     - [Configuration Options](#configuration-options)
+    - [Channelization](#channelization)
     - [64-port Tofino](#64-port-tofino)
 - [🤖 Test Automation](#-test-automation)
 - [🔄 Update Guide](#-update-guide)
@@ -184,6 +185,12 @@ Example:
       "speed": "BF_SPEED_50G"
     },
     {
+      "port": 5,
+      "mac": "e2:bd:1e:02:dc:b4",
+      "channel_count": 2,
+      "speed": "BF_SPEED_200G"
+    },
+    {
       "port": 3,
       "mac": "00:d0:67:a2:a9:42",
       "speed": "BF_SPEED_100G",
@@ -196,31 +203,46 @@ Example:
 
 #### Configuration Options
 
-| Option             | Valid Values                                                                                          |
-| ------------------ | ----------------------------------------------------------------------------------------------------- |
-| `mac`              | Any valid MAC address                                                                                 |
-| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_50G` · `BF_SPEED_100G` · `BF_SPEED_400G` |
-| `channel_count`    | `4` · `8`                                                                                             |
-| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                                        |
-| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                                       |
-| `breakout_mode`    | Deprecated: `true` · `false`                                                                          |
+| Option             | Valid Values                                                                                                            |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `mac`              | Any valid MAC address                                                                                                   |
+| `speed`            | `BF_SPEED_10G` · `BF_SPEED_25G` · `BF_SPEED_40G` · `BF_SPEED_50G` · `BF_SPEED_100G` · `BF_SPEED_200G` · `BF_SPEED_400G` |
+| `channel_count`    | `2` · `4` · `8`                                                                                                         |
+| `auto_negotiation` | `PM_AN_DEFAULT` · `PM_AN_FORCE_ENABLE` · `PM_AN_FORCE_DISABLE`                                                          |
+| `fec`              | `BF_FEC_TYP_NONE` · `BF_FEC_TYP_FC` · `BF_FEC_TYP_REED_SOLOMON`                                                         |
+| `breakout_mode`    | Deprecated: `true` · `false`                                                                                            |
+
+#### Channelization
+
+`speed` is always the per-channel speed; without `channel_count` the port is configured as `1x<speed>`. A channel is addressed by the first lane it uses, so channel numbers are not contiguous in every mode. `channel_count: 2` splits the cage into two equally sized halves, which is the layout a breakout cable with two legs expects.
+
+| `channel_count` | `speed`               | Channels      | Lanes per channel | Tofino 1 | Tofino 2 |
+| --------------- | --------------------- | ------------- | ----------------- | -------- | -------- |
+| *(none)*        | `10G` · `25G`         | `0`           | 1                 | ✓        | ✓        |
+| *(none)*        | `50G`                 | `0`           | 2                 | ✓        | ✓        |
+| *(none)*        | `40G` · `100G`        | `0`           | 4                 | ✓        | ✓        |
+| *(none)*        | `200G`                | `0`           | 4                 | —        | ✓        |
+| *(none)*        | `400G`                | `0`           | 8                 | —        | ✓        |
+| `2`             | `10G` · `25G`         | `0,2` / `0,4` | 1                 | ✓        | ✓        |
+| `2`             | `50G`                 | `0,2` / `0,4` | 2                 | ✓        | ✓        |
+| `2`             | `40G` · `100G`        | `0,4`         | 4                 | —        | ✓        |
+| `2`             | `200G`                | `0,4`         | 4                 | —        | ✓        |
+| `4`             | `10G` · `25G`         | `0,1,2,3` / `0,2,4,6` | 1         | ✓        | ✓        |
+| `4`             | `50G` · `100G`        | `0,2,4,6`     | 2                 | —        | ✓        |
+| `8`             | `10G` · `25G` · `50G` | `0`–`7`       | 1                 | —        | ✓        |
+
+Channels are listed as `Tofino 1 / Tofino 2` where the two differ, because the cage is 4 lanes wide on Tofino 1 and 8 on Tofino 2. Each channel gets an equally sized slot of the cage, and lanes that the configured speed does not need stay inactive: `2x25G` on Tofino 2 uses lanes 0 and 4 and leaves the other six dark, and `4x25G` uses lanes 0, 2, 4, and 6.
+
+`40G` is available in the `1x` and `2x` modes but not with `channel_count: 4`. It exists only as a 4-lane variant, and the SDE rejects the 2-lane form that a `4x` channel would need.
+
+Runtime speed changes through the GUI or `POST /api/ports` are rejected when they would change the active channel layout, for example `4x25G -> 4x100G`. Those require updating `config.json` and restarting the controller. `channel_count: 2` is the only mode whose layout is identical for every speed it supports, so each half can be switched between all of its speeds at runtime, independently of the other half.
 
 Notes:
-- `speed` always describes the per-channel speed. Without `channel_count`, the port is configured as `1x<speed>`.
-- Valid `channel_count` combinations are:
-  - Tofino 1: `4x10G`, `4x25G`
-  - Tofino 2: `4x10G`, `4x25G`, `4x100G`, `8x10G`, `8x25G`, `8x50G`
-- `channel_count: 4` with `speed: 100G` on Tofino 2 uses channels `0,2,4,6`.
-- `channel_count: 4` with `speed: 10G/25G` uses channels `0,1,2,3`.
-- Runtime speed changes through the GUI or `POST /api/ports` are rejected if they would require a different active channel layout. For example, `4x25G -> 4x100G` requires updating `config.json` and restarting the controller.
-- Backward compatibility: `breakout_mode: true` is deprecated, logs a warning, and is interpreted as legacy 4-channel breakout. `breakout_mode: false` is deprecated, logs a warning, and disables channelization.
-- ARP reply and MAC can be changed at runtime per `port/channel` in the Ports GUI or via `POST /api/ports/arp` (optional `channel` field).
 - Runtime ARP/MAC changes are kept in controller memory and are reset to `config.json` values on controller restart.
 - Hardware QSFP details are available from the Ports GUI or `GET /api/qsfp`. Add `?port=1&channel=0` to retrieve the detailed `module-show 1/0` view. The endpoint navigates `ucli -> bf_pltfm -> qsfp` through bf_switchd's TCP CLI and requires a BSP that provides those commands.
 - Default/mandatory FEC rules:
-  - `400G`, `4x100G`, and `8x50G` use `BF_FEC_TYP_REED_SOLOMON`
-  - `4x10G`, `4x25G`, `1x10G`, `1x25G`, `1x40G`, `1x50G`, and `1x100G` default to `BF_FEC_TYP_NONE`
-  - `1x50G` additionally allows `BF_FEC_TYP_REED_SOLOMON` to be configured manually if needed
+  - `200G`, `400G`, `4x100G`, and `8x50G` require `BF_FEC_TYP_REED_SOLOMON`
+  - every other combination defaults to `BF_FEC_TYP_NONE` and accepts any FEC its speed supports (`10G` and `40G` exclude RS, `100G` excludes FC)
 
 
 #### 64-port Tofino

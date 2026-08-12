@@ -225,7 +225,7 @@ pub(crate) fn resolve_front_panel_mode(
 ) -> Option<ResolvedPortMode> {
     match effective_channel_count(channel_count) {
         1 => {
-            if *speed == Speed::BF_SPEED_400G && !is_tofino2 {
+            if !is_tofino2 && matches!(speed, Speed::BF_SPEED_200G | Speed::BF_SPEED_400G) {
                 None
             } else {
                 Some(ResolvedPortMode {
@@ -235,24 +235,68 @@ pub(crate) fn resolve_front_panel_mode(
                 })
             }
         }
-        4 => match speed {
-            Speed::BF_SPEED_10G => Some(ResolvedPortMode {
-                channels: (0..=3).collect(),
-                speed: Speed::BF_SPEED_10G,
-                n_lanes: None,
-            }),
-            Speed::BF_SPEED_25G => Some(ResolvedPortMode {
-                channels: (0..=3).collect(),
-                speed: Speed::BF_SPEED_25G,
-                n_lanes: None,
-            }),
-            Speed::BF_SPEED_100G if is_tofino2 => Some(ResolvedPortMode {
-                channels: vec![0, 2, 4, 6],
-                speed: Speed::BF_SPEED_100G,
-                n_lanes: Some(2),
-            }),
-            _ => None,
-        },
+        // Two equally sized halves of the cage, addressed by their starting
+        // lane. A speed fits a half if its default lane count does; no
+        // `n_lanes` override is needed for any of them.
+        2 => {
+            if is_tofino2 {
+                // 8-lane cage -> two 4-lane halves. Only 400G (R8) is too wide.
+                match speed {
+                    Speed::BF_SPEED_400G => None,
+                    _ => Some(ResolvedPortMode {
+                        channels: vec![0, 4],
+                        speed: speed.clone(),
+                        n_lanes: None,
+                    }),
+                }
+            } else {
+                // 4-lane cage -> two 2-lane halves. 40G and 100G default to R4
+                // and would claim the whole cage.
+                match speed {
+                    Speed::BF_SPEED_10G | Speed::BF_SPEED_25G | Speed::BF_SPEED_50G => {
+                        Some(ResolvedPortMode {
+                            channels: vec![0, 2],
+                            speed: speed.clone(),
+                            n_lanes: None,
+                        })
+                    }
+                    _ => None,
+                }
+            }
+        }
+        // Four equally sized slots of the cage.
+        4 => {
+            if is_tofino2 {
+                // 8-lane cage -> four 2-lane slots. 10G and 25G have no 2-lane
+                // variant and use the first lane of their slot.
+                match speed {
+                    Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => Some(ResolvedPortMode {
+                        channels: vec![0, 2, 4, 6],
+                        speed: speed.clone(),
+                        n_lanes: None,
+                    }),
+                    // 40G is deliberately absent: the SDE rejects 40G-R2
+                    // ("Table Add failed table:$PORT Invalid arguments"), so
+                    // 40G only exists as R4 and cannot fit a 2-lane slot.
+                    Speed::BF_SPEED_50G | Speed::BF_SPEED_100G => Some(ResolvedPortMode {
+                        channels: vec![0, 2, 4, 6],
+                        speed: speed.clone(),
+                        n_lanes: Some(2),
+                    }),
+                    _ => None,
+                }
+            } else {
+                // 4-lane cage -> four 1-lane slots.
+                match speed {
+                    Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => Some(ResolvedPortMode {
+                        channels: (0..=3).collect(),
+                        speed: speed.clone(),
+                        n_lanes: None,
+                    }),
+                    _ => None,
+                }
+            }
+        }
         8 => match speed {
             Speed::BF_SPEED_10G | Speed::BF_SPEED_25G | Speed::BF_SPEED_50G if is_tofino2 => {
                 Some(ResolvedPortMode {
@@ -282,19 +326,31 @@ pub(crate) fn resolve_recirculation_mode(
             },
             n_lanes: None,
         }),
-        4 => match speed {
-            Speed::BF_SPEED_100G if is_tofino2 => Some(ResolvedPortMode {
-                channels: vec![0, 2, 4, 6],
-                speed: Speed::BF_SPEED_100G,
-                n_lanes: Some(2),
-            }),
-            Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => Some(ResolvedPortMode {
-                channels: (0..=3).collect(),
-                speed: Speed::BF_SPEED_25G,
-                n_lanes: None,
-            }),
-            _ => None,
-        },
+        // Ceiling of a half on the respective ASIC, so the recirculation ports
+        // never need reconfiguring when a half changes speed.
+        2 => Some(ResolvedPortMode {
+            channels: if is_tofino2 { vec![0, 4] } else { vec![0, 2] },
+            speed: if is_tofino2 {
+                Speed::BF_SPEED_200G
+            } else {
+                Speed::BF_SPEED_50G
+            },
+            n_lanes: None,
+        }),
+        // Ceiling of a slot on the respective ASIC.
+        4 => Some(ResolvedPortMode {
+            channels: if is_tofino2 {
+                vec![0, 2, 4, 6]
+            } else {
+                (0..=3).collect()
+            },
+            speed: if is_tofino2 {
+                Speed::BF_SPEED_100G
+            } else {
+                Speed::BF_SPEED_25G
+            },
+            n_lanes: if is_tofino2 { Some(2) } else { None },
+        }),
         8 => {
             if is_tofino2 {
                 Some(ResolvedPortMode {
@@ -344,6 +400,7 @@ pub(crate) fn sanitize_fec(speed: &Speed, channel_count: Option<u8>, requested: 
 
 fn requires_rs(speed: &Speed, channel_count: Option<u8>) -> bool {
     *speed == Speed::BF_SPEED_400G
+        || *speed == Speed::BF_SPEED_200G
         || (*speed == Speed::BF_SPEED_50G && effective_channel_count(channel_count) == 8)
         || (*speed == Speed::BF_SPEED_100G && effective_channel_count(channel_count) == 4)
 }
