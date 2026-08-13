@@ -33,65 +33,45 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct PortConfiguration {
+    #[schema(example = 3)]
     front_panel_port: u32,
+    #[schema(value_type = String, example = "BF_SPEED_50G")]
     speed: Speed,
+    #[schema(value_type = String, example = "BF_FEC_TYP_NONE")]
     fec: FEC,
+    #[schema(value_type = String, example = "PM_AN_DEFAULT")]
     auto_neg: AutoNegotiation,
+    #[schema(example = 4)]
     channel_count: Option<u8>,
+    #[schema(example = 2)]
     channel: Option<u8>,
 }
 
-impl utoipa::ToSchema for PortConfiguration {
-    fn name() -> std::borrow::Cow<'static, str> {
-        std::borrow::Cow::Borrowed("Pet")
-    }
-}
-impl utoipa::PartialSchema for PortConfiguration {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        utoipa::openapi::ObjectBuilder::new()
-            .property(
-                "pid",
-                utoipa::openapi::ObjectBuilder::new()
-                    .schema_type(utoipa::openapi::schema::Type::Integer)
-                    .format(Some(utoipa::openapi::SchemaFormat::KnownFormat(
-                        utoipa::openapi::KnownFormat::Int32,
-                    ))),
-            )
-            .required("id")
-            .property(
-                "channel_count",
-                utoipa::openapi::ObjectBuilder::new()
-                    .schema_type(utoipa::openapi::schema::Type::Integer)
-                    .format(Some(utoipa::openapi::SchemaFormat::KnownFormat(
-                        utoipa::openapi::KnownFormat::Int32,
-                    ))),
-            )
-            .property(
-                "speed",
-                utoipa::openapi::ObjectBuilder::new()
-                    .schema_type(utoipa::openapi::schema::Type::String),
-            )
-            .required("speed")
-            .property(
-                "fec",
-                utoipa::openapi::ObjectBuilder::new()
-                    .schema_type(utoipa::openapi::schema::Type::String),
-            )
-            .required("fec")
-            .property(
-                "auto_neg",
-                utoipa::openapi::ObjectBuilder::new()
-                    .schema_type(utoipa::openapi::schema::Type::String),
-            )
-            .required("auto_neg")
-            .into()
-    }
+/// OpenAPI representation of the `rbfrt::util::Port` returned by `GET /ports`.
+#[derive(ToSchema)]
+#[allow(dead_code)]
+pub struct PortResponse {
+    port: u32,
+    channel: u8,
+    pid: Option<u32>,
+    n_lanes: Option<u32>,
+    #[schema(value_type = String)]
+    speed: String,
+    #[schema(value_type = String)]
+    auto_neg: String,
+    #[schema(value_type = String)]
+    fec: String,
+    #[schema(value_type = String)]
+    loopback: String,
+    enable: bool,
+    status: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct ArpReply {
     front_panel_port: u32,
     arp_reply: bool,
@@ -105,7 +85,7 @@ pub struct ArpReply {
     path = "/api/ports",
     responses(
     (status = 200,
-    body = String,
+    body = [PortResponse],
     description = "Returns the currently configured ports.",
     example = json!(*docs::ports::EXAMPLE_GET_1)
     ))
@@ -130,11 +110,13 @@ pub async fn ports(State(state): State<Arc<AppState>>) -> Response {
     path = "/api/ports",
     request_body(
         content = PortConfiguration,
-        examples(("Example 1" = (summary = "Configure dev port 136 with 100G, no FEC, and auto negotiation.", value = json!(*docs::ports::EXAMPLE_POST_1_REQUEST))),
+        examples(("Example 1" = (summary = "Configure front panel port 2, channel 0 with 100G, no FEC, and auto negotiation.", value = json!(*docs::ports::EXAMPLE_POST_1_REQUEST))),
         )
     ),
     responses(
-    (status = 200))
+    (status = 201, description = "Port configuration applied."),
+    (status = 400, description = "Invalid port, channel layout, or FEC configuration."),
+    (status = 500, description = "The switch rejected the port update."))
 )]
 pub async fn add_port(
     State(state): State<Arc<AppState>>,
@@ -156,8 +138,26 @@ pub async fn add_port(
             .into_response();
     }
 
+    let current_port_mappings: Vec<_> = state
+        .port_mapping
+        .values()
+        .filter(|entry| entry.front_panel_port == payload.front_panel_port)
+        .collect();
+    let current_channels: BTreeSet<u8> = current_port_mappings
+        .iter()
+        .map(|entry| entry.channel)
+        .collect();
+    let configured_channel_count = current_port_mappings
+        .iter()
+        .find_map(|entry| entry.channel_count);
+    let channel_count = effective_request_channel_count(
+        payload.channel_count,
+        configured_channel_count,
+        &current_channels,
+    );
+
     let Some(resolved_mode) =
-        resolve_front_panel_mode(&payload.speed, payload.channel_count, state.tofino2)
+        resolve_front_panel_mode(&payload.speed, channel_count, state.tofino2)
     else {
         return (
             StatusCode::BAD_REQUEST,
@@ -165,18 +165,12 @@ pub async fn add_port(
                 "Port {} does not support speed {:?} with channel_count {}.",
                 payload.front_panel_port,
                 payload.speed,
-                payload.channel_count.unwrap_or(1)
+                channel_count.unwrap_or(1)
             ))),
         )
             .into_response();
     };
 
-    let current_channels: BTreeSet<u8> = state
-        .port_mapping
-        .values()
-        .filter(|entry| entry.front_panel_port == payload.front_panel_port)
-        .map(|entry| entry.channel)
-        .collect();
     let requested_channels: BTreeSet<u8> = resolved_mode.channels.iter().copied().collect();
 
     if !current_channels.is_empty() && current_channels != requested_channels {
@@ -201,13 +195,26 @@ pub async fn add_port(
                 "Channel {} is not available for port {} with channel_count {}.",
                 channel,
                 payload.front_panel_port,
-                payload.channel_count.unwrap_or(1)
+                channel_count.unwrap_or(1)
             ))),
         )
             .into_response();
     }
 
-    let fec = sanitize_fec(&payload.speed, payload.channel_count, payload.fec.clone());
+    let fec = sanitize_fec(&payload.speed, channel_count, payload.fec.clone());
+    if fec != payload.fec {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(Error::new(format!(
+                "FEC {:?} is not supported for speed {:?} with channel_count {}. Use {:?}.",
+                payload.fec,
+                payload.speed,
+                channel_count.unwrap_or(1),
+                fec
+            ))),
+        )
+            .into_response();
+    }
 
     let mut req = Port::new(payload.front_panel_port, channel)
         .speed(payload.speed.clone())
@@ -240,6 +247,23 @@ pub async fn add_port(
         )
             .into_response(),
     }
+}
+
+/// Use the layout configured at startup when API clients omit `channel_count`.
+/// Older clients only send port/channel/speed/FEC/AN, and treating an omitted
+/// value as one channel makes every breakout update look like a layout change.
+fn effective_request_channel_count(
+    requested: Option<u8>,
+    configured: Option<u8>,
+    current_channels: &BTreeSet<u8>,
+) -> Option<u8> {
+    requested.or(configured).or_else(|| {
+        if current_channels.len() > 1 {
+            u8::try_from(current_channels.len()).ok()
+        } else {
+            None
+        }
+    })
 }
 
 /// `channels` are the active channels of the port's resolved mode. Channelized
@@ -275,6 +299,16 @@ async fn warn_on_mixed_breakout_rates(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/ports/arp",
+    request_body = ArpReply,
+    responses(
+        (status = 201, description = "ARP reply configuration applied."),
+        (status = 400, description = "Invalid or unavailable port/channel/MAC."),
+        (status = 500, description = "Hardware table update failed.")
+    )
+)]
 pub async fn arp_reply(State(state): State<Arc<AppState>>, payload: Json<ArpReply>) -> Response {
     let mapping = &state.port_mapping;
 

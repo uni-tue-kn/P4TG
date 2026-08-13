@@ -216,26 +216,26 @@ Example:
 
 `speed` is always the per-channel speed; without `channel_count` the port is configured as `1x<speed>`. A channel is addressed by the first lane it uses, so channel numbers are not contiguous in every mode. `channel_count: 2` splits the cage into two equally sized halves, which is the layout a breakout cable with two legs expects.
 
-| `channel_count` | `speed`               | Channels      | Lanes per channel | Tofino 1 | Tofino 2 |
-| --------------- | --------------------- | ------------- | ----------------- | -------- | -------- |
-| *(none)*        | `10G` · `25G`         | `0`           | 1                 | ✓        | ✓        |
-| *(none)*        | `50G`                 | `0`           | 2                 | ✓        | ✓        |
-| *(none)*        | `40G` · `100G`        | `0`           | 4                 | ✓        | ✓        |
-| *(none)*        | `200G`                | `0`           | 4                 | —        | ✓        |
-| *(none)*        | `400G`                | `0`           | 8                 | —        | ✓        |
-| `2`             | `10G` · `25G`         | `0,2` / `0,4` | 1                 | ✓        | ✓        |
-| `2`             | `50G`                 | `0,2` / `0,4` | 2                 | ✓        | ✓        |
-| `2`             | `40G` · `100G`        | `0,4`         | 4                 | —        | ✓        |
-| `2`             | `200G`                | `0,4`         | 4                 | —        | ✓        |
-| `4`             | `10G` · `25G`         | `0,1,2,3` / `0,2,4,6` | 1         | ✓        | ✓        |
-| `4`             | `50G` · `100G`        | `0,2,4,6`     | 2                 | —        | ✓        |
-| `8`             | `10G` · `25G` · `50G` | `0`–`7`       | 1                 | —        | ✓        |
+| `channel_count` | `speed`               | Channels              | Lanes per channel | Tofino 1 | Tofino 2 |
+| --------------- | --------------------- | --------------------- | ----------------- | -------- | -------- |
+| *(none)*        | `10G` · `25G`         | `0`                   | 1                 | ✓        | ✓        |
+| *(none)*        | `50G`                 | `0`                   | 2                 | ✓        | ✓        |
+| *(none)*        | `40G` · `100G`        | `0`                   | 4                 | ✓        | ✓        |
+| *(none)*        | `200G`                | `0`                   | 4                 | —        | ✓        |
+| *(none)*        | `400G`                | `0`                   | 8                 | —        | ✓        |
+| `2`             | `10G` · `25G`         | `0,2` / `0,4`         | 1                 | ✓        | ✓        |
+| `2`             | `50G`                 | `0,2` / `0,4`         | 2                 | ✓        | ✓        |
+| `2`             | `40G` · `100G`        | `0,4`                 | 4                 | —        | ✓        |
+| `2`             | `200G`                | `0,4`                 | 4                 | —        | ✓        |
+| `4`             | `10G` · `25G`         | `0,1,2,3` / `0,2,4,6` | 1                 | ✓        | ✓        |
+| `4`             | `50G` · `100G`        | `0,2,4,6`             | 2                 | —        | ✓        |
+| `8`             | `10G` · `25G` · `50G` | `0`–`7`               | 1                 | —        | ✓        |
 
 Channels are listed as `Tofino 1 / Tofino 2` where the two differ, because the cage is 4 lanes wide on Tofino 1 and 8 on Tofino 2. Each channel gets an equally sized slot of the cage, and lanes that the configured speed does not need stay inactive: `2x25G` on Tofino 2 uses lanes 0 and 4 and leaves the other six dark, and `4x25G` uses lanes 0, 2, 4, and 6.
 
 `40G` is available in the `1x` and `2x` modes but not with `channel_count: 4`. It exists only as a 4-lane variant, and the SDE rejects the 2-lane form that a `4x` channel would need.
 
-Runtime speed changes through the GUI or `POST /api/ports` are rejected when they would change the active channel layout, for example `4x25G -> 4x100G`. Those require updating `config.json` and restarting the controller. `channel_count: 2` is the only mode whose layout is identical for every speed it supports, so each half can be switched between all of its speeds at runtime, independently of the other half.
+Within a configured `channel_count`, every supported speed uses the same channel layout. The GUI and `POST /api/ports` can therefore change each channel's speed independently at runtime, for example from `4x25G` to a mix of 25G and 100G channels. Changing `channel_count` still requires updating `config.json` and restarting the controller.
 
 Notes:
 - Runtime ARP/MAC changes are kept in controller memory and are reset to `config.json` values on controller restart.

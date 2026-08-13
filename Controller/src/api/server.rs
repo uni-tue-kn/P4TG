@@ -42,7 +42,7 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::api::helper::serve_static_files::{serve_index, static_path};
 use crate::api::histogram;
 use crate::api::pdf_report::{p4tg_report as p4tg_report_handler, P4tgReportRequest};
-use crate::api::ports::{arp_reply, PortConfiguration};
+use crate::api::ports::{arp_reply, ArpReply, PortConfiguration, PortResponse};
 use crate::api::statistics::time_statistics;
 use crate::api::tables;
 use crate::api::tables::tables;
@@ -64,6 +64,7 @@ use crate::core::traffic_gen_core::types::*;
         reset::reset,
         ports::ports,
         ports::add_port,
+        ports::arp_reply,
         crate::api::qsfp::qsfp,
         histogram::config,
         online::online
@@ -71,6 +72,8 @@ use crate::core::traffic_gen_core::types::*;
     components(
         schemas(TrafficGenData,
         PortConfiguration,
+        PortResponse,
+        ArpReply,
         GenerationMode,
         RxMappingMode,
         Encapsulation,

@@ -312,7 +312,6 @@ pub(crate) fn resolve_front_panel_mode(
 }
 
 pub(crate) fn resolve_recirculation_mode(
-    speed: &Speed,
     channel_count: Option<u8>,
     is_tofino2: bool,
 ) -> Option<ResolvedPortMode> {
@@ -373,7 +372,7 @@ pub(crate) fn resolve_port_layout(
 ) -> Option<ResolvedPortLayout> {
     Some(ResolvedPortLayout {
         front_panel: resolve_front_panel_mode(speed, channel_count, is_tofino2)?,
-        recirculation: resolve_recirculation_mode(speed, channel_count, is_tofino2)?,
+        recirculation: resolve_recirculation_mode(channel_count, is_tofino2)?,
     })
 }
 

@@ -21,6 +21,7 @@ use log::info;
 use macaddr::MacAddr;
 use std::collections::HashMap;
 
+use crate::core::Config;
 use crate::PortMapping;
 use rbfrt::error::RBFRTError;
 use rbfrt::table::MatchValue;
@@ -43,6 +44,7 @@ impl Arp {
         &self,
         switch: &SwitchConnection,
         port_mapping: &HashMap<u32, PortMapping>,
+        config: &Config,
     ) -> Result<(), RBFRTError> {
         switch.clear_table(ARP_REPLY_TABLE).await?;
 
@@ -57,7 +59,10 @@ impl Arp {
                 .action(&format!("{ACTION_PREFIX}.answer_arp"))
                 .action_data("e_port", mapping.tx_recirculation)
                 .action_data("src_addr", mapping.mac.as_bytes().to_vec())
-                .action_data("valid", false);
+                .action_data(
+                    "valid",
+                    config.arp_reply_for_channel(mapping.front_panel_port, mapping.channel),
+                );
 
             reqs.push(req);
         }

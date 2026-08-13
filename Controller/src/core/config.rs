@@ -1,13 +1,15 @@
 use crate::core::traffic_gen_core::helper::{
-    default_fec, effective_channel_count, resolve_front_panel_mode, sanitize_fec,
+    default_fec, effective_channel_count, resolve_front_panel_mode,
 };
 use log::warn;
 use macaddr::MacAddr;
 use rbfrt::util::{AutoNegotiation, Speed, FEC};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     error::Error,
+    io::Read,
+    mem,
     str::FromStr,
 };
 
@@ -26,6 +28,7 @@ enum LegacyBreakoutMode {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct PortDescription {
     pub(crate) port: u32,
     pub(crate) mac: String,
@@ -49,6 +52,28 @@ pub struct PortDescription {
 }
 
 impl PortDescription {
+    fn default_single(port: u32, mac: String, is_tofino2: bool) -> Self {
+        let speed = if is_tofino2 {
+            Speed::BF_SPEED_400G
+        } else {
+            Speed::BF_SPEED_100G
+        };
+
+        Self {
+            port,
+            mac,
+            speed: Some(speed.clone()),
+            fec: Some(default_fec(&speed, None)),
+            auto_negotiation: Some(AutoNegotiation::PM_AN_DEFAULT),
+            recirculation_ports: None,
+            channel_count: None,
+            legacy_breakout_mode: None,
+            arp_reply: None,
+            channel_mac: HashMap::new(),
+            channel_arp_reply: HashMap::new(),
+        }
+    }
+
     pub(crate) fn speed_or_default(&self, is_tofino2: bool) -> Speed {
         self.speed.clone().unwrap_or(if is_tofino2 {
             Speed::BF_SPEED_400G
@@ -70,6 +95,7 @@ impl PortDescription {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct RecirculationPair {
     pub(crate) tx_port: u32,
     pub(crate) rx_port: u32,
@@ -81,6 +107,113 @@ pub struct Config {
 }
 
 impl Config {
+    /// Loads each `tg_ports` entry independently. Invalid entries with a usable
+    /// front-panel port number are replaced by a single-channel default for the
+    /// detected ASIC; entries without a usable identity are skipped.
+    pub(crate) fn from_reader_with_port_fallback<R: Read>(
+        reader: R,
+        num_ports: u32,
+        is_tofino2: bool,
+    ) -> Result<Self, Box<dyn Error>> {
+        let document: serde_json::Value = serde_json::from_reader(reader)?;
+        let object = document
+            .as_object()
+            .ok_or_else(|| invalid_config("config.json must contain a JSON object."))?;
+        let entries = object
+            .get("tg_ports")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| invalid_config("config.json must contain a `tg_ports` array."))?;
+
+        let mut tg_ports = Vec::with_capacity(entries.len());
+        for (index, raw_entry) in entries.iter().enumerate() {
+            let recovered_port = raw_entry
+                .get("port")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|port| u32::try_from(port).ok())
+                .filter(|port| *port > 0 && *port <= num_ports);
+            let recovered_mac = raw_entry
+                .get("mac")
+                .and_then(serde_json::Value::as_str)
+                .filter(|mac| MacAddr::from_str(mac).is_ok())
+                .map(str::to_owned);
+            // Preserved across a fallback: auto-assigning recirculation ports to
+            // a port that had a manual mapping silently changes the topology.
+            let recovered_recirculation = raw_entry
+                .get("recirculation_ports")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<RecirculationPair>(value).ok());
+
+            let parsed = serde_json::from_value::<PortDescription>(raw_entry.clone());
+            let mut port = match parsed {
+                Ok(port) => port,
+                Err(err) => {
+                    let Some(port) = recovered_port else {
+                        warn!(
+                            "Ignoring invalid config.json tg_ports entry #{} because no valid front-panel port can be recovered: {}",
+                            index + 1,
+                            err
+                        );
+                        continue;
+                    };
+                    let mac = recovered_mac
+                        .clone()
+                        .unwrap_or_else(|| default_mac_for_port(port));
+                    warn!(
+                        "Invalid config.json entry for port {port}: {err}. Using the default single-channel configuration."
+                    );
+                    let mut fallback = PortDescription::default_single(port, mac, is_tofino2);
+                    fallback.recirculation_ports = recovered_recirculation.clone();
+                    fallback
+                }
+            };
+
+            let mut single = Config {
+                tg_ports: vec![port.clone()],
+            };
+            let entry_error = single
+                .normalize(is_tofino2)
+                .and_then(|_| single.validate(num_ports, is_tofino2))
+                .err();
+
+            if let Some(err) = entry_error {
+                let port_number = recovered_port.unwrap_or(port.port);
+                if port_number == 0 || port_number > num_ports {
+                    warn!(
+                        "Ignoring invalid config.json entry #{} because front-panel port {} is outside 1..={}: {}",
+                        index + 1,
+                        port_number,
+                        num_ports,
+                        err
+                    );
+                    continue;
+                }
+
+                let mac = if MacAddr::from_str(&port.mac).is_ok() {
+                    port.mac.clone()
+                } else {
+                    recovered_mac.unwrap_or_else(|| default_mac_for_port(port_number))
+                };
+                warn!(
+                    "Invalid config.json entry for port {port_number}: {err} Using the default single-channel configuration."
+                );
+                let mut fallback = PortDescription::default_single(port_number, mac, is_tofino2);
+                fallback.recirculation_ports = port.recirculation_ports.clone();
+                port = fallback;
+            } else {
+                port = single
+                    .tg_ports
+                    .pop()
+                    .expect("single-entry config must retain its port");
+            }
+
+            tg_ports.push(port);
+        }
+
+        let config = Config { tg_ports };
+        config.validate(num_ports, is_tofino2)?;
+        Ok(config)
+    }
+
     pub fn contains(&self, other: u32) -> bool {
         for i in &self.tg_ports {
             if i.port == other {
@@ -91,7 +224,21 @@ impl Config {
         false
     }
 
+    /// Rewrites deprecated fields, migrates legacy channel IDs, and drops
+    /// channel overrides that the resulting layout cannot address.
+    ///
+    /// The three passes below must stay in this order and must not be merged:
+    ///
+    /// 1. `breakout_mode` is resolved first because `breakout_mode: true` is
+    ///    what produces the `channel_count: 4` + 10G/25G combination that pass 2
+    ///    keys off. Running pass 2 first would skip those ports.
+    /// 2. The Tofino 2 channel-ID migration rewrites `0,1,2,3` to `0,2,4,6`. It
+    ///    must precede pass 3, which would otherwise prune channels 1 and 3 as
+    ///    unaddressable and destroy exactly the overrides being migrated.
+    /// 3. Pruning runs last, once the layout each port will actually use is
+    ///    known, and applies to both ASICs.
     pub(crate) fn normalize(&mut self, is_tofino2: bool) -> Result<(), Box<dyn Error>> {
+        // Pass 1: deprecated `breakout_mode` -> `channel_count` + per-channel speed.
         for port in &mut self.tg_ports {
             let legacy_breakout_mode = port.legacy_breakout_mode.take();
             if let Some(legacy) = legacy_breakout_mode {
@@ -145,6 +292,93 @@ impl Config {
 
             if port.channel_count == Some(1) {
                 port.channel_count = None;
+            }
+        }
+
+        // Pass 2: on Tofino 2, `4x10G`/`4x25G` moved from channels 0,1,2,3 to
+        // 0,2,4,6. Other four-way modes were always 0,2,4,6 and are left alone.
+        if is_tofino2 {
+            for port in &mut self.tg_ports {
+                let speed = port.speed_or_default(is_tofino2);
+                if port.channel_count != Some(4)
+                    || !matches!(speed, Speed::BF_SPEED_10G | Speed::BF_SPEED_25G)
+                {
+                    continue;
+                }
+
+                let override_channels: Vec<_> = port
+                    .channel_mac
+                    .keys()
+                    .chain(port.channel_arp_reply.keys())
+                    .copied()
+                    .collect();
+                let has_legacy_channel = override_channels
+                    .iter()
+                    .any(|channel| matches!(channel, 1 | 3));
+                let has_current_channel = override_channels
+                    .iter()
+                    .any(|channel| matches!(channel, 4 | 6));
+
+                if has_legacy_channel && has_current_channel {
+                    return Err(invalid_config(format!(
+                        "Channel-specific configuration for Tofino 2 port {} mixes legacy channel IDs 0,1,2,3 with current channel IDs 0,2,4,6.",
+                        port.port
+                    )));
+                }
+
+                if has_legacy_channel {
+                    if let Some(channel) = override_channels.iter().find(|channel| **channel > 3) {
+                        return Err(invalid_config(format!(
+                            "Legacy channel-specific configuration for Tofino 2 port {} contains invalid channel ID {}.",
+                            port.port, channel
+                        )));
+                    }
+                    migrate_legacy_tofino2_four_way_map(&mut port.channel_mac);
+                    migrate_legacy_tofino2_four_way_map(&mut port.channel_arp_reply);
+                    warn!(
+                        "Migrated legacy channel-specific configuration for Tofino 2 port {} from channel IDs 0,1,2,3 to 0,2,4,6.",
+                        port.port
+                    );
+                } else if !override_channels.is_empty()
+                    && override_channels
+                        .iter()
+                        .all(|channel| matches!(channel, 0 | 2))
+                {
+                    warn!(
+                        "Channel-specific configuration for Tofino 2 port {} uses only channel IDs 0 and/or 2, which are ambiguous between old and current layouts. Treating them as current physical channel IDs; verify these overrides if the file predates 4x50G support.",
+                        port.port
+                    );
+                }
+            }
+        }
+
+        // Pass 3: every lookup is keyed by a channel of the active layout, so
+        // overrides outside it are never read. Drop them so they cannot reappear
+        // through `GET /api/config` and be saved back into a later config.json.
+        for port in &mut self.tg_ports {
+            let speed = port.speed_or_default(is_tofino2);
+            let Some(mode) = resolve_front_panel_mode(&speed, port.channel_count, is_tofino2)
+            else {
+                continue;
+            };
+
+            let active: HashSet<_> = mode.channels.iter().copied().collect();
+            let stale: BTreeSet<_> = port
+                .channel_mac
+                .keys()
+                .chain(port.channel_arp_reply.keys())
+                .filter(|channel| !active.contains(channel))
+                .copied()
+                .collect();
+
+            if !stale.is_empty() {
+                warn!(
+                    "Channel-specific configuration for port {} targets channels {:?} outside its active channel layout {:?}. These entries are ignored.",
+                    port.port, stale, mode.channels
+                );
+                port.channel_mac.retain(|channel, _| active.contains(channel));
+                port.channel_arp_reply
+                    .retain(|channel, _| active.contains(channel));
             }
         }
 
@@ -313,20 +547,6 @@ impl Config {
                     }
                 }
             }
-
-            if let Some(fec) = port.fec.clone() {
-                let sanitized = sanitize_fec(&speed, channel_count, fec.clone());
-                if sanitized != fec {
-                    warn!(
-                        "Port {} uses unsupported FEC {:?} for speed {:?} and channel_count {}. Using {:?} instead.",
-                        port.port,
-                        fec,
-                        speed,
-                        port.effective_channel_count(),
-                        sanitized
-                    );
-                }
-            }
         }
 
         Ok(())
@@ -368,6 +588,20 @@ impl Config {
         })
     }
 
+    pub(crate) fn arp_reply_for_channel(&self, port: u32, channel: u8) -> bool {
+        self.tg_ports
+            .iter()
+            .find(|candidate| candidate.port == port)
+            .and_then(|candidate| {
+                candidate
+                    .channel_arp_reply
+                    .get(&channel)
+                    .copied()
+                    .or(candidate.arp_reply)
+            })
+            .unwrap_or(false)
+    }
+
     pub(crate) fn materialize_channel_macs(&mut self, is_tofino2: bool) {
         for port in &mut self.tg_ports {
             let speed = port.speed_or_default(is_tofino2);
@@ -383,6 +617,28 @@ impl Config {
             }
         }
     }
+}
+
+fn default_mac_for_port(port: u32) -> String {
+    let bytes = port.to_be_bytes();
+    format!(
+        "02:00:{:02x}:{:02x}:{:02x}:{:02x}",
+        bytes[0], bytes[1], bytes[2], bytes[3]
+    )
+}
+
+fn migrate_legacy_tofino2_four_way_map<T>(values: &mut HashMap<u8, T>) {
+    let previous = mem::take(values);
+    values.extend(previous.into_iter().map(|(channel, value)| {
+        let migrated_channel = match channel {
+            0 => 0,
+            1 => 2,
+            2 => 4,
+            3 => 6,
+            _ => unreachable!("legacy channel range was validated"),
+        };
+        (migrated_channel, value)
+    }));
 }
 
 fn increment_mac(mac: &str, offset: u8) -> Option<String> {

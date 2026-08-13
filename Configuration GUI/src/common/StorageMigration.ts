@@ -21,7 +21,7 @@ import { GenerationMode, RxMappingMode, TrafficGenData } from "./Interfaces";
 import { validateStreams, validateStreamSettings } from "./Validators";
 
 const STORAGE_SCHEMA_KEY = "p4tg.storageSchema";
-const STORAGE_SCHEMA_VERSION = "3";
+const STORAGE_SCHEMA_VERSION = "5";
 const CONFIG_STORAGE_KEYS = [
     "saved_configs",
     "streams",
@@ -72,7 +72,24 @@ export const migrateTrafficGenData = (value: unknown): TrafficGenData | null => 
 
 /** Migrates persisted v2.7 configuration before React hydrates from it. */
 export const migrateStoredConfiguration = () => {
-    if (localStorage.getItem(STORAGE_SCHEMA_KEY) === STORAGE_SCHEMA_VERSION) {
+    const storedVersion = localStorage.getItem(STORAGE_SCHEMA_KEY);
+    if (storedVersion === STORAGE_SCHEMA_VERSION) {
+        return;
+    }
+
+    // Schema 5 renumbers the Tofino 2 four-way channels from 0,1,2,3 to
+    // 0,2,4,6. Stored channel references cannot be remapped unambiguously —
+    // a config using only channels 0 and 2 is valid under both layouts — so
+    // the configuration is reset instead of silently pointing at other lanes.
+    // Number(null) is 0, so storage predating the schema key is covered too.
+    if (Number(storedVersion) < 5) {
+        if (CONFIG_STORAGE_KEYS.some((key) => localStorage.getItem(key) !== null)) {
+            console.warn(
+                "Stored P4TG configuration predates the Tofino 2 channel renumbering and was reset.",
+            );
+            CONFIG_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+        }
+        localStorage.setItem(STORAGE_SCHEMA_KEY, STORAGE_SCHEMA_VERSION);
         return;
     }
 

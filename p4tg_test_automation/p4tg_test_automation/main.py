@@ -21,6 +21,11 @@ def is_rfc2544_payload(payload):
     return any(test.get("mode") == 5 or test.get("rfc2544") for test in tests)
 
 
+def has_infinite_duration(tests):
+    """The controller treats a missing, null, or zero duration as infinite."""
+    return any(test.get("duration") in (None, 0) for test in tests)
+
+
 def configure_logging(log_level: str):
     logging.basicConfig(
         level=getattr(logging, log_level.upper(), logging.INFO),
@@ -108,7 +113,7 @@ def run_tests(api: P4TG, payload, payload_path, show_plots, rfc2544_timeout, rep
     logging.info("Loaded %d test configuration(s) from %s.", len(tests), payload_path)
     
     rfc2544_mode = is_rfc2544_payload(payload)
-    infinite_duration = any(t.get("duration") == 0 for t in tests if "duration" in t)
+    infinite_duration = has_infinite_duration(tests)
     logging.info("Starting P4TG traffic generator via REST API...")
     api.start_traffic_gen(prepare_payload_for_post(payload))
     

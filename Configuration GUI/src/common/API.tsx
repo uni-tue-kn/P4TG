@@ -99,6 +99,11 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError:
             else if (error.response.status === 404) {
                 onError("Request endpoint not found.", "danger")
             }
+            else {
+                const message = error.response?.data?.message
+                    ?? `Request failed with HTTP ${error.response.status}.`
+                onError(message, "danger")
+            }
 
             return Promise.resolve();
         };

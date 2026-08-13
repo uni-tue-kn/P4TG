@@ -8,11 +8,29 @@ from typing import Union
 
 DEFAULT_URL = "http://localhost:8000/api"
 
+
+class P4TGAPIError(RuntimeError):
+    """Raised when the controller rejects an automation request."""
+
+
+def require_status(response, expected_status: int, operation: str):
+    if response.status_code != expected_status:
+        message = (
+            f"{operation} failed with HTTP {response.status_code} "
+            f"{response.reason}: {response.text}"
+        )
+        logging.error(message)
+        raise P4TGAPIError(message)
+    return response
+
+
 class Speed(str, Enum):
     BF_SPEED_10G   = "BF_SPEED_10G"
     BF_SPEED_25G   = "BF_SPEED_25G"
     BF_SPEED_40G   = "BF_SPEED_40G"
+    BF_SPEED_50G   = "BF_SPEED_50G"
     BF_SPEED_100G  = "BF_SPEED_100G"
+    BF_SPEED_200G  = "BF_SPEED_200G"
     BF_SPEED_400G  = "BF_SPEED_400G"
 
 class FEC(str, Enum):
@@ -37,19 +55,17 @@ class P4TG:
         url = f"{self.base_url}/trafficgen"
         logging.info("POST %s", url)
         response = requests.post(url, json=req)
-        if response.status_code != 200:
-            print(f"Error {response.status_code}, {response.reason}: ", response.text)
-        else:
-            logging.info("Traffic generator accepted request.")
+        require_status(response, 200, "Starting traffic generation")
+        logging.info("Traffic generator accepted request.")
+        return response
         
     def stop_traffic_gen(self):
         url = f"{self.base_url}/trafficgen"
         logging.info("DELETE %s", url)
         response = requests.delete(url)
-        if response.status_code != 200:
-            print(f"Error {response.status_code}, {response.reason}: ", response.text)    
-        else:
-            logging.info("Traffic generator stopped.")
+        require_status(response, 200, "Stopping traffic generation")
+        logging.info("Traffic generator stopped.")
+        return response
         
     def get_time_statistics(self, payload_path=None):
         url = f"{self.base_url}/time_statistics"
@@ -111,8 +127,9 @@ class P4TG:
         speed: Union[Speed, str],
         auto_neg: Union[AutoNeg, str],
         fec: Union[FEC, str],
+        channel_count: int | None = None,
     ):
-        """Configure a front-panel port/channel with speed/FEC/AN."""
+        """Configure a front-panel port/channel with speed/FEC/AN and its active layout."""
         url = f"{self.base_url}/ports"
         logging.info("POST %s for port %s/%s (%s, %s, %s)", url, port, channel, speed, auto_neg, fec)
         req = {
@@ -122,7 +139,7 @@ class P4TG:
             "fec":   fec.value   if isinstance(fec,   Enum) else fec,
             "auto_neg": auto_neg.value if isinstance(auto_neg, Enum) else auto_neg,
         }
+        if channel_count is not None:
+            req["channel_count"] = channel_count
         resp = requests.post(url, json=req)
-        if resp.status_code != 201:
-            print(f"Error {resp.status_code}, {resp.reason}: {resp.text}")
-        return resp
+        return require_status(resp, 201, f"Configuring port {port}/{channel}")

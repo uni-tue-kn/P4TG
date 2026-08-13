@@ -182,24 +182,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // TG ports either from config or default
     let mut config = match File::open("config.json") {
-        Ok(file) => {
-            let mut config: Config = serde_json::from_reader(file).unwrap_or_else(|_| {
-                warn!("Config file not valid. Using default config.");
+        Ok(file) => Config::from_reader_with_port_fallback(file, num_ports, is_tofino2)
+            .unwrap_or_else(|err| {
+                warn!("config.json is not usable: {err} Using default config.");
                 Config::default_tofino(is_tofino2)
-            });
-
-            let config = if let Err(err) = config
-                .normalize(is_tofino2)
-                .and_then(|_| config.validate(num_ports, is_tofino2))
-            {
-                warn!("{err} Using default config.");
-                Config::default_tofino(is_tofino2)
-            } else {
-                config
-            };
-
-            config
-        }
+            }),
         Err(_) => {
             warn!("No config file (/app/config.json) for controller found. Using default config.");
             Config::default_tofino(is_tofino2)
@@ -255,7 +242,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let arp_handler = Arp::new();
-    arp_handler.init(&switch, &port_mapping).await?;
+    arp_handler.init(&switch, &port_mapping, &config).await?;
 
     let state = Arc::new(AppState {
         frame_size_monitor: Mutex::new(frame_size_monitor),

@@ -1,12 +1,14 @@
 use lazy_static::lazy_static;
 use serde_json::json;
+use serde_json::Value;
 
 lazy_static! {
-    pub static ref EXAMPLE_GET_1: String = json!([
+    pub static ref EXAMPLE_GET_1: Value = json!([
         {
             "port": 1,
             "channel": 0,
             "pid": 128,
+            "n_lanes": 4,
             "speed": "BF_SPEED_100G",
             "auto_neg": "PM_AN_DEFAULT",
             "fec": "BF_FEC_TYP_NONE",
@@ -18,6 +20,7 @@ lazy_static! {
             "port": 2,
             "channel": 0,
             "pid": 136,
+            "n_lanes": 4,
             "speed": "BF_SPEED_100G",
             "auto_neg": "PM_AN_DEFAULT",
             "fec": "BF_FEC_TYP_NONE",
@@ -25,15 +28,12 @@ lazy_static! {
             "enable": true,
             "status": true
         }
-    ])
-    .to_string();
-    pub static ref EXAMPLE_POST_1_REQUEST: String = json!([
-        {
-            "pid": 136,
-            "speed": "BF_SPEED_100G",
-            "fec": "BF_FEC_TYP_NONE",
-            "auto_neg": "PM_AN_DEFAULT"
-        }
-    ])
-    .to_string();
+    ]);
+    pub static ref EXAMPLE_POST_1_REQUEST: Value = json!({
+        "front_panel_port": 2,
+        "channel": 0,
+        "speed": "BF_SPEED_100G",
+        "fec": "BF_FEC_TYP_NONE",
+        "auto_neg": "PM_AN_DEFAULT"
+    });
 }
