@@ -21,7 +21,7 @@ use std::cmp::max;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use async_trait::async_trait;
 use log::{error, info, warn};
@@ -63,6 +63,33 @@ pub fn unix_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+/// Wrap-around period of the switch timestamp. `monitor_t.tstmp` is a
+/// free-running `bit<48>` nanosecond counter, so it wraps every ~78.2 h.
+const TSTMP_WRAP: u64 = 1 << 48;
+
+/// Elapsed seconds of the current test for a switch-domain timestamp.
+///
+/// Digest timestamps live in the switch clock domain and have an arbitrary
+/// value at test start, so they are only ever used as a delta against `start`,
+/// the timestamp of the first digest of the test. The first sample of a test
+/// therefore lands on key 0.
+///
+/// Returns `None` for digests that were generated before the epoch.
+fn elapsed_secs(now: u64, start: u64) -> Option<u32> {
+    let delta = if now >= start {
+        now - start
+    } else if start - now > TSTMP_WRAP / 2 {
+        // The switch clock wrapped past the epoch mid-test. A straggler sits a
+        // few hundred ms behind `start`, a wrap almost a full period behind it,
+        // so the half-period split tells the two apart for any test < ~39 h.
+        now + TSTMP_WRAP - start
+    } else {
+        return None;
+    };
+
+    Some((delta / Duration::from_secs(1).as_nanos() as u64) as u32)
 }
 
 /// This module handles the initialization of the `egress.frame_size_monitor` table
@@ -569,26 +596,42 @@ impl RateMonitor {
 
         let mut stale_logged: Option<Instant> = None;
 
+        // Start time of the test we are currently attributing digests to. A
+        // changed start time is the signal that a new test began.
+        let mut seen_start: Option<SystemTime> = None;
+        // Switch timestamp of the first digest of the current test; the epoch
+        // that turns switch-domain timestamps into elapsed seconds.
+        let mut start_tstmp: Option<u64> = None;
+        // Most recent switch timestamp seen. The RTT/IAT digests carry no
+        // timestamp of their own and fall back to this.
+        let mut dp_clock: Option<u64> = None;
+
         // listen on the channel that receives digests
         loop {
             match state.switch.digest_queue.try_recv() {
                 Ok(digest) => {
                     state.last_digest.store(unix_secs(), Ordering::Relaxed);
-                    let (elapsed_time, running) = {
+                    let (exp_start, running) = {
                         let exp = state.experiment.lock().await;
-
-                        if exp.running {
-                            (
-                                exp.start
-                                    .elapsed()
-                                    .unwrap_or(Duration::from_secs(0))
-                                    .as_secs() as u32,
-                                true,
-                            )
-                        } else {
-                            (0, false)
-                        }
+                        (exp.start, exp.running)
                     };
+
+                    if running && seen_start != Some(exp_start) {
+                        // A new test began. Drop everything that was queued
+                        // before it started: those digests carry counter values
+                        // from before `on_reset` zeroed them, and anchoring the
+                        // epoch on one would shift the whole series early.
+                        // This runs in the task that owns the receiver, so it
+                        // cannot race with another consumer.
+                        while state.switch.digest_queue.try_recv().is_ok() {}
+
+                        seen_start = Some(exp_start);
+                        start_tstmp = None;
+                        dp_clock = None;
+
+                        // The digest in hand predates the test as well.
+                        continue;
+                    }
 
                     if digest.name == RATE_DIGEST_NAME {
                         let data = &digest.data;
@@ -603,6 +646,20 @@ impl RateMonitor {
                         }
 
                         let time = field!(data, "tstmp").to_u64();
+
+                        // Anchor the epoch on the first digest of the test and
+                        // keep the switch clock cached for the RTT/IAT digests.
+                        let epoch = *start_tstmp.get_or_insert(time);
+                        dp_clock = Some(time);
+
+                        // Time series key: seconds since the test began, taken
+                        // from the switch clock so that a digest delayed in the
+                        // queue still lands in the second it was generated in.
+                        let elapsed_time = if running {
+                            elapsed_secs(time, epoch)
+                        } else {
+                            None
+                        };
 
                         let l1_byte = field!(data, "byte_counter_l1").to_u64();
                         let l2_byte = field!(data, "byte_counter_l2").to_u64();
@@ -656,7 +713,7 @@ impl RateMonitor {
                                     .insert(*port, new_rate.rate_l2);
 
                                 // time statistic
-                                if running {
+                                if let Some(elapsed_time) = elapsed_time {
                                     state
                                         .rate_monitor
                                         .lock()
@@ -666,17 +723,6 @@ impl RateMonitor {
                                         .entry(*port)
                                         .or_default()
                                         .insert(elapsed_time, new_rate.rate_l1);
-
-                                    // remove potential old data
-                                    state
-                                        .rate_monitor
-                                        .lock()
-                                        .await
-                                        .time_statistics
-                                        .tx_rate_l1
-                                        .entry(*port)
-                                        .or_default()
-                                        .retain(|key, _| *key <= elapsed_time);
                                 }
                             } else {
                                 state
@@ -695,7 +741,7 @@ impl RateMonitor {
                                     .insert(*port, new_rate.rate_l2);
 
                                 // time statistics
-                                if running {
+                                if let Some(elapsed_time) = elapsed_time {
                                     state
                                         .rate_monitor
                                         .lock()
@@ -723,35 +769,6 @@ impl RateMonitor {
                                         .entry(*port)
                                         .or_default()
                                         .insert(elapsed_time, out_of_order);
-
-                                    // remove potential old data
-                                    state
-                                        .rate_monitor
-                                        .lock()
-                                        .await
-                                        .time_statistics
-                                        .rx_rate_l1
-                                        .entry(*port)
-                                        .or_default()
-                                        .retain(|key, _| *key <= elapsed_time);
-                                    state
-                                        .rate_monitor
-                                        .lock()
-                                        .await
-                                        .time_statistics
-                                        .packet_loss
-                                        .entry(*port)
-                                        .or_default()
-                                        .retain(|key, _| *key <= elapsed_time);
-                                    state
-                                        .rate_monitor
-                                        .lock()
-                                        .await
-                                        .time_statistics
-                                        .out_of_order
-                                        .entry(*port)
-                                        .or_default()
-                                        .retain(|key, _| *key <= elapsed_time);
                                 }
 
                                 // only write packet loss if its from a rx recirc port
@@ -808,7 +825,7 @@ impl RateMonitor {
                                         .unwrap()
                                         .insert(mapping.app_id as u32, new_app_rate.rate_l2);
 
-                                    if running {
+                                    if let Some(elapsed_time) = elapsed_time {
                                         state
                                             .rate_monitor
                                             .lock()
@@ -832,7 +849,7 @@ impl RateMonitor {
                                         .unwrap()
                                         .insert(mapping.app_id as u32, new_app_rate.rate_l2);
 
-                                    if running {
+                                    if let Some(elapsed_time) = elapsed_time {
                                         state
                                             .rate_monitor
                                             .lock()
@@ -860,6 +877,16 @@ impl RateMonitor {
 
                         let rtt = field!(data, "rtt").to_u64();
 
+                        // These digests carry no timestamp of their own, so
+                        // fall back to the switch clock cached from the last
+                        // rate digest. Digests are processed in order, so a
+                        // backlogged rate digest advances the clock and the
+                        // RTT digests behind it follow.
+                        let elapsed_time = match (running, dp_clock, start_tstmp) {
+                            (true, Some(now), Some(epoch)) => elapsed_secs(now, epoch),
+                            _ => None,
+                        };
+
                         // catch timestamp overflow
                         if rtt > 0
                             && rtt < (u32::MAX / 2) as u64
@@ -879,26 +906,17 @@ impl RateMonitor {
                                 }
                                 samples.push_back(rtt);
                             }
-                            state
-                                .rate_monitor
-                                .lock()
-                                .await
-                                .time_statistics
-                                .rtt
-                                .entry(*port)
-                                .or_insert(BTreeMap::default())
-                                .insert(elapsed_time, rtt);
-
-                            // remove potential old data
-                            state
-                                .rate_monitor
-                                .lock()
-                                .await
-                                .time_statistics
-                                .rtt
-                                .entry(*port)
-                                .or_default()
-                                .retain(|key, _| *key <= elapsed_time);
+                            if let Some(elapsed_time) = elapsed_time {
+                                state
+                                    .rate_monitor
+                                    .lock()
+                                    .await
+                                    .time_statistics
+                                    .rtt
+                                    .entry(*port)
+                                    .or_insert(BTreeMap::default())
+                                    .insert(elapsed_time, rtt);
+                            }
                         }
 
                         if sample_mode {
@@ -989,10 +1007,16 @@ impl TrafficGenEvent for RateMonitor {
             .clear_tables(vec![MONITOR_IAT_TABLE, IS_INGRESS_TABLE])
             .await?;
 
+        // Clear every series, not just the rates. The digest loop keys samples
+        // by switch-clock delta and no longer prunes stale keys per digest, so
+        // a leftover series from the previous test would otherwise survive.
         self.time_statistics.tx_rate_l1.clear();
         self.time_statistics.rx_rate_l1.clear();
         self.time_statistics.app_tx_l2.clear();
         self.time_statistics.app_rx_l2.clear();
+        self.time_statistics.packet_loss.clear();
+        self.time_statistics.out_of_order.clear();
+        self.time_statistics.rtt.clear();
 
         // allow iat generation
         let req = table::Request::new(MONITOR_IAT_TABLE)

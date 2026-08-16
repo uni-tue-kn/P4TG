@@ -32,6 +32,8 @@
   - ⚠️ **Breaking change:** on Tofino 2, `4x10G` and `4x25G` move from channels `0,1,2,3` (lanes 0-3) to channels `0,2,4,6` (lanes 0, 2, 4, 6). This matches a 4-way QSFP-DD breakout cable, whose legs carry two lanes each. Setups that rely on the previous packing into lanes 0-3, for example a QSFP28 cable that only carries four lanes, can use `channel_count: 8` and leave channels 4-7 unused.
 
 ### Bug fixes
+- Fixed timestamps of rate digests being used improperly.
+- Improved processing of histogram data which sometimes stalled the monitoring task for large histogram configs.
 - Rejected unsupported FEC combinations through `POST /api/ports` instead of silently applying a different FEC.
 - Corrected the Swagger schemas, examples, response codes, and ARP endpoint documentation for the ports API.
 - Made Python automation fail immediately on rejected start/stop/port requests and recognize missing or null durations as infinite tests.

@@ -31,7 +31,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use utoipa::ToSchema;
@@ -348,7 +348,7 @@ pub struct Params {
     get,
     path = "/api/time_statistics",
     params(
-        ("limit" = Option<usize>, Query, description = "Only retrieve the last *limit* entries")
+        ("limit" = Option<usize>, Query, description = "Reduce each series to at most *limit* data points, evenly spaced across the whole test. The first and last data point are always kept.")
     ),
     responses(
     (status = 200,
@@ -366,76 +366,99 @@ pub async fn time_statistics(
     (StatusCode::OK, Json(stats)).into_response()
 }
 
+/// Reduces `all_keys` to at most `limit` timestamps, evenly spaced *by
+/// position*, always keeping the first and the last one.
+///
+/// Selecting by position rather than by key value (the previous
+/// `key % step == 0`) keeps the output size predictable even when the series
+/// has gaps or does not start at zero.
+fn select_time_keys(all_keys: &BTreeSet<u32>, limit: usize) -> BTreeSet<u32> {
+    if all_keys.len() <= limit {
+        return all_keys.clone();
+    }
+
+    // `limit >= 1` is guaranteed by the caller, and `len() > limit >= 1` here,
+    // so `last` is non-zero and the division below is safe.
+    let last = all_keys.len() - 1;
+    if limit == 1 {
+        return all_keys.iter().copied().take(1).collect();
+    }
+
+    let positions: BTreeSet<usize> = (0..limit).map(|j| j * last / (limit - 1)).collect();
+
+    all_keys
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| positions.contains(index))
+        .map(|(_, key)| *key)
+        .collect()
+}
+
+/// Keeps only the samples of `series` whose timestamp is in `keep`.
+fn filter_series<T: Clone>(series: &BTreeMap<u32, T>, keep: &BTreeSet<u32>) -> BTreeMap<u32, T> {
+    series
+        .iter()
+        .filter(|(time, _)| keep.contains(time))
+        .map(|(time, value)| (*time, value.clone()))
+        .collect()
+}
+
 pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<TimeStatisticsApi> {
     let rate_monitor = &state.rate_monitor;
     let stats = rate_monitor.lock().await.time_statistics.clone();
 
     let port_mapping = &state.port_mapping;
 
-    // guard against limit=0, which would divide by zero in the step calculation
+    // guard against limit=0, which would select an empty series
     let limit = params.limit.unwrap_or(usize::MAX).max(1);
 
-    let elements = stats
-        .tx_rate_l1
-        .values()
-        .map(|series| series.len())
-        .max()
-        .unwrap_or(0);
-
-    let step = {
-        if limit < elements {
-            elements / limit
-        } else {
-            1
+    // Decimate one shared set of timestamps and apply it to every series.
+    // The GUI sums the per-port series into a single line
+    // (`generateLineData` in Configuration GUI/src/components/Visuals.tsx), so
+    // per-series key sets would make that line dip wherever only some of the
+    // ports have a sample.
+    let mut all_keys: BTreeSet<u32> = BTreeSet::new();
+    for series in stats.tx_rate_l1.values().chain(stats.rx_rate_l1.values()) {
+        all_keys.extend(series.keys());
+    }
+    for apps in stats.app_tx_l2.values().chain(stats.app_rx_l2.values()) {
+        for series in apps.values() {
+            all_keys.extend(series.keys());
         }
-    };
+    }
+    for series in stats.packet_loss.values() {
+        all_keys.extend(series.keys());
+    }
+    for series in stats.out_of_order.values() {
+        all_keys.extend(series.keys());
+    }
+    for series in stats.rtt.values() {
+        all_keys.extend(series.keys());
+    }
 
-    // get every ratio-nth element
+    let keep = select_time_keys(&all_keys, limit);
+
+    // keep only the selected timestamps
     let tx_rate_l1: HashMap<u32, BTreeMap<u32, f64>> = stats
         .tx_rate_l1
-        .clone()
-        .into_iter()
-        .map(|v| {
-            (
-                v.0,
-                v.1.into_iter()
-                    .filter(|elem| elem.0 % (step as u32) == 0)
-                    .collect(),
-            )
-        })
+        .iter()
+        .map(|(port, series)| (*port, filter_series(series, &keep)))
         .collect();
 
     let rx_rate_l1: HashMap<u32, BTreeMap<u32, f64>> = stats
         .rx_rate_l1
-        .clone()
-        .into_iter()
-        .map(|v| {
-            (
-                v.0,
-                v.1.into_iter()
-                    .filter(|elem| elem.0 % (step as u32) == 0)
-                    .collect(),
-            )
-        })
+        .iter()
+        .map(|(port, series)| (*port, filter_series(series, &keep)))
         .collect();
 
     let app_tx_l2: HashMap<u32, HashMap<u32, BTreeMap<u32, f64>>> = stats
         .app_tx_l2
-        .clone()
-        .into_iter()
+        .iter()
         .map(|(port, apps)| {
             (
-                port,
-                apps.into_iter()
-                    .map(|(app_id, series)| {
-                        (
-                            app_id,
-                            series
-                                .into_iter()
-                                .filter(|(time, _)| *time % (step as u32) == 0)
-                                .collect(),
-                        )
-                    })
+                *port,
+                apps.iter()
+                    .map(|(app_id, series)| (*app_id, filter_series(series, &keep)))
                     .collect(),
             )
         })
@@ -443,21 +466,12 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
 
     let app_rx_l2: HashMap<u32, HashMap<u32, BTreeMap<u32, f64>>> = stats
         .app_rx_l2
-        .clone()
-        .into_iter()
+        .iter()
         .map(|(port, apps)| {
             (
-                port,
-                apps.into_iter()
-                    .map(|(app_id, series)| {
-                        (
-                            app_id,
-                            series
-                                .into_iter()
-                                .filter(|(time, _)| *time % (step as u32) == 0)
-                                .collect(),
-                        )
-                    })
+                *port,
+                apps.iter()
+                    .map(|(app_id, series)| (*app_id, filter_series(series, &keep)))
                     .collect(),
             )
         })
@@ -465,44 +479,20 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
 
     let packet_loss: HashMap<u32, BTreeMap<u32, u64>> = stats
         .packet_loss
-        .clone()
-        .into_iter()
-        .map(|v| {
-            (
-                v.0,
-                v.1.into_iter()
-                    .filter(|elem| elem.0 % (step as u32) == 0)
-                    .collect(),
-            )
-        })
+        .iter()
+        .map(|(port, series)| (*port, filter_series(series, &keep)))
         .collect();
 
     let out_of_order: HashMap<u32, BTreeMap<u32, u64>> = stats
         .out_of_order
-        .clone()
-        .into_iter()
-        .map(|v| {
-            (
-                v.0,
-                v.1.into_iter()
-                    .filter(|elem| elem.0 % (step as u32) == 0)
-                    .collect(),
-            )
-        })
+        .iter()
+        .map(|(port, series)| (*port, filter_series(series, &keep)))
         .collect();
 
     let rtt: HashMap<u32, BTreeMap<u32, u64>> = stats
         .rtt
-        .clone()
-        .into_iter()
-        .map(|v| {
-            (
-                v.0,
-                v.1.into_iter()
-                    .filter(|elem| elem.0 % (step as u32) == 0)
-                    .collect(),
-            )
-        })
+        .iter()
+        .map(|(port, series)| (*port, filter_series(series, &keep)))
         .collect();
 
     let name = state.traffic_generator.lock().await.name.clone();
