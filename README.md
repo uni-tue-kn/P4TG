@@ -53,7 +53,7 @@ P4TG combines a **P4 data plane program**, a **Rust-based control plane**, and a
 - [P4TG: 1 Tb/s Traffic Generation for Ethernet/IP Networks](https://ieeexplore.ieee.org/document/10048513) (v1.0.0)  
 - [Enhancements to P4TG: Protocols, Performance, and Automation](https://publikationen.uni-tuebingen.de/xmlui/handle/10900/163776) (v2.3.2)
 - [Enhancements to P4TG: Histogram-Based RTT Monitoring in the Data Plane](https://doi.org/10.14279/depositonce-24399) (v2.4.0)
-
+- [High-Speed Generation of Periodic Traffic Patterns on P4TG for DDoS and Burst-Load Evaluation](https://ieeexplore.ieee.org/abstract/document/11603500) (v2.7.1)
 
 ---
 
@@ -369,5 +369,14 @@ If you use P4TG in any of your publications, please cite the following papers:
   journal = {{Workshop on Resilient Networks and Systems (ReNeSys)}},
   year   = 2025,
   month  = sep
+}
+
+@inproceedings{IhZi26,
+  author    = {Ihle, Fabian and Zink, Etienne and Menth, Michael},
+  title     = {{High-Speed Generation of Periodic Traffic Patterns on P4TG for DDoS and Burst-Load Evaluation}},
+  year      = 2026,
+  booktitle = {IEEE 12th International Conference on Network Softwarization (NetSoft)},
+  pages     = {55--63},
+  month     = jun
 }
 ```
