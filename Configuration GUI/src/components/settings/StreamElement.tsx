@@ -470,9 +470,9 @@ const StreamElement = ({
                         <Button
                             variant="outline-secondary"
                             size="sm"
-                            disabled={running || patternConfig == null}
+                            disabled={patternConfig == null}
                             onClick={() => setShowPatternModal(true)}
-                            title="Configure pattern"
+                            title={running ? "View pattern" : "Configure pattern"}
                         >
                             <i className="bi bi-gear-wide-connected" />
                         </Button>
@@ -645,7 +645,6 @@ const StreamElement = ({
                         >
                             <Button
                                 size={"sm"}
-                                disabled={running}
                                 variant={"outline-secondary"}
                                 style={optionsButtonStyle}
                                 onClick={() => setShowAdvancedOptionsModal(true)}

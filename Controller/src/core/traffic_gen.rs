@@ -37,7 +37,8 @@ use rbfrt::{table, SwitchConnection};
 
 use crate::core::traffic_gen_core::const_definitions::*;
 use crate::core::traffic_gen_core::helper::{
-    calculate_overhead, create_packet, get_num_pipes, mpps_to_gbps,
+    calculate_overhead, create_packet, get_batch_factor, get_num_pipes,
+    get_total_generated_packets, mpps_to_gbps,
 };
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
@@ -746,7 +747,7 @@ impl TrafficGen {
             info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, num_pipes, rate, rate_accuracy);
 
             // More bursty traffic desired. Activate batch mode
-            timeout = if s.batches.is_some_and(|b| b && s.burst != 1) {timeout * BATCH_FACTOR} else {timeout};
+            timeout *= get_batch_factor(&s);
 
             // add calculated values to the stream
             s.n_packets = Some(n_packets);
@@ -779,11 +780,7 @@ impl TrafficGen {
             );
 
             // More bursty traffic desired. Activate batch mode
-            timeout = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
-                timeout * BATCH_FACTOR
-            } else {
-                timeout
-            };
+            timeout *= get_batch_factor(stream);
 
             active_streams
                 .get_mut(0)
@@ -834,7 +831,7 @@ impl TrafficGen {
                     buffer_offset: None,
                     timer: s.timeout.unwrap(),
                     n_packets: s.n_packets.unwrap(),
-                    batches: s.batches.is_some_and(|b| b && s.burst != 1),
+                    batches: get_batch_factor(s) > 1,
                 }
             })
             .collect();
@@ -874,11 +871,7 @@ impl TrafficGen {
                 let l1_counter_bytes = total_frame_size.saturating_sub(4);
 
                 let num_pipes: u32 = get_num_pipes(stream, self.num_pipes);
-                let batch_factor = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
-                    BATCH_FACTOR as f64
-                } else {
-                    1.0
-                };
+                let batch_factor = get_batch_factor(stream) as f64;
                 let offered_pps_per_pipe =
                     stream.n_packets.unwrap_or(1) as f64 * batch_factor * 1e9_f64
                         / stream.timeout.unwrap_or(1) as f64;
@@ -977,7 +970,19 @@ impl TrafficGen {
 
         self.running = true;
 
-        Ok(active_streams)
+        // The annotated streams are only handed back to the REST API from here on.
+        // Report the overall number of generated packets per `timeout` ns, i.e., the solver
+        // output scaled by the batch factor and the number of pipes, instead of the
+        // per-pipe and per-batch value that is written to the data plane.
+        let reported_streams = active_streams
+            .into_iter()
+            .map(|mut s| {
+                s.n_packets = get_total_generated_packets(&s);
+                s
+            })
+            .collect();
+
+        Ok(reported_streams)
     }
 
     /// This method configures the forwarding rules in the case of [GenerationMode::Analyze].

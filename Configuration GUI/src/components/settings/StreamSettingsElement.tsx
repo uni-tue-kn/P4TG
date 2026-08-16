@@ -108,7 +108,8 @@ const StreamSettingsElement = ({
                             <HistogramSettings
                                 compact
                                 target={stream.rx_target}
-                                disabled={running || !port_status || !isActive}
+                                disabled={!port_status || !isActive}
+                                running={running}
                                 rtt_data={rtt_histogram_settings}
                                 iat_data={iat_histogram_settings}
                                 set_rtt_data={set_rtt_histogram_settings}

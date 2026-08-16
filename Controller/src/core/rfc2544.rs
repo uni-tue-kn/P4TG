@@ -7,9 +7,9 @@ use log::{error, info, warn};
 use tokio_util::sync::CancellationToken;
 
 use crate::api::traffic_gen::start_single_test;
-use crate::core::traffic_gen_core::const_definitions::{BATCH_FACTOR, MONITORING_PACKET_INTERVAL};
+use crate::core::traffic_gen_core::const_definitions::MONITORING_PACKET_INTERVAL;
 use crate::core::traffic_gen_core::helper::{
-    calculate_overhead, generate_front_panel_to_dev_port_mappings, get_num_pipes,
+    calculate_overhead, generate_front_panel_to_dev_port_mappings, get_batch_factor, get_num_pipes,
     translate_fp_channel_to_dev_port_mapping,
 };
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
@@ -660,21 +660,15 @@ async fn system_recovery_period_error(
 
     let (n_packets, mut timeout) =
         calculate_send_behaviour(generation_frame_size, per_pipe_rate, stream.burst);
-    if stream.batches.is_some_and(|b| b && stream.burst != 1) {
-        timeout *= BATCH_FACTOR;
-    }
+    let batch_factor = get_batch_factor(stream);
+    timeout *= batch_factor;
     if n_packets == 0 || timeout == 0 {
         return Some(
             "System recovery pattern period cannot be represented for this rate.".to_string(),
         );
     }
 
-    let batch_factor = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
-        BATCH_FACTOR as f64
-    } else {
-        1.0
-    };
-    let offered_pps_per_pipe = n_packets as f64 * batch_factor * 1e9_f64 / timeout as f64;
+    let offered_pps_per_pipe = n_packets as f64 * batch_factor as f64 * 1e9_f64 / timeout as f64;
     let requested_period_pkts = total_duration_secs as f64 * offered_pps_per_pipe;
     let max_period_pkts = u32::MAX as f64;
     if requested_period_pkts.round() <= max_period_pkts {

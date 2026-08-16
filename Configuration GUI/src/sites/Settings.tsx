@@ -255,6 +255,11 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const streamsRef = useRef<Stream[]>(streams);
     const rxMappingModeRef = useRef<RxMappingMode>(rx_mapping_mode);
     const loadGenWarningRef = useRef<string | null>(null);
+    const activeConfigNameRef = useRef<string>(DEFAULT_CONFIG_NAME);
+    // Tab that shows the running configuration, set once the user browses to
+    // another tab during traffic generation. The running configuration is only
+    // mirrored into that tab, so that other tabs keep their own settings.
+    const runningConfigNameRef = useRef<string | null>(null);
 
     const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>({});
     const [activeConfigName, setActiveConfigName] = useState<string>(DEFAULT_CONFIG_NAME);
@@ -403,6 +408,9 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         let stats = await get({ route: "/trafficgen" })
         if (stats !== undefined) {
             if (Object.keys(stats.data).length > 1) {
+                // Other tabs keep showing their own configuration while running
+                const viewing_running_config = runningConfigNameRef.current === null
+                    || runningConfigNameRef.current === activeConfigNameRef.current;
                 let old_streams = JSON.stringify(currentStreams)
                 const mergedStreams = (stats.data.streams ?? []).map((streamFromBackend: Stream) => {
                     const existing = currentStreams.find((stream) => stream.stream_id === streamFromBackend.stream_id);
@@ -421,13 +429,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 const nextStreams = normalized.config.streams ?? [];
                 const backendRxMappingMode = normalized.config.rx_mapping_mode ?? RxMappingMode.PerTxPort;
 
-                if (rxMappingModeRef.current !== backendRxMappingMode) {
+                if (viewing_running_config && rxMappingModeRef.current !== backendRxMappingMode) {
                     rxMappingModeRef.current = backendRxMappingMode;
                     set_rx_mapping_mode(backendRxMappingMode);
                     localStorage.setItem("rx_mapping_mode", JSON.stringify(backendRxMappingMode));
                 }
 
-                if (old_streams != JSON.stringify(nextStreams)) {
+                if (viewing_running_config && old_streams != JSON.stringify(nextStreams)) {
                     set_mode(normalized.config.mode)
                     set_duration(normalized.config.duration)
                     set_repetitions(normalized.config.repetitions)
@@ -457,6 +465,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 }
                 set_running(true)
             } else {
+                runningConfigNameRef.current = null;
                 loadGenWarningRef.current = null;
                 set_running(false)
             }
@@ -470,6 +479,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     useEffect(() => {
         rxMappingModeRef.current = rx_mapping_mode;
     }, [rx_mapping_mode]);
+
+    useEffect(() => {
+        activeConfigNameRef.current = activeConfigName;
+    }, [activeConfigName]);
 
     useEffect(() => {
         setRepetitionsInput(String(repetitions));
@@ -1311,7 +1324,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     return <Loader loaded={loaded}>
 
         <Tab.Container activeKey={activeConfigName} onSelect={(k) => {
-            save();
+            if (running) {
+                // Settings are read-only while running, so there is nothing to
+                // save. Remember the tab that shows the running configuration.
+                runningConfigNameRef.current ??= activeConfigName;
+            } else {
+                save();
+            }
             if (k) setActiveConfigName(k);
         }}>
             <Nav variant="tabs">
@@ -1320,7 +1339,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                         <Nav.Link
                             eventKey={name}
                             active={activeConfigName === name}
-                            disabled={running}
                             style={{ userSelect: "none" }}
                         >
                             {renamingTab === name ? (
@@ -2380,7 +2398,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                         })}
                                                                     </Form.Select>
 
-                                                                    <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={running || !v.status} iat_data={iat_histogram_settings} rtt_data={rtt_histogram_settings} set_rtt_data={updateRTTHistogramSettings} set_iat_data={updateIATHistogramSettings} />
+                                                                    <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={!v.status} running={running} iat_data={iat_histogram_settings} rtt_data={rtt_histogram_settings} set_rtt_data={updateRTTHistogramSettings} set_iat_data={updateIATHistogramSettings} />
                                                                 </StyledCol>
                                                                 : null}
 

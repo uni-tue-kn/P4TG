@@ -34,6 +34,7 @@
     --color-background-transparent: rgba(255, 255, 255, 0.8);
     --color-sidebar-background: #ecf0f1;
     --color-tab-active-bg: #ffffff;
+    --color-tab-selected-bg: #ecf0f1;
 
     /* Text Colors */
     --color-text: #000000;
@@ -79,6 +80,7 @@
     --color-background-transparent: rgba(30, 30, 30, 0.8);
     --color-sidebar-background: var(--color-grey);
     --color-tab-active-bg: var(--color-secondary);
+    --color-tab-selected-bg: var(--color-secondary);
 
     /* Text Colors */
     --color-text: #ffffff;
@@ -418,7 +420,9 @@ table {
 
     .nav-link {
         &.active {
-            background-color: var(--color-tab-active-bg);
+            /* Lift the selected tab off the page background in both themes: a
+               primary border plus a slightly offset surface. */
+            background-color: var(--color-tab-selected-bg);
             border-color: var(--color-primary);
 
             [data-theme="dark"] & {
@@ -527,6 +531,21 @@ table {
     &.is-invalid {
         box-shadow: 0 0 0 0.15rem rgba(var(--bs-danger-rgb), 0.25);
     }
+}
+
+/* Bootstrap's stock focus affordance is its default blue (#86b7fe border plus an
+   rgba(13, 110, 253) glow). It ignores the theme and is glaring in dark mode,
+   e.g. on the rename field and the edit/clone buttons of a test tab. Re-tint
+   every focus ring we use with the primary colour. */
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.25rem rgba(231, 76, 60, 0.25);
+}
+
+.nav-link:focus-visible,
+.nav-link .btn:focus-visible {
+    box-shadow: 0 0 0 0.25rem rgba(231, 76, 60, 0.25);
 }
 
 .modal-title,

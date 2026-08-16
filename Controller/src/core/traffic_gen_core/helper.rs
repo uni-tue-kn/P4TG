@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::core::traffic_gen_core::const_definitions::{
-    GTPU_UDP_PORT, P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK,
+    BATCH_FACTOR, GTPU_UDP_PORT, P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK,
     REMOVE_PORT_CHANNEL_MASK_TOFINO_2, VX_LAN_UDP_PORT,
 };
 use crate::core::traffic_gen_core::types::*;
@@ -1002,6 +1002,32 @@ pub fn range_to_prefixes(start: u32, end: u32) -> Vec<(u32, u8)> {
     }
 
     res
+}
+
+/// Determine the number of batches that the packet generator sends per timer expiration.
+///
+/// Batches are only used in rate precision mode (`burst != 1`). In that case, the timeout
+/// computed by the solver is multiplied by [`BATCH_FACTOR`] as well, i.e., the offered rate
+/// stays the same but the traffic becomes more bursty.
+pub fn get_batch_factor(s: &Stream) -> u32 {
+    if s.batches.is_some_and(|b| b && s.burst != 1) {
+        BATCH_FACTOR
+    } else {
+        1
+    }
+}
+
+/// Determine the overall number of packets that are generated for a stream per `timeout` ns.
+///
+/// The solver only computes the number of packets that are generated per pipe and per batch.
+/// The packet generator, however, sends [`get_batch_factor`] batches per timer expiration and
+/// the same generation behaviour is replicated on all pipes used by the stream
+/// (see [`get_num_pipes`]). This is the number that is reported through the REST API.
+pub fn get_total_generated_packets(s: &Stream) -> Option<u16> {
+    let scale = get_batch_factor(s) * s.n_pipes.unwrap_or(1) as u32;
+    let total = (s.n_packets? as u32).saturating_mul(scale);
+
+    Some(total.min(u16::MAX as u32) as u16)
 }
 
 /// Determine the number of pipes to use for a stream based on its configuration.

@@ -609,10 +609,13 @@ pub struct Stream {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) batches: Option<bool>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
-    #[schema(example = 11)]
+    /// Overall number of packets that are generated for this stream per `timeout` ns, i.e., over all
+    /// `n_pipes` pipes and including all batches of a burst. Values provided by the client are ignored.
+    #[schema(example = 110)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) n_packets: Option<u16>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
+    /// Time between two packet generator timer expirations in ns. Includes the batch factor.
     #[schema(example = 81)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) timeout: Option<u32>,

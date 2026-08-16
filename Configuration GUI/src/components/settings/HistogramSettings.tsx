@@ -27,6 +27,7 @@ const HistogramSettings = ({
     port,
     mapping,
     disabled,
+    running = false,
     rtt_data,
     iat_data,
     set_rtt_data,
@@ -36,7 +37,10 @@ const HistogramSettings = ({
 }: {
     port?: PortInfo,
     mapping?: PortTxRxMap,
+    // No configuration to show, the modal cannot be opened
     disabled: boolean,
+    // The configuration may be viewed but not modified
+    running?: boolean,
     rtt_data: HistogramConfigMap,
     iat_data: HistogramConfigMap,
     set_rtt_data: (pid: number, channel: number, updated: HistogramConfig) => void
@@ -80,7 +84,7 @@ const HistogramSettings = ({
         {rx_pid !== undefined && rx_channel !== undefined && (
             <>
                 <HistogramModal
-                    disabled={disabled}
+                    disabled={disabled || running}
                     rtt_data={rtt_cfg}
                     iat_data={iat_cfg}
                     show={show}

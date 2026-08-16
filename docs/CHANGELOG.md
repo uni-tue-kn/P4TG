@@ -72,6 +72,7 @@
 - Fixed the mixed breakout rate warning only inspecting channels numbered below `channel_count`. For `4x100G`, whose channels are `0,2,4,6`, a differing speed on channel `4` or `6` was never reported.
 - Fixed config validation not detecting manually configured recirculation ports that collide with another TG front panel port.
 - Fixed `GET:/api/trafficgen` not exposing the computed send behaviour (`n_packets`, `timeout`, `generation_accuracy`, `n_pipes`). The solver results are now merged into the stored streams when a test starts.
+- ⚠️ `n_packets` of a stream now reports the overall number of generated packets per `timeout` ns instead of the raw rate solver output. The reported value is the solver output scaled by the batch factor and the number of used pipes (`n_pipes`), i.e., it now matches the packets that are actually generated. The value written to the data plane is unchanged.
 - Fixed swapped Tofino1/Tofino2 app ID ranges in rate monitoring, which caused phantom app rate entries on Tofino1 and missing initial app rate entries on Tofino2.
 - ⚠️ `GET:/api/histogram` now returns front panel port numbers with a channel map instead of dev port numbers, consistent with all other endpoints.
 - Fixed the Ports page breaking when a port/ARP configuration request or the config fetch failed.
@@ -91,6 +92,8 @@
 - Serialized frontend polling requests so slow responses cannot cause overlapping request buildup.
 - Hardened settings import and migration against empty or malformed files and restored all missing nested defaults.
 - Added automatic migration for v2.7 browser settings and cache headers that prevent stale frontend bundles after upgrades.
+- Fixed Bootstrap's default blue focus ring breaking the dark theme, most visibly on the rename field opened by the edit button of a test tab. Focus rings now use the primary color.
+- The selected tab now also has a slightly offset background color in light mode, not only in dark mode.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.
