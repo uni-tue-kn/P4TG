@@ -229,7 +229,8 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                 // The between-run cooldown is short, so poll often enough for
                 // its explicit paused state to remain visible in the UI.
                 stopLoadGenPolling = startPolling(loadGen, 500);
-                stopTimeStatisticsPolling = startPolling(loadTimeStatistics, 2000);
+                // Series is bucketed per second; slower polling only adds lag.
+                stopTimeStatisticsPolling = startPolling(loadTimeStatistics, 1000);
             }
         };
         void initialize();

@@ -217,6 +217,21 @@ impl TimeStatistics {
             name: None,
         }
     }
+
+    /// Drops every recorded sample of every series.
+    ///
+    /// The series are keyed by switch-clock delta against the epoch of the
+    /// current test, so keys of different tests are not comparable and a
+    /// leftover series must never survive into the next one.
+    pub fn clear_series(&mut self) {
+        self.tx_rate_l1.clear();
+        self.rx_rate_l1.clear();
+        self.app_tx_l2.clear();
+        self.app_rx_l2.clear();
+        self.packet_loss.clear();
+        self.out_of_order.clear();
+        self.rtt.clear();
+    }
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema, Deserialize)]

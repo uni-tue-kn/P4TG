@@ -348,7 +348,7 @@ pub struct Params {
     get,
     path = "/api/time_statistics",
     params(
-        ("limit" = Option<usize>, Query, description = "Reduce each series to at most *limit* data points, evenly spaced across the whole test. The first and last data point are always kept.")
+        ("limit" = Option<usize>, Query, description = "Reduce each series to at most *limit* data points, evenly spaced across the whole test. The first data point is always kept, and the last one whenever *limit* > 1.")
     ),
     responses(
     (status = 200,
@@ -366,19 +366,15 @@ pub async fn time_statistics(
     (StatusCode::OK, Json(stats)).into_response()
 }
 
-/// Reduces `all_keys` to at most `limit` timestamps, evenly spaced *by
-/// position*, always keeping the first and the last one.
-///
-/// Selecting by position rather than by key value (the previous
-/// `key % step == 0`) keeps the output size predictable even when the series
-/// has gaps or does not start at zero.
+/// Reduces `all_keys` to at most `limit` timestamps, evenly spaced by position,
+/// keeping the first and last. Selecting by position rather than key value
+/// keeps the output size predictable when the series has gaps.
 fn select_time_keys(all_keys: &BTreeSet<u32>, limit: usize) -> BTreeSet<u32> {
     if all_keys.len() <= limit {
         return all_keys.clone();
     }
 
-    // `limit >= 1` is guaranteed by the caller, and `len() > limit >= 1` here,
-    // so `last` is non-zero and the division below is safe.
+    // len() > limit >= 1 here, so `last` is non-zero.
     let last = all_keys.len() - 1;
     if limit == 1 {
         return all_keys.iter().copied().take(1).collect();
@@ -412,11 +408,8 @@ pub async fn get_time_statistics(state: &Arc<AppState>, params: Params) -> Vec<T
     // guard against limit=0, which would select an empty series
     let limit = params.limit.unwrap_or(usize::MAX).max(1);
 
-    // Decimate one shared set of timestamps and apply it to every series.
-    // The GUI sums the per-port series into a single line
-    // (`generateLineData` in Configuration GUI/src/components/Visuals.tsx), so
-    // per-series key sets would make that line dip wherever only some of the
-    // ports have a sample.
+    // One shared key set for every series: the GUI sums the per-port series
+    // into one line, so differing key sets would make it dip.
     let mut all_keys: BTreeSet<u32> = BTreeSet::new();
     for series in stats.tx_rate_l1.values().chain(stats.rx_rate_l1.values()) {
         all_keys.extend(series.keys());

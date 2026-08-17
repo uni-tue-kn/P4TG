@@ -313,10 +313,8 @@ impl HistogramMonitor {
         Ok(())
     }
 
-    /// Aggregates the histogram counters of a single ingress port.
-    ///
-    /// `hist_entries` must already be narrowed to that port; see the grouping
-    /// in [`Self::monitor_histogram`].
+    /// Aggregates the histogram counters of one ingress port. `hist_entries`
+    /// must already be narrowed to that port.
     fn aggregate_histogram_data(
         hist_entries: &[&TableEntry],
         hist_type: &HistogramType,
@@ -327,11 +325,8 @@ impl HistogramMonitor {
             HistogramType::Iat => "ingress.p4tg.iat.count_missed_bin",
         };
 
-        // Bucket the entries in a single pass. Scanning every entry once per
-        // bin instead is quadratic in num_bins: with 4096 bins over a 4097
-        // entry table that is ~16.8M string-keyed lookups, measured at ~2 s
-        // per call, during which this task never yields. That stalls the digest
-        // consumer and tears holes in the /time_statistics series.
+        // Single pass. A scan per bin is quadratic in num_bins: ~2 s per call
+        // at 4096 bins, without yielding, which stalls the digest consumer.
         let mut bin_counts = vec![0u128; hist_config.num_bins as usize];
         let mut missed_bin_count: u128 = 0;
 
@@ -456,8 +451,7 @@ impl HistogramMonitor {
 
                 match switch.get_table_entries(req).await {
                     Ok(res) => {
-                        // Group the table by ingress port once, instead of
-                        // re-filtering the whole table for every port below.
+                        // Group once instead of re-filtering per port below.
                         let mut entries_by_port: HashMap<u32, Vec<&TableEntry>> = HashMap::new();
                         for entry in &res {
                             if let Ok(key) = entry.get_key("ig_md.ig_port") {

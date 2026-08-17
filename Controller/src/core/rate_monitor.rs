@@ -65,25 +65,17 @@ pub fn unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// Wrap-around period of the switch timestamp. `monitor_t.tstmp` is a
-/// free-running `bit<48>` nanosecond counter, so it wraps every ~78.2 h.
+/// Wrap period of `monitor_t.tstmp`, a `bit<48>` ns counter (~78.2 h).
 const TSTMP_WRAP: u64 = 1 << 48;
 
-/// Elapsed seconds of the current test for a switch-domain timestamp.
-///
-/// Digest timestamps live in the switch clock domain and have an arbitrary
-/// value at test start, so they are only ever used as a delta against `start`,
-/// the timestamp of the first digest of the test. The first sample of a test
-/// therefore lands on key 0.
-///
-/// Returns `None` for digests that were generated before the epoch.
+/// Elapsed seconds since `start`, the switch timestamp of the test's first
+/// digest. `None` for digests generated before it.
 fn elapsed_secs(now: u64, start: u64) -> Option<u32> {
     let delta = if now >= start {
         now - start
     } else if start - now > TSTMP_WRAP / 2 {
-        // The switch clock wrapped past the epoch mid-test. A straggler sits a
-        // few hundred ms behind `start`, a wrap almost a full period behind it,
-        // so the half-period split tells the two apart for any test < ~39 h.
+        // Clock wrapped. A pre-epoch straggler is only ms behind, a wrap almost
+        // a full period, so the half-period split separates them below ~39 h.
         now + TSTMP_WRAP - start
     } else {
         return None;
@@ -596,15 +588,14 @@ impl RateMonitor {
 
         let mut stale_logged: Option<Instant> = None;
 
-        // Start time of the test we are currently attributing digests to. A
-        // changed start time is the signal that a new test began.
+        // Test currently being attributed; a changed start means a new test.
         let mut seen_start: Option<SystemTime> = None;
-        // Switch timestamp of the first digest of the current test; the epoch
-        // that turns switch-domain timestamps into elapsed seconds.
+        // Epoch: switch timestamp of the test's first digest.
         let mut start_tstmp: Option<u64> = None;
-        // Most recent switch timestamp seen. The RTT/IAT digests carry no
-        // timestamp of their own and fall back to this.
-        let mut dp_clock: Option<u64> = None;
+        // Highest elapsed second seen; RTT/IAT digests have no timestamp.
+        let mut dp_elapsed: Option<u32> = None;
+        // Per RX port RTT accumulator: (elapsed second, sum, count).
+        let mut rtt_bucket: HashMap<u32, (u32, u64, u64)> = HashMap::new();
 
         // listen on the channel that receives digests
         loop {
@@ -617,19 +608,24 @@ impl RateMonitor {
                     };
 
                     if running && seen_start != Some(exp_start) {
-                        // A new test began. Drop everything that was queued
-                        // before it started: those digests carry counter values
-                        // from before `on_reset` zeroed them, and anchoring the
-                        // epoch on one would shift the whole series early.
-                        // This runs in the task that owns the receiver, so it
-                        // cannot race with another consumer.
+                        // New test. Discard queued pre-start digests: their
+                        // counters predate `on_reset` and anchoring the epoch on
+                        // one would shift the series early.
                         while state.switch.digest_queue.try_recv().is_ok() {}
+
+                        state
+                            .rate_monitor
+                            .lock()
+                            .await
+                            .time_statistics
+                            .clear_series();
 
                         seen_start = Some(exp_start);
                         start_tstmp = None;
-                        dp_clock = None;
+                        dp_elapsed = None;
+                        rtt_bucket.clear();
 
-                        // The digest in hand predates the test as well.
+                        // This digest predates the test too.
                         continue;
                     }
 
@@ -647,19 +643,23 @@ impl RateMonitor {
 
                         let time = field!(data, "tstmp").to_u64();
 
-                        // Anchor the epoch on the first digest of the test and
-                        // keep the switch clock cached for the RTT/IAT digests.
                         let epoch = *start_tstmp.get_or_insert(time);
-                        dp_clock = Some(time);
 
-                        // Time series key: seconds since the test began, taken
-                        // from the switch clock so that a digest delayed in the
+                        // Key off the switch clock, so a digest delayed in the
                         // queue still lands in the second it was generated in.
-                        let elapsed_time = if running {
-                            elapsed_secs(time, epoch)
-                        } else {
-                            None
-                        };
+                        let digest_elapsed = elapsed_secs(time, epoch);
+
+                        // Cache it for the RTT/IAT digests, which carry no
+                        // timestamp of their own. Only ever advance it: the
+                        // digests of one batch are not ordered by timestamp, so
+                        // caching the raw timestamp would let a straggler pull
+                        // the clock backwards and strand every RTT digest
+                        // behind it in the same round.
+                        if let Some(secs) = digest_elapsed {
+                            dp_elapsed = Some(dp_elapsed.map_or(secs, |last| last.max(secs)));
+                        }
+
+                        let elapsed_time = if running { digest_elapsed } else { None };
 
                         let l1_byte = field!(data, "byte_counter_l1").to_u64();
                         let l2_byte = field!(data, "byte_counter_l2").to_u64();
@@ -877,15 +877,9 @@ impl RateMonitor {
 
                         let rtt = field!(data, "rtt").to_u64();
 
-                        // These digests carry no timestamp of their own, so
-                        // fall back to the switch clock cached from the last
-                        // rate digest. Digests are processed in order, so a
-                        // backlogged rate digest advances the clock and the
-                        // RTT digests behind it follow.
-                        let elapsed_time = match (running, dp_clock, start_tstmp) {
-                            (true, Some(now), Some(epoch)) => elapsed_secs(now, epoch),
-                            _ => None,
-                        };
+                        // No timestamp in this digest; fall back to the second
+                        // cached from the last rate digest.
+                        let elapsed_time = if running { dp_elapsed } else { None };
 
                         // catch timestamp overflow
                         if rtt > 0
@@ -907,6 +901,21 @@ impl RateMonitor {
                                 samples.push_back(rtt);
                             }
                             if let Some(elapsed_time) = elapsed_time {
+                                // Hundreds of RTT digests share one second, so
+                                // store their running mean instead of whichever
+                                // arrived last. The final write of a second is
+                                // that second's complete mean.
+                                let mean = {
+                                    let bucket =
+                                        rtt_bucket.entry(*port).or_insert((elapsed_time, 0, 0));
+                                    if bucket.0 != elapsed_time {
+                                        *bucket = (elapsed_time, 0, 0);
+                                    }
+                                    bucket.1 += rtt;
+                                    bucket.2 += 1;
+                                    bucket.1 / bucket.2
+                                };
+
                                 state
                                     .rate_monitor
                                     .lock()
@@ -915,7 +924,7 @@ impl RateMonitor {
                                     .rtt
                                     .entry(*port)
                                     .or_insert(BTreeMap::default())
-                                    .insert(elapsed_time, rtt);
+                                    .insert(elapsed_time, mean);
                             }
                         }
 
@@ -1007,16 +1016,8 @@ impl TrafficGenEvent for RateMonitor {
             .clear_tables(vec![MONITOR_IAT_TABLE, IS_INGRESS_TABLE])
             .await?;
 
-        // Clear every series, not just the rates. The digest loop keys samples
-        // by switch-clock delta and no longer prunes stale keys per digest, so
-        // a leftover series from the previous test would otherwise survive.
-        self.time_statistics.tx_rate_l1.clear();
-        self.time_statistics.rx_rate_l1.clear();
-        self.time_statistics.app_tx_l2.clear();
-        self.time_statistics.app_rx_l2.clear();
-        self.time_statistics.packet_loss.clear();
-        self.time_statistics.out_of_order.clear();
-        self.time_statistics.rtt.clear();
+        // Keys are per-test switch-clock deltas, so nothing may carry over.
+        self.time_statistics.clear_series();
 
         // allow iat generation
         let req = table::Request::new(MONITOR_IAT_TABLE)
@@ -1048,13 +1049,7 @@ impl TrafficGenEvent for RateMonitor {
         self.rtt_storage.clear();
         self.tx_iat_storage.clear();
         self.rx_iat_storage.clear();
-        self.time_statistics.tx_rate_l1.clear();
-        self.time_statistics.rx_rate_l1.clear();
-        self.time_statistics.app_tx_l2.clear();
-        self.time_statistics.app_rx_l2.clear();
-        self.time_statistics.packet_loss.clear();
-        self.time_statistics.out_of_order.clear();
-        self.time_statistics.rtt.clear();
+        self.time_statistics.clear_series();
 
         // Reset the in-memory gauges as well. They are only refreshed by
         // digests (one per MONITORING_PACKET_INTERVAL), so without this a
