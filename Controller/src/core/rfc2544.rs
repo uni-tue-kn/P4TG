@@ -17,7 +17,7 @@ use crate::core::traffic_gen_core::types::{
     GenerationMode, GenerationPattern, GenerationPatternConfig, GenerationUnit, Rfc2544Config,
     Rfc2544FrameLossResult, Rfc2544LatencyResult, Rfc2544LossToleranceUnit, Rfc2544PortMapping,
     Rfc2544ResetResult, Rfc2544Results, Rfc2544SystemRecoveryResult, Rfc2544ThroughputAggregation,
-    Rfc2544ThroughputRepetitionResult, Rfc2544ThroughputResult, RxTarget, TrafficGenData,
+    Rfc2544ThroughputRepetitionResult, Rfc2544ThroughputResult, RxTarget, Stream, TrafficGenData,
     RFC2544_IMIX_FRAME_SIZE,
 };
 use crate::AppState;
@@ -35,9 +35,21 @@ fn frame_profile_label(frame_size: u32) -> String {
     }
 }
 
-fn split_imix_rate(total_rate_gbps: f64) -> [f32; IMIX_STREAM_SPECS.len()] {
+fn effective_imix_l1_frame_size(frame_size: u32, template: &Stream) -> u32 {
+    // A 64-byte IPv6 packet cannot contain P4TG's headers, so traffic setup
+    // expands it to 73 bytes plus the FCS before programming pktgen.
+    let frame_size = if template.ip_version == Some(6) && frame_size == 64 {
+        73 + 4
+    } else {
+        frame_size
+    };
+
+    frame_size + calculate_overhead(template) + L1_OVERHEAD_BYTES
+}
+
+fn split_imix_rate(total_rate_gbps: f64, template: &Stream) -> [f32; IMIX_STREAM_SPECS.len()] {
     let weights = IMIX_STREAM_SPECS.map(|(frame_size, packet_weight)| {
-        f64::from(packet_weight * (frame_size + L1_OVERHEAD_BYTES))
+        f64::from(packet_weight) * f64::from(effective_imix_l1_frame_size(frame_size, template))
     });
     let total_weight = weights.iter().sum::<f64>();
     weights.map(|weight| (total_rate_gbps * weight / total_weight) as f32)
@@ -554,7 +566,7 @@ fn build_trial_payload(
             .filter(|setting| setting.active && setting.stream_id == template_stream.stream_id)
             .cloned()
             .collect::<Vec<_>>();
-        let rates = split_imix_rate(target_rate_gbps);
+        let rates = split_imix_rate(target_rate_gbps, &template_stream);
 
         payload.streams = IMIX_STREAM_SPECS
             .iter()

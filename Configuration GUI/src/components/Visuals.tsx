@@ -36,7 +36,7 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { secondsToTime } from "./SendReceiveMonitor";
 import { uniqueRxPairs } from "../common/Helper";
 import { Histogram, PortTxRxMap, StatisticsEntry, TimeStatisticsEntry } from "../common/Interfaces";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Col, Form, Row, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import StatViewHistogram from './StatViewHistogram';
 
@@ -448,21 +448,28 @@ const selectHistogramPath = (histogram: Histogram | undefined, selection: string
 const histogramResultOptions = (
     histogram: { [port: string]: { [channel: string]: Histogram } },
     portMapping: PortTxRxMap,
+    routeAppIds: number[],
+    includeTx: boolean,
+    aggregateAmbiguous: boolean,
 ) => {
     let hasAggregate = false;
     const streams = new Set<number>();
+    const allowedStreams = routeAppIds.length > 0 ? new Set(routeAppIds) : undefined;
     const results: Histogram[] = [];
     for (const [txPort, channels] of Object.entries(portMapping ?? {})) {
         for (const [txChannel, target] of Object.entries(channels ?? {})) {
             const txResult = histogram?.[txPort]?.[txChannel];
             const rxResult = histogram?.[String(target.port)]?.[String(target.channel)];
-            if (txResult) results.push(txResult);
+            if (includeTx && txResult) results.push(txResult);
             if (rxResult) results.push(rxResult);
         }
     }
     for (const result of results) {
-            hasAggregate ||= result.breakdown?.aggregate !== undefined;
-            Object.keys(result.breakdown?.per_stream ?? {}).forEach(appId => streams.add(Number(appId)));
+        hasAggregate ||= !aggregateAmbiguous && result.breakdown?.aggregate !== undefined;
+        Object.keys(result.breakdown?.per_stream ?? {}).forEach(appId => {
+            const numericAppId = Number(appId);
+            if (!allowedStreams || allowedStreams.has(numericAppId)) streams.add(numericAppId);
+        });
     }
     return {
         hasAggregate,
@@ -570,7 +577,7 @@ const get_rtt = (
     return [labels, values];
 };
 
-const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metrics_reliable = true, tx_pairs, rx_pairs, route_app_ids = [], app_l2_frame_sizes = {}, rate_only = false, rx_rate_unambiguous = true }: {
+const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metrics_reliable = true, tx_pairs, rx_pairs, route_app_ids = [], app_l2_frame_sizes = {}, rate_only = false, rx_rate_unambiguous = true, histogram_aggregate_ambiguity = {} }: {
     data: TimeStatisticsEntry,
     stats: StatisticsEntry,
     port_mapping: PortTxRxMap,
@@ -583,6 +590,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
     app_l2_frame_sizes?: Record<number, number>,
     rate_only?: boolean,
     rx_rate_unambiguous?: boolean,
+    histogram_aggregate_ambiguity?: { rtt?: boolean, iat?: boolean },
 }) => {
     const txPairs = tx_pairs ?? Object.entries(port_mapping ?? {}).flatMap(
         ([port, perChannel]) => Object.keys(perChannel ?? {}).map((channel) => [port, channel] as [string, string])
@@ -602,8 +610,20 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
     const [showPercentiles, set_show_percentiles] = useState(true)
     const [rttHistogramSelection, setRttHistogramSelection] = useState("total");
     const [iatHistogramSelection, setIatHistogramSelection] = useState("total");
-    const rttResultOptions = histogramResultOptions(stats.rtt_histogram, port_mapping);
-    const iatResultOptions = histogramResultOptions(stats.iat_histogram, port_mapping);
+    const rttResultOptions = histogramResultOptions(
+        stats.rtt_histogram,
+        port_mapping,
+        route_app_ids,
+        false,
+        histogram_aggregate_ambiguity.rtt ?? false,
+    );
+    const iatResultOptions = histogramResultOptions(
+        stats.iat_histogram,
+        port_mapping,
+        route_app_ids,
+        true,
+        histogram_aggregate_ambiguity.iat ?? false,
+    );
     const effectiveRttSelection = (rttHistogramSelection === "aggregate" && !rttResultOptions.hasAggregate)
         || (rttHistogramSelection.startsWith("stream:")
         && !rttResultOptions.streams.includes(Number(rttHistogramSelection.slice(7))))
@@ -612,6 +632,12 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
         || (iatHistogramSelection.startsWith("stream:")
         && !iatResultOptions.streams.includes(Number(iatHistogramSelection.slice(7))))
         ? "total" : iatHistogramSelection;
+    useEffect(() => {
+        if (effectiveRttSelection !== rttHistogramSelection) setRttHistogramSelection("total");
+    }, [effectiveRttSelection, rttHistogramSelection]);
+    useEffect(() => {
+        if (effectiveIatSelection !== iatHistogramSelection) setIatHistogramSelection("total");
+    }, [effectiveIatSelection, iatHistogramSelection]);
     const [labels_rtt_hist, hist_data_rtt_tx, hist_data_rtt_rx] = generateHistogram(stats.rtt_histogram, port_mapping, false, effectiveRttSelection);
     const [labels_iat_hist, hist_data_iat_tx, hist_data_iat_rx] = generateHistogram(stats.iat_histogram, port_mapping, true, effectiveIatSelection);
     const percentileRTTAnnotations = getPercentileAnnotations(stats.rtt_histogram, port_mapping, false, effectiveRttSelection);
@@ -948,20 +974,23 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
         {visual_select == "rtt_histogram" ?
             <>
                 <Row className="mb-2">
-                    <Col className="d-flex justify-content-end gap-2">
-                        <Form.Select
-                            size="sm"
-                            style={{ width: "auto" }}
-                            aria-label="RTT histogram result"
-                            value={effectiveRttSelection}
-                            onChange={event => setRttHistogramSelection(event.target.value)}
-                        >
-                            <option value="total">All selected</option>
-                            {rttResultOptions.hasAggregate ? <option value="aggregate">Aggregated streams</option> : null}
-                            {rttResultOptions.streams.map(appId =>
-                                <option key={`rtt-stream-${appId}`} value={`stream:${appId}`}>Stream {appId}</option>
-                            )}
-                        </Form.Select>
+                    <Col className="d-flex justify-content-end align-items-center flex-wrap gap-2">
+                        <div className="histogram-result-selector">
+                            <Form.Label htmlFor="rtt-histogram-result">Show histogram for</Form.Label>
+                            <Form.Select
+                                id="rtt-histogram-result"
+                                size="sm"
+                                aria-label="RTT histogram result"
+                                value={effectiveRttSelection}
+                                onChange={event => setRttHistogramSelection(event.target.value)}
+                            >
+                                <option value="total">All selected streams</option>
+                                {rttResultOptions.hasAggregate ? <option value="aggregate">Aggregated streams</option> : null}
+                                {rttResultOptions.streams.map(appId =>
+                                    <option key={`rtt-stream-${appId}`} value={`stream:${appId}`}>Stream {appId}</option>
+                                )}
+                            </Form.Select>
+                        </div>
                         <Button
                             size="sm"
                             variant={showPercentiles ? "outline-secondary" : "secondary"}
@@ -981,20 +1010,23 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
         {visual_select == "iat_histogram" ?
             <>
                 <Row className="mb-2">
-                    <Col className="d-flex justify-content-end gap-2">
-                        <Form.Select
-                            size="sm"
-                            style={{ width: "auto" }}
-                            aria-label="IAT histogram result"
-                            value={effectiveIatSelection}
-                            onChange={event => setIatHistogramSelection(event.target.value)}
-                        >
-                            <option value="total">All selected</option>
-                            {iatResultOptions.hasAggregate ? <option value="aggregate">Aggregated streams</option> : null}
-                            {iatResultOptions.streams.map(appId =>
-                                <option key={`iat-stream-${appId}`} value={`stream:${appId}`}>Stream {appId}</option>
-                            )}
-                        </Form.Select>
+                    <Col className="d-flex justify-content-end align-items-center flex-wrap gap-2">
+                        <div className="histogram-result-selector">
+                            <Form.Label htmlFor="iat-histogram-result">Show histogram for</Form.Label>
+                            <Form.Select
+                                id="iat-histogram-result"
+                                size="sm"
+                                aria-label="IAT histogram result"
+                                value={effectiveIatSelection}
+                                onChange={event => setIatHistogramSelection(event.target.value)}
+                            >
+                                <option value="total">All selected streams</option>
+                                {iatResultOptions.hasAggregate ? <option value="aggregate">Aggregated streams</option> : null}
+                                {iatResultOptions.streams.map(appId =>
+                                    <option key={`iat-stream-${appId}`} value={`stream:${appId}`}>Stream {appId}</option>
+                                )}
+                            </Form.Select>
+                        </div>
                         <Button
                             size="sm"
                             variant={showPercentiles ? "outline-secondary" : "secondary"}

@@ -631,6 +631,29 @@ table {
     opacity: 0.85;
 }
 
+.histogram-result-selector {
+    align-items: center;
+    background-color: color-mix(in srgb, var(--color-primary) 8%, var(--color-background));
+    border: 1px solid color-mix(in srgb, var(--color-primary) 55%, var(--color-background));
+    border-radius: 0.5rem;
+    display: flex;
+    gap: 0.65rem;
+    padding: 0.4rem 0.5rem 0.4rem 0.75rem;
+
+    .form-label {
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin: 0;
+        white-space: nowrap;
+    }
+
+    .form-select {
+        border-color: var(--color-primary);
+        font-weight: 600;
+        min-width: 12rem;
+    }
+}
+
 .rfc2544-frame-size-toggle {
     background-color: var(--color-selector) !important;
     border-color: var(--color-secondary) !important;

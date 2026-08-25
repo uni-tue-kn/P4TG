@@ -51,7 +51,7 @@ const RFC2544_CHART_COLORS = [
     "rgb(26, 188, 156)",
 ];
 
-const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port, expected_routes = [], sequence_metrics_reliable = true, route_app_ids = [], app_l2_frame_sizes = {}, rx_rate_unambiguous = true }: {
+const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, rx_port, expected_routes = [], sequence_metrics_reliable = true, route_app_ids = [], app_l2_frame_sizes = {}, rx_rate_unambiguous = true, histogram_aggregate_ambiguity = {} }: {
     stats: StatisticsEntry,
     time_stats: TimeStatisticsEntry,
     port_mapping: PortTxRxMap,
@@ -64,6 +64,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
     route_app_ids?: number[],
     app_l2_frame_sizes?: Record<number, number>,
     rx_rate_unambiguous?: boolean,
+    histogram_aggregate_ambiguity?: { rtt?: boolean, iat?: boolean },
 }) => {
     const [total_tx, set_total_tx] = useState(0);
     const [total_rx, set_total_rx] = useState(0);
@@ -542,7 +543,8 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
             <Visuals data={time_stats} stats={stats} port_mapping={port_mapping} is_summary={is_summary}
                 rx_port={rx_port} sequence_metrics_reliable={sequence_metrics_reliable}
                 tx_pairs={txPairs} rx_pairs={rxPairs} route_app_ids={route_app_ids}
-                app_l2_frame_sizes={app_l2_frame_sizes} rx_rate_unambiguous={rx_rate_unambiguous} />
+                app_l2_frame_sizes={app_l2_frame_sizes} rx_rate_unambiguous={rx_rate_unambiguous}
+                histogram_aggregate_ambiguity={histogram_aggregate_ambiguity} />
             :
             null
         }

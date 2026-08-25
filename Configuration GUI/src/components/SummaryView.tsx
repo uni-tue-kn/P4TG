@@ -106,6 +106,29 @@ const SummaryView = ({
         return ret;
     };
     const appL2FrameSizes = statistics.app_l2_frame_sizes ?? {};
+    const histogramAggregateIsAmbiguous = (
+        histogram: StatisticsEntry["rtt_histogram"],
+        txPort: number,
+        txChannel: number,
+        rxPort: number,
+        rxChannel: number,
+        includeTx: boolean,
+    ) => routes.some((route) => {
+        const groups = histogram?.[String(route.rxPort)]?.[String(route.rxChannel)]?.config.stream_groups;
+        const usesLegacyAggregate = !groups
+            || (groups.aggregate.length === 0 && groups.separate.length === 0);
+        const contributesToAggregate = usesLegacyAggregate || groups.aggregate.includes(route.appId);
+        if (!contributesToAggregate) return false;
+
+        const sharesRxPath = route.rxPort === rxPort && route.rxChannel === rxChannel;
+        const sharesTxPath = includeTx && route.txPort === txPort && route.txChannel === txChannel;
+        if (!sharesRxPath && !sharesTxPath) return false;
+
+        return route.txPort !== txPort
+            || route.txChannel !== txChannel
+            || route.rxPort !== rxPort
+            || route.rxChannel !== rxChannel;
+    });
 
     return (
         <>
@@ -141,6 +164,18 @@ const SummaryView = ({
                         && route.rxPort === v.rx
                         && route.rxChannel === v.rx_ch);
                     const rxRateUnambiguous = routeDefinitions.every((route) => rxAppIsUnambiguous(routes, route));
+                    const histogramAggregateAmbiguity = {
+                        rtt: histogramAggregateIsAmbiguous(
+                            statistics.rtt_histogram,
+                            v.tx, v.tx_ch, v.rx, v.rx_ch,
+                            false,
+                        ),
+                        iat: histogramAggregateIsAmbiguous(
+                            statistics.iat_histogram,
+                            v.tx, v.tx_ch, v.rx, v.rx_ch,
+                            true,
+                        ),
+                    };
 
                     return (
                         <Tab eventKey={tabKey} key={tabKey} title={tabTitle}>
@@ -158,6 +193,7 @@ const SummaryView = ({
                                         route_app_ids={routeAppIds}
                                         app_l2_frame_sizes={appL2FrameSizes}
                                         rx_rate_unambiguous={rxRateUnambiguous}
+                                        histogram_aggregate_ambiguity={histogramAggregateAmbiguity}
                                     />
                                 </Tab>
 
