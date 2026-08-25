@@ -23,8 +23,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::api::server::Error;
 use crate::core::histogram_monitor::{
-    build_iat_histogram_configs_for_edges, build_rtt_histogram_configs_for_rx_ports,
-    histogram_edge_roles, histogram_entry_count,
+    build_histogram_selections, build_iat_histogram_configs_for_edges,
+    build_rtt_histogram_configs_for_rx_ports, histogram_app_filter_count, histogram_edge_roles,
+    histogram_entry_count,
 };
 use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
@@ -293,8 +294,30 @@ pub fn validate_request(
             ));
         }
 
-        if config.frame_sizes.iter().any(|frame_size| *frame_size < 64) {
+        if config.frame_sizes.iter().any(|frame_size| {
+            *frame_size != crate::core::traffic_gen_core::types::RFC2544_IMIX_FRAME_SIZE
+                && *frame_size < 64
+        }) {
             return Err(Error::new("RFC2544 frame sizes must be at least 64 bytes."));
+        }
+
+        if config
+            .frame_sizes
+            .contains(&crate::core::traffic_gen_core::types::RFC2544_IMIX_FRAME_SIZE)
+            && !config.throughput
+        {
+            return Err(Error::new(
+                "The RFC2544 IMIX profile requires zero-loss throughput.",
+            ));
+        }
+
+        if config.frame_sizes.iter().all(|frame_size| {
+            *frame_size == crate::core::traffic_gen_core::types::RFC2544_IMIX_FRAME_SIZE
+        }) && (config.latency || config.reset || config.frame_loss || config.system_recovery)
+        {
+            return Err(Error::new(
+                "Latency, reset, frame loss, and system recovery require at least one fixed RFC2544 frame size; IMIX applies to zero-loss throughput only.",
+            ));
         }
 
         if active_streams.is_empty() {
@@ -688,10 +711,44 @@ pub fn validate_request(
     // Validate histogram configurations. Runs even without explicit configs
     // because active ports fall back to default configs that also consume
     // table entries. Safe to translate here: all mapping ports were validated above.
+    let tx_rx_dev_mapping = translate_fp_channel_to_dev_port_mapping(
+        &payload.port_tx_rx_mapping,
+        &front_panel_dev_port_mappings,
+    );
+    let stream_to_app: HashMap<u8, u8> = active_streams
+        .iter()
+        .map(|stream| (stream.stream_id, stream.app_id))
+        .collect();
+    let histogram_routes: Vec<(u32, u32, u8)> =
+        if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            per_stream_topology
+                .routes
+                .iter()
+                .map(|route| (route.tx_dev_port, route.rx_dev_port, route.app_id))
+                .collect()
+        } else {
+            active_stream_settings
+                .iter()
+                .filter_map(|setting| {
+                    let tx = front_panel_dev_port_mappings.get(&setting.port)?
+                        + setting.channel.unwrap_or(0) as u32;
+                    Some((
+                        tx,
+                        *tx_rx_dev_mapping.get(&tx.to_string())?,
+                        *stream_to_app.get(&setting.stream_id)?,
+                    ))
+                })
+                .collect()
+        };
+    let configured_app_ids: HashSet<u8> =
+        payload.streams.iter().map(|stream| stream.app_id).collect();
+
     if payload.rx_mapping_mode == RxMappingMode::PerStream {
         validate_histogram_for_edges(
             rtt_histogram_config.as_ref(),
             &per_stream_topology.edges,
+            &histogram_routes,
+            &configured_app_ids,
             &front_panel_dev_port_mappings,
             payload.name.clone(),
             HistogramType::Rtt,
@@ -699,18 +756,18 @@ pub fn validate_request(
         validate_histogram_for_edges(
             iat_histogram_config.as_ref(),
             &per_stream_topology.edges,
+            &histogram_routes,
+            &configured_app_ids,
             &front_panel_dev_port_mappings,
             payload.name.clone(),
             HistogramType::Iat,
         )?;
     } else {
-        let tx_rx_dev_mapping = translate_fp_channel_to_dev_port_mapping(
-            &payload.port_tx_rx_mapping,
-            &front_panel_dev_port_mappings,
-        );
         validate_histogram(
             rtt_histogram_config.as_ref(),
             &tx_rx_dev_mapping,
+            &histogram_routes,
+            &configured_app_ids,
             &front_panel_dev_port_mappings,
             payload.name.clone(),
             HistogramType::Rtt,
@@ -718,6 +775,8 @@ pub fn validate_request(
         validate_histogram(
             iat_histogram_config.as_ref(),
             &tx_rx_dev_mapping,
+            &histogram_routes,
+            &configured_app_ids,
             &front_panel_dev_port_mappings,
             payload.name.clone(),
             HistogramType::Iat,
@@ -842,6 +901,8 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
 pub fn validate_histogram(
     request: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
     tx_rx_dev_mapping: &HashMap<String, u32>,
+    routes: &[(u32, u32, u8)],
+    configured_app_ids: &HashSet<u8>,
     front_panel_dev_port_mappings: &HashMap<u32, u32>,
     test_name: Option<String>,
     hist_type: HistogramType,
@@ -853,6 +914,8 @@ pub fn validate_histogram(
     validate_histogram_for_edges(
         request,
         &edges,
+        routes,
+        configured_app_ids,
         front_panel_dev_port_mappings,
         test_name,
         hist_type,
@@ -862,6 +925,8 @@ pub fn validate_histogram(
 pub fn validate_histogram_for_edges(
     request: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
     edges: &HashSet<(u32, u32)>,
+    routes: &[(u32, u32, u8)],
+    configured_app_ids: &HashSet<u8>,
     front_panel_dev_port_mappings: &HashMap<u32, u32>,
     test_name: Option<String>,
     hist_type: HistogramType,
@@ -907,6 +972,35 @@ pub fn validate_histogram_for_edges(
                 )));
                 }
             }
+
+            if let Some(groups) = config
+                .stream_groups
+                .as_ref()
+                .filter(|groups| !groups.is_empty())
+            {
+                let aggregate: HashSet<u8> = groups.aggregate.iter().copied().collect();
+                let separate: HashSet<u8> = groups.separate.iter().copied().collect();
+                if aggregate.len() != groups.aggregate.len()
+                    || separate.len() != groups.separate.len()
+                {
+                    return Err(Error::new(format!(
+                        "Histogram config error {t_name} port {port}: Stream group lists must not contain duplicate app IDs."
+                    )));
+                }
+                if let Some(app_id) = aggregate.intersection(&separate).next() {
+                    return Err(Error::new(format!(
+                        "Histogram config error {t_name} port {port}: App ID {app_id} cannot be both aggregated and separate."
+                    )));
+                }
+                if let Some(app_id) = aggregate
+                    .union(&separate)
+                    .find(|app_id| !configured_app_ids.contains(app_id))
+                {
+                    return Err(Error::new(format!(
+                        "Histogram config error {t_name} port {port}: App ID {app_id} does not identify a configured stream."
+                    )));
+                }
+            }
         }
     }
 
@@ -926,19 +1020,28 @@ pub fn validate_histogram_for_edges(
         }
     };
     let (tx_ports, rx_ports) = histogram_edge_roles(edges);
+    let selections = build_histogram_selections(routes, &dev_port_configs, &hist_type);
 
     let mut num_requests: u64 = 0;
     for (dev_port, config) in dev_port_configs.iter() {
-        let mut num_paths = rx_ports.contains(dev_port) as u64;
-        if let HistogramType::Iat = hist_type {
-            num_paths += tx_ports.contains(dev_port) as u64;
-        }
+        let selection = selections.get(dev_port).cloned().unwrap_or_default();
+        let rx_filters = if rx_ports.contains(dev_port) {
+            histogram_app_filter_count(&selection.rx) as u64
+        } else {
+            0
+        };
+        let tx_filters = if matches!(hist_type, HistogramType::Iat) && tx_ports.contains(dev_port) {
+            histogram_app_filter_count(&selection.tx) as u64
+        } else {
+            0
+        };
+        let filter_count = rx_filters + tx_filters;
 
         // Explicit configs for inactive ports are retained by the config
         // resolver, but the table writer skips them because neither path can
         // match traffic. Skip them here as well so an unused, very large bin
         // count cannot trigger unnecessary expansion work during validation.
-        if num_paths == 0 {
+        if filter_count == 0 && !rx_ports.contains(dev_port) && !tx_ports.contains(dev_port) {
             continue;
         }
 
@@ -946,12 +1049,12 @@ pub fn validate_histogram_for_edges(
         // that cannot possibly fit before calculating their exact expansion;
         // without a fixed bin cap, this also keeps validation work bounded by
         // the table's actual capacity.
-        let minimum_requests = num_paths * (u64::from(config.num_bins) + 1);
+        let minimum_requests = filter_count * (u64::from(config.num_bins) + 1);
         if num_requests + minimum_requests > u64::from(max_table_size) {
             return Err(Error::new(format!("Histogram config error {t_name}: Number of table entries requires at least {} entries, which exceeds available space ({max_table_size}) in table {table_name}. Reduce the number of bins or the histogram range.", num_requests + minimum_requests)));
         }
 
-        num_requests += num_paths * (u64::from(histogram_entry_count(config)) + 1);
+        num_requests += filter_count * (u64::from(histogram_entry_count(config)) + 1);
 
         if num_requests > u64::from(max_table_size) {
             return Err(Error::new(format!("Histogram config error {t_name}: Number of table entries ({num_requests}) exceeds available space ({max_table_size}) in table {table_name}. Reduce the number of bins or the histogram range.")));

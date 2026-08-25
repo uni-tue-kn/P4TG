@@ -36,7 +36,9 @@ use crate::api::server::Error;
 use crate::api::statistics::{
     get_statistics, get_time_statistics, Params, StatisticsApi, TimeStatisticsApi,
 };
-use crate::core::traffic_gen_core::types::{Rfc2544PortMapping, Rfc2544Results};
+use crate::core::traffic_gen_core::types::{
+    Rfc2544PortMapping, Rfc2544Results, RFC2544_IMIX_FRAME_SIZE,
+};
 use crate::AppState;
 
 const PAGE_W: f64 = 210.0;
@@ -45,6 +47,15 @@ const MARGIN: f64 = 14.0;
 const LINE_H: f64 = 5.2;
 const FRAME_LOSS_TABLE_STEPS: [u32; 10] = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10];
 const FRAME_LOSS_GRAPH_STEPS: [u32; 11] = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+const IMIX_AVERAGE_L1_FRAME_SIZE: f64 = 354.5;
+
+fn rfc2544_frame_profile_label(frame_size: u32) -> String {
+    if frame_size == RFC2544_IMIX_FRAME_SIZE {
+        "IMIX".to_string()
+    } else {
+        format!("{frame_size} B")
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct P4tgReportRequest {
@@ -307,7 +318,7 @@ fn write_rfc_summary(pdf: &mut PdfReport, rfc: &Rfc2544Results) {
             "Frame sizes",
             &rfc.selected_frame_sizes
                 .iter()
-                .map(|v| format!("{v} B"))
+                .map(|v| rfc2544_frame_profile_label(*v))
                 .collect::<Vec<_>>()
                 .join(", "),
         ),
@@ -336,6 +347,7 @@ fn write_throughput(pdf: &mut PdfReport, rfc: &Rfc2544Results) {
         points: rfc
             .selected_frame_sizes
             .iter()
+            .filter(|frame| **frame != RFC2544_IMIX_FRAME_SIZE)
             .map(|frame| {
                 (
                     *frame as f64,
@@ -351,6 +363,7 @@ fn write_throughput(pdf: &mut PdfReport, rfc: &Rfc2544Results) {
             points: rfc
                 .selected_frame_sizes
                 .iter()
+                .filter(|frame| **frame != RFC2544_IMIX_FRAME_SIZE)
                 .filter_map(|frame| {
                     rfc.throughput
                         .iter()
@@ -386,7 +399,7 @@ fn write_throughput(pdf: &mut PdfReport, rfc: &Rfc2544Results) {
             .map(|row| {
                 let mut cells = vec![
                     mapping_label(&row.mapping),
-                    format!("{} B", row.frame_size),
+                    rfc2544_frame_profile_label(row.frame_size),
                     format_gbps(row.zero_loss_rate_gbps),
                     format!(
                         "{:.3}",
@@ -415,7 +428,7 @@ fn write_throughput(pdf: &mut PdfReport, rfc: &Rfc2544Results) {
                 .map(move |rep| {
                     vec![
                         mapping_label(&row.mapping),
-                        format!("{} B", row.frame_size),
+                        rfc2544_frame_profile_label(row.frame_size),
                         rep.repetition.to_string(),
                         format_gbps(rep.zero_loss_rate_gbps),
                         rep.first_loss_rate_gbps
@@ -1225,7 +1238,12 @@ fn frame_loss_table_rows(rfc: &Rfc2544Results) -> Vec<Vec<String>> {
 }
 
 fn gbps_to_mpps(gbps: f64, frame_size: u32) -> f64 {
-    gbps * 1_000.0 / ((frame_size + 20) as f64 * 8.0)
+    let l1_frame_size = if frame_size == RFC2544_IMIX_FRAME_SIZE {
+        IMIX_AVERAGE_L1_FRAME_SIZE
+    } else {
+        f64::from(frame_size + 20)
+    };
+    gbps * 1_000.0 / (l1_frame_size * 8.0)
 }
 
 fn format_gbps(gbps: f64) -> String {

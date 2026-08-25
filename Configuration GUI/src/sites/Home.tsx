@@ -44,6 +44,7 @@ import styled from "styled-components";
 import SummaryView from '../components/SummaryView';
 import { loadFromStorage } from '../common/Helper';
 import { startPolling } from '../common/Polling';
+import { RFC2544_IMIX_FRAME_SIZE } from '../common/IMIX';
 
 const RUN_NAME_SUFFIX = /\s*\[\d+\/\d+\]$/;
 const baseConfigName = (name: string) => name.replace(RUN_NAME_SUFFIX, "");
@@ -78,6 +79,45 @@ const TestNumber = styled.span`
     border-radius: 10px;
     display: inline-block;
 `
+
+const NumTests = ({
+    cooldown,
+    running,
+    statistics,
+    totalPlannedRuns,
+}: {
+    cooldown: boolean;
+    running: boolean;
+    statistics: Statistics;
+    totalPlannedRuns: number;
+}) => {
+    const numAvailableStats = Math.min(statistics.length, totalPlannedRuns);
+
+    return (
+        <TestNumber>
+            {cooldown ? (
+                <i className="bi bi-pause-circle-fill" />
+            ) : running ? (
+                <span
+                    className="spinner-border spinner-border-sm"
+                    role="status"
+                    aria-hidden="true"
+                    style={{
+                        verticalAlign: 'middle',
+                        animationDuration: '1s',
+                    }}
+                />
+            ) : numAvailableStats !== totalPlannedRuns ? (
+                <i className="bi bi-pause-circle-fill" />
+            ) : (
+                <i className="bi bi-check-circle-fill" />
+            )}
+            &nbsp;
+            {cooldown ? "Cooldown · " : null}
+            Run {numAvailableStats} / {totalPlannedRuns}
+        </TestNumber>
+    );
+}
 
 const Rfc2544StatusLabel = styled.div`
     font-size: 0.75rem;
@@ -179,36 +219,6 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
         ),
         0
     );
-
-    const NumTests = ({ running }: { running: boolean }) => {
-        const num_avail_stats = Math.min(Object.keys(statistics || {}).length, totalPlannedRuns);
-
-        return (
-            <TestNumber>
-                {cooldown ? (
-                    <i className="bi bi-pause-circle-fill" />
-                ) : running ? (
-                    <span
-                        className="spinner-border spinner-border-sm"
-                        role="status"
-                        aria-hidden="true"
-                        style={{
-                            verticalAlign: 'middle',
-                            animationDuration: '0.5s'
-                        }}
-                    />
-                ) : !running && (num_avail_stats !== totalPlannedRuns) ? (
-                    <i className="bi bi-pause-circle-fill" />
-                ) : !running && num_avail_stats === totalPlannedRuns ? (
-                    <i className="bi bi-check-circle-fill" />
-                )
-                    : null}
-                &nbsp;
-                {cooldown ? "Cooldown · " : null}
-                Run {num_avail_stats} / {totalPlannedRuns}
-            </TestNumber>
-        );
-    }
 
     useEffect(() => {
         const refresh = async () => {
@@ -352,6 +362,12 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                     }
                     if (rfc2544.frame_sizes.length === 0) {
                         showToast("Select at least one RFC2544 frame size for " + name + ".", "danger")
+                        set_overlay(false)
+                        return;
+                    }
+                    if (rfc2544.frame_sizes.every((frameSize) => frameSize === RFC2544_IMIX_FRAME_SIZE)
+                        && (rfc2544.latency || rfc2544.frame_loss || rfc2544.reset || rfc2544.system_recovery)) {
+                        showToast("Select a fixed RFC2544 frame size for non-throughput tests in " + name + ".", "danger")
                         set_overlay(false)
                         return;
                     }
@@ -576,7 +592,12 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                                     className="bi bi-skip-forward-fill" /> Skip </Button>
                             }
                             {" "}
-                            <NumTests running={running} />
+                            <NumTests
+                                cooldown={cooldown}
+                                running={running}
+                                statistics={statistics}
+                                totalPlannedRuns={totalPlannedRuns}
+                            />
 
                         </>
                     }

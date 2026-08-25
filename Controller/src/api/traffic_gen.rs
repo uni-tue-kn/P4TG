@@ -33,12 +33,12 @@ use log::info;
 use rbfrt::error::RBFRTError;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
 use std::time::SystemTime;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::api::server::Error;
 use crate::core::histogram_monitor::{
-    build_iat_histogram_configs, build_iat_histogram_configs_for_edges,
+    build_histogram_selections, build_iat_histogram_configs, build_iat_histogram_configs_for_edges,
     build_rtt_histogram_configs, build_rtt_histogram_configs_for_rx_ports, histogram_edge_roles,
     histogram_port_roles,
 };
@@ -365,6 +365,30 @@ pub async fn start_single_test(
             histogram_port_roles(&tx_rx_port_mapping)
         };
 
+    let stream_to_app: HashMap<u8, u8> = active_streams
+        .iter()
+        .map(|stream| (stream.stream_id, stream.app_id))
+        .collect();
+    let histogram_routes: Vec<(u32, u32, u8)> =
+        if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            per_stream_topology
+                .routes
+                .iter()
+                .map(|route| (route.tx_dev_port, route.rx_dev_port, route.app_id))
+                .collect()
+        } else {
+            active_stream_settings
+                .iter()
+                .filter_map(|setting| {
+                    Some((
+                        setting.port,
+                        *tx_rx_port_mapping.get(&setting.port.to_string())?,
+                        *stream_to_app.get(&setting.stream_id)?,
+                    ))
+                })
+                .collect()
+        };
+
     // Write IAT histogram config into state. The tables will be later populated by init_histogram_config
     {
         let mut histogram_monitor = state.iat_histogram_monitor.lock().await;
@@ -385,12 +409,15 @@ pub async fn start_single_test(
                 &front_panel_dev_port_mappings,
             )
         };
+        histogram_monitor.selections =
+            build_histogram_selections(&histogram_routes, &iat_configs, &HistogramType::Iat);
         for (dev_port, config) in iat_configs {
             histogram_monitor.histogram.insert(
                 dev_port,
                 Histogram {
                     config,
                     data: HistogramPacketPath::default(),
+                    breakdown: None,
                 },
             );
         }
@@ -416,12 +443,15 @@ pub async fn start_single_test(
                 &front_panel_dev_port_mappings,
             )
         };
+        histogram_monitor.selections =
+            build_histogram_selections(&histogram_routes, &rtt_configs, &HistogramType::Rtt);
         for (dev_port, config) in rtt_configs {
             histogram_monitor.histogram.insert(
                 dev_port,
                 Histogram {
                     config,
                     data: HistogramPacketPath::default(),
+                    breakdown: None,
                 },
             );
         }

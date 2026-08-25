@@ -6,6 +6,9 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+RFC2544_IMIX_FRAME_SIZE = 0
+IMIX_AVERAGE_L1_FRAME_SIZE = 354.5
+
 
 def _out_dir():
     out = Path("results")
@@ -36,7 +39,16 @@ def _mapping_label(mapping):
 
 
 def _gbps_to_mpps(gbps, frame_size):
-    return float(gbps) * 1_000 / ((int(frame_size) + 20) * 8)
+    l1_frame_size = (
+        IMIX_AVERAGE_L1_FRAME_SIZE
+        if int(frame_size) == RFC2544_IMIX_FRAME_SIZE
+        else int(frame_size) + 20
+    )
+    return float(gbps) * 1_000 / (l1_frame_size * 8)
+
+
+def _frame_profile_label(frame_size):
+    return "IMIX" if int(frame_size) == RFC2544_IMIX_FRAME_SIZE else f"{frame_size} B"
 
 
 def _flatten_row(row):
@@ -145,13 +157,17 @@ def plot_rfc2544_throughput(stats, payload_path: str, show_plots: bool = False):
         logging.info("Skipping RFC2544 throughput plot because no throughput rows are available.")
         return
 
-    frame_sizes = sorted(set(rfc.get("selected_frame_sizes", []) or [r["frame_size"] for r in rows]))
+    frame_sizes = sorted(
+        set(rfc.get("selected_frame_sizes", []) or [r["frame_size"] for r in rows]),
+        key=lambda frame_size: (int(frame_size) == RFC2544_IMIX_FRAME_SIZE, int(frame_size)),
+    )
+    x_positions = list(range(len(frame_sizes)))
     line_rate = float(rfc.get("line_rate_gbps", 0))
 
     fig, ax = plt.subplots(figsize=(10, 6))
     if line_rate > 0:
         ax.plot(
-            frame_sizes,
+            x_positions,
             [_gbps_to_mpps(line_rate, frame_size) for frame_size in frame_sizes],
             marker="o",
             linestyle="--",
@@ -168,10 +184,12 @@ def plot_rfc2544_throughput(stats, payload_path: str, show_plots: bool = False):
             if frame_size in per_frame_size else None
             for frame_size in frame_sizes
         ]
-        ax.plot(frame_sizes, y, marker="x", label=f"Zero loss {mapping}")
+        ax.plot(x_positions, y, marker="x", label=f"Zero loss {mapping}")
 
     ax.set_title("RFC2544 Zero Loss Throughput")
-    ax.set_xlabel("Frame size (bytes)")
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels([_frame_profile_label(frame_size) for frame_size in frame_sizes])
+    ax.set_xlabel("Frame profile")
     ax.set_ylabel("Frame rate (Mpps)")
     ax.grid(True)
     ax.legend()

@@ -609,6 +609,28 @@ table {
     border-color: var(--color-primary);
 }
 
+/* The histogram stream matrix has unlabeled radio controls, so its unchecked
+   state needs a stronger outline than Bootstrap's subtle default. */
+.histogram-stream-collection .form-check-input:not(:checked) {
+    background-color: #ffffff;
+    border: 2px solid #495057;
+}
+
+[data-theme="dark"] .histogram-stream-collection .form-check-input:not(:checked) {
+    background-color: var(--color-secondary-light);
+    border-color: #d5d9dd;
+}
+
+.histogram-stream-collection .form-check-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.2rem rgba(231, 76, 60, 0.25);
+}
+
+.histogram-stream-summary {
+    color: var(--color-text) !important;
+    opacity: 0.85;
+}
+
 .rfc2544-frame-size-toggle {
     background-color: var(--color-selector) !important;
     border-color: var(--color-secondary) !important;

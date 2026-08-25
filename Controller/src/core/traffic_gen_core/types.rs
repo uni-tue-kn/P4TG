@@ -176,6 +176,11 @@ pub fn default_rfc2544_frame_sizes() -> Vec<u32> {
     vec![64, 128, 256, 512, 1024, 1280, 1518]
 }
 
+/// Sentinel used in `frame_sizes` for the non-standard IMIX ZLT profile.
+/// Trial construction expands this into 64/512/1518-byte streams before any
+/// traffic is programmed, so a zero-byte frame never reaches the data plane.
+pub const RFC2544_IMIX_FRAME_SIZE: u32 = 0;
+
 fn default_repetitions() -> u32 {
     1
 }
@@ -274,6 +279,7 @@ pub struct Rfc2544Config {
     #[serde(default)]
     pub system_recovery: bool,
     #[serde(default = "default_rfc2544_frame_sizes")]
+    /// Fixed Ethernet frame sizes; zero selects the non-standard IMIX ZLT profile.
     pub frame_sizes: Vec<u32>,
     #[serde(default = "default_rfc2544_line_rate_gbps")]
     pub line_rate_gbps: f32,

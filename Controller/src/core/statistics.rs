@@ -245,22 +245,58 @@ pub struct HistogramConfig {
     /// Percentiles to calculate from histogram data. Float values between 0 and 1.0
     #[serde(default)]
     pub percentiles: Option<Vec<f64>>,
+    /// Optional stream grouping for this histogram. Missing or empty groups
+    /// retain the legacy wildcard match over every application ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_groups: Option<HistogramStreamGroups>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema, Default, PartialEq, Eq)]
+pub struct HistogramStreamGroups {
+    /// Application IDs collected into one logical aggregate. The controller
+    /// uses the minimum number of ternary masks required to cover this set.
+    #[serde(default)]
+    pub aggregate: Vec<u8>,
+    /// Application IDs collected with exact matches and exposed separately.
+    #[serde(default)]
+    pub separate: Vec<u8>,
+}
+
+impl HistogramStreamGroups {
+    pub fn is_empty(&self) -> bool {
+        self.aggregate.is_empty() && self.separate.is_empty()
+    }
 }
 
 impl HistogramConfig {
     pub fn get_bin_width(&self) -> u32 {
         (self.max - self.min) / self.num_bins
     }
+
+    pub fn default_rtt() -> Self {
+        HistogramConfig {
+            min: 1024,
+            max: 2048,
+            num_bins: 16,
+            percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+            stream_groups: None,
+        }
+    }
+
+    pub fn default_iat() -> Self {
+        HistogramConfig {
+            min: 0,
+            max: 1024,
+            num_bins: 16,
+            percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+            stream_groups: None,
+        }
+    }
 }
 
 impl Default for HistogramConfig {
     fn default() -> Self {
-        HistogramConfig {
-            min: 1500,
-            max: 2500,
-            num_bins: 10,
-            percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
-        }
+        Self::default_rtt()
     }
 }
 
@@ -292,6 +328,16 @@ pub struct HistogramBinEntry {
 pub struct Histogram {
     pub config: HistogramConfig,
     pub data: HistogramPacketPath,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub breakdown: Option<HistogramBreakdown>,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema, Default)]
+pub struct HistogramBreakdown {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aggregate: Option<HistogramPacketPath>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub per_stream: HashMap<u8, HistogramPacketPath>,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema, Default)]

@@ -11,7 +11,8 @@
   - Configurable repetitions for non-RFC2544 tests. Each test defaults to one run, preserves every repetition in the result history, and waits 3 seconds between runs.
   - RFC2544 configuration and tabbed result views to the frontend.
   - Optional repeated/clustered RFC2544 zero-loss throughput aggregation for noisy or virtualized DUTs.
-    - Zero-Loss Throughput measurement repetitions can be configured.
+  - Optional non-RFC2544 IMIX zero-loss-throughput profile using the built-in 7x64B, 4x512B, 1x1518B stream mix.
+  - Zero-Loss Throughput measurement repetitions can be configured.
     - The zero-loss throughput is then chosen from those repetitions based on the mode:
       - Raw: return every measured repetition without calculating an aggregate. The legacy scalar and follow-up procedures use the final repetition.
       - Clustered: Aggregate results withing a configurable window and choose the window containing the most measurement results. Take the median of that value. This eliminates noisy outliers.
@@ -25,11 +26,13 @@
 - The TX/RX port mapping can now be additionally selected on a per-stream basis, at the cost of packet loss and out-of-order measurements.
 - `POST:api/time_statistics` now also includes the per stream rates. This allows to render per-stream TX/RX rates in the frontend.
 - Removed the limit of 500 bins for histograms. Validation of the histogram configuration is applied on traffic generation start.
-- Added suggestion for the next power-of-two aligned histogram maximum, bin width, and pattern shaping entries. Power-of-two aligned values greatly reduce the number of required shaping entries.
+- Added suggestion for the next power-of-two aligned histogram minimum/maximum and bin width. Power-of-two aligned values greatly reduce the number of required shaping entries.
 - Added `channel_count: 2`, which splits a front panel port into two equally sized halves of the cage: channels `0,4` on Tofino 2 (`2x10G`, `2x25G`, `2x40G`, `2x50G`, `2x100G`, `2x200G`) and channels `0,2` on Tofino 1 (`2x10G`, `2x25G`, `2x50G`).
 - Added `BF_SPEED_200G` to the GUI speed selection. It was already accepted by the controller for `1x` but could not be selected.
 - Added `4x50G` on Tofino 2, and unified the `channel_count: 4` channel layout so that every mode's channel layout is now independent of the configured speed. Runtime speed changes therefore never require a controller restart. Only a `channel_count` change does.
   - ⚠️ **Breaking change:** on Tofino 2, `4x10G` and `4x25G` move from channels `0,1,2,3` (lanes 0-3) to channels `0,2,4,6` (lanes 0, 2, 4, 6). This matches a 4-way QSFP-DD breakout cable, whose legs carry two lanes each. Setups that rely on the previous packing into lanes 0-3, for example a QSFP28 cable that only carries four lanes, can use `channel_count: 8` and leave channels 4-7 unused.
+- Added per-stream data plane collection for RTT/IAT histograms. Histograms can now be filtered, or aggregated across streams.
+- Increased the size of the IAT histogram table from 4096 to 8192.
 
 ### Bug fixes
 - Fixed timestamps of rate digests being used improperly.

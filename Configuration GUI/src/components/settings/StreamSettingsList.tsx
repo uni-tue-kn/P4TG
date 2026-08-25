@@ -50,6 +50,7 @@ const StreamSettingsList = ({ stream_settings, streams, running, p4tg_infos, por
             }
             if (s.port == port.port && s.channel == port.channel && stream != null) {
                 return <StreamSettingsElement key={i} running={running} port_status={port.status} stream_data={stream}
+                    configured_streams={streams}
                     stream={s} p4tg_infos={p4tg_infos} ports={ports} rx_mapping_mode={rx_mapping_mode}
                     onActiveChange={(active) => onUpdate(s, { active })}
                     onRxTargetChange={(rx_target: RxTarget | undefined) => onUpdate(s, { rx_target })}

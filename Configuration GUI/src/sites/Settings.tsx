@@ -55,10 +55,10 @@ import HistogramSettings from '../components/settings/HistogramSettings';
 import { PortStatus } from './Ports';
 import { getTotalActiveStreamRate, getTotalRatePerPort, loadFromStorage } from '../common/Helper';
 import IMIXModal from '../components/settings/IMIXModal';
-import { IMIXConfig, IMIX_DESCRIPTION, IMIX_STREAM_COUNT, IMIX_STREAM_SPECS, splitImixRate } from '../common/IMIX';
+import { IMIXConfig, IMIX_DESCRIPTION, IMIX_STREAM_COUNT, IMIX_STREAM_SPECS, RFC2544_IMIX_FRAME_SIZE, splitImixRate } from '../common/IMIX';
 import { startPolling } from '../common/Polling';
 import { migrateTrafficGenData } from '../common/StorageMigration';
-import { expectedRoutes, sequenceMetricsReliable } from '../common/ExpectedRoutes';
+import { expectedRoutes } from '../common/ExpectedRoutes';
 
 export const StyledRow = styled.tr`
     display: flex;
@@ -237,11 +237,23 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         loadFromStorage<RxMappingMode>("rx_mapping_mode", RxMappingMode.PerTxPort)
     )
 
-    // RX endpoints that are targeted by more than one TX port. Loss and
-    // out-of-order tracking works per RX port in the data plane, so such
-    // fan-in mappings produce unreliable loss/out-of-order counters.
     const configuredRoutes = expectedRoutes(rx_mapping_mode, port_tx_rx_mapping, streams, stream_settings);
-    const unreliableSequenceMetrics = !sequenceMetricsReliable(configuredRoutes);
+    const sequenceMetricsWarning = "Packet loss and out-of-order tracking works per physical port. These counters are unreliable when one TX is split across RX ports or several TX ports feed one RX port, and will be hidden in the result view.";
+    const rxTargetsByTx = new Map<string, Set<string>>();
+    const txSourcesByRx = new Map<string, Set<string>>();
+    configuredRoutes.forEach(({ txPort, txChannel, rxPort, rxChannel }) => {
+        const tx = `${txPort}/${txChannel}`;
+        const rx = `${rxPort}/${rxChannel}`;
+        if (!rxTargetsByTx.has(tx)) rxTargetsByTx.set(tx, new Set());
+        if (!txSourcesByRx.has(rx)) txSourcesByRx.set(rx, new Set());
+        rxTargetsByTx.get(tx)!.add(rx);
+        txSourcesByRx.get(rx)!.add(tx);
+    });
+    const sequenceMetricAffectedTxPorts = new Set(configuredRoutes
+        .filter(({ txPort, txChannel, rxPort, rxChannel }) =>
+            (rxTargetsByTx.get(`${txPort}/${txChannel}`)?.size ?? 0) > 1
+            || (txSourcesByRx.get(`${rxPort}/${rxChannel}`)?.size ?? 0) > 1)
+        .map(({ txPort, txChannel }) => `${txPort}/${txChannel}`));
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
@@ -1251,9 +1263,14 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         rfc2544_config.reset ? "Reset" : null,
         rfc2544_config.system_recovery ? "System recovery" : null,
     ].filter((value): value is string => value !== null);
-    const rfc2544FrameSizeSummary = rfc2544_config.frame_sizes.length === RFC2544_FRAME_SIZES.length
-        ? "All RFC sizes"
-        : `${rfc2544_config.frame_sizes.length} selected`;
+    const rfc2544FixedFrameSizeCount = rfc2544_config.frame_sizes.filter((frameSize) => frameSize !== RFC2544_IMIX_FRAME_SIZE).length;
+    const rfc2544IMIXSelected = rfc2544_config.frame_sizes.includes(RFC2544_IMIX_FRAME_SIZE);
+    const rfc2544FrameSizeSummary = [
+        rfc2544FixedFrameSizeCount === RFC2544_FRAME_SIZES.length
+            ? "All RFC sizes"
+            : rfc2544FixedFrameSizeCount > 0 ? `${rfc2544FixedFrameSizeCount} fixed` : null,
+        rfc2544IMIXSelected ? "IMIX (ZLT)" : null,
+    ].filter((value): value is string => value !== null).join(" + ") || "None selected";
     const rfc2544MappingSummary = rfc2544MappingCount > 1
         ? `${rfc2544MappingCount} mappings, serial`
         : `${rfc2544MappingCount || 0} mapping`;
@@ -1309,7 +1326,12 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const toggleRfc2544FrameSize = (frameSize: number, checked: boolean) => {
         set_rfc2544_config((prev) => {
             const nextFrameSizes = checked
-                ? Array.from(new Set([...prev.frame_sizes, frameSize])).sort((a, b) => a - b)
+                ? Array.from(new Set([...prev.frame_sizes, frameSize])).sort((a, b) => {
+                    if (a === b) return 0;
+                    if (a === RFC2544_IMIX_FRAME_SIZE) return 1;
+                    if (b === RFC2544_IMIX_FRAME_SIZE) return -1;
+                    return a - b;
+                })
                 : prev.frame_sizes.filter((value) => value !== frameSize);
             return { ...prev, frame_sizes: nextFrameSizes };
         });
@@ -1750,7 +1772,12 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                         label={rfc2544HoverLabel("Zero loss throughput", "Finds the highest offered rate for each frame size and mapping where no frame loss is observed. Required by latency, reset time, and system recovery.")}
                                                         checked={rfc2544_config.throughput}
                                                         disabled={running || rfc2544ThroughputRequired}
-                                                        onChange={(event) => updateRfc2544Config({ throughput: event.target.checked })}
+                                                        onChange={(event) => updateRfc2544Config({
+                                                            throughput: event.target.checked,
+                                                            frame_sizes: event.target.checked
+                                                                ? rfc2544_config.frame_sizes
+                                                                : rfc2544_config.frame_sizes.filter((frameSize) => frameSize !== RFC2544_IMIX_FRAME_SIZE),
+                                                        })}
                                                     />
                                                     {rfc2544ThroughputRequired ?
                                                         <div className="small text-muted">Required by latency, reset time, or system recovery.</div>
@@ -1788,12 +1815,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
                                             <Tab eventKey="frame-sizes" title="Frame sizes">
                                                 <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
-                                                    <div className="fw-semibold">
-                                                        Frame Sizes&nbsp;
+                                                    <div className="small text-muted">
+                                                        Select fixed frame sizes or the optional IMIX ZLT profile.&nbsp;
                                                         <InfoBox>
                                                             <>
                                                                 <h5>Frame Sizes</h5>
                                                                 <p>RFC2544 Ethernet benchmarks are reported for each configured frame size.</p>
+                                                                <p>IMIX adds a non-RFC2544 zero-loss-throughput run using three streams in a 7:4:1 packet mix.</p>
                                                             </>
                                                         </InfoBox>
                                                     </div>
@@ -1819,6 +1847,22 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                             {rfc2544HoverLabel(`${frameSize} B`, `Run the selected RFC2544 tests with ${frameSize} byte Ethernet frames.`)}
                                                         </ToggleButton>
                                                     ))}
+                                                    <ToggleButton
+                                                        id="rfc2544-frame-size-imix"
+                                                        type="checkbox"
+                                                        size="sm"
+                                                        variant="outline-primary"
+                                                        className="rfc2544-frame-size-toggle"
+                                                        value={RFC2544_IMIX_FRAME_SIZE}
+                                                        checked={rfc2544IMIXSelected}
+                                                        disabled={running || !rfc2544_config.throughput}
+                                                        onChange={(event) => toggleRfc2544FrameSize(RFC2544_IMIX_FRAME_SIZE, event.target.checked)}
+                                                    >
+                                                        {rfc2544HoverLabel("IMIX", `Run an additional non-RFC2544 ZLT profile with ${IMIX_DESCRIPTION}, equivalent to the Add IMIX stream preset.`)}
+                                                    </ToggleButton>
+                                                </div>
+                                                <div className="small text-muted mt-3">
+                                                    IMIX applies to zero loss throughput only and is not RFC2544 conform.
                                                 </div>
                                             </Tab>
 
@@ -2081,9 +2125,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                             </Tab>
                                         </Tabs>
                                     </Modal.Body>
-                                    <Modal.Footer>
-                                        <Button variant="secondary" onClick={() => setRfc2544ModalVisibility(false)}>Close</Button>
-                                    </Modal.Footer>
                                 </Modal>
                             </>
                             : null}
@@ -2313,6 +2354,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
                                                     const totalRate = getTotalRatePerPort(streams, stream_settings, v);
                                                     const speedExceeded = totalRate > speedToGbps(v.speed);
+                                                    const sequenceMetricsAffected = sequenceMetricAffectedTxPorts.has(`${v.port}/${v.channel}`);
 
                                                     return (
                                                         <tr key={`${v.pid}`}>
@@ -2348,6 +2390,34 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
                                                                 <span>
                                                                     {v.port}/{v.channel} ({v.pid})
+                                                                </span>
+
+                                                                <span
+                                                                    className="d-inline-flex justify-content-center align-items-center ms-2"
+                                                                    style={{ width: 18, height: 18 }}
+                                                                >
+                                                                    {sequenceMetricsAffected ? (
+                                                                        <OverlayTrigger
+                                                                            placement="top"
+                                                                            overlay={(props) => renderTooltip(props, sequenceMetricsWarning)}
+                                                                        >
+                                                                            <span
+                                                                                className="d-inline-flex align-items-center text-warning"
+                                                                                role="img"
+                                                                                tabIndex={0}
+                                                                                aria-label={`Warning for TX port ${v.port}/${v.channel}: ${sequenceMetricsWarning}`}
+                                                                                style={{ cursor: "help", lineHeight: 1 }}
+                                                                            >
+                                                                                <i className="bi bi-exclamation-triangle-fill" aria-hidden="true" />
+                                                                            </span>
+                                                                        </OverlayTrigger>
+                                                                    ) : (
+                                                                        <i
+                                                                            className="bi bi-exclamation-triangle-fill"
+                                                                            aria-hidden="true"
+                                                                            style={{ visibility: "hidden" }}
+                                                                        />
+                                                                    )}
                                                                 </span>
                                                             </StyledCol>
 
@@ -2398,7 +2468,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                                         })}
                                                                     </Form.Select>
 
-                                                                    <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={!v.status} running={running} iat_data={iat_histogram_settings} rtt_data={rtt_histogram_settings} set_rtt_data={updateRTTHistogramSettings} set_iat_data={updateIATHistogramSettings} />
+                                                                    <HistogramSettings port={v} mapping={port_tx_rx_mapping} disabled={!v.status} running={running} iat_data={iat_histogram_settings} rtt_data={rtt_histogram_settings} set_rtt_data={updateRTTHistogramSettings} set_iat_data={updateIATHistogramSettings} streams={streams} />
                                                                 </StyledCol>
                                                                 : null}
 
@@ -2424,21 +2494,6 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         </tbody>
                                     </Table>
 
-                                </Col>
-                            </Row>
-                            :
-                            null
-                        }
-
-                        {unreliableSequenceMetrics ?
-                            <Row>
-                                <Col>
-                                    <Alert variant="warning" className="mt-2">
-                                        <i className="bi bi-exclamation-triangle-fill" /> Packet loss and out-of-order
-                                        tracking works per physical port. These counters are unreliable when one TX is
-                                        split across RX ports or several TX ports feed one RX port, and will be hidden
-                                        in the result view.
-                                    </Alert>
                                 </Col>
                             </Row>
                             :

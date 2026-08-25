@@ -284,12 +284,15 @@ const StreamElement = ({
     };
 
     const handleModeChange = (event: any) => {
-        data.burst = parseInt(event.target.value)
-        // Toggle burst precision mode off for IAT mode, on for rate mode
+        const burst = parseInt(event.target.value);
+        // Default to one pipe in IAT Precision and all pipes in Rate Precision.
+        const batches = burst !== 1;
+        data.burst = burst;
+        data.batches = batches;
         updateFormData({
-            batches: parseInt(event.target.value) !== 1
+            burst,
+            batches,
         });
-        data.batches = parseInt(event.target.value) !== 1;
     }
 
     const update_settings = () => {
@@ -491,17 +494,22 @@ const StreamElement = ({
                 </td>
                 <td className={"col-1"}>
                     Bursts
-                    <Form.Check disabled={running}
+                    <Form.Check
+                        disabled={running}
                         type={"switch"}
                         checked={formData.batches}
-                        onChange={handleBatchesToggle}>
-                    </Form.Check>
+                        onChange={handleBatchesToggle}
+                        title={data.burst === 1
+                            ? "Off uses one pipe; on uses all available pipes."
+                            : "Increases the burst size for more precise rates."}
+                    />
                 </td>
                 <td className={"col-auto"}>
                     <InfoBox>
                         <>
                             <h5>Bursts</h5>
-                            <p>Increases the burstiness to fit the configured traffic rate even more precisely. In rate precision mode, this increases the size of the bursts by a constant factor. In IAT precision mode, this toggles the generation on a single or on all pipes.</p>
+                            <p>In Rate Precision mode, this increases the burst size for a more precise rate.</p>
+                            <p>In IAT Precision mode, off uses one pipe and on uses all available pipes.</p>
                         </>
                     </InfoBox>
                 </td>

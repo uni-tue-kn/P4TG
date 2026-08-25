@@ -30,6 +30,7 @@ const StreamSettingsElement = ({
     port_status,
     stream,
     stream_data,
+    configured_streams,
     p4tg_infos,
     ports,
     rx_mapping_mode,
@@ -44,6 +45,7 @@ const StreamSettingsElement = ({
     port_status: boolean,
     stream: StreamSettings,
     stream_data: Stream,
+    configured_streams: Stream[],
     p4tg_infos: P4TGInfos,
     ports: PortInfo[],
     rx_mapping_mode: RxMappingMode,
@@ -114,6 +116,7 @@ const StreamSettingsElement = ({
                                 iat_data={iat_histogram_settings}
                                 set_rtt_data={set_rtt_histogram_settings}
                                 set_iat_data={set_iat_histogram_settings}
+                                streams={configured_streams}
                             />
                         </span>
                     </>

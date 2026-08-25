@@ -18,11 +18,30 @@ use crate::core::traffic_gen_core::types::{
     Rfc2544FrameLossResult, Rfc2544LatencyResult, Rfc2544LossToleranceUnit, Rfc2544PortMapping,
     Rfc2544ResetResult, Rfc2544Results, Rfc2544SystemRecoveryResult, Rfc2544ThroughputAggregation,
     Rfc2544ThroughputRepetitionResult, Rfc2544ThroughputResult, RxTarget, TrafficGenData,
+    RFC2544_IMIX_FRAME_SIZE,
 };
 use crate::AppState;
 
 const THROUGHPUT_SWEEP_SAMPLE_RATE: u32 = 128;
 const THROUGHPUT_SWEEP_PADDING_SAMPLES: usize = 4;
+const IMIX_STREAM_SPECS: [(u32, u32); 3] = [(64, 7), (512, 4), (1518, 1)];
+const L1_OVERHEAD_BYTES: u32 = 20;
+
+fn frame_profile_label(frame_size: u32) -> String {
+    if frame_size == RFC2544_IMIX_FRAME_SIZE {
+        "IMIX".to_string()
+    } else {
+        format!("{frame_size} B")
+    }
+}
+
+fn split_imix_rate(total_rate_gbps: f64) -> [f32; IMIX_STREAM_SPECS.len()] {
+    let weights = IMIX_STREAM_SPECS.map(|(frame_size, packet_weight)| {
+        f64::from(packet_weight * (frame_size + L1_OVERHEAD_BYTES))
+    });
+    let total_weight = weights.iter().sum::<f64>();
+    weights.map(|weight| (total_rate_gbps * weight / total_weight) as f32)
+}
 
 /// Minimum wait between trial start and the baseline sample. The statistics
 /// gauges are only refreshed by digests (one per MONITORING_PACKET_INTERVAL,
@@ -335,6 +354,12 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
                 ));
             }
 
+            // IMIX is intentionally offered as a pragmatic ZLT-only profile;
+            // the remaining RFC2544 procedures continue to use fixed sizes.
+            if frame_size == RFC2544_IMIX_FRAME_SIZE {
+                continue;
+            }
+
             if config.frame_loss && !frame_loss_complete(results, mapping, frame_size) {
                 let completed_trials = results
                     .frame_loss
@@ -515,6 +540,53 @@ fn build_trial_payload(
 ) -> TrafficGenData {
     let mut payload = base.clone();
     let active_ids = active_stream_ids(&payload);
+
+    if frame_size == RFC2544_IMIX_FRAME_SIZE {
+        let template_stream = payload
+            .streams
+            .iter()
+            .find(|stream| active_ids.contains(&stream.stream_id))
+            .cloned()
+            .expect("validated RFC2544 payload must contain an active stream");
+        let template_settings = payload
+            .stream_settings
+            .iter()
+            .filter(|setting| setting.active && setting.stream_id == template_stream.stream_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        let rates = split_imix_rate(target_rate_gbps);
+
+        payload.streams = IMIX_STREAM_SPECS
+            .iter()
+            .enumerate()
+            .map(|(index, (imix_frame_size, _))| {
+                let mut stream = template_stream.clone();
+                let stream_id = (index + 1) as u8;
+                stream.stream_id = stream_id;
+                stream.app_id = stream_id;
+                stream.frame_size = *imix_frame_size;
+                stream.traffic_rate = rates[index];
+                stream.unit = Some(GenerationUnit::Gbps);
+                stream.pattern = pattern.clone();
+                stream
+            })
+            .collect();
+        payload.stream_settings = IMIX_STREAM_SPECS
+            .iter()
+            .enumerate()
+            .flat_map(|(index, _)| {
+                template_settings.iter().cloned().map(move |mut setting| {
+                    setting.stream_id = (index + 1) as u8;
+                    setting
+                })
+            })
+            .collect();
+        payload.mode = GenerationMode::Rfc2544;
+        payload.duration = None;
+        payload.name = Some("RFC2544 ZLT IMIX".to_string());
+        return payload;
+    }
+
     let active_stream_count = payload
         .streams
         .iter()
@@ -534,7 +606,7 @@ fn build_trial_payload(
 
     payload.mode = GenerationMode::Rfc2544;
     payload.duration = None;
-    payload.name = Some(format!("RFC2544 {frame_size}B"));
+    payload.name = Some(format!("RFC2544 {}", frame_profile_label(frame_size)));
     payload
 }
 
@@ -1091,11 +1163,13 @@ async fn run_throughput_sweep(
     let line_rate_gbps = config.line_rate_gbps as f64;
     let pattern = sawtooth_pattern(config.trial_duration_secs);
     let sweep = build_trial_payload(base, frame_size, line_rate_gbps, Some(pattern));
+    let frame_profile = frame_profile_label(frame_size);
     let context = format!(
-        "Throughput sweep | mapping {}/{} | {} | {frame_size} B | repetition {}/{}",
+        "Throughput sweep | mapping {}/{} | {} | {} | repetition {}/{}",
         mapping_index,
         mapping_count,
         mapping_label(mapping),
+        frame_profile,
         repetition_index,
         repetition_count
     );
@@ -1133,10 +1207,11 @@ async fn run_throughput_sweep(
     set_status(
         state,
         format!(
-            "RFC2544 throughput sweep | mapping {}/{} | {} | {frame_size} B | repetition {}/{} | 0 to {:.3} Gbit/s",
+            "RFC2544 throughput sweep | mapping {}/{} | {} | {} | repetition {}/{} | 0 to {:.3} Gbit/s",
             mapping_index,
             mapping_count,
             mapping_label(mapping),
+            frame_profile,
             repetition_index,
             repetition_count,
             line_rate_gbps
@@ -1214,7 +1289,8 @@ async fn run_throughput_sweep(
     let final_loss = final_counters.loss_since(baseline_counters);
     if final_loss.tx_frames == 0 {
         error!(
-            "RFC2544 throughput sweep for {frame_size} byte frames observed no TX frames. Aborting benchmark."
+            "RFC2544 throughput sweep for {} observed no TX frames. Aborting benchmark.",
+            frame_profile
         );
         finish(
             state,
@@ -1246,13 +1322,15 @@ async fn run_throughput_repetition(
     mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
 ) -> Option<Rfc2544ThroughputRepetitionResult> {
+    let frame_profile = frame_profile_label(frame_size);
     set_status(
         state,
         format!(
-            "RFC2544 throughput | mapping {}/{} | {} | {frame_size} B | repetition {}/{}",
+            "RFC2544 throughput | mapping {}/{} | {} | {} | repetition {}/{}",
             mapping_index,
             mapping_count,
             mapping_label(mapping),
+            frame_profile,
             repetition_index,
             repetition_count
         ),
@@ -1460,7 +1538,8 @@ async fn run_throughput_repetition(
 
     let zero_loss_rate_gbps = confirmed_pass_rate.unwrap_or_else(|| {
         warn!(
-            "RFC2544 throughput for {frame_size} byte frames did not find a positive no-loss fixed-rate trial; using half of first positive loss rate for follow-up trials."
+            "RFC2544 throughput for {} did not find a positive no-loss fixed-rate trial; using half of first positive loss rate for follow-up trials.",
+            frame_profile
         );
         usable_trial_rate(high_rate / 2.0, config)
     });
@@ -1507,15 +1586,18 @@ async fn run_throughput(
 
     let (zero_loss_rate_gbps, clustered_fallback) = aggregate_throughput_rate(config, &repetitions);
     if clustered_fallback {
+        let frame_profile = frame_profile_label(frame_size);
         warn!(
-            "RFC2544 throughput clustered aggregation for {} {frame_size} byte frames did not find a multi-run cluster; using median.",
-            mapping_label(mapping)
+            "RFC2544 throughput clustered aggregation for {} {} did not find a multi-run cluster; using median.",
+            mapping_label(mapping),
+            frame_profile
         );
         set_status(
             state,
             format!(
-                "RFC2544 throughput | {} | {frame_size} B | no clustered ZLT group found, using median",
-                mapping_label(mapping)
+                "RFC2544 throughput | {} | {} | no clustered ZLT group found, using median",
+                mapping_label(mapping),
+                frame_profile
             ),
         )
         .await;
@@ -1562,13 +1644,15 @@ async fn run_fixed_rate_loss_trial(
     cancel_token: &CancellationToken,
 ) -> Option<ThroughputTrialLoss> {
     let rate_gbps = usable_trial_rate(rate_gbps, config);
+    let frame_profile = frame_profile_label(frame_size);
     set_status(
         state,
         format!(
-            "RFC2544 throughput | mapping {}/{} | {} | {frame_size} B | repetition {}/{} | trial {}/{} | {:.3} Gbit/s",
+            "RFC2544 throughput | mapping {}/{} | {} | {} | repetition {}/{} | trial {}/{} | {:.3} Gbit/s",
             mapping_index,
             mapping_count,
             mapping_label(mapping),
+            frame_profile,
             repetition_index,
             repetition_count,
             trial_index,
@@ -1590,10 +1674,11 @@ async fn run_fixed_rate_loss_trial(
     }
 
     let context = format!(
-        "Throughput | mapping {}/{} | {} | {frame_size} B | repetition {}/{} | trial {}/{} | {:.3} Gbit/s",
+        "Throughput | mapping {}/{} | {} | {} | repetition {}/{} | trial {}/{} | {:.3} Gbit/s",
         mapping_index,
         mapping_count,
         mapping_label(mapping),
+        frame_profile,
         repetition_index,
         repetition_count,
         trial_index,
@@ -2311,6 +2396,10 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                     return;
                 };
                 throughput_rates.insert(frame_size, result.zero_loss_rate_gbps);
+            }
+
+            if frame_size == RFC2544_IMIX_FRAME_SIZE {
+                continue;
             }
 
             let zero_loss_rate = throughput_rates

@@ -17,7 +17,7 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { HistogramConfigMap, PortInfo, PortTxRxMap, HistogramConfig, RxTarget } from "../../common/Interfaces";
+import { HistogramConfigMap, PortInfo, PortTxRxMap, HistogramConfig, RxTarget, Stream } from "../../common/Interfaces";
 import React, { useState } from "react";
 import { OverlayTrigger, Tooltip } from "react-bootstrap";
 import { StyledCol } from "../../sites/Settings";
@@ -34,6 +34,7 @@ const HistogramSettings = ({
     set_iat_data,
     target,
     compact = false,
+    streams,
 }: {
     port?: PortInfo,
     mapping?: PortTxRxMap,
@@ -47,6 +48,7 @@ const HistogramSettings = ({
     set_iat_data: (pid: number, channel: number, updated: HistogramConfig) => void
     target?: RxTarget,
     compact?: boolean,
+    streams: Stream[],
 }) => {
     const [show, set_show] = useState(false)
 
@@ -93,6 +95,7 @@ const HistogramSettings = ({
                     hide={() => set_show(false)}
                     set_iat_data={set_iat_data}
                     set_rtt_data={set_rtt_data}
+                    streams={streams}
                 />
             </>
         )}

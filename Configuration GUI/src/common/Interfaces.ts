@@ -31,6 +31,12 @@ export type HistogramConfig = {
     max: number;
     num_bins: number;
     percentiles?: Array<number>;
+    stream_groups?: HistogramStreamGroups;
+};
+
+export type HistogramStreamGroups = {
+    aggregate: number[];
+    separate: number[];
 };
 
 // nested map: { [rxPort]: { [rxChannel]: HistogramConfig } }
@@ -58,6 +64,12 @@ export type HistogramPacketPath = {
 export type Histogram = {
     config: HistogramConfig;
     data: HistogramPacketPath;
+    breakdown?: HistogramBreakdown;
+};
+
+export type HistogramBreakdown = {
+    aggregate?: HistogramPacketPath;
+    per_stream?: Record<string, HistogramPacketPath>;
 };
 
 export type Statistics = Array<StatisticsEntry>;

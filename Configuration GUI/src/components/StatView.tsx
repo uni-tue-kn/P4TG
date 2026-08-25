@@ -29,6 +29,7 @@ import Visuals from "./Visuals";
 import { formatNanoSeconds, formatFrameCount, uniqueRxPairs } from '../common/Helper';
 import InfoBox from './InfoBox';
 import { ExpectedRoute } from '../common/ExpectedRoutes';
+import { IMIX_AVERAGE_L1_FRAME_SIZE, RFC2544_IMIX_FRAME_SIZE } from '../common/IMIX';
 
 const Overline = styled.span`
   text-decoration: overline;
@@ -307,7 +308,8 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         : addRatesByPairs(stats.rx_rate_l2, rxPairs);
     const rfc2544 = stats.rfc2544;
     const formatGbps = (gbps: number) => formatBits(gbps * 1_000_000_000);
-    const rfc2544FrameSizes = rfc2544?.selected_frame_sizes ?? [];
+    const rfc2544ThroughputFrameSizes = rfc2544?.selected_frame_sizes ?? [];
+    const rfc2544FrameSizes = rfc2544ThroughputFrameSizes.filter((frameSize) => frameSize !== RFC2544_IMIX_FRAME_SIZE);
     const rfc2544PortMappings = Object.entries(port_mapping ?? {}).flatMap(([txPort, perChannel]) =>
         Object.entries(perChannel ?? {}).map(([txChannel, target]) => ({
             tx_port: Number(txPort),
@@ -376,7 +378,11 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         left.tx_channel === right.tx_channel &&
         left.rx_port === right.rx_port &&
         left.rx_channel === right.rx_channel;
-    const frameRateMpps = (gbps: number, frameSize: number) => gbps * 1_000 / ((frameSize + 20) * 8);
+    const rfc2544FrameProfileLabel = (frameSize: number) =>
+        frameSize === RFC2544_IMIX_FRAME_SIZE ? "IMIX" : `${frameSize} B`;
+    const frameRateMpps = (gbps: number, frameSize: number) => gbps * 1_000 / (
+        (frameSize === RFC2544_IMIX_FRAME_SIZE ? IMIX_AVERAGE_L1_FRAME_SIZE : frameSize + 20) * 8
+    );
     const rfc2544RateUnitLabel = rfc2544RateUnit === "mpps" ? "Mpps" : "Gbit/s";
     const rfc2544RateValue = (gbps: number, frameSize: number) =>
         rfc2544RateUnit === "mpps" ? frameRateMpps(gbps, frameSize) : gbps;
@@ -412,7 +418,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         scales: {
             x: {
                 type: linearX ? "linear" as const : "category" as const,
-                offset: !linearX && rfc2544FrameSizes.length === 1,
+                offset: !linearX && rfc2544ThroughputFrameSizes.length === 1,
                 title: {
                     display: true,
                     text: xTitle,
@@ -450,11 +456,11 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
         },
     });
     const rfc2544ThroughputChartData = rfc2544 ? {
-        labels: rfc2544FrameSizes.map((frameSize) => `${frameSize}`),
+        labels: rfc2544ThroughputFrameSizes.map(rfc2544FrameProfileLabel),
         datasets: [
             {
                 label: "Theoretical media rate",
-                data: rfc2544FrameSizes.map((frameSize) => rfc2544RateValue(rfc2544.line_rate_gbps, frameSize)),
+                data: rfc2544ThroughputFrameSizes.map((frameSize) => rfc2544RateValue(rfc2544.line_rate_gbps, frameSize)),
                 borderColor: RFC2544_CHART_COLORS[0],
                 backgroundColor: "rgba(53, 162, 235, 0.25)",
                 tension: 0.2,
@@ -463,7 +469,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                 const color = RFC2544_CHART_COLORS[(index + 1) % RFC2544_CHART_COLORS.length];
                 return {
                     label: `Measured ${mappingLabel(mapping)}`,
-                    data: rfc2544FrameSizes.map((frameSize) => {
+                    data: rfc2544ThroughputFrameSizes.map((frameSize) => {
                         const row = rfc2544.throughput.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
                         return row ? rfc2544RateValue(row.zero_loss_rate_gbps, frameSize) : null;
                     }),
@@ -855,7 +861,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                 {rfc2544ThroughputChartData ?
                     <Line
                         key={`rfc2544-throughput-${rfc2544RateUnit}`}
-                        options={rfc2544ChartOptions("Frame size (bytes)", rfc2544RateUnitLabel)}
+                        options={rfc2544ChartOptions("Frame profile", rfc2544RateUnitLabel)}
                         data={rfc2544ThroughputChartData}
                         plugins={[rfc2544ThroughputValueLabels]}
                     />
@@ -868,7 +874,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                         <InfoBox>
                             <>
                                 <h5>Zero Loss Throughput</h5>
-                                <p>RFC2544 defines throughput as the fastest offered rate where the DUT forwards all test frames without loss. P4TG records this per configured frame size.</p>
+                                <p>RFC2544 defines throughput as the fastest offered rate where the DUT forwards all test frames without loss. P4TG records this per configured frame size; the optional IMIX profile is a non-standard extension.</p>
                             </>
                         </InfoBox>
                     </Rfc2544Caption>
@@ -884,11 +890,11 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                         </tr>
                     </thead>
                     <tbody>
-                        {rfc2544Mappings.flatMap((mapping) => rfc2544FrameSizes.map((frameSize) => {
+                        {rfc2544Mappings.flatMap((mapping) => rfc2544ThroughputFrameSizes.map((frameSize) => {
                             const row = rfc2544.throughput.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
                             return <tr key={`throughput-${mappingLabel(mapping)}-${frameSize}`}>
                                 <td>{mappingLabel(mapping)}</td>
-                                <td>{frameSize} B</td>
+                                <td>{rfc2544FrameProfileLabel(frameSize)}</td>
                                 <td>{formatOptionalGbps(row?.zero_loss_rate_gbps)}</td>
                                 <td>{formatOptionalGbps(row?.first_loss_rate_gbps)}</td>
                                 <td>{row ? formatFrameCount(row.lost_frames) : "-"}</td>
@@ -922,7 +928,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                             </tr>
                         </thead>
                         <tbody>
-                            {rfc2544Mappings.flatMap((mapping) => rfc2544FrameSizes.flatMap((frameSize) => {
+                            {rfc2544Mappings.flatMap((mapping) => rfc2544ThroughputFrameSizes.flatMap((frameSize) => {
                                 const row = rfc2544.throughput.find((entry) => entry.frame_size === frameSize && mappingMatches(entry.mapping, mapping));
                                 const repetitions = row?.repetitions ?? [];
                                 if (repetitions.length <= 1) {
@@ -931,7 +937,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                                 return repetitions.map((repetition) => (
                                     <tr key={`throughput-repetition-${mappingLabel(mapping)}-${frameSize}-${repetition.repetition}`}>
                                         <td>{mappingLabel(mapping)}</td>
-                                        <td>{frameSize} B</td>
+                                        <td>{rfc2544FrameProfileLabel(frameSize)}</td>
                                         <td>{repetition.repetition}</td>
                                         <td>{formatOptionalGbps(repetition.zero_loss_rate_gbps)}</td>
                                         <td>{formatOptionalGbps(repetition.first_loss_rate_gbps)}</td>

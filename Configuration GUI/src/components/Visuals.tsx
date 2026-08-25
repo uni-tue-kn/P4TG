@@ -261,7 +261,8 @@ const renderTooltip = (props: any) => (
 const generateHistogram = (
     histogram_data: { [port: string]: { [channel: string]: Histogram } },
     port_mapping: PortTxRxMap,
-    includeTx: boolean
+    includeTx: boolean,
+    selection: string = "total",
 ): [string[], number[], number[]] => {
     //const histogram_data = data.rtt_histogram; // { [port]: { [ch]: RttHistogram } }
     let combined_bins_tx: { [binIndex: string]: number } = {};
@@ -289,8 +290,10 @@ const generateHistogram = (
                 const histTx = histogram_data?.[txPort]?.[txCh];
                 const histRx = histogram_data?.[rxPort]?.[rxCh];
                 const config = histRx?.config ?? histTx?.config;
-                const txData = includeTx ? histTx?.data?.tx : undefined;
-                const rxData = firstRxVisit ? histRx?.data?.rx : undefined;
+                const selectedTx = selectHistogramPath(histTx, selection);
+                const selectedRx = selectHistogramPath(histRx, selection);
+                const txData = includeTx ? selectedTx?.tx : undefined;
+                const rxData = firstRxVisit ? selectedRx?.rx : undefined;
 
                 if (config) {
                     min = Math.min(min, config.min);
@@ -349,7 +352,8 @@ const generateHistogram = (
 const getPercentileAnnotations = (
     histogram: { [port: string]: { [channel: string]: Histogram } },
     port_mapping: PortTxRxMap,
-    includeTx: boolean
+    includeTx: boolean,
+    selection: string = "total",
 ): Record<string, any> => {
     const annotations: Record<string, any> = {};
 
@@ -372,7 +376,9 @@ const getPercentileAnnotations = (
             (["tx", "rx"] as const).forEach((direction) => {
                 if (direction === "tx" && !includeTx) return;
 
-                const hdata = direction === "tx" ? histTx?.data?.tx : histRx?.data?.rx;
+                const selectedTx = selectHistogramPath(histTx, selection);
+                const selectedRx = selectHistogramPath(histRx, selection);
+                const hdata = direction === "tx" ? selectedTx?.tx : selectedRx?.rx;
                 const config = direction === "tx" ? histTx?.config : histRx?.config;
                 if (!hdata || !config) return;
 
@@ -428,6 +434,40 @@ const getPercentileAnnotations = (
     }
 
     return annotations;
+};
+
+const selectHistogramPath = (histogram: Histogram | undefined, selection: string) => {
+    if (!histogram) return undefined;
+    if (selection === "aggregate") return histogram.breakdown?.aggregate;
+    if (selection.startsWith("stream:")) {
+        return histogram.breakdown?.per_stream?.[selection.slice("stream:".length)];
+    }
+    return histogram.data;
+};
+
+const histogramResultOptions = (
+    histogram: { [port: string]: { [channel: string]: Histogram } },
+    portMapping: PortTxRxMap,
+) => {
+    let hasAggregate = false;
+    const streams = new Set<number>();
+    const results: Histogram[] = [];
+    for (const [txPort, channels] of Object.entries(portMapping ?? {})) {
+        for (const [txChannel, target] of Object.entries(channels ?? {})) {
+            const txResult = histogram?.[txPort]?.[txChannel];
+            const rxResult = histogram?.[String(target.port)]?.[String(target.channel)];
+            if (txResult) results.push(txResult);
+            if (rxResult) results.push(rxResult);
+        }
+    }
+    for (const result of results) {
+            hasAggregate ||= result.breakdown?.aggregate !== undefined;
+            Object.keys(result.breakdown?.per_stream ?? {}).forEach(appId => streams.add(Number(appId)));
+    }
+    return {
+        hasAggregate,
+        streams: Array.from(streams).sort((a, b) => a - b),
+    };
 };
 
 const get_frame_types = (
@@ -558,13 +598,24 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
     const [labels_loss, line_data_loss] = generateLineData("packet_loss", data, rxPairs)
     const [labels_out_of_order, line_data_out_of_order] = generateLineData("out_of_order", data, rxPairs)
     const [labels_rtt, line_data_rtt] = get_rtt(data, rxPairs)
-    const [labels_rtt_hist, hist_data_rtt_tx, hist_data_rtt_rx] = generateHistogram(stats.rtt_histogram, port_mapping, false);
-    const [labels_iat_hist, hist_data_iat_tx, hist_data_iat_rx] = generateHistogram(stats.iat_histogram, port_mapping, true);
-    const percentileRTTAnnotations = getPercentileAnnotations(stats.rtt_histogram, port_mapping, false);
-    const percentileIATAnnotations = getPercentileAnnotations(stats.iat_histogram, port_mapping, true);
-
     const [visual_select, set_visual_select] = useState("rate")
     const [showPercentiles, set_show_percentiles] = useState(true)
+    const [rttHistogramSelection, setRttHistogramSelection] = useState("total");
+    const [iatHistogramSelection, setIatHistogramSelection] = useState("total");
+    const rttResultOptions = histogramResultOptions(stats.rtt_histogram, port_mapping);
+    const iatResultOptions = histogramResultOptions(stats.iat_histogram, port_mapping);
+    const effectiveRttSelection = (rttHistogramSelection === "aggregate" && !rttResultOptions.hasAggregate)
+        || (rttHistogramSelection.startsWith("stream:")
+        && !rttResultOptions.streams.includes(Number(rttHistogramSelection.slice(7))))
+        ? "total" : rttHistogramSelection;
+    const effectiveIatSelection = (iatHistogramSelection === "aggregate" && !iatResultOptions.hasAggregate)
+        || (iatHistogramSelection.startsWith("stream:")
+        && !iatResultOptions.streams.includes(Number(iatHistogramSelection.slice(7))))
+        ? "total" : iatHistogramSelection;
+    const [labels_rtt_hist, hist_data_rtt_tx, hist_data_rtt_rx] = generateHistogram(stats.rtt_histogram, port_mapping, false, effectiveRttSelection);
+    const [labels_iat_hist, hist_data_iat_tx, hist_data_iat_rx] = generateHistogram(stats.iat_histogram, port_mapping, true, effectiveIatSelection);
+    const percentileRTTAnnotations = getPercentileAnnotations(stats.rtt_histogram, port_mapping, false, effectiveRttSelection);
+    const percentileIATAnnotations = getPercentileAnnotations(stats.iat_histogram, port_mapping, true, effectiveIatSelection);
 
     const rateDatasets = [
         {
@@ -897,7 +948,20 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
         {visual_select == "rtt_histogram" ?
             <>
                 <Row className="mb-2">
-                    <Col className="d-flex justify-content-end">
+                    <Col className="d-flex justify-content-end gap-2">
+                        <Form.Select
+                            size="sm"
+                            style={{ width: "auto" }}
+                            aria-label="RTT histogram result"
+                            value={effectiveRttSelection}
+                            onChange={event => setRttHistogramSelection(event.target.value)}
+                        >
+                            <option value="total">All selected</option>
+                            {rttResultOptions.hasAggregate ? <option value="aggregate">Aggregated streams</option> : null}
+                            {rttResultOptions.streams.map(appId =>
+                                <option key={`rtt-stream-${appId}`} value={`stream:${appId}`}>Stream {appId}</option>
+                            )}
+                        </Form.Select>
                         <Button
                             size="sm"
                             variant={showPercentiles ? "outline-secondary" : "secondary"}
@@ -907,7 +971,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
                         </Button>
                     </Col>
                 </Row>
-                <StatViewHistogram stats={stats.rtt_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"RTT"} includeTx={false} />
+                <StatViewHistogram stats={stats.rtt_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"RTT"} includeTx={false} selection={effectiveRttSelection} />
                 <Bar options={rtt_histogram_options} data={rtt_hist_data} />
             </>
             :
@@ -917,7 +981,20 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
         {visual_select == "iat_histogram" ?
             <>
                 <Row className="mb-2">
-                    <Col className="d-flex justify-content-end">
+                    <Col className="d-flex justify-content-end gap-2">
+                        <Form.Select
+                            size="sm"
+                            style={{ width: "auto" }}
+                            aria-label="IAT histogram result"
+                            value={effectiveIatSelection}
+                            onChange={event => setIatHistogramSelection(event.target.value)}
+                        >
+                            <option value="total">All selected</option>
+                            {iatResultOptions.hasAggregate ? <option value="aggregate">Aggregated streams</option> : null}
+                            {iatResultOptions.streams.map(appId =>
+                                <option key={`iat-stream-${appId}`} value={`stream:${appId}`}>Stream {appId}</option>
+                            )}
+                        </Form.Select>
                         <Button
                             size="sm"
                             variant={showPercentiles ? "outline-secondary" : "secondary"}
@@ -927,7 +1004,7 @@ const Visuals = ({ data, stats, port_mapping, is_summary, rx_port, sequence_metr
                         </Button>
                     </Col>
                 </Row>
-                <StatViewHistogram stats={stats.iat_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"IAT"} />
+                <StatViewHistogram stats={stats.iat_histogram} port_mapping={port_mapping} rx_port={rx_port} type={"IAT"} selection={effectiveIatSelection} />
                 <Bar options={iat_histogram_options} data={iat_hist_data} />
             </>
             :

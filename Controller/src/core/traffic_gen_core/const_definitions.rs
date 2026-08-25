@@ -110,7 +110,7 @@ pub const RTT_HISTOGRAM_TABLE: &str = "ingress.p4tg.rtt.rtt_histogram";
 pub const RTT_HISTOGRAM_TABLE_SIZE: u32 = 8192;
 
 /// Maximum number of entries in the IAT_HISTOGRAM_TABLE
-pub const IAT_HISTOGRAM_TABLE_SIZE: u32 = 4196;
+pub const IAT_HISTOGRAM_TABLE_SIZE: u32 = 8192;
 
 /// Table used to configure the bins of RTT Histogram
 pub const IAT_HISTOGRAM_TABLE: &str = "ingress.p4tg.iat.iat_histogram";
