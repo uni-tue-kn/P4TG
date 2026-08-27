@@ -66,6 +66,16 @@ class P4TG:
         require_status(response, 200, "Stopping traffic generation")
         logging.info("Traffic generator stopped.")
         return response
+
+    def get_traffic_gen_status(self):
+        """Return the active configuration, or None once orchestration is complete."""
+        url = f"{self.base_url}/trafficgen"
+        logging.debug("GET %s", url)
+        response = requests.get(url)
+        if response.status_code == 202:
+            return None
+        require_status(response, 200, "Reading traffic generation status")
+        return response.json()
         
     def get_time_statistics(self, payload_path=None):
         url = f"{self.base_url}/time_statistics"

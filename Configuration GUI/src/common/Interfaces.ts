@@ -504,13 +504,17 @@ export interface TrafficGenData {
     port_tx_rx_mapping: PortTxRxMap,
     duration: number,
     repetitions: number,
+    drain_duration_secs?: number,
     rtt_histogram_config: HistogramConfigMap,
     iat_histogram_config: HistogramConfigMap,
     rfc2544?: Rfc2544Config,
     name?: string,
-    // Response-only orchestration state from GET /trafficgen.
+    // Response-only lifecycle state from GET /trafficgen.
+    draining?: boolean,
     cooldown?: boolean,
 }
+
+export const MAX_DRAIN_DURATION_SECS = 60;
 
 export interface Rfc2544Config {
     throughput: boolean,

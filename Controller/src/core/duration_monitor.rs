@@ -28,6 +28,7 @@ use std::sync::Arc;
 use tokio::{task::JoinHandle, time::Instant};
 use tokio_util::sync::CancellationToken;
 
+use super::traffic_gen::stop_traffic_generation_locked;
 use super::traffic_gen_core::types::TrafficGenData;
 use crate::api::traffic_gen::start_single_test;
 use crate::core::rfc2544;
@@ -61,9 +62,9 @@ impl DurationMonitorTask {
                     info!("Monitor task received cancellation request. Exiting...");
                     // The caller that cancels a duration monitor owns the
                     // replacement/stop operation. Returning here avoids a
-                    // second hardware stop racing with that operation and
-                    // ensures a multi-test cooldown starts after the explicit
-                    // stop has completed.
+                    // second hardware stop racing with that operation. The
+                    // caller also owns the drain that follows the explicit
+                    // stop.
                     return;
                 }
                 _ = interval.tick() => {
@@ -92,11 +93,8 @@ impl DurationMonitorTask {
 
         if running {
             // Perform the shutdown
-            let switch = &state.switch;
-            let stop_result = {
-                let mut tg = state.traffic_generator.lock().await;
-                tg.stop(switch).await
-            };
+            let _lifecycle = state.traffic_lifecycle.lock().await;
+            let stop_result = stop_traffic_generation_locked(&state).await;
 
             match stop_result {
                 Ok(_) => info!("Traffic generation stopped after duration."),
@@ -199,8 +197,9 @@ impl DurationMonitorTask {
                         // Do not copy the last test to history, otherwise it is duplicate
                         Self::copy_stats_to_history(&state_clone).await;
 
-                        // Allow in-flight packets and counters to settle before
-                        // starting the next test or repetition.
+                        // Draining has completed at this point. Keep a separate
+                        // idle phase so digest processing and controller-side
+                        // snapshots settle before the next run resets counters.
                         tokio::select! {
                             _ = tokio::time::sleep(TEST_COOLDOWN) => {}
                             _ = cancel_token.cancelled() => {

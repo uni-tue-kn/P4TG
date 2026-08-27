@@ -95,6 +95,12 @@ pub fn validate_request(
     available_ports: &HashMap<u32, PortMapping>,
     is_tofino2: bool,
 ) -> Result<Vec<Stream>, Error> {
+    if payload.drain_duration_secs > MAX_DRAIN_DURATION_SECS {
+        return Err(Error::new(format!(
+            "Drain duration must not exceed {MAX_DRAIN_DURATION_SECS} seconds."
+        )));
+    }
+
     if payload.rx_mapping_mode == RxMappingMode::PerStream
         && matches!(
             payload.mode,

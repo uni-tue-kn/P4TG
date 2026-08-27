@@ -21,6 +21,7 @@
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::core::multicast::delete_simple_multicast_group;
 use crate::core::patterns::build_pattern_config_entry;
@@ -34,6 +35,7 @@ use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
 use rbfrt::table::{MatchValue, Request};
 use rbfrt::{table, SwitchConnection};
+use tokio::time::sleep;
 
 use crate::core::traffic_gen_core::const_definitions::*;
 use crate::core::traffic_gen_core::helper::{
@@ -54,6 +56,12 @@ pub struct TrafficGen {
     min_buffer_offset: u32,
     /// Indicates if the traffic generator is running.
     pub running: bool,
+    /// True after data packet generation has been disabled and before the
+    /// per-test measurement path is removed.
+    pub draining: bool,
+    /// Seconds for which the RX measurement path remains active after packet
+    /// generation is disabled.
+    pub drain_duration_secs: u32,
     /// Stored stream setting values.
     /// The stream settings are received by the REST API and stored to synchronize multiple configuration clients
     /// (e.g., multiple open web browsers) to the same settings.
@@ -96,6 +104,8 @@ impl TrafficGen {
         TrafficGen {
             min_buffer_offset: 0,
             running: false,
+            draining: false,
+            drain_duration_secs: default_drain_duration_secs(),
             stream_settings: vec![],
             streams: vec![],
             app_l2_frame_sizes: HashMap::new(),
@@ -524,13 +534,38 @@ impl TrafficGen {
         Ok(())
     }
 
-    /// Deactivates all traffic gen applications except for the monitoring.
-    pub async fn stop(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        self.deactivate_traffic_gen_applications(switch).await?;
-        self.reset_tables(switch).await?;
+    /// Immediately deactivates data generation and removes per-test tables.
+    /// Used only before concurrent controller tasks have started.
+    pub async fn stop_immediately(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
+        let deactivate_result = self.deactivate_traffic_gen_applications(switch).await;
+        let cleanup_result = self.reset_tables(switch).await;
         self.running = false;
+        self.draining = false;
 
-        Ok(())
+        deactivate_result.and(cleanup_result)
+    }
+
+    /// Stops new data packets while keeping the measurement path intact.
+    /// Returns whether an active run entered the draining phase.
+    async fn begin_stop(&mut self, switch: &SwitchConnection) -> Result<bool, RBFRTError> {
+        if !self.running {
+            return Ok(false);
+        }
+
+        self.deactivate_traffic_gen_applications(switch).await?;
+        self.draining = true;
+
+        Ok(true)
+    }
+
+    /// Removes per-test tables after the drain. Once packet generation was
+    /// disabled, report the generator as stopped even if cleanup fails.
+    async fn finish_stop(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
+        let cleanup_result = self.reset_tables(switch).await;
+        self.running = false;
+        self.draining = false;
+
+        cleanup_result
     }
 
     /// Deactivates all traffic gen applications except for the monitoring.
@@ -629,10 +664,6 @@ impl TrafficGen {
     ) -> Result<Vec<Stream>, RBFRTError> {
         let switch = &state.switch;
         let port_mapping = &state.port_mapping;
-
-        // First stop possible existing generation
-        self.stop(switch).await?;
-        self.reset_tables(switch).await?;
 
         // Reset all stats
         state
@@ -1496,4 +1527,42 @@ impl TrafficGen {
 
         Ok(())
     }
+}
+
+/// Stops traffic while the caller holds `AppState::traffic_lifecycle`. The
+/// traffic-generator mutex is deliberately released during the drain so API
+/// readers and controller-lifetime monitors remain responsive.
+pub async fn stop_traffic_generation_locked(state: &AppState) -> Result<(), RBFRTError> {
+    let (entered_drain, drain_duration_secs) = {
+        let mut traffic_generator = state.traffic_generator.lock().await;
+        let entered_drain = traffic_generator.begin_stop(&state.switch).await?;
+        (entered_drain, traffic_generator.drain_duration_secs)
+    };
+
+    if entered_drain {
+        info!("Traffic generation disabled. Draining for {drain_duration_secs}s.");
+        if drain_duration_secs > 0 {
+            sleep(Duration::from_secs(drain_duration_secs as u64)).await;
+        }
+    }
+
+    let result = state
+        .traffic_generator
+        .lock()
+        .await
+        .finish_stop(&state.switch)
+        .await;
+
+    // Packet generation is already disabled once the drain starts. Do not
+    // leave higher-level orchestration waiting for a run that cannot resume if
+    // the later table cleanup fails.
+    if entered_drain && result.is_err() {
+        state.experiment.lock().await.running = false;
+    }
+
+    if entered_drain {
+        info!("Traffic drain complete; per-test tables removed.");
+    }
+
+    result
 }

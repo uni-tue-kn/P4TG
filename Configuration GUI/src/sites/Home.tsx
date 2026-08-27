@@ -82,11 +82,13 @@ const TestNumber = styled.span`
 
 const NumTests = ({
     cooldown,
+    draining,
     running,
     statistics,
     totalPlannedRuns,
 }: {
     cooldown: boolean;
+    draining: boolean;
     running: boolean;
     statistics: Statistics;
     totalPlannedRuns: number;
@@ -95,7 +97,9 @@ const NumTests = ({
 
     return (
         <TestNumber>
-            {cooldown ? (
+            {draining ? (
+                <i className="bi bi-hourglass-split" />
+            ) : cooldown ? (
                 <i className="bi bi-pause-circle-fill" />
             ) : running ? (
                 <span
@@ -113,7 +117,7 @@ const NumTests = ({
                 <i className="bi bi-check-circle-fill" />
             )}
             &nbsp;
-            {cooldown ? "Cooldown · " : null}
+            {draining ? "Draining · " : cooldown ? "Pause · " : null}
             Run {numAvailableStats} / {totalPlannedRuns}
         </TestNumber>
     );
@@ -167,6 +171,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     const [loaded, set_loaded] = useState(false)
     const [overlay, set_overlay] = useState(false)
     const [running, set_running] = useState(false)
+    const [draining, set_draining] = useState(false)
     const [cooldown, set_cooldown] = useState(false)
     const [visual, set_visual] = useState(true)
     const [rfc2544_runtime_countdown, set_rfc2544_runtime_countdown] = useState<number | null>(null)
@@ -236,8 +241,8 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             await refresh();
             if (!disposed) {
                 stopStatisticsPolling = startPolling(loadStatistics, 500);
-                // The between-run cooldown is short, so poll often enough for
-                // its explicit paused state to remain visible in the UI.
+                // Poll often enough for the short drain/cooldown phases to
+                // remain visible in the UI.
                 stopLoadGenPolling = startPolling(loadGen, 500);
                 // Series is bucketed per second; slower polling only adds lag.
                 stopTimeStatisticsPolling = startPolling(loadTimeStatistics, 1000);
@@ -333,14 +338,16 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
         const maxRate = p4tg_infos.asic === ASIC.Tofino1 ? 100 : 400;
 
-        set_overlay(true)
-
         if (running) {
-            await del({ route: "/trafficgen" })
+            set_draining(!cooldown)
+            const response = await del({ route: "/trafficgen" })
+            set_draining(false)
             set_cooldown(false)
-            set_running(false)
-            set_overlay(false)
+            if (response?.status === 200) {
+                set_running(false)
+            }
         } else {
+            set_overlay(true)
             for (const [name, config] of Object.entries(savedConfigs)) {
                 let overall_rate = 0
                 config.streams.forEach((v) => {
@@ -423,6 +430,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                 return;
             }
 
+            set_draining(false)
             set_cooldown(false)
             set_running(true)
 
@@ -464,12 +472,14 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
             set_streams(stats.data.streams)
             set_rtt_histogram_settings(stats.data.rtt_histogram_config)
             set_iat_histogram_settings(stats.data.iat_histogram_config)
+            set_draining(Boolean(stats.data.draining))
             set_cooldown(Boolean(stats.data.cooldown))
 
             localStorage.setItem("streams", JSON.stringify(stats.data.streams))
             localStorage.setItem("gen-mode", String(stats.data.mode))
             localStorage.setItem("rx_mapping_mode", JSON.stringify(stats.data.rx_mapping_mode ?? RxMappingMode.PerTxPort))
             localStorage.setItem("duration", String(stats.data.duration))
+            localStorage.setItem("drain_duration_secs", String(stats.data.drain_duration_secs ?? 0))
             localStorage.setItem("streamSettings", JSON.stringify(stats.data.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(stats.data.port_tx_rx_mapping))
             localStorage.setItem("rtt_histogram_config", JSON.stringify(stats.data.rtt_histogram_config))
@@ -489,6 +499,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                         // @ts-ignore
                         [stats.data.name]: {
                             ...stats.data,
+                            draining: undefined,
                             cooldown: undefined,
                         },
                     };
@@ -499,6 +510,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
 
             set_running(true)
         } else {
+            set_draining(false)
             set_cooldown(false)
             set_running(false)
         }
@@ -512,15 +524,17 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     }
 
     const skip = async () => {
-        set_overlay(true)
+        set_draining(true)
         await del({ route: "/trafficgen?skip=true" })
-        set_overlay(false)
+        set_draining(false)
+        set_cooldown(false)
     }
 
     const restart = async () => {
-        set_overlay(true)
+        set_draining(true)
         await get({ route: "/restart" })
-        set_overlay(false)
+        set_draining(false)
+        set_cooldown(false)
     }
 
     const export_json = async () => {
@@ -565,6 +579,7 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
         || Boolean(entry?.out_of_order && Object.keys(entry.out_of_order).length > 0)
     );
     const rfc2544StatusText = rfc2544Status?.status.toLowerCase() ?? "";
+    const rfc2544Cooldown = Boolean(rfc2544Status?.running && rfc2544StatusText.includes("cool-down"));
     const rfc2544StatusNeedsAttention = rfc2544Status?.running && rfc2544StatusText.includes("waiting for dut");
     const formatRuntime = (seconds: number) => {
         const rounded = Math.max(0, Math.ceil(seconds));
@@ -583,17 +598,27 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
     return <Loader loaded={loaded} overlay={overlay}>
         <form onSubmit={onSubmit}>
             <Row className={"mb-3"}>
-                <SendReceiveMonitor stats={statistics[0]} running={running && !cooldown} />
+                <SendReceiveMonitor
+                    stats={statistics[0]}
+                    running={running && !draining && !cooldown && !rfc2544Cooldown}
+                />
                 <Col className={"text-end col-4"}>
+                    {draining && totalPlannedRuns <= 1 ?
+                        <TestNumber role="status" aria-live="polite">
+                            <i className="bi bi-hourglass-split" aria-hidden="true" />
+                            &nbsp; Draining…
+                        </TestNumber>
+                        : null}
                     {savedConfigs && totalPlannedRuns > 1 &&
                         <>
-                            {running && !cooldown &&
+                            {running && !draining && !cooldown &&
                                 <Button onClick={skip} className="mb-1" variant="warning"><i
                                     className="bi bi-skip-forward-fill" /> Skip </Button>
                             }
                             {" "}
                             <NumTests
                                 cooldown={cooldown}
+                                draining={draining}
                                 running={running}
                                 statistics={statistics}
                                 totalPlannedRuns={totalPlannedRuns}
@@ -603,10 +628,10 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                     }
                     {running ?
                         <>
-                            <Button type={"submit"} className="mb-1" variant="danger"><i
-                                className="bi bi-stop-fill" /> Stop</Button>
+                            <Button type={"submit"} disabled={draining} className="mb-1" variant="danger"><i
+                                className="bi bi-stop-fill" /> {draining ? "Draining…" : "Stop"}</Button>
                             {" "}
-                            <Button onClick={restart} disabled={cooldown} className="mb-1" variant="primary"><i
+                            <Button onClick={restart} disabled={draining || cooldown} className="mb-1" variant="primary"><i
                                 className="bi bi-arrow-clockwise" /> Restart </Button>
                         </>
                         :

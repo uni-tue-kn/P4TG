@@ -7,6 +7,7 @@ use log::{error, info, warn};
 use tokio_util::sync::CancellationToken;
 
 use crate::api::traffic_gen::start_single_test;
+use crate::core::traffic_gen::stop_traffic_generation_locked;
 use crate::core::traffic_gen_core::const_definitions::MONITORING_PACKET_INTERVAL;
 use crate::core::traffic_gen_core::helper::{
     calculate_overhead, generate_front_panel_to_dev_port_mappings, get_batch_factor, get_num_pipes,
@@ -61,18 +62,11 @@ fn split_imix_rate(total_rate_gbps: f64, template: &Stream) -> [f32; IMIX_STREAM
 /// contain the previous trial's counters and mask all loss of this trial.
 const TRIAL_STATS_SETTLE_SECS: u32 = 2;
 
-/// Minimum wait after stopping a trial before the next trial may reset the
-/// counters. Packets of the stopped trial that are still buffered in the DUT
-/// would otherwise arrive after the sequence register reset: the first stale
-/// high sequence number is counted as a huge loss and all following packets of
-/// the next trial are misclassified as out-of-order until the sequence numbers
-/// catch up, hiding real loss.
-const MIN_TRIAL_DRAIN_SECS: u32 = 1;
-
-/// Effective wait after a trial: the configured cool-down, but at least the
-/// DUT drain time.
-fn effective_cooldown_secs(config: &Rfc2544Config) -> u32 {
-    config.cooldown_duration_secs.max(MIN_TRIAL_DRAIN_SECS)
+/// The drain accounts for in-flight packets. This additional idle phase lets
+/// digest delivery and controller-side snapshots settle before the next trial
+/// resets data-plane counters.
+fn trial_cooldown_secs(config: &Rfc2544Config) -> u32 {
+    config.cooldown_duration_secs
 }
 
 struct TrialSample {
@@ -301,7 +295,11 @@ fn frame_loss_complete(
             .any(|window| window[0].lost_frames == 0 && window[1].lost_frames == 0)
 }
 
-fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Results) -> u32 {
+fn estimate_rfc2544_remaining_secs(
+    config: &Rfc2544Config,
+    results: &Rfc2544Results,
+    drain_duration_secs: u32,
+) -> u32 {
     let throughput_needed =
         config.throughput || config.latency || config.reset || config.system_recovery;
     let throughput_trials = config
@@ -343,8 +341,9 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
                     .saturating_mul(trials)
             };
 
+            let post_trial_secs = drain_duration_secs.saturating_add(trial_cooldown_secs(config));
             trials
-                .saturating_mul(base_secs.saturating_add(effective_cooldown_secs(config)))
+                .saturating_mul(base_secs.saturating_add(post_trial_secs))
                 .saturating_add(pre_baseline_secs)
         };
 
@@ -430,7 +429,9 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
                 )
             {
                 remaining = remaining.saturating_add(
-                    recovery_duration.saturating_add(effective_cooldown_secs(config)),
+                    recovery_duration
+                        .saturating_add(drain_duration_secs)
+                        .saturating_add(trial_cooldown_secs(config)),
                 );
             }
         }
@@ -440,8 +441,10 @@ fn estimate_rfc2544_remaining_secs(config: &Rfc2544Config, results: &Rfc2544Resu
 }
 
 async fn refresh_runtime_estimate(state: &Arc<AppState>, config: &Rfc2544Config) {
+    let drain_duration_secs = state.traffic_generator.lock().await.drain_duration_secs;
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
-        results.estimated_remaining_runtime_secs = estimate_rfc2544_remaining_secs(config, results);
+        results.estimated_remaining_runtime_secs =
+            estimate_rfc2544_remaining_secs(config, results, drain_duration_secs);
     }
 }
 
@@ -883,13 +886,8 @@ async fn finish(state: &Arc<AppState>, status: String) {
 }
 
 async fn stop_trial(state: &Arc<AppState>) {
-    if let Err(err) = state
-        .traffic_generator
-        .lock()
-        .await
-        .stop(&state.switch)
-        .await
-    {
+    let _lifecycle = state.traffic_lifecycle.lock().await;
+    if let Err(err) = stop_traffic_generation_locked(state).await {
         error!("Error while stopping RFC2544 trial: {err}");
     }
     state.experiment.lock().await.running = false;
@@ -993,9 +991,10 @@ async fn trial_cooldown(
     context: String,
     cancel_token: &CancellationToken,
 ) -> bool {
-    // Even with cool-down 0, wait for the DUT to drain in-flight packets of
-    // the stopped trial before the next trial resets the sequence registers.
-    let wait_secs = effective_cooldown_secs(config);
+    let wait_secs = trial_cooldown_secs(config);
+    if wait_secs == 0 {
+        return true;
+    }
 
     set_status(
         state,
@@ -1829,8 +1828,6 @@ async fn run_latency(
         )
         .await;
 
-        let sample = sample_trial(state, &trial).await;
-        all_rtts.extend(sample.rtts.into_iter().skip(baseline_rtt_count));
         stop_trial(state).await;
 
         if !completed {
@@ -1841,6 +1838,12 @@ async fn run_latency(
         if !trial_cooldown(state, config, context, cancel_token).await {
             return false;
         }
+
+        // Include RTT digests produced by packets received during the drain,
+        // plus any digest delivery that settles during the idle cooldown. The
+        // next repetition has not reset the monitor state yet.
+        let sample = sample_trial(state, &trial).await;
+        all_rtts.extend(sample.rtts.into_iter().skip(baseline_rtt_count));
     }
 
     let result = latency_result(mapping, frame_size, rate_gbps, &all_rtts);

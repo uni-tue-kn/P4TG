@@ -108,6 +108,43 @@ def wait_for_rfc2544(api: P4TG, timeout_s: float = 1800.0, poll_interval_s: floa
     raise TimeoutError(f"Timed out waiting for RFC2544 completion after {timeout_s:.0f}s")
 
 
+def wait_for_traffic_gen_completion(api: P4TG, timeout_s: float, poll_interval_s: float = 0.5):
+    """Wait until the controller reports that the complete orchestration has exited."""
+    start = time.time()
+    deadline = start + timeout_s
+    next_progress_log = start
+
+    while time.time() < deadline:
+        status = api.get_traffic_gen_status()
+        if status is None:
+            logging.info("Traffic-generation orchestration completed.")
+            return
+
+        now = time.time()
+        if now >= next_progress_log:
+            phase = (
+                "draining"
+                if status.get("draining")
+                else "paused"
+                if status.get("cooldown")
+                else "running"
+            )
+            logging.info(
+                "Traffic generation %s %.0fs/%.0fs: %s",
+                phase,
+                now - start,
+                timeout_s,
+                status.get("name") or "unnamed test",
+            )
+            next_progress_log = now + 10
+
+        time.sleep(poll_interval_s)
+
+    raise TimeoutError(
+        f"Timed out waiting for traffic-generation orchestration after {timeout_s:.0f}s"
+    )
+
+
 def run_tests(api: P4TG, payload, payload_path, show_plots, rfc2544_timeout, report, report_metadata):
     tests = payload if isinstance(payload, list) else [payload]
     logging.info("Loaded %d test configuration(s) from %s.", len(tests), payload_path)
@@ -130,13 +167,21 @@ def run_tests(api: P4TG, payload, payload_path, show_plots, rfc2544_timeout, rep
         api.stop_traffic_gen()
     else:
         total_runs = sum(max(1, int(t.get("repetitions", 1))) for t in tests)
-        total_duration = (
-            sum(t.get("duration", 0) * max(1, int(t.get("repetitions", 1))) for t in tests)
+        expected_runtime = (
+            sum(
+                (t.get("duration", 0) + t.get("drain_duration_secs", 0))
+                * max(1, int(t.get("repetitions", 1)))
+                for t in tests
+            )
             + 3 * max(0, total_runs - 1)
-            + 3
         )
-        logging.info("Waiting %.0fs for configured test duration plus settling time.", total_duration)
-        sleep_with_progress(total_duration, desc="Running tests")
+        timeout = expected_runtime + max(30, 5 * total_runs)
+        logging.info(
+            "Polling /trafficgen for completion (expected runtime %.0fs, timeout %.0fs).",
+            expected_runtime,
+            timeout,
+        )
+        wait_for_traffic_gen_completion(api, timeout_s=timeout)
     
     # Retrieve statistics
     logging.info("Fetching /time_statistics and saving raw time statistics.")

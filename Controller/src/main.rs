@@ -86,6 +86,9 @@ pub struct AppState {
     pub(crate) frame_size_monitor: Mutex<FrameSizeMonitor>,
     pub(crate) frame_type_monitor: Mutex<FrameTypeMonitor>,
     pub(crate) traffic_generator: Mutex<TrafficGen>,
+    /// Serializes hardware lifecycle transitions without blocking statistics
+    /// readers on the traffic-generator state during a drain wait.
+    pub(crate) traffic_lifecycle: Mutex<()>,
     pub(crate) port_mapping: HashMap<u32, PortMapping>,
     pub(crate) rate_monitor: Mutex<RateMonitor>,
     pub(crate) rtt_histogram_monitor: Mutex<HistogramMonitor>,
@@ -235,7 +238,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let iat_histogram_monitor = HistogramMonitor::new(port_mapping.clone(), HistogramType::Iat);
 
     let mut traffic_generator = TrafficGen::new(is_tofino2, num_pipes);
-    traffic_generator.stop(&switch).await?;
+    traffic_generator.stop_immediately(&switch).await?;
 
     let index_mapping = traffic_generator
         .init_monitoring_packet(&switch, &port_mapping)
@@ -248,6 +251,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         frame_size_monitor: Mutex::new(frame_size_monitor),
         frame_type_monitor: Mutex::new(frame_type_monitor),
         traffic_generator: Mutex::new(traffic_generator),
+        traffic_lifecycle: Mutex::new(()),
         port_mapping,
         rate_monitor: Mutex::new(rate_monitor),
         rtt_histogram_monitor: Mutex::new(rtt_histogram_monitor),

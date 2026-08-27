@@ -54,7 +54,7 @@ const renderTooltip = (props: any, message: string) => (
     </Tooltip>
 );
 
-const Status = ({ stats, running }: { stats: StatisticsEntry, running: boolean }) => {
+const Status = ({ stats }: { stats: StatisticsEntry }) => {
     const lostFrames = getLostPackets(stats);
     const error = hasError(stats);
     const hasLoss = lostFrames > 0;

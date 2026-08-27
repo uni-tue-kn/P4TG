@@ -103,7 +103,7 @@ export const secondsToTime = (s: number) => {
 
 const SendReceiveMonitor = ({ stats, running }: {
     stats: StatisticsEntry,
-    running: boolean
+    running: boolean,
 }) => {
 
     // Sum rates across all ports and channels
@@ -121,7 +121,7 @@ const SendReceiveMonitor = ({ stats, running }: {
     return <Col className={"col-8 text-start"}>
         <Speed up={true} speed={tx_rate_l1} packet={packet_rate_tx} />
         <Speed up={false} speed={rx_rate_l1} packet={packet_rate_rx} />
-        {running ? <Status stats={stats} running={running} /> : null}
+        {running ? <Status stats={stats} /> : null}
 
 
         {stats.elapsed_time > 0 ?

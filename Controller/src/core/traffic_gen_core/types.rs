@@ -185,6 +185,15 @@ fn default_repetitions() -> u32 {
     1
 }
 
+pub fn default_drain_duration_secs() -> u32 {
+    0
+}
+
+/// Upper bound for a drain phase. Lifecycle operations are serialized while
+/// draining, so accepting arbitrary `u32` values could block the controller
+/// for years after packet generation has already stopped.
+pub const MAX_DRAIN_DURATION_SECS: u32 = 60;
+
 fn default_rfc2544_line_rate_gbps() -> f32 {
     100.0
 }
@@ -462,6 +471,11 @@ pub struct TrafficGenData {
     /// Number of times this test is executed. RFC2544 uses its own repetition settings.
     #[serde(default = "default_repetitions")]
     pub(crate) repetitions: u32,
+    /// Time after packet generation is disabled during which the RX measurement
+    /// path remains active so in-flight packets can still update statistics.
+    /// Limited to [`MAX_DRAIN_DURATION_SECS`].
+    #[serde(default = "default_drain_duration_secs")]
+    pub(crate) drain_duration_secs: u32,
     /// Mapping between RX port and RTT histogram config.
     #[serde(default)]
     pub(crate) rtt_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,

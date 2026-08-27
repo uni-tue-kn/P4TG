@@ -19,6 +19,7 @@
 
 use crate::api::docs::traffic_gen::EXAMPLE_POST_1_RESPONSE;
 use crate::api::server::Error;
+use crate::core::traffic_gen::stop_traffic_generation_locked;
 use crate::core::traffic_gen_core::helper::{
     generate_front_panel_to_dev_port_mappings, translate_fp_channel_to_dev_port_mapping,
 };
@@ -137,7 +138,17 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
         state.experiment.lock().await.running = false;
     }
 
-    match state
+    let _lifecycle = state.traffic_lifecycle.lock().await;
+    if let Err(err) = stop_traffic_generation_locked(&state).await {
+        state.experiment.lock().await.running = false;
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Error::new(format!("{err:#?}"))),
+        )
+            .into_response();
+    }
+
+    let restart_result = state
         .traffic_generator
         .lock()
         .await
@@ -148,8 +159,9 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
             active_stream_settings,
             &tx_rx_port_mapping,
         )
-        .await
-    {
+        .await;
+
+    match restart_result {
         Ok(streams) => {
             state.experiment.lock().await.start = SystemTime::now();
             state.experiment.lock().await.running = true;
@@ -167,6 +179,9 @@ pub async fn restart(State(state): State<Arc<AppState>>) -> Response {
             (StatusCode::OK, Json(streams)).into_response()
         }
         Err(err) => {
+            // Release the lifecycle before cancelling an outer task: that task
+            // may itself be waiting for this lock to finish a trial.
+            drop(_lifecycle);
             if keep_multiple_test_running {
                 state
                     .multiple_tests

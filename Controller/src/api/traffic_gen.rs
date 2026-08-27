@@ -43,6 +43,7 @@ use crate::core::histogram_monitor::{
     histogram_port_roles,
 };
 use crate::core::statistics::{Histogram, HistogramPacketPath};
+use crate::core::traffic_gen::stop_traffic_generation_locked;
 use crate::AppState;
 
 use crate::api::docs::traffic_gen::{
@@ -61,7 +62,10 @@ pub struct StopTrafficGenParams {
 pub struct TrafficGenStatus {
     #[serde(flatten)]
     configuration: TrafficGenData,
-    /// True while a multi-test sequence is waiting before its next run.
+    /// True while packet generation is disabled but the RX measurement path
+    /// remains active for in-flight packets.
+    draining: bool,
+    /// True while a multi-test sequence is idle before its next run.
     cooldown: bool,
 }
 
@@ -96,16 +100,9 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
         .handle
         .as_ref()
         .is_some_and(|handle| !handle.is_finished());
-    let multiple_tests_between_runs = multiple_tests_running
-        && !state
-            .multiple_tests
-            .collected_statistics
-            .lock()
-            .await
-            .is_empty();
     let tg = &state.traffic_generator.lock().await;
 
-    if !tg.running && !rfc2544_running && !multiple_tests_between_runs {
+    if !tg.running && !rfc2544_running && !multiple_tests_running {
         (
             StatusCode::ACCEPTED,
             Json(EmptyResponse {
@@ -122,6 +119,7 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             port_tx_rx_mapping: tg.port_mapping.clone(),
             duration: tg.duration,
             repetitions: tg.repetitions,
+            drain_duration_secs: tg.drain_duration_secs,
             rtt_histogram_config: Some(tg.rtt_histogram_config.clone()),
             iat_histogram_config: Some(tg.iat_histogram_config.clone()),
             rfc2544: tg.rfc2544_config.clone(),
@@ -131,7 +129,8 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             StatusCode::OK,
             Json(TrafficGenStatus {
                 configuration: tg_data,
-                cooldown: !tg.running && multiple_tests_between_runs,
+                draining: tg.draining,
+                cooldown: !tg.running && multiple_tests_running,
             }),
         )
             .into_response()
@@ -199,6 +198,7 @@ pub async fn configure_traffic_gen(
                             tg.mode = traffic_gen_data.mode;
                             tg.duration = traffic_gen_data.duration;
                             tg.repetitions = 1;
+                            tg.drain_duration_secs = traffic_gen_data.drain_duration_secs;
                             tg.name = traffic_gen_data.name.clone();
                         }
                         state.experiment.lock().await.start = SystemTime::now();
@@ -311,6 +311,10 @@ pub async fn start_single_test(
     state: &Arc<AppState>,
     payload: TrafficGenData,
 ) -> Result<Vec<Stream>, RBFRTError> {
+    let _lifecycle = state.traffic_lifecycle.lock().await;
+    stop_traffic_generation_locked(state).await?;
+    state.experiment.lock().await.running = false;
+
     let port_mapping = &state.port_mapping;
 
     let front_panel_dev_port_mappings =
@@ -503,6 +507,7 @@ pub async fn start_single_test(
             tg.mode = payload.mode;
             tg.duration = payload.duration;
             tg.repetitions = payload.repetitions;
+            tg.drain_duration_secs = payload.drain_duration_secs;
             tg.name = payload.name;
 
             // experiment starts now
@@ -539,9 +544,6 @@ pub async fn stop_traffic_gen(
     State(state): State<Arc<AppState>>,
     Query(params): Query<StopTrafficGenParams>,
 ) -> Response {
-    let tg = &state.traffic_generator;
-    let switch = &state.switch;
-
     let skip_current_test = params.skip.unwrap_or(false);
 
     if !skip_current_test {
@@ -565,14 +567,8 @@ pub async fn stop_traffic_gen(
         .cancel_existing_monitoring_task()
         .await;
 
-    let stop_result = {
-        let mut tg = tg.lock().await;
-        if tg.running {
-            tg.stop(switch).await
-        } else {
-            Ok(())
-        }
-    };
+    let _lifecycle = state.traffic_lifecycle.lock().await;
+    let stop_result = stop_traffic_generation_locked(&state).await;
 
     match stop_result {
         Ok(_) => {

@@ -34,6 +34,7 @@ import {
     PortInfo,
     PortTxRxMap,
     HistogramConfig,
+    MAX_DRAIN_DURATION_SECS,
     RFC2544_FRAME_SIZES,
     Rfc2544Config,
     RxMappingMode,
@@ -257,6 +258,12 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     const [mode, set_mode] = useState(parseInt(localStorage.getItem("gen-mode") || String(GenerationMode.NONE)))
     const [duration, set_duration] = useState(parseInt(localStorage.getItem("duration") || String(0)))
+    const [drain_duration_secs, set_drain_duration_secs] = useState(() => {
+        const stored = Number(localStorage.getItem("drain_duration_secs") ?? 0);
+        return Number.isInteger(stored) && stored >= 0
+            ? Math.min(stored, MAX_DRAIN_DURATION_SECS)
+            : 0;
+    })
     const [repetitions, set_repetitions] = useState(() => {
         const storedRepetitions = parseInt(localStorage.getItem("repetitions") || String(1));
         return Number.isInteger(storedRepetitions) && storedRepetitions > 0 ? storedRepetitions : 1;
@@ -303,6 +310,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_mode(config.mode);
         set_duration(config.duration);
         set_repetitions(config.repetitions);
+        set_drain_duration_secs(config.drain_duration_secs ?? 0);
         set_port_tx_rx_mapping(config.port_tx_rx_mapping);
         set_rx_mapping_mode(config.rx_mapping_mode ?? RxMappingMode.PerTxPort);
         set_rtt_histogram_settings(config.rtt_histogram_config);
@@ -314,6 +322,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         localStorage.setItem("gen-mode", String(config.mode));
         localStorage.setItem("duration", String(config.duration));
         localStorage.setItem("repetitions", String(config.repetitions));
+        localStorage.setItem("drain_duration_secs", String(config.drain_duration_secs ?? 0));
         localStorage.setItem("port_tx_rx_mapping", JSON.stringify(config.port_tx_rx_mapping));
         localStorage.setItem("rx_mapping_mode", JSON.stringify(config.rx_mapping_mode ?? RxMappingMode.PerTxPort));
         localStorage.setItem("rtt_histogram_config", JSON.stringify(config.rtt_histogram_config));
@@ -351,6 +360,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             rx_mapping_mode,
             duration,
             repetitions,
+            drain_duration_secs,
             port_tx_rx_mapping,
             rtt_histogram_config: rtt_histogram_settings,
             iat_histogram_config: iat_histogram_settings,
@@ -451,6 +461,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     set_mode(normalized.config.mode)
                     set_duration(normalized.config.duration)
                     set_repetitions(normalized.config.repetitions)
+                    set_drain_duration_secs(normalized.config.drain_duration_secs ?? 0)
                     set_port_tx_rx_mapping(normalized.config.port_tx_rx_mapping)
                     set_stream_settings(normalized.config.stream_settings)
                     set_streams(nextStreams)
@@ -462,6 +473,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     localStorage.setItem("gen-mode", String(normalized.config.mode))
                     localStorage.setItem("duration", String(normalized.config.duration ?? 0))
                     localStorage.setItem("repetitions", String(normalized.config.repetitions ?? 1))
+                    localStorage.setItem("drain_duration_secs", String(normalized.config.drain_duration_secs ?? 0))
                     localStorage.setItem("streamSettings", JSON.stringify(normalized.config.stream_settings))
                     localStorage.setItem("port_tx_rx_mapping", JSON.stringify(normalized.config.port_tx_rx_mapping))
                     localStorage.setItem("rtt_histogram_config", JSON.stringify(normalized.config.rtt_histogram_config))
@@ -591,6 +603,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_rx_mapping_mode(config.rx_mapping_mode ?? RxMappingMode.PerTxPort);
         set_duration(config.duration ?? 0);
         set_repetitions(config.repetitions ?? 1);
+        set_drain_duration_secs(config.drain_duration_secs ?? 0);
         set_port_tx_rx_mapping(config.port_tx_rx_mapping || {});
         set_rtt_histogram_settings(config.rtt_histogram_config ?? {});
         set_iat_histogram_settings(config.iat_histogram_config ?? {});
@@ -619,6 +632,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 set_mode(GenerationMode.NONE);
                 set_duration(0);
                 set_repetitions(1);
+                set_drain_duration_secs(0);
                 set_port_tx_rx_mapping({});
                 set_rtt_histogram_settings({});
                 set_iat_histogram_settings({});
@@ -707,6 +721,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         localStorage.setItem("rx_mapping_mode", JSON.stringify(rx_mapping_mode))
         localStorage.setItem("duration", String(duration))
         localStorage.setItem("repetitions", String(repetitions))
+        localStorage.setItem("drain_duration_secs", String(drain_duration_secs))
         localStorage.setItem("streamSettings", JSON.stringify(reconciledSettings))
         localStorage.setItem("rtt_histogram_config", JSON.stringify(filteredRTTHistogramSettings))
         localStorage.setItem("iat_histogram_config", JSON.stringify(filteredIATHistogramSettings))
@@ -719,6 +734,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             rx_mapping_mode,
             duration: duration,
             repetitions: mode === GenerationMode.RFC2544 ? 1 : repetitions,
+            drain_duration_secs,
             stream_settings: reconciledSettings,
             rtt_histogram_config: filteredRTTHistogramSettings,
             iat_histogram_config: filteredIATHistogramSettings,
@@ -753,6 +769,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         set_rx_mapping_mode(RxMappingMode.PerTxPort)
         set_duration(0)
         set_repetitions(1)
+        set_drain_duration_secs(0)
         set_port_tx_rx_mapping({})
 
         const defaultConfig: TrafficGenData = {
@@ -760,6 +777,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             rx_mapping_mode: RxMappingMode.PerTxPort,
             duration: 0,
             repetitions: 1,
+            drain_duration_secs: 0,
             streams: [],
             stream_settings: [],
             port_tx_rx_mapping: {},
@@ -854,6 +872,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 : rx_mapping_mode,
             duration: 0,
             repetitions: 1,
+            drain_duration_secs,
             streams: nextStreams,
             stream_settings: nextStreamSettings,
             port_tx_rx_mapping: {},
@@ -1179,6 +1198,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             localStorage.setItem("rx_mapping_mode", JSON.stringify(first_test.rx_mapping_mode ?? RxMappingMode.PerTxPort))
             localStorage.setItem("duration", first_test.duration ? String(first_test.duration) : "0")
             localStorage.setItem("repetitions", String(first_test.repetitions ?? 1))
+            localStorage.setItem("drain_duration_secs", String(first_test.drain_duration_secs ?? 0))
             localStorage.setItem("streamSettings", JSON.stringify(first_test.stream_settings))
             localStorage.setItem("port_tx_rx_mapping", JSON.stringify(first_test.port_tx_rx_mapping))
             localStorage.setItem("rtt_histogram_config", first_test.rtt_histogram_config ? JSON.stringify(first_test.rtt_histogram_config) : "{}")
@@ -1518,6 +1538,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                     rx_mapping_mode: RxMappingMode.PerTxPort,
                                     duration: 0,
                                     repetitions: 1,
+                                    drain_duration_secs: 0,
                                     streams: [],
                                     stream_settings: [],
                                     port_tx_rx_mapping: {},
@@ -1611,10 +1632,39 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                 </InfoBox>
                             </Col>
 
+                            <Col className={"col-auto d-flex align-items-center gap-2"}>
+                                <div className="text-nowrap">
+                                    <span>Drain duration </span>
+                                    <InfoBox>
+                                        <>
+                                            <h5>Drain duration</h5>
+                                            <p>Packet generation stops immediately, while the receive measurement path remains active for this many seconds so in-flight or reordered packets can still update the final statistics. This happens before any idle cooldown. A value of 0 disables draining; the maximum is {MAX_DRAIN_DURATION_SECS} seconds.</p>
+                                        </>
+                                    </InfoBox>
+                                </div>
+                                <Form.Control
+                                    className={"text-start"}
+                                    style={{ width: "6rem" }}
+                                    value={drain_duration_secs}
+                                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                                        const parsed = Number(event.target.value);
+                                        if (Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_DRAIN_DURATION_SECS) {
+                                            set_drain_duration_secs(parsed);
+                                        }
+                                    }}
+                                    min={0}
+                                    max={MAX_DRAIN_DURATION_SECS}
+                                    step={1}
+                                    disabled={running}
+                                    type={"number"}
+                                    aria-label={"Drain duration in seconds"}
+                                />
+                            </Col>
+
                             {mode !== GenerationMode.RFC2544 ?
                                 <>
-                                    <Col className={"col-auto"}>
-                                        <div>
+                                    <Col className={"col-auto d-flex align-items-center gap-2"}>
+                                        <div className="text-nowrap">
                                             <span>Test duration     </span>
                                             <InfoBox>
                                                 <>
@@ -1624,33 +1674,28 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                 </>
                                             </InfoBox>
                                         </div>
-                                    </Col>
-
-                                    <Col className={"col-auto"}>
-                                        <Form.Control className={"col-3 text-start"}
+                                        <Form.Control className={"text-start"}
+                                            style={{ width: "8rem" }}
                                             onChange={(event: any) => set_duration(parseInt(event.target.value))}
                                             min={0}
                                             step={1}
                                             placeholder={duration > 0 ? String(duration) + " s" : "∞ s"}
                                             disabled={running} type={"number"} />
-
                                     </Col>
-                                    <Col className={"col-auto"}>
-                                        <div>
+                                    <Col className={"col-auto d-flex align-items-center gap-2"}>
+                                        <div className="text-nowrap">
                                             <span>Repetitions     </span>
                                             <InfoBox>
                                                 <>
                                                     <h5>Repetitions</h5>
 
-                                                    <p>Number of times this test is executed. P4TG waits 3 seconds between repetitions. Repeated tests require a finite test duration.</p>
+                                                    <p>Number of times this test is executed. Each repetition drains and then waits for the 3-second idle cooldown before the next run begins. Repeated tests require a finite test duration.</p>
                                                 </>
                                             </InfoBox>
                                         </div>
-                                    </Col>
-
-                                    <Col className={"col-auto"}>
                                         <Form.Control
-                                            className={"col-3 text-start"}
+                                            className={"text-start"}
+                                            style={{ width: "6rem" }}
                                             value={repetitionsInput}
                                             onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                                                 const value = event.target.value;
@@ -1920,7 +1965,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                                             />
                                                         </Col>
                                                         <Col className="col-12 col-sm-4">
-                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Cool-down duration (s)", "Pause between successive RFC2544 trials after traffic stops. Default is 2 seconds.")}</Form.Label>
+                                                            <Form.Label className="small mb-1">{rfc2544HoverLabel("Cool-down duration (s)", "Idle time after draining and before the next RFC2544 trial resets counters. Default is 2 seconds.")}</Form.Label>
                                                             <Form.Control
                                                                 size="sm"
                                                                 type="number"

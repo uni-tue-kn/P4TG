@@ -17,11 +17,11 @@
  * Fabian Ihle (fabian.ihle@uni-tuebingen.de)
  */
 
-import { GenerationMode, RxMappingMode, TrafficGenData } from "./Interfaces";
+import { GenerationMode, MAX_DRAIN_DURATION_SECS, RxMappingMode, TrafficGenData } from "./Interfaces";
 import { validateStreams, validateStreamSettings } from "./Validators";
 
 const STORAGE_SCHEMA_KEY = "p4tg.storageSchema";
-const STORAGE_SCHEMA_VERSION = "5";
+const STORAGE_SCHEMA_VERSION = "6";
 const CONFIG_STORAGE_KEYS = [
     "saved_configs",
     "streams",
@@ -30,6 +30,7 @@ const CONFIG_STORAGE_KEYS = [
     "rx_mapping_mode",
     "duration",
     "repetitions",
+    "drain_duration_secs",
     "port_tx_rx_mapping",
     "rtt_histogram_config",
     "iat_histogram_config",
@@ -64,6 +65,11 @@ export const migrateTrafficGenData = (value: unknown): TrafficGenData | null => 
         : typeof config.repetitions === "number" && Number.isInteger(config.repetitions) && config.repetitions > 0
             ? config.repetitions
             : 1;
+    config.drain_duration_secs = typeof config.drain_duration_secs === "number"
+        && Number.isInteger(config.drain_duration_secs)
+        && config.drain_duration_secs >= 0
+        ? Math.min(config.drain_duration_secs, MAX_DRAIN_DURATION_SECS)
+        : 0;
     config.port_tx_rx_mapping = isRecord(config.port_tx_rx_mapping) ? config.port_tx_rx_mapping : {};
     config.rtt_histogram_config = isRecord(config.rtt_histogram_config) ? config.rtt_histogram_config : {};
     config.iat_histogram_config = isRecord(config.iat_histogram_config) ? config.iat_histogram_config : {};
@@ -94,6 +100,14 @@ export const migrateStoredConfiguration = () => {
     }
 
     try {
+        const storedDrainDuration = Number(localStorage.getItem("drain_duration_secs") ?? 0);
+        localStorage.setItem(
+            "drain_duration_secs",
+            String(Number.isInteger(storedDrainDuration) && storedDrainDuration >= 0
+                ? Math.min(storedDrainDuration, MAX_DRAIN_DURATION_SECS)
+                : 0),
+        );
+
         const streams = parseStoredJson("streams");
         if (streams !== undefined) {
             if (!Array.isArray(streams) || !validateStreams(streams)) {

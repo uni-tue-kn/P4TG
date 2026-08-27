@@ -72,6 +72,7 @@ lazy_static! {
         port_tx_rx_mapping: HashMap::new(),
         duration: Some(10),
         repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
@@ -161,6 +162,7 @@ lazy_static! {
         )]),
         duration: None,
         repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
@@ -274,6 +276,7 @@ lazy_static! {
         )]),
         duration: None,
         repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
@@ -362,6 +365,7 @@ lazy_static! {
         )]),
         duration: None,
         repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
@@ -467,6 +471,7 @@ lazy_static! {
         }],
         duration: None,
         repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: None,
         iat_histogram_config: None,
         rfc2544: None,
@@ -571,6 +576,7 @@ lazy_static! {
             )]),
             duration: Some(10),
             repetitions: 1,
+            drain_duration_secs: 0,
             rtt_histogram_config: Some(HashMap::from([(
                 "2".to_string(),
                 HashMap::from([(
@@ -663,6 +669,7 @@ lazy_static! {
             )]),
             duration: Some(15),
             repetitions: 1,
+            drain_duration_secs: 0,
             rtt_histogram_config: Some(HashMap::from([(
                 "2".to_string(),
                 HashMap::from([(
