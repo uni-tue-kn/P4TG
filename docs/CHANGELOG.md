@@ -33,6 +33,7 @@
   - ⚠️ **Breaking change:** on Tofino 2, `4x10G` and `4x25G` move from channels `0,1,2,3` (lanes 0-3) to channels `0,2,4,6` (lanes 0, 2, 4, 6). This matches a 4-way QSFP-DD breakout cable, whose legs carry two lanes each. Setups that rely on the previous packing into lanes 0-3, for example a QSFP28 cable that only carries four lanes, can use `channel_count: 8` and leave channels 4-7 unused.
 - Added per-stream data plane collection for RTT/IAT histograms. Histograms can now be filtered, or aggregated across streams.
 - Increased the size of the IAT histogram table from 4096 to 8192.
+- Added a configurable draining duration: After stopping traffic generation, measurements will continue for this duration.
 
 ### Bug fixes
 - Fixed timestamps of rate digests being used improperly.
@@ -96,6 +97,7 @@
 - Hardened settings import and migration against empty or malformed files and restored all missing nested defaults.
 - Added automatic migration for v2.7 browser settings and cache headers that prevent stale frontend bundles after upgrades.
 - Fixed Bootstrap's default blue focus ring breaking the dark theme, most visibly on the rename field opened by the edit button of a test tab. Focus rings now use the primary color.
+- Fixed many bugs in the `p4tg.sh` management script.
 - The selected tab now also has a slightly offset background color in light mode, not only in dark mode.
 
 ### Other

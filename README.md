@@ -119,7 +119,7 @@ See the full [Changelog](./docs/CHANGELOG.md).
 
 ## 🚀 Installation & Quick Start
 
-P4TG requires a fully set up bf-SDE with `$SDE` and `$SDE_INSTALL` environment variables set.
+P4TG requires a fully set up bf-SDE with `$SDE` and `$SDE_INSTALL` environment variables set. These are the only mandatory settings used by `p4tg.sh`; `P4TG_DIR` is normally detected automatically from the script location.
 A detailed installation guide for the Intel SDE and P4TG can be found [here](./docs/INSTALL.md).
 
 ### Quick Start
@@ -127,15 +127,17 @@ A detailed installation guide for the Intel SDE and P4TG can be found [here](./d
 The provided `p4tg.sh` script automates the installation of the data and control plane on Debian- / Ubuntu-based systems, provided that the SDE is installed correctly.
 Make sure that the environment variables `$SDE` and `$SDE_INSTALL` are set. Run with `sudo -E` to pass environment variables.
 ```bash
-Usage: sudo -E ./p4tg.sh [install|update|start|stop|restart|status][--nightly]
+Usage: sudo -E ./p4tg.sh [--nightly|--stable] [install|update|start|stop|restart|status]
 ```
 Clone P4TG into `/opt/P4TG` and simply run `sudo -E ./p4tg.sh install` (tested on Debian-based systems). Change the paths at the top of `p4tg.sh` if needed.
 
+`--nightly` selects the `nightly` Git branch and Docker image; `--stable` selects the `main` branch and `latest` image. The SDE paths and selected channel are stored in `/etc/default/p4tg`, so later direct starts and systemd restarts use the same configuration.
+
 The `install` command will:
 - Compile the data plane and copy it in place.
-- Pull the docker image and start it.
-- Copy the `p4tg.sh` script to `/usr/local/bin`.
-- Copy the `p4tg.service` file to `/etc/systemd/system/p4tg.service`. This service file can be used to autostart P4TG on boot.
+- Pull the Docker image and optionally start P4TG after an interactive prompt.
+- Install a `p4tg.sh` symlink in `/usr/local/bin`.
+- Install or update `p4tg.service` in `/etc/systemd/system`. This service file can be used to autostart P4TG on boot.
 
 The `start` command will:
 - Load all required kernel modules to operate the Tofino.
@@ -286,6 +288,8 @@ See [README](p4tg_test_automation/README.md) for details.
 
 ## 🔄 Update Guide
 Run `sudo -E p4tg.sh update`.
+
+The update keeps the selected stable/nightly channel. In an interactive terminal it asks whether to restart a previously running stack (default: yes), or whether to start a previously stopped stack (default: no). Noninteractive updates automatically restart a running stack and leave a stopped stack stopped. Use `--nightly` or `--stable` to switch channels during the update.
 
 ### Manually
 1. Rebuild the data plane as described [here](docs/INSTALL.md#data-plane).  

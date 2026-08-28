@@ -15,8 +15,8 @@ ExecStop=/usr/local/bin/p4tg.sh stop
 User=root
 WorkingDirectory=/usr/local/bin
 
-# Environment variables
-Environment="SDE=/opt/bf-sde-9.13.4" "SDE_INSTALL=/opt/bf-sde-9.13.4/install"
+# Created by p4tg.sh from the SDE/SDE_INSTALL environment used during install.
+EnvironmentFile=-/etc/default/p4tg
 
 # Logging — redirect both stdout/stderr to logfile
 StandardOutput=append:/var/log/traffic_gen/p4tg.service.log
