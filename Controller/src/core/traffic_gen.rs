@@ -97,6 +97,9 @@ pub struct TrafficGen {
     pub(crate) rfc2544_config: Option<Rfc2544Config>,
     /// Name of the current test
     pub(crate) name: Option<String>,
+    /// Stable name of the user configuration that started the current run.
+    /// Unlike `name`, RFC2544 trial labels do not overwrite this value.
+    pub(crate) source_name: Option<String>,
 }
 
 impl TrafficGen {
@@ -120,6 +123,7 @@ impl TrafficGen {
             iat_histogram_config: HashMap::new(),
             rfc2544_config: None,
             name: None,
+            source_name: None,
         }
     }
 
@@ -902,10 +906,11 @@ impl TrafficGen {
                 let l1_counter_bytes = total_frame_size.saturating_sub(4);
 
                 let num_pipes: u32 = get_num_pipes(stream, self.num_pipes);
-                let batch_factor = get_batch_factor(stream) as f64;
+                let batch_factor = get_batch_factor(stream) as u64;
                 let offered_pps_per_pipe =
-                    stream.n_packets.unwrap_or(1) as f64 * batch_factor * 1e9_f64
+                    stream.n_packets.unwrap_or(1) as f64 * batch_factor as f64 * 1e9_f64
                         / stream.timeout.unwrap_or(1) as f64;
+                let generator_burst_packets = stream.n_packets.unwrap_or(1) as u64 * batch_factor;
 
                 let entries = build_pattern_generation_entries(
                     stream.app_id,
@@ -919,6 +924,7 @@ impl TrafficGen {
                         .unwrap_or(&total_frame_size.saturating_sub(20))
                         + 6, // Size of the internal packet generation header
                     num_pipes as f64,
+                    generator_burst_packets,
                     next_pattern_interval_id,
                 );
 

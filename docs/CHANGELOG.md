@@ -34,6 +34,7 @@
 - Added per-stream data plane collection for RTT/IAT histograms. Histograms can now be filtered, or aggregated across streams.
 - Increased the size of the IAT histogram table from 4096 to 8192.
 - Added a configurable draining duration: After stopping traffic generation, measurements will continue for this duration.
+- Added optional per-pattern meter burst configuration (`burst_packets`) to the REST API and pattern modal. Omitted values are calculated per interval.
 
 ### Bug fixes
 - Fixed timestamps of rate digests being used improperly.
@@ -99,6 +100,8 @@
 - Fixed Bootstrap's default blue focus ring breaking the dark theme, most visibly on the rename field opened by the edit button of a test tab. Focus rings now use the primary color.
 - Fixed many bugs in the `p4tg.sh` management script.
 - The selected tab now also has a slightly offset background color in light mode, not only in dark mode.
+- Fixed numeric pattern fields retaining the previous value when cleared and replaced.
+- Fixed configuration state, including Rate/IAT Precision and live RFC2544 trials, leaking between test tabs and clones.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.

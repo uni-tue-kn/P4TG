@@ -31,8 +31,8 @@ use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
     IAT_HISTOGRAM_TABLE, IAT_HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
     MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2, MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS,
-    MAX_PATTERN_SAMPLE_RATE, RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE,
-    TG_MAX_RATE_TF2,
+    MAX_PATTERN_BURST_PACKETS, MAX_PATTERN_SAMPLE_RATE, MIN_PATTERN_BURST_PACKETS,
+    RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
 use crate::core::traffic_gen_core::expected_routes::resolve_per_stream_topology;
 use crate::core::traffic_gen_core::helper::{
@@ -797,6 +797,8 @@ pub fn validate_request(
 pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
     for s in active_streams.iter() {
         if let Some(pattern) = &s.pattern {
+            validate_pattern_burst(pattern, s.stream_id)?;
+
             if pattern.sample_rate == 0 || pattern.sample_rate > MAX_PATTERN_SAMPLE_RATE {
                 return Err(Error::new(format!(
                     "Pattern sample rate in stream with ID #{} must be in [1, {}].",
@@ -898,6 +900,19 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
                     s.stream_id, s.frame_size + calculate_overhead(s) + 20, period_max as u32
                 )));
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_pattern_burst(pattern: &GenerationPatternConfig, stream_id: u8) -> Result<(), Error> {
+    if let Some(burst_packets) = pattern.burst_packets {
+        if !(MIN_PATTERN_BURST_PACKETS..=MAX_PATTERN_BURST_PACKETS).contains(&burst_packets) {
+            return Err(Error::new(format!(
+                "Pattern meter burst in stream with ID #{} must be in [{}, {}] packets or omitted.",
+                stream_id, MIN_PATTERN_BURST_PACKETS, MAX_PATTERN_BURST_PACKETS
+            )));
         }
     }
 

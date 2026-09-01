@@ -76,9 +76,23 @@ const Rfc2544Panel = styled.div`
     border: 2px solid var(--color-primary) !important;
 `
 
+const Rfc2544SettingsButton = styled(Button)`
+    background-color: color-mix(in srgb, var(--color-primary) 80%, #000000);
+    border-color: color-mix(in srgb, var(--color-primary) 80%, #000000);
+    color: #ffffff;
+
+    &:hover,
+    &:focus-visible {
+        background-color: color-mix(in srgb, var(--color-primary) 68%, #000000);
+        border-color: color-mix(in srgb, var(--color-primary) 68%, #000000);
+        color: #ffffff;
+    }
+`
+
 const CONFIG_STORAGE_KEY = "saved_configs";
 const DEFAULT_CONFIG_NAME = "Test 1";
 const RUN_NAME_SUFFIX = /\s*\[\d+\/\d+\]$/;
+const baseConfigName = (name: string) => name.replace(RUN_NAME_SUFFIX, "");
 type Rfc2544NumericField = {
     [Key in keyof Rfc2544Config]: Rfc2544Config[Key] extends number ? Key : never
 }[keyof Rfc2544Config];
@@ -275,10 +289,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const rxMappingModeRef = useRef<RxMappingMode>(rx_mapping_mode);
     const loadGenWarningRef = useRef<string | null>(null);
     const activeConfigNameRef = useRef<string>(DEFAULT_CONFIG_NAME);
-    // Tab that shows the running configuration, set once the user browses to
-    // another tab during traffic generation. The running configuration is only
-    // mirrored into that tab, so that other tabs keep their own settings.
-    const runningConfigNameRef = useRef<string | null>(null);
+    const savedConfigsRef = useRef<Record<string, TrafficGenData>>({});
+    // The backend test name identifies the only tab that may display live
+    // runtime state. Other tabs always keep their saved drafts.
+    const liveConfigDisplayedForRef = useRef<string | null>(null);
 
     const [savedConfigs, setSavedConfigs] = useState<Record<string, TrafficGenData>>({});
     const [activeConfigName, setActiveConfigName] = useState<string>(DEFAULT_CONFIG_NAME);
@@ -430,12 +444,27 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         let stats = await get({ route: "/trafficgen" })
         if (stats !== undefined) {
             if (Object.keys(stats.data).length > 1) {
-                // Other tabs keep showing their own configuration while running
-                const viewing_running_config = runningConfigNameRef.current === null
-                    || runningConfigNameRef.current === activeConfigNameRef.current;
-                let old_streams = JSON.stringify(currentStreams)
+                const configs = savedConfigsRef.current;
+                const backendName = typeof stats.data.source_name === "string"
+                    ? stats.data.source_name
+                    : typeof stats.data.name === "string"
+                        ? baseConfigName(stats.data.name)
+                        : null;
+                const configNames = Object.keys(configs);
+                const runningConfigName = backendName && configs[backendName]
+                    ? backendName
+                    : configNames.length === 1
+                        ? configNames[0]
+                        : null;
+                // Only the tab identified by the backend test name displays
+                // live state. Every other tab continues to show its saved draft.
+                const viewing_running_config = runningConfigName !== null
+                    && runningConfigName === activeConfigNameRef.current;
+                const runningDraftStreams = runningConfigName
+                    ? configs[runningConfigName]?.streams ?? currentStreams
+                    : currentStreams;
                 const mergedStreams = (stats.data.streams ?? []).map((streamFromBackend: Stream) => {
-                    const existing = currentStreams.find((stream) => stream.stream_id === streamFromBackend.stream_id);
+                    const existing = runningDraftStreams.find((stream) => stream.stream_id === streamFromBackend.stream_id);
                     return {
                         ...streamFromBackend,
                         detnet_cw: streamFromBackend.detnet_cw ?? existing?.detnet_cw ?? false,
@@ -457,7 +486,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     localStorage.setItem("rx_mapping_mode", JSON.stringify(backendRxMappingMode));
                 }
 
-                if (viewing_running_config && old_streams != JSON.stringify(nextStreams)) {
+                if (viewing_running_config) {
                     set_mode(normalized.config.mode)
                     set_duration(normalized.config.duration)
                     set_repetitions(normalized.config.repetitions)
@@ -479,6 +508,13 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                     localStorage.setItem("rtt_histogram_config", JSON.stringify(normalized.config.rtt_histogram_config))
                     localStorage.setItem("iat_histogram_config", JSON.stringify(normalized.config.iat_histogram_config))
                     localStorage.setItem("rfc2544_config", JSON.stringify(normalizeRfc2544Config(normalized.config.rfc2544)))
+                    liveConfigDisplayedForRef.current = runningConfigName;
+                } else if (!viewing_running_config && liveConfigDisplayedForRef.current !== null) {
+                    const activeDraft = configs[activeConfigNameRef.current];
+                    if (activeDraft) {
+                        loadConfigToState(activeDraft);
+                    }
+                    liveConfigDisplayedForRef.current = null;
                 }
 
                 if (normalized.warning && loadGenWarningRef.current !== normalized.warning) {
@@ -489,7 +525,11 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 }
                 set_running(true)
             } else {
-                runningConfigNameRef.current = null;
+                const activeDraft = savedConfigsRef.current[activeConfigNameRef.current];
+                if (activeDraft && liveConfigDisplayedForRef.current !== null) {
+                    loadConfigToState(activeDraft);
+                }
+                liveConfigDisplayedForRef.current = null;
                 loadGenWarningRef.current = null;
                 set_running(false)
             }
@@ -507,6 +547,10 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     useEffect(() => {
         activeConfigNameRef.current = activeConfigName;
     }, [activeConfigName]);
+
+    useEffect(() => {
+        savedConfigsRef.current = savedConfigs;
+    }, [savedConfigs]);
 
     useEffect(() => {
         setRepetitionsInput(String(repetitions));
@@ -574,6 +618,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
         localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs));
 
+        savedConfigsRef.current = configs;
         setSavedConfigs(configs);
 
         // Load first available config or fallback
@@ -903,7 +948,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         const clonedName = getCloneName(name);
 
         const newConfig = {
-            ...original,
+            ...structuredClone(original),
             name: clonedName,
         };
 
@@ -1366,11 +1411,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     return <Loader loaded={loaded}>
 
         <Tab.Container activeKey={activeConfigName} onSelect={(k) => {
-            if (running) {
-                // Settings are read-only while running, so there is nothing to
-                // save. Remember the tab that shows the running configuration.
-                runningConfigNameRef.current ??= activeConfigName;
-            } else {
+            if (!running) {
                 save();
             }
             if (k) setActiveConfigName(k);
@@ -1735,54 +1776,52 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                 <Row className="mt-3 mb-2 g-2 align-items-center">
                                     <Col className="col-12">
                                         <Rfc2544Panel className="rounded p-3">
-                                            <div className="d-flex flex-wrap align-items-start justify-content-between gap-3">
-                                                <div>
-                                                    <div className="d-flex align-items-center gap-2">
-                                                        <i className="bi bi-clipboard-data fs-5" />
-                                                        <h4 className="mb-0">RFC2544 benchmark</h4>
-                                                        <InfoBox>
-                                                            <>
-                                                                <h5>RFC2544 benchmark</h5>
-                                                                <p>P4TG runs the selected RFC2544 procedures using the configured stream/header template and TX/RX mapping.</p>
-                                                                <p>If multiple TX/RX mappings are enabled for active tests, the full RFC2544 sequence runs serially for each mapping and results are reported per mapping.</p>
-                                                            </>
-                                                        </InfoBox>
-                                                    </div>
-                                                    <div className="small text-muted mt-1">
-                                                        {rfc2544MappingCount > 1
-                                                            ? `RFC2544 will run ${rfc2544MappingCount} active TX/RX mappings serially.`
-                                                            : "RFC2544 results are reported per active TX/RX mapping."}
-                                                    </div>
-                                                </div>
-                                                <Button variant="primary" onClick={() => setRfc2544ModalVisibility(true)}>
-                                                    <i className="bi bi-sliders" /> RFC2544 settings
-                                                </Button>
+                                            <div className="d-flex flex-wrap align-items-center gap-2">
+                                                <i className="bi bi-clipboard-data fs-5" />
+                                                <h4 className="mb-0">RFC2544 benchmark</h4>
+                                                <InfoBox>
+                                                    <>
+                                                        <h5>RFC2544 benchmark</h5>
+                                                        <p>P4TG runs the selected RFC2544 procedures using the configured stream/header template and TX/RX mapping.</p>
+                                                        <p>If multiple TX/RX mappings are enabled for active tests, the full RFC2544 sequence runs serially for each mapping and results are reported per mapping.</p>
+                                                    </>
+                                                </InfoBox>
+                                            </div>
+                                            <div className="small text-muted mt-1">
+                                                {rfc2544MappingCount > 1
+                                                    ? `RFC2544 will run ${rfc2544MappingCount} active TX/RX mappings serially.`
+                                                    : "RFC2544 results are reported per active TX/RX mapping."}
                                             </div>
 
                                             <Row className="g-2 mt-2">
-                                                <Col className="col-12 col-md-6 col-xl-3">
+                                                <Col className="col-12 col-md-6 col-xl">
                                                     <div className="border rounded p-2 h-100">
                                                         <div className="small fw-semibold text-muted">Tests</div>
                                                         <div>{selectedRfc2544Tests.length > 0 ? selectedRfc2544Tests.join(", ") : "None selected"}</div>
                                                     </div>
                                                 </Col>
-                                                <Col className="col-12 col-sm-4 col-xl-3">
+                                                <Col className="col-12 col-sm-4 col-xl">
                                                     <div className="border rounded p-2 h-100">
                                                         <div className="small fw-semibold text-muted">Frame sizes</div>
                                                         <div>{rfc2544FrameSizeSummary}</div>
                                                     </div>
                                                 </Col>
-                                                <Col className="col-12 col-sm-4 col-xl-3">
+                                                <Col className="col-12 col-sm-4 col-xl">
                                                     <div className="border rounded p-2 h-100">
                                                         <div className="small fw-semibold text-muted">Line rate</div>
                                                         <div>{rfc2544_config.line_rate_gbps} Gbit/s</div>
                                                     </div>
                                                 </Col>
-                                                <Col className="col-12 col-sm-4 col-xl-3">
+                                                <Col className="col-12 col-sm-4 col-xl">
                                                     <div className="border rounded p-2 h-100">
                                                         <div className="small fw-semibold text-muted">TX/RX mappings</div>
                                                         <div>{rfc2544MappingSummary}</div>
                                                     </div>
+                                                </Col>
+                                                <Col className="col-12 col-xl-auto d-grid">
+                                                    <Rfc2544SettingsButton onClick={() => setRfc2544ModalVisibility(true)}>
+                                                        <i className="bi bi-sliders" /> RFC2544 settings
+                                                    </Rfc2544SettingsButton>
                                                 </Col>
                                             </Row>
                                         </Rfc2544Panel>
@@ -2276,7 +2315,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                         <tbody>
                                             {streams.map((v, i) => {
                                                 v.app_id = i + 1;
-                                                return <StreamElement key={i} mode={mode} data={v} remove={removeStream} update={updateStream} running={running}
+                                                return <StreamElement key={`${activeConfigName}-${v.stream_id}`} mode={mode} data={v} remove={removeStream} update={updateStream} running={running}
                                                     stream_settings={stream_settings} p4tg_infos={p4tg_infos} />
                                             })}
 

@@ -185,4 +185,9 @@ pub const MAX_PATTERN_METER_ENTRIES: usize = 8192;
 /// so this also bounds CPU and memory consumption for an API request.
 pub const MAX_PATTERN_SAMPLE_RATE: u32 = 10000;
 
+/// Supported range for an explicitly configured pattern meter burst. Larger
+/// hardware bursts remain supported through the automatic calculation.
+pub const MIN_PATTERN_BURST_PACKETS: u64 = 1;
+pub const MAX_PATTERN_BURST_PACKETS: u64 = 1000;
+
 pub const PATTERN_INTERVAL_REGISTER: &str = "ingress.p4tg.pattern_shaping.pattern_interval_number";

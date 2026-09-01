@@ -512,6 +512,7 @@ export interface TrafficGenData {
     // Response-only lifecycle state from GET /trafficgen.
     draining?: boolean,
     cooldown?: boolean,
+    source_name?: string,
 }
 
 export const MAX_DRAIN_DURATION_SECS = 60;
@@ -676,6 +677,7 @@ export interface GenerationPatternConfig {
     pattern_type: GenerationPattern,
     period: number,
     sample_rate: number,
+    burst_packets: number | null,
     inverted: boolean | null,
     fc_quiet_until: number | null,
     fc_ramp_until: number | null,

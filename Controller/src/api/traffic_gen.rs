@@ -62,6 +62,10 @@ pub struct StopTrafficGenParams {
 pub struct TrafficGenStatus {
     #[serde(flatten)]
     configuration: TrafficGenData,
+    /// Stable name of the source configuration. RFC2544 trial names in
+    /// `configuration.name` may change while this value remains constant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_name: Option<String>,
     /// True while packet generation is disabled but the RX measurement path
     /// remains active for in-flight packets.
     draining: bool,
@@ -129,6 +133,7 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             StatusCode::OK,
             Json(TrafficGenStatus {
                 configuration: tg_data,
+                source_name: tg.source_name.clone(),
                 draining: tg.draining,
                 cooldown: !tg.running && multiple_tests_running,
             }),
@@ -178,6 +183,8 @@ pub async fn configure_traffic_gen(
                     info!("Test validation successful.");
                     prepare_for_new_test(&state).await;
                     traffic_gen_data.streams = normalize_stream_patterns(traffic_gen_data.streams);
+                    state.traffic_generator.lock().await.source_name =
+                        traffic_gen_data.name.clone();
 
                     if traffic_gen_data.mode == GenerationMode::Rfc2544 {
                         {
@@ -305,6 +312,7 @@ async fn prepare_for_new_test(state: &Arc<AppState>) {
         .await
         .clear();
     *state.rfc2544_results.lock().await = None;
+    state.traffic_generator.lock().await.source_name = None;
 }
 
 pub async fn start_single_test(

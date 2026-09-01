@@ -287,12 +287,15 @@ const StreamElement = ({
         const burst = parseInt(event.target.value);
         // Default to one pipe in IAT Precision and all pipes in Rate Precision.
         const batches = burst !== 1;
-        data.burst = burst;
-        data.batches = batches;
         updateFormData({
             burst,
             batches,
         });
+        update({
+            ...data,
+            burst,
+            batches,
+        }, stream_settings);
     }
 
     const update_settings = () => {
@@ -388,6 +391,7 @@ const StreamElement = ({
             pattern_type: selectedType,
             period: 20_000_000_000,
             sample_rate: 128,
+            burst_packets: null,
             inverted: false,
             fc_quiet_until: null,
             fc_ramp_until: null,
@@ -487,9 +491,10 @@ const StreamElement = ({
             <tr>
                 <td className={"col-auto"}>
                     <Form.Select disabled={running} required
+                        value={data.burst}
                         onChange={handleModeChange}>
-                        <option selected={100 === data.burst} value="100">Rate Precision</option>
-                        <option selected={1 === data.burst} value="1">IAT Precision</option>
+                        <option value="100">Rate Precision</option>
+                        <option value="1">IAT Precision</option>
                     </Form.Select>
                 </td>
                 <td className={"col-1"}>
@@ -680,6 +685,7 @@ const StreamElement = ({
                 pattern_type: GenerationPattern.Sine,
                 period: 20_000_000_000,
                 sample_rate: 128,
+                burst_packets: null,
                 inverted: false,
                 fc_quiet_until: null,
                 fc_ramp_until: null,

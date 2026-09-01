@@ -1,4 +1,4 @@
-use log::info;
+use log::{info, warn};
 use rbfrt::table::{self, MatchValue};
 
 use crate::core::traffic_gen_core::{
@@ -7,9 +7,19 @@ use crate::core::traffic_gen_core::{
     types::{GenerationPattern, GenerationPatternConfig},
 };
 
-const DEFAULT_PATTERN_BURST_PKTS: u64 = 100;
-const SQUARE_LOW_PATTERN_BURST_PKTS: u64 = 1;
-const SQUARE_LOW_MINIMAL_BURST_THRESHOLD: f64 = 0.25;
+const MAX_AUTOMATIC_BURST_MASKED_INTERVAL_FRACTION: f64 = 0.05;
+const PREFERRED_AUTOMATIC_PATTERN_BURST_PACKETS: u64 = 100;
+
+fn minimum_pattern_burst_packets(factor: f64, generator_burst_packets: u64) -> u64 {
+    let factor = factor.clamp(0.0, 1.0);
+    ((factor * generator_burst_packets.max(1) as f64).ceil() as u64).max(1)
+}
+
+fn maximum_transition_burst_packets(factor: f64, interval_packets: u64) -> u64 {
+    let factor = factor.clamp(0.0, 1.0);
+    (MAX_AUTOMATIC_BURST_MASKED_INTERVAL_FRACTION * (1.0 - factor) * interval_packets as f64)
+        .floor() as u64
+}
 
 /// Compute the [start, end] range (inclusive) of the `i`-th "point"
 /// when splitting [0, space) into `total_points` equal-ish segments.
@@ -26,18 +36,41 @@ fn point_range_in_space(i: u32, total_points: u32, space: u64) -> (u32, u32) {
     (start_u32, end_u32)
 }
 
-fn pattern_burst_packets(pattern_type: &GenerationPattern, factor: f64) -> u64 {
-    // Short square-wave low windows can be fully hidden by the default bucket,
-    // so keep only a minimal initial burst for those intervals.
-    if matches!(pattern_type, GenerationPattern::Square)
-        && factor > 0.0
-        && factor < SQUARE_LOW_MINIMAL_BURST_THRESHOLD
-    {
-        SQUARE_LOW_PATTERN_BURST_PKTS
+fn pattern_burst_packets(
+    factor: f64,
+    configured_burst_packets: Option<u64>,
+    interval_packets: u64,
+    generator_burst_packets: u64,
+) -> (u64, bool) {
+    if let Some(burst_packets) = configured_burst_packets {
+        return (burst_packets, false);
+    }
+
+    // The bucket must hold the tokens accrued between pktgen bursts or the
+    // interval systematically undershoots its configured rate.
+    let minimum_burst_packets = minimum_pattern_burst_packets(factor, generator_burst_packets);
+
+    let preferred_burst_packets =
+        minimum_burst_packets.max(PREFERRED_AUTOMATIC_PATTERN_BURST_PACKETS);
+
+    if factor >= 1.0 {
+        return (preferred_burst_packets, false);
+    }
+
+    // A full bucket is drained by the difference between offered and target
+    // rates. Reduce the preferred capacity when needed to drain within 5% of
+    // this interval, but never below the minimum viable bucket. If even that
+    // minimum is too large, report that the transition cannot be represented.
+    let maximum_transition_burst_packets =
+        maximum_transition_burst_packets(factor, interval_packets);
+
+    if minimum_burst_packets > maximum_transition_burst_packets {
+        (minimum_burst_packets, true)
     } else {
-        // Preserve the default bucket for full-rate, zero-rate, substantial low-rate,
-        // and non-square entries. Long recovery phases need enough bucket for bursts.
-        DEFAULT_PATTERN_BURST_PKTS
+        (
+            preferred_burst_packets.min(maximum_transition_burst_packets),
+            false,
+        )
     }
 }
 
@@ -218,6 +251,8 @@ pub struct PatternGenerationEntries {
 /// - total_frame_size_bytes: on-wire size used by line-rate calculations (L1 model)
 /// - meter_packet_size_bytes: packet size in bytes as seen by ingress meter
 /// - num_pipes: number of active pipes sharing that rate
+/// - generator_burst_packets: packets emitted per pipe in one pktgen timer event,
+///   including all configured batches
 ///
 /// This function:
 ///  1. Uses effective per-pipe pps from configured pktgen timing
@@ -234,6 +269,7 @@ pub fn build_pattern_generation_entries(
     total_frame_size_bytes: u32,
     meter_packet_size_bytes: u32,
     num_pipes: f64,
+    generator_burst_packets: u64,
     first_interval_id: u32,
 ) -> PatternGenerationEntries {
     // 1) The pattern period config is in nanoseconds. Convert it to seconds.
@@ -336,6 +372,11 @@ pub fn build_pattern_generation_entries(
     let mut table_entries = Vec::new();
     let mut meter_entries = Vec::new();
     let mut next_interval_id = first_interval_id;
+    let mut automatic_burst_transition_violations = 0usize;
+    let mut automatic_burst_range: Option<(u64, u64)> = None;
+    let mut manual_burst_rate_violations = 0usize;
+    let mut manual_burst_transition_violations = 0usize;
+    let mut largest_manual_minimum = 0u64;
 
     for (start, end, factor) in ranges {
         let interval_id = next_interval_id;
@@ -343,7 +384,37 @@ pub fn build_pattern_generation_entries(
 
         let cir_kbps = (factor * max_kbps) as u64;
         let pir_kbps = cir_kbps;
-        let burst_packets = pattern_burst_packets(&pattern_config.pattern_type, factor);
+        let interval_packets = end as u64 - start as u64 + 1;
+        if let Some(configured_burst_packets) = pattern_config.burst_packets {
+            let minimum_burst_packets =
+                minimum_pattern_burst_packets(factor, generator_burst_packets);
+            if configured_burst_packets < minimum_burst_packets {
+                manual_burst_rate_violations += 1;
+                largest_manual_minimum = largest_manual_minimum.max(minimum_burst_packets);
+            }
+
+            if factor < 1.0
+                && configured_burst_packets
+                    > maximum_transition_burst_packets(factor, interval_packets)
+            {
+                manual_burst_transition_violations += 1;
+            }
+        }
+        let (burst_packets, transition_bound_exceeded) = pattern_burst_packets(
+            factor,
+            pattern_config.burst_packets,
+            interval_packets,
+            generator_burst_packets,
+        );
+        automatic_burst_transition_violations += transition_bound_exceeded as usize;
+        if pattern_config.burst_packets.is_none() {
+            automatic_burst_range = Some(match automatic_burst_range {
+                Some((minimum, maximum)) => {
+                    (minimum.min(burst_packets), maximum.max(burst_packets))
+                }
+                None => (burst_packets, burst_packets),
+            });
+        }
         let cbs_kbits = packet_burst_to_kbits(meter_packet_size_bytes, burst_packets);
         let pbs_kbits = cbs_kbits;
 
@@ -371,6 +442,42 @@ pub fn build_pattern_generation_entries(
 
             table_entries.push(req);
         }
+    }
+
+    if let Some((minimum, maximum)) = automatic_burst_range {
+        info!(
+            "App {}: calculated pattern meter burst range: {}-{} packets.",
+            app_id, minimum, maximum,
+        );
+    }
+
+    if automatic_burst_transition_violations > 0 {
+        warn!(
+            "App {}: automatic pattern meter burst cannot settle within {:.0}% of the interval for {} interval(s). The minimum burst needed to sustain the requested rate is used. Increase the pattern period, reduce its sample rate, or reduce pktgen burstiness for sharper transitions.",
+            app_id,
+            MAX_AUTOMATIC_BURST_MASKED_INTERVAL_FRACTION * 100.0,
+            automatic_burst_transition_violations,
+        );
+    }
+
+    if manual_burst_rate_violations > 0 {
+        warn!(
+            "App {}: configured pattern meter burst of {} packets is below the required hardware burst (up to {} packets) for {} interval(s); the requested interval rate may not be reached. Leave burst_packets omitted to calculate a viable value.",
+            app_id,
+            pattern_config.burst_packets.unwrap_or_default(),
+            largest_manual_minimum,
+            manual_burst_rate_violations,
+        );
+    }
+
+    if manual_burst_transition_violations > 0 {
+        warn!(
+            "App {}: configured pattern meter burst of {} packets can mask more than {:.0}% of {} interval transition(s); the requested pattern may be blurred. Leave burst_packets omitted to calculate a transition-aware value.",
+            app_id,
+            pattern_config.burst_packets.unwrap_or_default(),
+            MAX_AUTOMATIC_BURST_MASKED_INTERVAL_FRACTION * 100.0,
+            manual_burst_transition_violations,
+        );
     }
 
     PatternGenerationEntries {

@@ -493,15 +493,14 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                 && stats.data.mode !== GenerationMode.RFC2544
                 && !RUN_NAME_SUFFIX.test(stats.data.name)
             ) {
+                const persistedConfig: TrafficGenData = { ...stats.data };
+                delete persistedConfig.draining;
+                delete persistedConfig.cooldown;
+                delete persistedConfig.source_name;
                 setSavedConfigs(prev => {
                     const updatedConfigs = {
                         ...prev,
-                        // @ts-ignore
-                        [stats.data.name]: {
-                            ...stats.data,
-                            draining: undefined,
-                            cooldown: undefined,
-                        },
+                        [stats.data.name]: persistedConfig,
                     };
                     localStorage.setItem("saved_configs", JSON.stringify(updatedConfigs));
                     return updatedConfigs;

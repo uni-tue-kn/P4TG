@@ -165,6 +165,8 @@ impl DurationMonitorTask {
                             traffic_gen_data.repetitions
                         ));
                     }
+                    state_clone.traffic_generator.lock().await.source_name =
+                        traffic_gen_data.name.clone();
                     if let Err(err) = start_single_test(&state_clone, run_data).await {
                         error!("Failed to start test run {run_idx} of {num_runs}: {err}");
                         state_clone.experiment.lock().await.running = false;

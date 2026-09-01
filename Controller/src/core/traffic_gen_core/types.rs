@@ -702,6 +702,15 @@ pub struct GenerationPatternConfig {
     pub period: f64,
     /// The number of samples per period.
     pub sample_rate: u32,
+    /// Meter burst size in packets for every interval of this pattern. Valid values
+    /// are 1 through 1000. When omitted, P4TG calculates a burst per interval from a
+    /// preferred 100-packet capacity, its target rate and duration, and the packet
+    /// generator's hardware burst size. A supplied value overrides every interval;
+    /// values below the hardware burst can reduce the achieved rate, while large
+    /// values can blur pattern transitions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 100, minimum = 1, maximum = 1000)]
+    pub burst_packets: Option<u64>,
     /// Inverts supported patterns. For square waves, the period starts in the low phase.
     /// For sawtooth, the period starts high and decreases linearly.
     #[serde(default)]
