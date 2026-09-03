@@ -736,11 +736,9 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                                 };
                                 const statData = latestRunForName(Object.values(statistics || {}), name) ?? StatisticsObject;
                                 const timeStatsData = latestRunForName(Object.values(time_statistics || {}), name) ?? TimeStatisticsObject;
+                                // Results outlive browser-side configurations. SummaryView can derive
+                                // aggregate port data from the statistics when topology metadata is gone.
                                 const config = savedConfigs[baseConfigName(name)] ?? savedConfigs[name];
-
-                                if (!config) {
-                                    return null;
-                                }
 
                                 return (
                                     <Tab.Pane eventKey={name} key={name}>
@@ -748,12 +746,12 @@ const Home = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (ms
                                             <SummaryView
                                                 statistics={statData}
                                                 time_statistics={timeStatsData}
-                                                port_tx_rx_mapping={config.port_tx_rx_mapping}
-                                                rx_mapping_mode={config.rx_mapping_mode ?? RxMappingMode.PerTxPort}
+                                                port_tx_rx_mapping={config?.port_tx_rx_mapping ?? {}}
+                                                rx_mapping_mode={config?.rx_mapping_mode ?? RxMappingMode.PerTxPort}
                                                 visual={visual}
-                                                mode={config.mode}
-                                                stream_settings={config.stream_settings}
-                                                streams={config.streams}
+                                                mode={config?.mode ?? (statData.rfc2544 ? GenerationMode.RFC2544 : GenerationMode.NONE)}
+                                                stream_settings={config?.stream_settings ?? []}
+                                                streams={config?.streams ?? []}
                                             />
                                         </>
                                     </Tab.Pane>

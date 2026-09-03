@@ -58,7 +58,7 @@ import { getTotalActiveStreamRate, getTotalRatePerPort, loadFromStorage } from '
 import IMIXModal from '../components/settings/IMIXModal';
 import { IMIXConfig, IMIX_DESCRIPTION, IMIX_STREAM_COUNT, IMIX_STREAM_SPECS, RFC2544_IMIX_FRAME_SIZE, splitImixRate } from '../common/IMIX';
 import { startPolling } from '../common/Polling';
-import { migrateTrafficGenData } from '../common/StorageMigration';
+import { clearStoredConfiguration, migrateTrafficGenData } from '../common/StorageMigration';
 import { expectedRoutes } from '../common/ExpectedRoutes';
 
 export const StyledRow = styled.tr`
@@ -302,8 +302,11 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const [lastDeletedConfig, setLastDeletedConfig] = useState<{ name: string; config: TrafficGenData; index: number } | null>(null);
     const [showIMIXModal, setShowIMIXModal] = useState(false);
     const [showRfc2544Modal, setShowRfc2544Modal] = useState(false);
+    const [showRfc2544SwitchModal, setShowRfc2544SwitchModal] = useState(false);
 
     const maxStreams = p4tg_infos.asic === ASIC.Tofino1 ? 7 : 15;
+    const hasRfc2544Config = mode === GenerationMode.RFC2544
+        || Object.values(savedConfigs).some((config) => config.mode === GenerationMode.RFC2544);
 
     const renderTooltip = (props: any, message: string) => (
         <Tooltip id="tooltip-disabled" {...props}>
@@ -318,7 +321,11 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     const hasActiveStream = (port: PortInfo) => stream_settings.some((setting) =>
         setting.active && setting.port === port.port && setting.channel === port.channel);
 
-    const setActiveDraftConfig = (config: TrafficGenData) => {
+    const setActiveDraftConfig = (
+        config: TrafficGenData,
+        replaceAll: boolean = false,
+        configName: string = activeConfigName,
+    ) => {
         set_streams(config.streams);
         set_stream_settings(config.stream_settings);
         set_mode(config.mode);
@@ -343,14 +350,20 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         localStorage.setItem("iat_histogram_config", JSON.stringify(config.iat_histogram_config));
         localStorage.setItem("rfc2544_config", JSON.stringify(normalizeRfc2544Config(config.rfc2544)));
 
-        if (activeConfigName) {
-            const updatedConfigs = {
-                ...savedConfigs,
-                [activeConfigName]: config,
-            };
+        if (configName) {
+            const updatedConfigs = replaceAll
+                ? { [configName]: config }
+                : { ...savedConfigs, [configName]: config };
 
+            savedConfigsRef.current = updatedConfigs;
             setSavedConfigs(updatedConfigs);
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+
+            if (replaceAll) {
+                activeConfigNameRef.current = configName;
+                setActiveConfigName(configName);
+                setLastDeletedConfig(null);
+            }
         }
     };
 
@@ -803,7 +816,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
     }
 
     const reset = () => {
-        localStorage.clear()
+        clearStoredConfiguration()
 
         set_streams([])
         set_stream_settings([])
@@ -889,10 +902,12 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
         showToast(`Added IMIX streams (${IMIX_DESCRIPTION}).`, "success");
     }
 
-    const handleModeChange = (nextMode: GenerationMode) => {
+    const handleModeChange = (nextMode: GenerationMode, replaceAll: boolean = false) => {
         const shouldCreateDefaultStream =
             nextMode !== GenerationMode.NONE && nextMode !== GenerationMode.ANALYZE;
-        const nextRfc2544 = nextMode === GenerationMode.RFC2544 ? rfc2544_config : undefined;
+        const nextRfc2544 = nextMode === GenerationMode.RFC2544
+            ? replaceAll ? DefaultRfc2544Config() : rfc2544_config
+            : undefined;
 
         const nextStreams = shouldCreateDefaultStream ? [DefaultStream(1)] : [];
         const nextStreamSettings = shouldCreateDefaultStream
@@ -900,7 +915,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             : [];
 
         const nextConfig: TrafficGenData = {
-            ...(savedConfigs[activeConfigName] ?? {
+            ...(replaceAll ? {} : savedConfigs[activeConfigName] ?? {
                 mode: GenerationMode.NONE,
                 rx_mapping_mode: RxMappingMode.PerTxPort,
                 duration: 0,
@@ -917,7 +932,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                 : rx_mapping_mode,
             duration: 0,
             repetitions: 1,
-            drain_duration_secs,
+            drain_duration_secs: replaceAll ? 0 : drain_duration_secs,
             streams: nextStreams,
             stream_settings: nextStreamSettings,
             port_tx_rx_mapping: {},
@@ -926,7 +941,20 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             rfc2544: nextRfc2544,
         };
 
-        setActiveDraftConfig(nextConfig);
+        setActiveDraftConfig(
+            nextConfig,
+            replaceAll,
+            replaceAll ? DEFAULT_CONFIG_NAME : activeConfigName,
+        );
+    };
+
+    const requestModeChange = (nextMode: GenerationMode) => {
+        if (nextMode === GenerationMode.RFC2544 && mode !== GenerationMode.RFC2544) {
+            setShowRfc2544SwitchModal(true);
+            return;
+        }
+
+        handleModeChange(nextMode);
     };
 
     const getCloneName = (baseName: string): string => {
@@ -1409,6 +1437,37 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
 
     // @ts-ignore
     return <Loader loaded={loaded}>
+        <Modal
+            show={showRfc2544SwitchModal}
+            onHide={() => setShowRfc2544SwitchModal(false)}
+            centered
+        >
+            <Modal.Header closeButton>
+                <Modal.Title>Switch to RFC 2544?</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+                Switching to RFC 2544 will delete every existing test and replace
+                them with a single fresh RFC 2544 test using default streams, port
+                mappings, and histogram settings. This cannot be undone.
+            </Modal.Body>
+            <Modal.Footer>
+                <Button
+                    variant="secondary"
+                    onClick={() => setShowRfc2544SwitchModal(false)}
+                >
+                    Cancel
+                </Button>
+                <Button
+                    variant="primary"
+                    onClick={() => {
+                        setShowRfc2544SwitchModal(false);
+                        handleModeChange(GenerationMode.RFC2544, true);
+                    }}
+                >
+                    Proceed
+                </Button>
+            </Modal.Footer>
+        </Modal>
 
         <Tab.Container activeKey={activeConfigName} onSelect={(k) => {
             if (!running) {
@@ -1515,27 +1574,29 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                             <i className="bi bi-pencil" />
                                         </Button>
                                         {/* Clone Button */}
-                                        <Button
-                                            size="sm"
-                                            disabled={running}
-                                            variant="outline-secondary"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                cloneConfig(name);
-                                            }}
-                                            style={{
-                                                padding: "0px",
-                                                borderWidth: "1px",
-                                                width: "20px",
-                                                height: "20px",
-                                                display: "flex",
-                                                justifyContent: "center",
-                                                alignItems: "center",
-                                            }}
-                                            title="Clone Test"
-                                        >
-                                            <i className="bi bi-files" />
-                                        </Button>
+                                        {!hasRfc2544Config && (
+                                            <Button
+                                                size="sm"
+                                                disabled={running}
+                                                variant="outline-secondary"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    cloneConfig(name);
+                                                }}
+                                                style={{
+                                                    padding: "0px",
+                                                    borderWidth: "1px",
+                                                    width: "20px",
+                                                    height: "20px",
+                                                    display: "flex",
+                                                    justifyContent: "center",
+                                                    alignItems: "center",
+                                                }}
+                                                title="Clone Test"
+                                            >
+                                                <i className="bi bi-files" />
+                                            </Button>
+                                        )}
 
                                         {/* Delete Button */}
                                         {Object.keys(savedConfigs).length > 1 && (
@@ -1567,50 +1628,52 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                         </Nav.Link>
                     </Nav.Item>
                 ))}
-                <Nav.Item>
-                    <Button
-                        size="sm"
-                        onClick={() => {
-                            // Save current settings before adding a new tab
-                            save();
+                {!hasRfc2544Config && (
+                    <Nav.Item>
+                        <Button
+                            size="sm"
+                            onClick={() => {
+                                // Save current settings before adding a new tab
+                                save();
 
-                            const nextIndex = Object.keys(savedConfigs).length > 0 ? Object.keys(savedConfigs).length + 1 : 1;
-                            let newName = `Test ${nextIndex}`;
-                            if (savedConfigs[newName]) {
-                                // This breaks if two tests in the middle are deleted and a new one is added. Fix this in the future
-                                newName = `Test ${nextIndex + 1}`;
-                            }
+                                const nextIndex = Object.keys(savedConfigs).length > 0 ? Object.keys(savedConfigs).length + 1 : 1;
+                                let newName = `Test ${nextIndex}`;
+                                if (savedConfigs[newName]) {
+                                    // This breaks if two tests in the middle are deleted and a new one is added. Fix this in the future
+                                    newName = `Test ${nextIndex + 1}`;
+                                }
 
-                            if (!savedConfigs[newName]) {
-                                // Create new default config for the new tab
-                                const defaultConfig: TrafficGenData = {
-                                    mode: GenerationMode.NONE,
-                                    rx_mapping_mode: RxMappingMode.PerTxPort,
-                                    duration: 0,
-                                    repetitions: 1,
-                                    drain_duration_secs: 0,
-                                    streams: [],
-                                    stream_settings: [],
-                                    port_tx_rx_mapping: {},
-                                    rtt_histogram_config: {},
-                                    iat_histogram_config: {}
-                                };
-                                const updatedConfigs = { ...savedConfigs, [newName]: defaultConfig };
-                                setSavedConfigs(updatedConfigs);
-                                localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
-                                setActiveConfigName(newName);
-                            } else {
-                                // Should actually never happen
-                                showToast("Name already exists.", "warning");
-                            }
-                        }}
-                        variant="outline-secondary"
-                        disabled={running}
-                        style={{ marginLeft: "10px", marginTop: "0px" }}
-                    >
-                        <i className="bi bi-plus-circle-fill" /> Add Test
-                    </Button>
-                </Nav.Item>
+                                if (!savedConfigs[newName]) {
+                                    // Create new default config for the new tab
+                                    const defaultConfig: TrafficGenData = {
+                                        mode: GenerationMode.NONE,
+                                        rx_mapping_mode: RxMappingMode.PerTxPort,
+                                        duration: 0,
+                                        repetitions: 1,
+                                        drain_duration_secs: 0,
+                                        streams: [],
+                                        stream_settings: [],
+                                        port_tx_rx_mapping: {},
+                                        rtt_histogram_config: {},
+                                        iat_histogram_config: {}
+                                    };
+                                    const updatedConfigs = { ...savedConfigs, [newName]: defaultConfig };
+                                    setSavedConfigs(updatedConfigs);
+                                    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
+                                    setActiveConfigName(newName);
+                                } else {
+                                    // Should actually never happen
+                                    showToast("Name already exists.", "warning");
+                                }
+                            }}
+                            variant="outline-secondary"
+                            disabled={running}
+                            style={{ marginLeft: "10px", marginTop: "0px" }}
+                        >
+                            <i className="bi bi-plus-circle-fill" /> Add Test
+                        </Button>
+                    </Nav.Item>
+                )}
                 {lastDeletedConfig && (
                     <Nav.Item>
                         <Button
@@ -1641,7 +1704,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                     required
                                     value={mode}
                                     onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
-                                        handleModeChange(parseInt(event.target.value));
+                                        requestModeChange(parseInt(event.target.value));
                                     }}
                                 >
                                     <option value={GenerationMode.NONE}>Generation Mode</option>

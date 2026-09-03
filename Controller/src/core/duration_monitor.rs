@@ -20,7 +20,9 @@
 use std::time::Duration;
 
 use crate::{
-    api::statistics::{get_statistics, get_time_statistics, Params},
+    api::statistics::{
+        get_statistics, get_time_statistics, Params, StatisticsApi, TimeStatisticsApi,
+    },
     AppState,
 };
 use log::{error, info};
@@ -147,6 +149,10 @@ impl DurationMonitorTask {
                 .map(|payload| u64::from(payload.repetitions))
                 .sum();
             let mut run_idx = 0_u64;
+            // TODO: Move this snapshot into reset-aware shared state. A call to
+            // /api/reset during cooldown currently cannot invalidate it, so the
+            // following run may add pre-reset statistics back to history.
+            let mut pending_history: Option<(StatisticsApi, TimeStatisticsApi)> = None;
 
             'outer: for traffic_gen_data in &payloads {
                 for repetition_idx in 0..traffic_gen_data.repetitions {
@@ -168,9 +174,18 @@ impl DurationMonitorTask {
                     state_clone.traffic_generator.lock().await.source_name =
                         traffic_gen_data.name.clone();
                     if let Err(err) = start_single_test(&state_clone, run_data).await {
+                        if let Some(history) = pending_history.take() {
+                            Self::store_stats_in_history(&state_clone, history).await;
+                        }
                         error!("Failed to start test run {run_idx} of {num_runs}: {err}");
                         state_clone.experiment.lock().await.running = false;
                         break 'outer;
+                    }
+
+                    // The newly started run now occupies the live statistics slot,
+                    // so archiving the preceding run cannot duplicate it in the API.
+                    if let Some(history) = pending_history.take() {
+                        Self::store_stats_in_history(&state_clone, history).await;
                     }
 
                     loop {
@@ -196,8 +211,10 @@ impl DurationMonitorTask {
                     }
 
                     if run_idx != num_runs {
-                        // Do not copy the last test to history, otherwise it is duplicate
-                        Self::copy_stats_to_history(&state_clone).await;
+                        // Keep the completed run locally during cooldown. Until the
+                        // next run replaces the live slot, adding it to history would
+                        // make /statistics return the same experiment twice.
+                        pending_history = Self::snapshot_current_stats(&state_clone).await;
 
                         // Draining has completed at this point. Keep a separate
                         // idle phase so digest processing and controller-side
@@ -231,23 +248,31 @@ impl DurationMonitorTask {
         self.cancel_token = Some(cancel_token);
     }
 
-    pub async fn copy_stats_to_history(state: &Arc<AppState>) {
-        // Move stats into state where it is then moved into the history by the API later
+    async fn snapshot_current_stats(
+        state: &Arc<AppState>,
+    ) -> Option<(StatisticsApi, TimeStatisticsApi)> {
         // Index 0 holds the current test; a panic here would silently kill the
-        // multi-test task, so bail out loudly instead if the invariant breaks.
+        // multi-test task, so return no snapshot if the invariant breaks.
         let Some(stats) = get_statistics(state).await.into_iter().next() else {
-            error!("No current statistics available; test not copied to history.");
-            return;
+            error!("No current statistics available; test not saved for history.");
+            return None;
         };
         let Some(time_stats) = get_time_statistics(state, Params { limit: None })
             .await
             .into_iter()
             .next()
         else {
-            error!("No current time statistics available; test not copied to history.");
-            return;
+            error!("No current time statistics available; test not saved for history.");
+            return None;
         };
 
+        Some((stats, time_stats))
+    }
+
+    async fn store_stats_in_history(
+        state: &Arc<AppState>,
+        (stats, time_stats): (StatisticsApi, TimeStatisticsApi),
+    ) {
         // Do not retain either history mutex across an await or while acquiring
         // the other history mutex. This keeps history writes out of lock-order
         // dependencies with API reads and resets.

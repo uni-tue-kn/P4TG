@@ -45,6 +45,12 @@ const parseStoredJson = (key: string): unknown => {
     return value === null ? undefined : JSON.parse(value);
 };
 
+/** Clears traffic-generator settings without making new data look pre-schema. */
+export const clearStoredConfiguration = () => {
+    CONFIG_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    localStorage.setItem(STORAGE_SCHEMA_KEY, STORAGE_SCHEMA_VERSION);
+};
+
 export const migrateTrafficGenData = (value: unknown): TrafficGenData | null => {
     if (!isRecord(value) || !Array.isArray(value.streams) || !Array.isArray(value.stream_settings)) {
         return null;
@@ -93,7 +99,7 @@ export const migrateStoredConfiguration = () => {
             console.warn(
                 "Stored P4TG configuration predates the Tofino 2 channel renumbering and was reset.",
             );
-            CONFIG_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+            clearStoredConfiguration();
         }
         localStorage.setItem(STORAGE_SCHEMA_KEY, STORAGE_SCHEMA_VERSION);
         return;
@@ -142,7 +148,7 @@ export const migrateStoredConfiguration = () => {
         }
     } catch (error) {
         console.warn("Stored P4TG configuration is incompatible and was reset.", error);
-        CONFIG_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+        clearStoredConfiguration();
     }
 
     localStorage.setItem(STORAGE_SCHEMA_KEY, STORAGE_SCHEMA_VERSION);
