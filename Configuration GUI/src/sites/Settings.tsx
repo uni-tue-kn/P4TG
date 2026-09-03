@@ -1414,7 +1414,16 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             if (!running) {
                 save();
             }
-            if (k) setActiveConfigName(k);
+            if (k) {
+                const nextConfig = savedConfigs[k];
+                if (nextConfig) {
+                    // Load the target draft in the same event as the tab change.
+                    // Otherwise StreamElement remounts for the new tab with the
+                    // previous tab's streams before the effect below catches up.
+                    loadConfigToState(nextConfig);
+                }
+                setActiveConfigName(k);
+            }
         }}>
             <Nav variant="tabs">
                 {Object.keys(savedConfigs).map((name) => (

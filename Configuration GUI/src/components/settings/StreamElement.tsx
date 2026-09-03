@@ -33,7 +33,7 @@ import {
     GenerationPattern,
     GenerationPatternConfig
 } from "../../common/Interfaces";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Col, Form, InputGroup, OverlayTrigger, Row, Tooltip } from "react-bootstrap";
 import InfoBox from "../InfoBox";
 import { StyledCol, StyledRow } from "../../sites/Settings";
@@ -85,6 +85,14 @@ const StreamElement = ({
 
     // Used to store tunneling and IP Version setting. Tunneling must be disabled on changing IP version
     const [formData, setFormData] = useState({ ...data });
+
+    // A tab change can replace the stream after this row has mounted (for
+    // example after loading a saved draft or receiving a backend refresh).
+    // Keep the pattern UI tied to that stream instead of retaining the previous
+    // tab's component-local value.
+    useEffect(() => {
+        setPatternConfig(data.pattern ?? null);
+    }, [data.pattern]);
 
     const renderTooltip = (props: any, message: string) => (
         <Tooltip id="tooltip-stream-options" {...props}>
@@ -466,13 +474,14 @@ const StreamElement = ({
                 <StyledCol>
                     <div className="d-flex align-items-center gap-2">
                         <Form.Select disabled={running} required style={{ maxWidth: "150px" }}
+                            value={patternConfig?.pattern_type ?? ""}
                             onChange={handlePatternTypeChange}>
-                            <option selected={patternConfig == null} value={""}>None</option>
-                            <option selected={patternConfig?.pattern_type === GenerationPattern.Sine} value={GenerationPattern.Sine}>Sine</option>
-                            <option selected={patternConfig?.pattern_type === GenerationPattern.Sawtooth} value={GenerationPattern.Sawtooth}>Sawtooth</option>
-                            <option selected={patternConfig?.pattern_type === GenerationPattern.Triangle} value={GenerationPattern.Triangle}>Triangle</option>
-                            <option selected={patternConfig?.pattern_type === GenerationPattern.Square} value={GenerationPattern.Square}>Square</option>
-                            <option selected={patternConfig?.pattern_type === GenerationPattern.Flashcrowd} value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
+                            <option value={""}>None</option>
+                            <option value={GenerationPattern.Sine}>Sine</option>
+                            <option value={GenerationPattern.Sawtooth}>Sawtooth</option>
+                            <option value={GenerationPattern.Triangle}>Triangle</option>
+                            <option value={GenerationPattern.Square}>Square</option>
+                            <option value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
                         </Form.Select>
                         <Button
                             variant="outline-secondary"
