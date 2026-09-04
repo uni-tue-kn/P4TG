@@ -84,6 +84,7 @@ struct ThroughputCounters {
     raw_gaps: u64,
     out_of_order: u64,
     tx_frames: u128,
+    rx_frames: u128,
 }
 
 impl ThroughputCounters {
@@ -92,6 +93,7 @@ impl ThroughputCounters {
             raw_gaps: sample.lost_frames.saturating_add(sample.out_of_order),
             out_of_order: sample.out_of_order,
             tx_frames: sample.tx_frames,
+            rx_frames: sample.rx_frames,
         }
     }
 
@@ -99,15 +101,29 @@ impl ThroughputCounters {
         self.raw_gaps < previous.raw_gaps
             || self.out_of_order < previous.out_of_order
             || self.tx_frames < previous.tx_frames
+            || self.rx_frames < previous.rx_frames
     }
 
     fn loss_since(self, baseline: Self) -> ThroughputTrialLoss {
         let raw_gaps = self.raw_gaps.saturating_sub(baseline.raw_gaps);
         let out_of_order = self.out_of_order.saturating_sub(baseline.out_of_order);
+        let tx_frames = self.tx_frames.saturating_sub(baseline.tx_frames);
+        let rx_frames = self.rx_frames.saturating_sub(baseline.rx_frames);
+        let sequence_loss = raw_gaps.saturating_sub(out_of_order);
+
+        // Sequence gaps only exist between received packets. If the DUT drops
+        // every frame, no sequence number ever reaches the RX path and the gap
+        // counter therefore remains zero. Frame counters provide the missing
+        // evidence for this complete-blackout case.
+        let lost_frames = if tx_frames > 0 && rx_frames == 0 {
+            u64::try_from(tx_frames).unwrap_or(u64::MAX)
+        } else {
+            sequence_loss
+        };
 
         ThroughputTrialLoss {
-            lost_frames: raw_gaps.saturating_sub(out_of_order),
-            tx_frames: self.tx_frames.saturating_sub(baseline.tx_frames),
+            lost_frames,
+            tx_frames,
         }
     }
 }
@@ -151,6 +167,12 @@ impl ThroughputTrialLoss {
 
 fn positive_rate(rate_gbps: f64) -> bool {
     rate_gbps.is_finite() && rate_gbps > 0.0
+}
+
+fn confirmed_zero_loss_rate(confirmed_pass_rate: Option<f64>) -> f64 {
+    confirmed_pass_rate
+        .filter(|rate| positive_rate(*rate))
+        .unwrap_or(0.0)
 }
 
 fn usable_trial_rate(rate_gbps: f64, config: &Rfc2544Config) -> f64 {
@@ -1549,13 +1571,13 @@ async fn run_throughput_repetition(
         }
     }
 
-    let zero_loss_rate_gbps = confirmed_pass_rate.unwrap_or_else(|| {
+    let zero_loss_rate_gbps = confirmed_zero_loss_rate(confirmed_pass_rate);
+    if !positive_rate(zero_loss_rate_gbps) {
         warn!(
-            "RFC2544 throughput for {} did not find a positive no-loss fixed-rate trial; using half of first positive loss rate for follow-up trials.",
+            "RFC2544 throughput for {} did not find a positive no-loss fixed-rate trial; reporting zero throughput.",
             frame_profile
         );
-        usable_trial_rate(high_rate / 2.0, config)
-    });
+    }
 
     Some(Rfc2544ThroughputRepetitionResult {
         repetition: repetition_index,
@@ -2413,6 +2435,20 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                     return;
                 };
                 throughput_rates.insert(frame_size, result.zero_loss_rate_gbps);
+
+                if !positive_rate(result.zero_loss_rate_gbps)
+                    && (config.latency || config.reset || config.system_recovery)
+                {
+                    finish(
+                        &state,
+                        format!(
+                            "RFC2544 benchmark stopped: zero-loss throughput for {} is 0 Gbit/s; dependent latency, reset, and system-recovery tests cannot run.",
+                            frame_profile_label(frame_size)
+                        ),
+                    )
+                    .await;
+                    return;
+                }
             }
 
             if frame_size == RFC2544_IMIX_FRAME_SIZE {
