@@ -278,6 +278,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
             ? Math.min(stored, MAX_DRAIN_DURATION_SECS)
             : 0;
     })
+    const [drainDurationInput, setDrainDurationInput] = useState<string | null>(null)
     const [repetitions, set_repetitions] = useState(() => {
         const storedRepetitions = parseInt(localStorage.getItem("repetitions") || String(1));
         return Number.isInteger(storedRepetitions) && storedRepetitions > 0 ? storedRepetitions : 1;
@@ -1758,13 +1759,20 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                 <Form.Control
                                     className={"text-start"}
                                     style={{ width: "6rem" }}
-                                    value={drain_duration_secs}
+                                    value={drainDurationInput ?? drain_duration_secs}
                                     onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                                        const parsed = Number(event.target.value);
+                                        const value = event.target.value;
+                                        setDrainDurationInput(value);
+                                        if (value === "") {
+                                            return;
+                                        }
+
+                                        const parsed = Number(value);
                                         if (Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_DRAIN_DURATION_SECS) {
                                             set_drain_duration_secs(parsed);
                                         }
                                     }}
+                                    onBlur={() => setDrainDurationInput(null)}
                                     min={0}
                                     max={MAX_DRAIN_DURATION_SECS}
                                     step={1}

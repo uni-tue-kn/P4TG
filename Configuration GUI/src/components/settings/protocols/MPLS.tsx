@@ -182,6 +182,9 @@ const responsiveSmallSelectCol = {
     xl: "auto" as const,
 };
 
+const numericInputValue = (drafts: Record<string, string>, key: string, value: number): string | number =>
+    drafts[key] ?? value;
+
 const MPLS = ({ stream, data, set_data, running }: Props) => {
     const stackLength = stream.number_of_lse;
     const allowPostStack = stream.mna_post_stack === true;
@@ -190,6 +193,33 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
         createDefaultMNAEditorEntries(normalizedStack, stackLength)
     );
     const [mnaAlert, setMnaAlert] = useState<string | null>(null);
+    const [numericInputs, setNumericInputs] = useState<Record<string, string>>({});
+
+    const updateNumericInput = (
+        key: string,
+        rawValue: string,
+        min: number,
+        max: number,
+        update: (value: number) => void,
+    ) => {
+        setNumericInputs((prev) => ({ ...prev, [key]: rawValue }));
+        if (rawValue === "") {
+            return;
+        }
+
+        const parsed = Number(rawValue);
+        if (Number.isInteger(parsed)) {
+            update(Math.min(Math.max(parsed, min), max));
+        }
+    };
+
+    const finishNumericInput = (key: string) => {
+        setNumericInputs((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+    };
 
     const syncStack = (nextStack: StreamSettings["mpls_stack"]) => {
         set_data((prev) => {
@@ -283,10 +313,12 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col xs={12} sm={6} lg={3}>
                 {showLabels && <Form.Label className="mb-1">Label</Form.Label>}
                 <Form.Control
-                    value={row.plain.label}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        updatePlainHeader(index, "label", parseInt(event.target.value, 10) || 0)
-                    }
+                    value={numericInputValue(numericInputs, `${index}.plain.label`, row.plain.label)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.plain.label`, event.target.value, 0, 2 ** 20 - 1,
+                        (value) => updatePlainHeader(index, "label", value),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.plain.label`)}
                     min={0}
                     max={2 ** 20 - 1}
                     step={1}
@@ -297,10 +329,12 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col xs={6} sm={3} lg={2}>
                 {showLabels && <Form.Label className="mb-1">TC</Form.Label>}
                 <Form.Control
-                    value={row.plain.tc}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        updatePlainHeader(index, "tc", parseInt(event.target.value, 10) || 0)
-                    }
+                    value={numericInputValue(numericInputs, `${index}.plain.tc`, row.plain.tc)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.plain.tc`, event.target.value, 0, 7,
+                        (value) => updatePlainHeader(index, "tc", value),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.plain.tc`)}
                     min={0}
                     max={7}
                     step={1}
@@ -311,10 +345,12 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col xs={6} sm={3} lg={2}>
                 {showLabels && <Form.Label className="mb-1">TTL</Form.Label>}
                 <Form.Control
-                    value={row.plain.ttl}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        updatePlainHeader(index, "ttl", parseInt(event.target.value, 10) || 0)
-                    }
+                    value={numericInputValue(numericInputs, `${index}.plain.ttl`, row.plain.ttl)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.plain.ttl`, event.target.value, 0, 255,
+                        (value) => updatePlainHeader(index, "ttl", value),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.plain.ttl`)}
                     min={0}
                     max={255}
                     step={1}
@@ -440,12 +476,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col {...responsiveCompactCol}>
                 {showLabels && <Form.Label className="mb-1">Opcode</Form.Label>}
                 <Form.Control
-                    value={row.formatB.opcode}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        applyMnaUpdate((entries) => {
-                            entries[index].formatB.opcode = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 127);
-                        })
-                    }
+                    value={numericInputValue(numericInputs, `${index}.formatB.opcode`, row.formatB.opcode)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.formatB.opcode`, event.target.value, 0, 127,
+                        (value) => applyMnaUpdate((entries) => {
+                            entries[index].formatB.opcode = value;
+                        }),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.formatB.opcode`)}
                     min={0}
                     max={127}
                     step={1}
@@ -456,12 +494,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col {...responsiveCompactCol}>
                 {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
                 <Form.Control
-                    value={row.formatB.data}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        applyMnaUpdate((entries) => {
-                            entries[index].formatB.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0x1fff);
-                        })
-                    }
+                    value={numericInputValue(numericInputs, `${index}.formatB.data`, row.formatB.data)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.formatB.data`, event.target.value, 0, 0x1fff,
+                        (value) => applyMnaUpdate((entries) => {
+                            entries[index].formatB.data = value;
+                        }),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.formatB.data`)}
                     min={0}
                     max={0x1fff}
                     step={1}
@@ -573,12 +613,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col {...responsiveFieldCol}>
                 {showLabels && <Form.Label className="mb-1">Opcode</Form.Label>}
                 <Form.Control
-                    value={row.formatC.opcode}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        applyMnaUpdate((entries) => {
-                            entries[index].formatC.opcode = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 127);
-                        })
-                    }
+                    value={numericInputValue(numericInputs, `${index}.formatC.opcode`, row.formatC.opcode)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.formatC.opcode`, event.target.value, 0, 127,
+                        (value) => applyMnaUpdate((entries) => {
+                            entries[index].formatC.opcode = value;
+                        }),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.formatC.opcode`)}
                     min={0}
                     max={127}
                     step={1}
@@ -589,12 +631,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col {...responsiveFieldCol}>
                 {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
                 <Form.Control
-                    value={row.formatC.data}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        applyMnaUpdate((entries) => {
-                            entries[index].formatC.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0x7ffff);
-                        })
-                    }
+                    value={numericInputValue(numericInputs, `${index}.formatC.data`, row.formatC.data)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.formatC.data`, event.target.value, 0, 0x7ffff,
+                        (value) => applyMnaUpdate((entries) => {
+                            entries[index].formatC.data = value;
+                        }),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.formatC.data`)}
                     min={0}
                     max={0x7ffff}
                     step={1}
@@ -654,12 +698,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col xs={12} sm={6} lg={4}>
                 {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
                 <Form.Control
-                    value={row.formatD.data}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        applyMnaUpdate((entries) => {
-                            entries[index].formatD.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0x3fffffff);
-                        })
-                    }
+                    value={numericInputValue(numericInputs, `${index}.formatD.data`, row.formatD.data)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.formatD.data`, event.target.value, 0, 0x3fffffff,
+                        (value) => applyMnaUpdate((entries) => {
+                            entries[index].formatD.data = value;
+                        }),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.formatD.data`)}
                     min={0}
                     max={0x3fffffff}
                     step={1}
@@ -722,12 +768,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col {...responsiveFieldCol}>
                 {showLabels && <Form.Label className="mb-1">Opcode</Form.Label>}
                 <Form.Control
-                    value={row.psna.opcode}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        applyMnaUpdate((entries) => {
-                            entries[index].psna.opcode = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 127);
-                        })
-                    }
+                    value={numericInputValue(numericInputs, `${index}.psna.opcode`, row.psna.opcode)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.psna.opcode`, event.target.value, 0, 127,
+                        (value) => applyMnaUpdate((entries) => {
+                            entries[index].psna.opcode = value;
+                        }),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.psna.opcode`)}
                     min={0}
                     max={127}
                     step={1}
@@ -738,12 +786,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col {...responsiveFieldCol}>
                 {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
                 <Form.Control
-                    value={row.psna.data}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        applyMnaUpdate((entries) => {
-                            entries[index].psna.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0xffff);
-                        })
-                    }
+                    value={numericInputValue(numericInputs, `${index}.psna.data`, row.psna.data)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.psna.data`, event.target.value, 0, 0xffff,
+                        (value) => applyMnaUpdate((entries) => {
+                            entries[index].psna.data = value;
+                        }),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.psna.data`)}
                     min={0}
                     max={0xffff}
                     step={1}
@@ -775,12 +825,14 @@ const MPLS = ({ stream, data, set_data, running }: Props) => {
             <Col xs={12} sm={6} lg={4}>
                 {showLabels && <Form.Label className="mb-1">Data</Form.Label>}
                 <Form.Control
-                    value={row.psData.data}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        applyMnaUpdate((entries) => {
-                            entries[index].psData.data = Math.min(Math.max(parseInt(event.target.value, 10) || 0, 0), 0xffffffff);
-                        })
-                    }
+                    value={numericInputValue(numericInputs, `${index}.psData.data`, row.psData.data)}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateNumericInput(
+                        `${index}.psData.data`, event.target.value, 0, 0xffffffff,
+                        (value) => applyMnaUpdate((entries) => {
+                            entries[index].psData.data = value;
+                        }),
+                    )}
+                    onBlur={() => finishNumericInput(`${index}.psData.data`)}
                     min={0}
                     max={0xffffffff}
                     step={1}
