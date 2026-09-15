@@ -692,6 +692,7 @@ export enum GenerationPattern {
     Triangle = "Triangle",
     Sawtooth = "Sawtooth",
     Flashcrowd = "Flashcrowd",
+    CatWave = "CatWave",
 }
 
 export const unitOptions = [

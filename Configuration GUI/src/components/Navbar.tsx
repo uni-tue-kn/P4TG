@@ -17,6 +17,7 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
+import { useRef } from "react";
 import styled from "styled-components";
 import { Link, useLocation } from "react-router-dom";
 import FooterButtons from "./FooterButtons";
@@ -40,6 +41,17 @@ const StyledImg = styled.img`
     width: 80px;
 `
 
+const LogoButton = styled.button`
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    line-height: 0;
+`
+
+const EXPERT_MODE_CLICK_COUNT = 7;
+const EXPERT_MODE_CLICK_WINDOW_MS = 2_000;
+
 
 interface Props {
     to: string,
@@ -59,11 +71,48 @@ export const NavLink = ({ to, icon, text, overlay }: Props) => {
 }
 
 
-const Navbar = ({ p4tg_infos, updateAvailable }: { p4tg_infos: P4TGInfos, updateAvailable: boolean }) => {
+const Navbar = ({
+    p4tg_infos,
+    updateAvailable,
+    expertMode,
+    onExpertModeToggle,
+}: {
+    p4tg_infos: P4TGInfos,
+    updateAvailable: boolean,
+    expertMode: boolean,
+    onExpertModeToggle: () => void,
+}) => {
+    const logoClickTimes = useRef<number[]>([]);
+
+    const handleLogoClick = () => {
+        const now = Date.now();
+        const recentClicks = logoClickTimes.current.filter(
+            (clickedAt) => now - clickedAt <= EXPERT_MODE_CLICK_WINDOW_MS,
+        );
+        recentClicks.push(now);
+
+        if (recentClicks.length >= EXPERT_MODE_CLICK_COUNT) {
+            logoClickTimes.current = [];
+            onExpertModeToggle();
+            return;
+        }
+
+        logoClickTimes.current = recentClicks;
+    };
 
     return <CSidebar className={"h-100"}>
         <CSidebarNav className="h-100">
-            <CSidebarBrand className="mb-0"><StyledImg src={P4TGLogo} alt="P4TG log" /></CSidebarBrand>
+            <CSidebarBrand className="mb-0">
+                <LogoButton
+                    type="button"
+                    onClick={handleLogoClick}
+                    aria-label="P4TG logo"
+                    aria-pressed={expertMode}
+                    title={expertMode ? "Expert mode enabled" : undefined}
+                >
+                    <StyledImg src={P4TGLogo} alt="P4TG logo" draggable={false} />
+                </LogoButton>
+            </CSidebarBrand>
             <NavLink to={"/"} text={""} icon={"bi bi-speedometer"} />
             <NavLink to={"/ports"} text={""} icon={"bi bi-ethernet"} />
             <NavLink to={"/tables"} text={""} icon={"bi bi-table"} />

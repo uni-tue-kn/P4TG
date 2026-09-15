@@ -65,7 +65,8 @@ const StreamElement = ({
     update,
     mode,
     stream_settings,
-    p4tg_infos
+    p4tg_infos,
+    expertMode,
 }: {
     running: boolean,
     data: Stream,
@@ -73,7 +74,8 @@ const StreamElement = ({
     update: (stream: Stream, streamSettings: StreamSettings[]) => void,
     mode: GenerationMode,
     stream_settings: StreamSettings[],
-    p4tg_infos: P4TGInfos
+    p4tg_infos: P4TGInfos,
+    expertMode: boolean,
 }) => {
     const [show_mpls_dropdown, set_show] = useState(data.encapsulation == Encapsulation.MPLS)
     const [show_sid_config, set_show_sid_config] = useState(data.encapsulation == Encapsulation.SRv6)
@@ -482,6 +484,8 @@ const StreamElement = ({
                             <option value={GenerationPattern.Triangle}>Triangle</option>
                             <option value={GenerationPattern.Square}>Square</option>
                             <option value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
+                            {(expertMode || patternConfig?.pattern_type === GenerationPattern.CatWave) &&
+                                <option value={GenerationPattern.CatWave}>Cat wave</option>}
                         </Form.Select>
                         <Button
                             variant="outline-secondary"
@@ -703,6 +707,7 @@ const StreamElement = ({
                 square_high_until: null,
             }}
             disabled={running}
+            expertMode={expertMode}
             set_data={(updated) => {
                 setPatternConfig(updated);
                 data.pattern = updated;

@@ -234,7 +234,11 @@ const normalizeTofino1StreamSettings = (
 };
 
 
-const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast: (msg: string, bg: ToastVariant) => void }) => {
+const Settings = ({ p4tg_infos, showToast, expertMode }: {
+    p4tg_infos: P4TGInfos,
+    showToast: (msg: string, bg: ToastVariant) => void,
+    expertMode: boolean,
+}) => {
     const [ports, set_ports] = useState<PortInfo[]>([])
     const [running, set_running] = useState(false)
     const [streams, set_streams] = useState<Stream[]>(loadFromStorage<Stream[]>("streams", []))
@@ -2396,7 +2400,7 @@ const Settings = ({ p4tg_infos, showToast }: { p4tg_infos: P4TGInfos, showToast:
                                             {streams.map((v, i) => {
                                                 v.app_id = i + 1;
                                                 return <StreamElement key={`${activeConfigName}-${v.stream_id}`} mode={mode} data={v} remove={removeStream} update={updateStream} running={running}
-                                                    stream_settings={stream_settings} p4tg_infos={p4tg_infos} />
+                                                    stream_settings={stream_settings} p4tg_infos={p4tg_infos} expertMode={expertMode} />
                                             })}
 
                                         </tbody>

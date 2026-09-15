@@ -48,12 +48,14 @@ const PatternModal = ({
     hide,
     data,
     disabled,
+    expertMode,
     set_data
 }: {
     show: boolean,
     hide: () => void,
     data: GenerationPatternConfig,
     disabled: boolean,
+    expertMode: boolean,
     set_data: (updated: GenerationPatternConfig) => void,
 }) => {
 
@@ -410,6 +412,8 @@ const PatternModal = ({
                             <option value={GenerationPattern.Triangle}>Triangle</option>
                             <option value={GenerationPattern.Sawtooth}>Sawtooth</option>
                             <option value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
+                            {(expertMode || tmp_data.pattern_type === GenerationPattern.CatWave) &&
+                                <option value={GenerationPattern.CatWave}>Cat wave</option>}
                         </Form.Select>
                     </Col>
                 </Form.Group>

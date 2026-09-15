@@ -58,6 +58,8 @@ const SessionWarning = styled(ASICVersion)`
   color: #000;
 `
 
+const EXPERT_MODE_STORAGE_KEY = "p4tg.expertMode"
+
 const App = () => {
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
@@ -69,6 +71,9 @@ const App = () => {
     })
     const [updateAvailable, setUpdateAvailable] = useState(false)
     const [showUpdateModal, setShowUpdateModal] = useState(false)
+    const [expertMode, setExpertMode] = useState(
+        () => window.localStorage.getItem(EXPERT_MODE_STORAGE_KEY) === "true",
+    )
 
     useEffect(() => {
         const loadInfos = async () => {
@@ -125,11 +130,26 @@ const App = () => {
         setToast({ show: true, message, bg })
     }
 
+    const toggleExpertMode = () => {
+        const enabled = !expertMode
+        setExpertMode(enabled)
+        window.localStorage.setItem(EXPERT_MODE_STORAGE_KEY, String(enabled))
+        showToast(
+            enabled ? "Expert mode enabled: Cat wave unlocked." : "Expert mode disabled.",
+            "info",
+        )
+    }
+
     return <Loader loaded={loaded}>
         <Router basename={Config.BASE_PATH}>
             <Row>
                 <Col className={'col-2 col-sm-2 col-xl-1 fixed-navbar'}>
-                    <Navbar p4tg_infos={p4tg_infos} updateAvailable={updateAvailable} />
+                    <Navbar
+                        p4tg_infos={p4tg_infos}
+                        updateAvailable={updateAvailable}
+                        expertMode={expertMode}
+                        onExpertModeToggle={toggleExpertMode}
+                    />
                 </Col>
                 <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-3"}>
                     <AxiosInterceptor onError={showToast} onOffline={() => set_online(false)}
@@ -155,7 +175,7 @@ const App = () => {
                                             <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
                                             <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos} />} />
                                             <Route path={"/tables"} element={<Tables />} />
-                                            <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                            <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} expertMode={expertMode} />} />
                                         </Routes>
                                         <ToastMessage
                                             show={toast.show}
