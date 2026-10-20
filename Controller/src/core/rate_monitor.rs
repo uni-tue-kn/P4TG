@@ -32,6 +32,7 @@ use rbfrt::{register, table, SwitchConnection};
 use tokio::time::sleep;
 
 use crate::core::statistics::{IATStatistics, RateMonitorStatistics, TimeStatistics};
+use crate::core::traffic_gen_core::const_definitions::MONITORING_PACKET_INTERVAL;
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::core::traffic_gen_core::types::GenerationMode;
 use crate::core::traffic_gen_core::types::MonitoringMapping;
@@ -469,7 +470,14 @@ impl RateMonitor {
             );
         }
 
-        if current_tstmp > (last_rate.timestamp + (Duration::from_secs(1).as_nanos() as u64)) {
+        // Monitoring digests arrive every MONITORING_PACKET_INTERVAL with a few
+        // µs of jitter. Comparing against exactly 1 s would sometimes reject the
+        // digest at ~1 s and stretch the window to 1.5 s, shifting the series
+        // by half an interval. Half an interval of slack absorbs the jitter.
+        let min_window = Duration::from_secs(1).as_nanos() as u64
+            - MONITORING_PACKET_INTERVAL as u64 / 2;
+
+        if current_tstmp >= last_rate.timestamp + min_window {
             let time_diff: f64 = (current_tstmp - last_rate.timestamp) as f64;
             let byte_diff_l1: f64 = (current_byte_count_l1 - last_rate.byte_count_l1) as f64;
 
@@ -659,7 +667,15 @@ impl RateMonitor {
                             dp_elapsed = Some(dp_elapsed.map_or(secs, |last| last.max(secs)));
                         }
 
-                        let elapsed_time = if running { digest_elapsed } else { None };
+                        // The epoch is a digest itself, so later digests land
+                        // within ns of a full second and jitter would floor some
+                        // into the previous one. A quarter interval of slack
+                        // keeps them in their second; RTT keeps digest_elapsed.
+                        let elapsed_time = if running {
+                            elapsed_secs(time + MONITORING_PACKET_INTERVAL as u64 / 4, epoch)
+                        } else {
+                            None
+                        };
 
                         let l1_byte = field!(data, "byte_counter_l1").to_u64();
                         let l2_byte = field!(data, "byte_counter_l2").to_u64();

@@ -102,6 +102,7 @@
 - The selected tab now also has a slightly offset background color in light mode, not only in dark mode.
 - Fixed numeric pattern fields retaining the previous value when cleared and replaced.
 - Fixed configuration state, including Rate/IAT Precision and live RFC2544 trials, leaking between test tabs and clones.
+- Fixed TX and RX sometimes being off by ~1s due to jitter in internal digest messages.
 
 ### Other
 - Migrated frontend from `react-scripts` to `vite`.
