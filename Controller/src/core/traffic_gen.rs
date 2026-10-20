@@ -21,11 +21,12 @@
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::core::multicast::delete_simple_multicast_group;
 use crate::core::patterns::build_pattern_config_entry;
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
-use crate::core::traffic_gen_core::types::{Stream, StreamSetting};
+use crate::core::traffic_gen_core::types::{RxMappingMode, Stream, StreamSetting};
 use crate::core::{build_pattern_generation_entries, create_simple_multicast_group};
 use crate::error::P4TGError;
 use crate::{AppState, PortMapping};
@@ -34,10 +35,12 @@ use macaddr::MacAddr;
 use rbfrt::error::RBFRTError;
 use rbfrt::table::{MatchValue, Request};
 use rbfrt::{table, SwitchConnection};
+use tokio::time::sleep;
 
 use crate::core::traffic_gen_core::const_definitions::*;
 use crate::core::traffic_gen_core::helper::{
-    calculate_overhead, create_packet, get_num_pipes, mpps_to_gbps,
+    calculate_overhead, create_packet, get_batch_factor, get_num_pipes,
+    get_total_generated_packets, mpps_to_gbps,
 };
 use crate::core::traffic_gen_core::optimization::calculate_send_behaviour;
 use crate::core::traffic_gen_core::types::*;
@@ -53,6 +56,12 @@ pub struct TrafficGen {
     min_buffer_offset: u32,
     /// Indicates if the traffic generator is running.
     pub running: bool,
+    /// True after data packet generation has been disabled and before the
+    /// per-test measurement path is removed.
+    pub draining: bool,
+    /// Seconds for which the RX measurement path remains active after packet
+    /// generation is disabled.
+    pub drain_duration_secs: u32,
     /// Stored stream setting values.
     /// The stream settings are received by the REST API and stored to synchronize multiple configuration clients
     /// (e.g., multiple open web browsers) to the same settings.
@@ -60,6 +69,10 @@ pub struct TrafficGen {
     /// The streams are received by the REST API and stored to synchronize multiple configuration clients
     /// (e.g., multiple open web browsers) to the same settings.
     pub streams: Vec<Stream>,
+    /// Exact number of bytes counted by the per-application L2 counters for each frame.
+    pub app_l2_frame_sizes: HashMap<u32, u32>,
+    /// Selects whether RX targets are configured per TX port or per stream/TX pair.
+    pub rx_mapping_mode: RxMappingMode,
     /// The generation mode is received by the REST API and stored to synchronize multiple configuration clients
     /// (e.g., multiple open web browsers) to the same settings.
     pub mode: GenerationMode,
@@ -74,12 +87,19 @@ pub struct TrafficGen {
     pub num_pipes: u32,
     /// Duration of this test in seconds. 0 for unlimited
     pub duration: Option<u32>,
+    /// Number of times this test is executed by the multi-test orchestrator.
+    pub repetitions: u32,
     /// Mapping between RX port and RTT histogram config. The first index is the front panel port, the second is the channel.
     pub(crate) rtt_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
     /// Mapping between RX port and IAT histogram config. The first index is the front panel port, the second is the channel.
     pub(crate) iat_histogram_config: HashMap<String, HashMap<String, HistogramConfig>>,
+    /// Current RFC2544 configuration, if the running test is an RFC2544 benchmark.
+    pub(crate) rfc2544_config: Option<Rfc2544Config>,
     /// Name of the current test
     pub(crate) name: Option<String>,
+    /// Stable name of the user configuration that started the current run.
+    /// Unlike `name`, RFC2544 trial labels do not overwrite this value.
+    pub(crate) source_name: Option<String>,
 }
 
 impl TrafficGen {
@@ -87,16 +107,23 @@ impl TrafficGen {
         TrafficGen {
             min_buffer_offset: 0,
             running: false,
+            draining: false,
+            drain_duration_secs: default_drain_duration_secs(),
             stream_settings: vec![],
             streams: vec![],
+            app_l2_frame_sizes: HashMap::new(),
+            rx_mapping_mode: RxMappingMode::PerTxPort,
             mode: GenerationMode::Cbr,
             port_mapping: HashMap::new(),
             is_tofino2,
             num_pipes,
             duration: None,
+            repetitions: 1,
             rtt_histogram_config: HashMap::new(),
             iat_histogram_config: HashMap::new(),
+            rfc2544_config: None,
             name: None,
+            source_name: None,
         }
     }
 
@@ -165,7 +192,7 @@ impl TrafficGen {
             let pkt = etherparse::Ethernet2Header {
                 source: [0, 0, 0, 0, 0, 0], // we do not need mac src & dst
                 destination: [0, 0, 0, 0, 0, 0],
-                ether_type: 0xBB02, // Monitoring ether type
+                ether_type: etherparse::EtherType(0xBB02), // Monitoring ether type
             };
 
             let mut result = Vec::<u8>::with_capacity(64);
@@ -511,13 +538,38 @@ impl TrafficGen {
         Ok(())
     }
 
-    /// Deactivates all traffic gen applications except for the monitoring.
-    pub async fn stop(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
-        self.deactivate_traffic_gen_applications(switch).await?;
-        self.reset_tables(switch).await?;
+    /// Immediately deactivates data generation and removes per-test tables.
+    /// Used only before concurrent controller tasks have started.
+    pub async fn stop_immediately(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
+        let deactivate_result = self.deactivate_traffic_gen_applications(switch).await;
+        let cleanup_result = self.reset_tables(switch).await;
         self.running = false;
+        self.draining = false;
 
-        Ok(())
+        deactivate_result.and(cleanup_result)
+    }
+
+    /// Stops new data packets while keeping the measurement path intact.
+    /// Returns whether an active run entered the draining phase.
+    async fn begin_stop(&mut self, switch: &SwitchConnection) -> Result<bool, RBFRTError> {
+        if !self.running {
+            return Ok(false);
+        }
+
+        self.deactivate_traffic_gen_applications(switch).await?;
+        self.draining = true;
+
+        Ok(true)
+    }
+
+    /// Removes per-test tables after the drain. Once packet generation was
+    /// disabled, report the generator as stopped even if cleanup fails.
+    async fn finish_stop(&mut self, switch: &SwitchConnection) -> Result<(), RBFRTError> {
+        let cleanup_result = self.reset_tables(switch).await;
+        self.running = false;
+        self.draining = false;
+
+        cleanup_result
     }
 
     /// Deactivates all traffic gen applications except for the monitoring.
@@ -616,10 +668,6 @@ impl TrafficGen {
     ) -> Result<Vec<Stream>, RBFRTError> {
         let switch = &state.switch;
         let port_mapping = &state.port_mapping;
-
-        // First stop possible existing generation
-        self.stop(switch).await?;
-        self.reset_tables(switch).await?;
 
         // Reset all stats
         state
@@ -734,7 +782,7 @@ impl TrafficGen {
             info!("Calculated traffic generation for stream #{}. #{} packets per {} ns. #Pipes: {}. Rate: {} Gbps. Accuracy: {:.2}%.", s.app_id, n_packets, timeout, num_pipes, rate, rate_accuracy);
 
             // More bursty traffic desired. Activate batch mode
-            timeout = if s.batches.is_some_and(|b| b && s.burst != 1) {timeout * BATCH_FACTOR} else {timeout};
+            timeout *= get_batch_factor(&s);
 
             // add calculated values to the stream
             s.n_packets = Some(n_packets);
@@ -767,11 +815,7 @@ impl TrafficGen {
             );
 
             // More bursty traffic desired. Activate batch mode
-            timeout = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
-                timeout * BATCH_FACTOR
-            } else {
-                timeout
-            };
+            timeout *= get_batch_factor(stream);
 
             active_streams
                 .get_mut(0)
@@ -822,7 +866,7 @@ impl TrafficGen {
                     buffer_offset: None,
                     timer: s.timeout.unwrap(),
                     n_packets: s.n_packets.unwrap(),
-                    batches: s.batches.is_some_and(|b| b && s.burst != 1),
+                    batches: get_batch_factor(s) > 1,
                 }
             })
             .collect();
@@ -831,11 +875,20 @@ impl TrafficGen {
             .map(|p| (p.app_id, p.bytes.len() as u32))
             .collect();
 
-        let mut pattern_entries = vec![];
+        let mut pattern_config_entries = vec![];
+        let mut pattern_table_entries = vec![];
+        let mut pattern_meter_entries = vec![];
+        let mut pattern_interval_count = 0usize;
+        let mut next_pattern_interval_id = 0u32;
         let max_pattern_table_entries = if self.is_tofino2 {
             MAX_PATTERN_TABLE_ENTRIES_TOFINO_2
         } else {
             MAX_PATTERN_TABLE_ENTRIES
+        };
+        let max_pattern_meter_entries = if self.is_tofino2 {
+            MAX_PATTERN_METER_ENTRIES_TOFINO_2
+        } else {
+            MAX_PATTERN_METER_ENTRIES
         };
 
         for stream in &active_streams {
@@ -853,16 +906,13 @@ impl TrafficGen {
                 let l1_counter_bytes = total_frame_size.saturating_sub(4);
 
                 let num_pipes: u32 = get_num_pipes(stream, self.num_pipes);
-                let batch_factor = if stream.batches.is_some_and(|b| b && stream.burst != 1) {
-                    BATCH_FACTOR as f64
-                } else {
-                    1.0
-                };
+                let batch_factor = get_batch_factor(stream) as u64;
                 let offered_pps_per_pipe =
-                    stream.n_packets.unwrap_or(1) as f64 * batch_factor * 1e9_f64
+                    stream.n_packets.unwrap_or(1) as f64 * batch_factor as f64 * 1e9_f64
                         / stream.timeout.unwrap_or(1) as f64;
+                let generator_burst_packets = stream.n_packets.unwrap_or(1) as u64 * batch_factor;
 
-                let (period_pkts, entries) = build_pattern_generation_entries(
+                let entries = build_pattern_generation_entries(
                     stream.app_id,
                     pattern_config,
                     (stream.traffic_rate * stream.generation_accuracy.unwrap_or(100.0) / 100.0)
@@ -874,26 +924,54 @@ impl TrafficGen {
                         .unwrap_or(&total_frame_size.saturating_sub(20))
                         + 6, // Size of the internal packet generation header
                     num_pipes as f64,
-                    state.tofino2,
+                    generator_burst_packets,
+                    next_pattern_interval_id,
                 );
 
-                if pattern_entries.len() + entries.len() > max_pattern_table_entries {
+                let new_pattern_table_entries = entries.table_entries.len();
+                // One meter entry is generated per unique sampled/merged pattern interval.
+                let new_pattern_intervals = entries.meter_entries.len();
+
+                if pattern_table_entries.len() + new_pattern_table_entries
+                    > max_pattern_table_entries
+                {
                     return Err(P4TGError::Error {
                     message: format!("Too many pattern table entries required for stream {}. Reduce the number of streams, the rate, or the period for traffic patterns.", stream.app_id),
                 }
                 .into());
-                } else {
-                    let config_req = build_pattern_config_entry(stream.app_id, period_pkts);
-                    pattern_entries.push(config_req);
-                    pattern_entries.extend(entries);
                 }
+
+                if pattern_interval_count + new_pattern_intervals > max_pattern_meter_entries {
+                    return Err(P4TGError::Error {
+                    message: format!("Too many pattern meter entries required for stream {}. Reduce the number of streams, the pattern sample rate, or the pattern period.", stream.app_id),
+                }
+                .into());
+                }
+
+                next_pattern_interval_id = entries.next_interval_id;
+                pattern_interval_count += new_pattern_intervals;
+                let config_req = build_pattern_config_entry(stream.app_id, entries.period_pkts);
+                pattern_config_entries.push(config_req);
+                pattern_table_entries.extend(entries.table_entries);
+                pattern_meter_entries.extend(entries.meter_entries);
             }
         }
 
-        info!("Writing {} pattern table entries.", pattern_entries.len());
+        info!(
+            "Writing {} pattern meter entries, {} pattern table entries, and {} pattern config entries.",
+            pattern_meter_entries.len(),
+            pattern_table_entries.len(),
+            pattern_config_entries.len()
+        );
 
-        if !pattern_entries.is_empty() {
-            switch.write_table_entries(pattern_entries).await?;
+        if !pattern_meter_entries.is_empty() {
+            switch.write_table_entries(pattern_meter_entries).await?;
+        }
+        if !pattern_table_entries.is_empty() {
+            switch.write_table_entries(pattern_table_entries).await?;
+        }
+        if !pattern_config_entries.is_empty() {
+            switch.write_table_entries(pattern_config_entries).await?;
         }
 
         // configure egress table rules
@@ -929,7 +1007,19 @@ impl TrafficGen {
 
         self.running = true;
 
-        Ok(active_streams)
+        // The annotated streams are only handed back to the REST API from here on.
+        // Report the overall number of generated packets per `timeout` ns, i.e., the solver
+        // output scaled by the batch factor and the number of pipes, instead of the
+        // per-pipe and per-batch value that is written to the data plane.
+        let reported_streams = active_streams
+            .into_iter()
+            .map(|mut s| {
+                s.n_packets = get_total_generated_packets(&s);
+                s
+            })
+            .collect();
+
+        Ok(reported_streams)
     }
 
     /// This method configures the forwarding rules in the case of [GenerationMode::Analyze].
@@ -1049,12 +1139,24 @@ impl TrafficGen {
         port_mapping: &HashMap<u32, PortMapping>,
     ) -> Result<(), RBFRTError> {
         let mut reqs = vec![];
+        // DCW_HEADER_REPLACE_TABLE and IS_EGRESS_PSD_TABLE are keyed only on
+        // app_id, so the same stream replicated across multiple ports would
+        // push duplicate entries.
+        let mut dcw_app_ids: HashSet<u8> = HashSet::new();
+        let mut psd_app_ids: HashSet<u8> = HashSet::new();
 
         for s in streams {
             for setting in stream_settings {
                 // find the "correct" stream for a stream setting
                 if setting.stream_id != s.stream_id || !setting.active {
                     continue;
+                }
+
+                if s.mna_post_stack == Some(true) && psd_app_ids.insert(s.app_id) {
+                    let req = Request::new(IS_EGRESS_PSD_TABLE)
+                        .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                        .action("egress.set_tx");
+                    reqs.push(req);
                 }
 
                 let port = port_mapping.get(&setting.port).ok_or(P4TGError::Error {
@@ -1235,9 +1337,10 @@ impl TrafficGen {
                 } else if s.encapsulation == Encapsulation::Mpls {
                     // we checked that mpls stack exists
                     let mpls_stack = setting.mpls_stack.as_ref().unwrap();
+                    let num_lse = cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL);
                     let action_name: String = format!(
                         "egress.header_replace.mpls_replace_c.rewrite_mpls_{}",
-                        cmp::min(s.number_of_lse.unwrap(), MAX_NUM_MPLS_LABEL)
+                        num_lse
                     );
 
                     let mut req = Request::new(MPLS_HEADER_REPLACE_TABLE)
@@ -1249,19 +1352,39 @@ impl TrafficGen {
                         .action(&action_name);
 
                     // build generic action data
-                    for j in 1..cmp::min(s.number_of_lse.unwrap() + 1, MAX_NUM_MPLS_LABEL + 1) {
+                    for j in 1..(num_lse + 1) {
                         let lse = &mpls_stack[(j - 1) as usize];
 
                         let label_param = format!("label{j}");
-                        let ttl_param = format!("ttl{j}");
                         let tc_param = format!("tc{j}");
+                        let bos_param = format!("bos{j}");
+                        let ttl_param = format!("ttl{j}");
                         req = req
                             .action_data(&label_param, lse.label)
-                            .action_data(&ttl_param, lse.ttl)
-                            .action_data(&tc_param, lse.tc);
+                            .action_data(&tc_param, lse.tc)
+                            .action_data(&bos_param, lse.bos.unwrap_or(j == num_lse))
+                            .action_data(&ttl_param, lse.ttl);
                     }
 
                     reqs.push(req.clone());
+
+                    // Check for d-CW
+                    if s.detnet_cw == Some(true) && dcw_app_ids.insert(s.app_id) {
+                        let seq_num_len = s
+                            .detnet_seq_num_length
+                            .unwrap_or(DetNetSeqNumLength::TwentyEight);
+
+                        let action_name = format!(
+                            "egress.header_replace.mpls_replace_c.write_{}_bit_seq_num",
+                            seq_num_len as u8
+                        );
+
+                        let req = Request::new(DCW_HEADER_REPLACE_TABLE)
+                            .match_key("hdr.path.app_id", MatchValue::exact(s.app_id))
+                            .action(&action_name);
+
+                        reqs.push(req.clone());
+                    }
                 } else if s.encapsulation == Encapsulation::SRv6 {
                     let action_name: String = format!(
                         "egress.header_replace.srv6_replace_c.rewrite_{}_sids",
@@ -1376,9 +1499,11 @@ impl TrafficGen {
                 .clear_tables(vec![
                     TRAFFIC_GEN_MODE,
                     IS_EGRESS_TABLE,
+                    IS_EGRESS_PSD_TABLE,
                     IS_TX_EGRESS_TABLE,
                     VLAN_HEADER_REPLACE_TABLE,
                     MPLS_HEADER_REPLACE_TABLE,
+                    DCW_HEADER_REPLACE_TABLE,
                     SRV6_HEADER_REPLACE_TABLE,
                     ETHERNET_IP_HEADER_REPLACE_TABLE,
                     DEFAULT_FORWARD_TABLE,
@@ -1392,9 +1517,11 @@ impl TrafficGen {
                 .clear_tables(vec![
                     TRAFFIC_GEN_MODE,
                     IS_EGRESS_TABLE,
+                    IS_EGRESS_PSD_TABLE,
                     IS_TX_EGRESS_TABLE,
                     VLAN_HEADER_REPLACE_TABLE,
                     MPLS_HEADER_REPLACE_TABLE,
+                    DCW_HEADER_REPLACE_TABLE,
                     ETHERNET_IP_HEADER_REPLACE_TABLE,
                     DEFAULT_FORWARD_TABLE,
                     PATTERN_TABLE,
@@ -1406,4 +1533,42 @@ impl TrafficGen {
 
         Ok(())
     }
+}
+
+/// Stops traffic while the caller holds `AppState::traffic_lifecycle`. The
+/// traffic-generator mutex is deliberately released during the drain so API
+/// readers and controller-lifetime monitors remain responsive.
+pub async fn stop_traffic_generation_locked(state: &AppState) -> Result<(), RBFRTError> {
+    let (entered_drain, drain_duration_secs) = {
+        let mut traffic_generator = state.traffic_generator.lock().await;
+        let entered_drain = traffic_generator.begin_stop(&state.switch).await?;
+        (entered_drain, traffic_generator.drain_duration_secs)
+    };
+
+    if entered_drain {
+        info!("Traffic generation disabled. Draining for {drain_duration_secs}s.");
+        if drain_duration_secs > 0 {
+            sleep(Duration::from_secs(drain_duration_secs as u64)).await;
+        }
+    }
+
+    let result = state
+        .traffic_generator
+        .lock()
+        .await
+        .finish_stop(&state.switch)
+        .await;
+
+    // Packet generation is already disabled once the drain starts. Do not
+    // leave higher-level orchestration waiting for a run that cannot resume if
+    // the later table cleanup fails.
+    if entered_drain && result.is_err() {
+        state.experiment.lock().await.running = false;
+    }
+
+    if entered_drain {
+        info!("Traffic drain complete; per-test tables removed.");
+    }
+
+    result
 }

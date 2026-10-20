@@ -6,16 +6,15 @@ def _sorted_numeric_keys(items):
     return sorted(items, key=lambda s: int(s))
 
 
-def _format_bit_rate(bits):
-    if bits is None:
-        return 0, "bit/s"
+def _bit_rate_scale(bits):
+    """Return one divisor and label for a complete rate axis."""
     if bits >= 1_000_000_000:
-        return bits / 1_000_000_000, "Gb/s"
+        return 1_000_000_000, "Gb/s"
     if bits >= 1_000_000:
-        return bits / 1_000_000, "Mb/s"
+        return 1_000_000, "Mb/s"
     if bits >= 1_000:
-        return bits / 1_000, "Kb/s"
-    return bits, "b/s"
+        return 1_000, "Kb/s"
+    return 1, "b/s"
 
 
 def plot_tx_rx_rate(
@@ -68,7 +67,10 @@ def plot_tx_rx_rate(
                     if series:
                         global_max_rate = max(global_max_rate, max(series.values()))
 
-    _, rate_unit = _format_bit_rate(global_max_rate if global_max_rate else 0)
+    # Use the unit selected from the global maximum for every point. Scaling
+    # each point independently makes, for example, 839 Mb/s appear as 839 on
+    # an axis labelled Gb/s when the same series also contains multi-Gb/s data.
+    rate_scale, rate_unit = _bit_rate_scale(global_max_rate)
 
     # ---------- figure layout ----------
     num_entries = len(stats)
@@ -100,7 +102,7 @@ def plot_tx_rx_rate(
                 tx_series = tx_ch_map.get(ch, {}) or {}
                 if tx_series:
                     x_tx = sorted(int(k) for k in tx_series.keys())
-                    y_tx = [_format_bit_rate(tx_series[str(k)])[0] for k in x_tx]
+                    y_tx = [tx_series[str(k)] / rate_scale for k in x_tx]
                     if y_tx:
                         ax.plot(x_tx, y_tx, marker="o", label=f"Port {p}/{ch} TX")
 
@@ -108,7 +110,7 @@ def plot_tx_rx_rate(
                 rx_series = rx_ch_map.get(ch, {}) or {}
                 if rx_series:
                     x_rx = sorted(int(k) for k in rx_series.keys())
-                    y_rx = [_format_bit_rate(rx_series[str(k)])[0] for k in x_rx]
+                    y_rx = [rx_series[str(k)] / rate_scale for k in x_rx]
                     if y_rx:
                         ax.plot(x_rx, y_rx, marker="x", label=f"Port {p}/{ch} RX")
 

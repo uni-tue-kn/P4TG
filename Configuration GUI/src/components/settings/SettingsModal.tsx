@@ -24,6 +24,9 @@ import { Accordion, Button, Modal, Alert } from "react-bootstrap";
 
 import { VLAN, Ethernet, IPv4, QinQ, VxLAN, GtpU, MPLS, IPv6, SRv6 } from "./protocols";
 import { validateIP, validateToS, validateMAC, validateMPLS, validateUdpPort, validateVNI, validateTrafficClass, validateFlowLabel, validateIPv6, validateSIDList, validateIPv6RandomMask, validateTEID } from "../../common/Validators";
+import { computeMNAState, decodeMNAEditorEntries, stripPostStackEncoding } from "./protocols/MPLSMNA";
+
+const MISSING_MNA_STRUCTURE_WARNING = "MNA is enabled, but the MPLS stack does not contain an MNA structure.";
 
 /**
  * Ensures that the StreamSettings has defaults for all fields
@@ -77,6 +80,10 @@ export const ensureDefaults = (settings: StreamSettings, stream: Stream): Stream
  */
 export const stripUnusedFields = (settings: StreamSettings, stream: Stream): StreamSettings => {
     const s = { ...settings };
+
+    if (stream.encapsulation === Encapsulation.MPLS && !stream.mna_post_stack) {
+        s.mpls_stack = stripPostStackEncoding(s.mpls_stack, stream.number_of_lse);
+    }
 
     if (stream.ip_version === 6) {
         delete s.ip;
@@ -171,6 +178,25 @@ const SettingsModal = ({
     }
 
     const submit = () => {
+        if (stream.encapsulation === Encapsulation.MPLS && stream.mna_in_stack) {
+            const decoded = decodeMNAEditorEntries(tmp_data.mpls_stack ?? [], stream.number_of_lse, {
+                allowPostStack: stream.mna_post_stack,
+            });
+            const computed = computeMNAState(decoded.entries, {
+                allowPostStack: stream.mna_post_stack,
+            });
+
+            if (decoded.error) {
+                setAlertMessage(decoded.error);
+                return;
+            }
+
+            if (computed.error && computed.error !== MISSING_MNA_STRUCTURE_WARNING) {
+                setAlertMessage(computed.error);
+                return;
+            }
+        }
+
         if (stream.vxlan && tmp_data.vxlan && !validateMAC(tmp_data.vxlan.eth_src)) {
             setAlertMessage("VxLAN Ethernet source not a valid MAC.")
             return
@@ -359,7 +385,7 @@ const SettingsModal = ({
 
                     {stream.encapsulation == Encapsulation.MPLS ?
                         <>
-                            <Accordion.Item eventKey="0">
+                            <Accordion.Item eventKey="4">
                                 <Accordion.Header>MPLS</Accordion.Header>
                                 <Accordion.Body>
                                     <MPLS stream={stream} data={tmp_data} set_data={set_tmp_data} running={running} />
@@ -372,7 +398,7 @@ const SettingsModal = ({
 
                     {stream.encapsulation == Encapsulation.SRv6 ?
                         <>
-                            <Accordion.Item eventKey="0">
+                            <Accordion.Item eventKey="7">
                                 <Accordion.Header>SRv6</Accordion.Header>
                                 <Accordion.Body>
                                     <SRv6 stream={stream} data={tmp_data} set_data={update_data} running={running} />

@@ -34,14 +34,15 @@ use utoipa::{
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::{
-    add_port, config, configure_traffic_gen, online, ports, reset, restart, statistics,
+    add_port, config, configure_traffic_gen, online, ports, qsfp, reset, restart, statistics,
     stop_traffic_gen, traffic_gen,
 };
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::api::helper::serve_static_files::{serve_index, static_path};
 use crate::api::histogram;
-use crate::api::ports::{arp_reply, PortConfiguration};
+use crate::api::pdf_report::{p4tg_report as p4tg_report_handler, P4tgReportRequest};
+use crate::api::ports::{arp_reply, ArpReply, PortConfiguration, PortResponse};
 use crate::api::statistics::time_statistics;
 use crate::api::tables;
 use crate::api::tables::tables;
@@ -58,20 +59,35 @@ use crate::core::traffic_gen_core::types::*;
         tables::tables,
         statistics::statistics,
         statistics::time_statistics,
+        crate::api::pdf_report::p4tg_report,
         restart::restart,
         reset::reset,
         ports::ports,
         ports::add_port,
+        ports::arp_reply,
+        crate::api::qsfp::qsfp,
         histogram::config,
         online::online
     ),
     components(
         schemas(TrafficGenData,
         PortConfiguration,
+        PortResponse,
+        ArpReply,
         GenerationMode,
+        RxMappingMode,
         Encapsulation,
         StreamSetting,
         Stream,
+        Rfc2544Config,
+        P4tgReportRequest,
+        Rfc2544Results,
+        Rfc2544ThroughputResult,
+        Rfc2544ThroughputRepetitionResult,
+        Rfc2544LatencyResult,
+        Rfc2544ResetResult,
+        Rfc2544FrameLossResult,
+        Rfc2544SystemRecoveryResult,
         EmptyResponse,
         Reset,
         Ethernet,
@@ -89,7 +105,8 @@ use crate::core::traffic_gen_core::types::*;
         crate::core::statistics::TypeCount,
         crate::core::statistics::IATStatistics,
         crate::core::statistics::RTTStatistics,
-        crate::core::statistics::IATValues
+        crate::core::statistics::IATValues,
+        crate::api::qsfp::QsfpResponse
         ),
     ),
     info(
@@ -117,7 +134,7 @@ impl Modify for SecurityAddon {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct Error {
     pub(crate) message: String,
 }
@@ -161,6 +178,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/online", get(online))
         .route("/statistics", get(statistics))
         .route("/time_statistics", get(time_statistics))
+        .route("/report", post(p4tg_report_handler))
         .route(
             "/trafficgen",
             get(traffic_gen)
@@ -172,6 +190,7 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .route("/ports", get(ports))
         .route("/ports", post(add_port))
         .route("/ports/arp", post(arp_reply))
+        .route("/qsfp", get(qsfp))
         .route("/tables", get(tables))
         .route("/config", get(config))
         .route("/histogram", get(histogram::config))
@@ -195,5 +214,12 @@ pub async fn start_api_server(state: Arc<AppState>) {
         .await
         .unwrap_or_else(|_| panic!("Unable to listen on 0.0.0.0:{port}"));
 
-    axum::serve(listener, app).await.unwrap();
+    // Connect info exposes the client IP to handlers (used by /online to
+    // report concurrent web sessions)
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }

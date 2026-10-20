@@ -21,14 +21,21 @@ import { GenerationPattern, GenerationPatternConfig, unitOptions } from "../../c
 import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row } from "react-bootstrap";
 import { formatNanoSeconds } from "../../common/Helper";
+import InfoBox from "../InfoBox";
 
 const getDefaultFlashcrowdQuietUntil = (period: number) => period * 0.2;
 const getDefaultFlashcrowdRampUntil = (period: number) => period * 0.25;
+const MIN_PATTERN_BURST_PACKETS = 1;
+const MAX_PATTERN_BURST_PACKETS = 1000;
+const numberInputValue = (value: number | null): number | string =>
+    value === null || Number.isNaN(value) ? "" : value;
 
 const defaultPatternConfig = (config?: GenerationPatternConfig): GenerationPatternConfig => ({
     pattern_type: config?.pattern_type ?? GenerationPattern.Sine,
     period: config?.period ?? 20_000_000_000,
     sample_rate: config?.sample_rate ?? 128,
+    burst_packets: config?.burst_packets ?? null,
+    inverted: config?.inverted ?? false,
     fc_quiet_until: config?.fc_quiet_until ?? getDefaultFlashcrowdQuietUntil(config?.period ?? 20_000_000_000),
     fc_ramp_until: config?.fc_ramp_until ?? getDefaultFlashcrowdRampUntil(config?.period ?? 20_000_000_000),
     fc_decay_rate: config?.fc_decay_rate ?? 4.0,
@@ -41,12 +48,14 @@ const PatternModal = ({
     hide,
     data,
     disabled,
+    expertMode,
     set_data
 }: {
     show: boolean,
     hide: () => void,
     data: GenerationPatternConfig,
     disabled: boolean,
+    expertMode: boolean,
     set_data: (updated: GenerationPatternConfig) => void,
 }) => {
 
@@ -117,13 +126,23 @@ const PatternModal = ({
     };
 
     const handleNumberChange = (field: keyof GenerationPatternConfig, value: string) => {
-        set_tmp_data(prev => ({ ...prev, [field]: Number(value) }));
+        set_tmp_data(prev => ({ ...prev, [field]: value === "" ? Number.NaN : Number(value) }));
+    };
+
+    const handleBurstPacketsChange = (value: string) => {
+        set_tmp_data(prev => ({
+            ...prev,
+            burst_packets: value === "" ? null : Number(value),
+        }));
     };
 
     const handlePatternTypeChange = (value: string) => {
         set_tmp_data(prev => ({
             ...prev,
             pattern_type: value as GenerationPattern,
+            inverted: value === GenerationPattern.Square || value === GenerationPattern.Sawtooth
+                ? (prev.inverted ?? false)
+                : null,
             fc_quiet_until: value === GenerationPattern.Flashcrowd && prev.pattern_type !== GenerationPattern.Flashcrowd
                 ? getDefaultFlashcrowdQuietUntil(Number(prev.period) * getPeriodMultiplier(periodUnit)) / getPeriodMultiplier(flashcrowdQuietUntilUnit)
                 : prev.fc_quiet_until,
@@ -149,6 +168,13 @@ const PatternModal = ({
         if (typeof window !== "undefined") {
             window.localStorage.setItem("p4tg.pattern.period.unit", newUnit);
         }
+    };
+
+    const handleInvertedChange = (checked: boolean) => {
+        set_tmp_data(prev => ({
+            ...prev,
+            inverted: checked,
+        }));
     };
 
     const handleSquareHighUntilUnitChange = (newUnit: string) => {
@@ -199,9 +225,20 @@ const PatternModal = ({
     const submit = () => {
         const period = Number(tmp_data.period) * getPeriodMultiplier(periodUnit);
         const sampleRate = Number(tmp_data.sample_rate);
+        const burstPackets = tmp_data.burst_packets;
 
         if (!Number.isFinite(period)) {
             setAlertMessage("Pattern period must be a valid number.");
+            return;
+        }
+        if (!Number.isSafeInteger(sampleRate) || sampleRate < 1 || sampleRate > 10000) {
+            setAlertMessage("Sample factor must be a whole number within [1, 10000].");
+            return;
+        }
+        if (burstPackets !== null && (!Number.isSafeInteger(burstPackets)
+            || burstPackets < MIN_PATTERN_BURST_PACKETS
+            || burstPackets > MAX_PATTERN_BURST_PACKETS)) {
+            setAlertMessage(`Meter burst must be a whole number within [${MIN_PATTERN_BURST_PACKETS}, ${MAX_PATTERN_BURST_PACKETS}] or left empty.`);
             return;
         }
 
@@ -234,6 +271,10 @@ const PatternModal = ({
                 setAlertMessage("Ramp until must be smaller than the period.");
                 return;
             }
+            if (!Number.isFinite(decayRate)) {
+                setAlertMessage("Decay rate must be a valid number.");
+                return;
+            }
             if (decayRate < 0) {
                 setAlertMessage("Decay rate must be zero or greater.");
                 return;
@@ -243,6 +284,7 @@ const PatternModal = ({
                 ...tmp_data,
                 period,
                 sample_rate: sampleRate,
+                inverted: null,
                 fc_quiet_until: quietUntil,
                 fc_ramp_until: rampUntil,
                 fc_decay_rate: decayRate,
@@ -252,17 +294,26 @@ const PatternModal = ({
         } else if (tmp_data.pattern_type === GenerationPattern.Square) {
             const squareLow = tmp_data.square_low ?? 0;
             const squareHighUntil = Number(tmp_data.square_high_until ?? 0) * getPeriodMultiplier(squareHighUntilUnit);
+            const squarePhaseName = (tmp_data.inverted ?? false) ? "Square low-until" : "Square high-until";
 
+            if (!Number.isFinite(squareLow)) {
+                setAlertMessage("Square low must be a valid number.");
+                return;
+            }
+            if (!Number.isFinite(squareHighUntil)) {
+                setAlertMessage(`${squarePhaseName} must be a valid number.`);
+                return;
+            }
             if (squareLow < 0 || squareLow > 1) {
                 setAlertMessage("Square low must be within [0, 1].");
                 return;
             }
             if (squareHighUntil < 0) {
-                setAlertMessage("Square high-until must be zero or greater.");
+                setAlertMessage(`${squarePhaseName} must be zero or greater.`);
                 return;
             }
             if (squareHighUntil > period) {
-                setAlertMessage("Square high-until must be smaller than or equal to the period.");
+                setAlertMessage(`${squarePhaseName} must be smaller than or equal to the period.`);
                 return;
             }
 
@@ -270,17 +321,31 @@ const PatternModal = ({
                 ...tmp_data,
                 period,
                 sample_rate: sampleRate,
+                inverted: tmp_data.inverted ?? false,
                 square_low: squareLow,
                 square_high_until: squareHighUntil,
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,
             });
+        } else if (tmp_data.pattern_type === GenerationPattern.Sawtooth) {
+            set_data({
+                ...tmp_data,
+                period,
+                sample_rate: sampleRate,
+                inverted: tmp_data.inverted ?? false,
+                fc_quiet_until: null,
+                fc_ramp_until: null,
+                fc_decay_rate: null,
+                square_low: null,
+                square_high_until: null,
+            });
         } else {
             set_data({
                 ...tmp_data,
                 period,
                 sample_rate: sampleRate,
+                inverted: null,
                 fc_quiet_until: null,
                 fc_ramp_until: null,
                 fc_decay_rate: null,
@@ -295,6 +360,12 @@ const PatternModal = ({
 
     const isFlashcrowd = tmp_data.pattern_type === GenerationPattern.Flashcrowd;
     const isSquare = tmp_data.pattern_type === GenerationPattern.Square;
+    const isSawtooth = tmp_data.pattern_type === GenerationPattern.Sawtooth;
+    const supportsInverted = isSquare || isSawtooth;
+    const squarePhaseLabel = (tmp_data.inverted ?? false) ? "Low until" : "High until";
+    const squarePhaseDescription = (tmp_data.inverted ?? false)
+        ? "Time within the period where the low phase ends."
+        : "Time within the period where the high phase ends.";
     const periodInBaseUnit = Number(tmp_data.period) * getPeriodMultiplier(periodUnit);
     const flashcrowdQuietUntilMax = periodInBaseUnit / getPeriodMultiplier(flashcrowdQuietUntilUnit);
     const flashcrowdRampUntilMax = periodInBaseUnit / getPeriodMultiplier(flashcrowdRampUntilUnit);
@@ -341,6 +412,8 @@ const PatternModal = ({
                             <option value={GenerationPattern.Triangle}>Triangle</option>
                             <option value={GenerationPattern.Sawtooth}>Sawtooth</option>
                             <option value={GenerationPattern.Flashcrowd}>Flashcrowd</option>
+                            {(expertMode || tmp_data.pattern_type === GenerationPattern.CatWave) &&
+                                <option value={GenerationPattern.CatWave}>Cat wave</option>}
                         </Form.Select>
                     </Col>
                 </Form.Group>
@@ -352,7 +425,7 @@ const PatternModal = ({
                             type="number"
                             min={0}
                             step={"any"}
-                            value={tmp_data.period}
+                            value={numberInputValue(tmp_data.period)}
                             onChange={(e) => handleNumberChange("period", e.target.value)}
                             required
                             disabled={disabled}
@@ -377,9 +450,9 @@ const PatternModal = ({
                         <Form.Control
                             type="number"
                             min={1}
-                            max={1000}
+                            max={10000}
                             step={1}
-                            value={tmp_data.sample_rate}
+                            value={numberInputValue(tmp_data.sample_rate)}
                             onChange={(e) => handleNumberChange("sample_rate", e.target.value)}
                             required
                             disabled={disabled}
@@ -387,6 +460,77 @@ const PatternModal = ({
                         <Form.Text className="text-muted">Samples per period.</Form.Text>
                     </Col>
                 </Form.Group>
+
+                <Form.Group as={Row} className="mb-3 align-items-center">
+                    <Form.Label column sm={3}>
+                        <span className="d-inline-flex align-items-center gap-1">
+                            Meter burst
+                            <InfoBox>
+                                <>
+                                    <h5>Meter burst</h5>
+                                    <p>
+                                        Sets the token-bucket capacity used to shape each pattern interval. The value is
+                                        specified in packets and converted to kbits using the packet size. It controls
+                                        how much traffic may pass as an initial burst during each interval.
+                                    </p>
+                                    <p>
+                                        Leave the field empty to calculate the capacity separately for every interval
+                                        from its target rate, duration, and the packet generator&apos;s hardware burst size.
+                                        It normally uses 100 packets, reduces that value when the initial burst would
+                                        mask more than 5% of a short interval, and never goes below the capacity needed
+                                        for the packet generator&apos;s hardware burst. It can exceed 100 only when that
+                                        hardware burst requires it. A configured value from 1 to 1000 overrides the
+                                        calculation and applies to every interval. If it is smaller than the packet
+                                        generator&apos;s hardware burst, the requested rate may not be reached. A large
+                                        value can delay or blur pattern transitions.
+                                    </p>
+                                </>
+                            </InfoBox>
+                        </span>
+                    </Form.Label>
+                    <Col sm={9}>
+                        <Form.Control
+                            type="number"
+                            min={MIN_PATTERN_BURST_PACKETS}
+                            max={MAX_PATTERN_BURST_PACKETS}
+                            step={1}
+                            placeholder="Calculated"
+                            value={tmp_data.burst_packets ?? ""}
+                            onChange={(e) => handleBurstPacketsChange(e.target.value)}
+                            disabled={disabled}
+                        />
+                        {tmp_data.burst_packets !== null && (
+                            <Form.Text className="text-warning">
+                                Manual override: the selected value may make the requested rate or pattern transitions unachievable. Leave empty for automatic calculation.
+                            </Form.Text>
+                        )}
+                    </Col>
+                </Form.Group>
+
+                {supportsInverted && (
+                    <Form.Group as={Row} className="mb-3 align-items-center">
+                        <Form.Label column sm={3}>
+                            <span className="d-inline-flex align-items-center gap-1">
+                                Inverted
+                                <InfoBox>
+                                    <>
+                                        <h5>Inverted</h5>
+                                        <p>For square waves, inverted means the period starts in the low phase and then switches to the high phase.</p>
+                                        <p>For sawtooth, inverted means the period starts high and then linearly decreases.</p>
+                                    </>
+                                </InfoBox>
+                            </span>
+                        </Form.Label>
+                        <Col sm={9}>
+                            <Form.Check
+                                type="switch"
+                                checked={tmp_data.inverted ?? false}
+                                onChange={(e) => handleInvertedChange(e.target.checked)}
+                                disabled={disabled}
+                            />
+                        </Col>
+                    </Form.Group>
+                )}
 
                 {isSquare && (
                     <Form.Group as={Row} className="mb-3 align-items-center">
@@ -397,7 +541,7 @@ const PatternModal = ({
                                 min={0}
                                 max={1}
                                 step={"any"}
-                                value={tmp_data.square_low ?? 0}
+                                value={numberInputValue(tmp_data.square_low)}
                                 onChange={(e) => handleNumberChange("square_low", e.target.value)}
                                 required
                                 disabled={disabled}
@@ -408,19 +552,19 @@ const PatternModal = ({
                 )}
                 {isSquare && (
                     <Form.Group as={Row} className="mb-3 align-items-start">
-                        <Form.Label column sm={3} className="pt-2">High until</Form.Label>
+                        <Form.Label column sm={3} className="pt-2">{squarePhaseLabel}</Form.Label>
                         <Col sm={6}>
                             <Form.Control
                                 type="number"
                                 min={0}
                                 max={(tmp_data.period * getPeriodMultiplier(periodUnit)) / getPeriodMultiplier(squareHighUntilUnit)}
                                 step={"any"}
-                                value={tmp_data.square_high_until ?? 0}
+                                value={numberInputValue(tmp_data.square_high_until)}
                                 onChange={(e) => handleNumberChange("square_high_until", e.target.value)}
                                 required
                                 disabled={disabled}
                             />
-                            <Form.Text className="text-muted">Time within the period where the high phase ends.</Form.Text>
+                            <Form.Text className="text-muted">{squarePhaseDescription}</Form.Text>
                         </Col>
                         <Col sm={3}>
                             <Form.Select
@@ -456,7 +600,7 @@ const PatternModal = ({
                                     min={0}
                                     max={flashcrowdQuietUntilMax}
                                     step={"any"}
-                                    value={tmp_data.fc_quiet_until ?? 0}
+                                    value={numberInputValue(tmp_data.fc_quiet_until)}
                                     onChange={(e) => handleNumberChange("fc_quiet_until", e.target.value)}
                                     required
                                     disabled={disabled}
@@ -484,7 +628,7 @@ const PatternModal = ({
                                     min={0}
                                     max={flashcrowdRampUntilMax}
                                     step={"any"}
-                                    value={tmp_data.fc_ramp_until ?? 0}
+                                    value={numberInputValue(tmp_data.fc_ramp_until)}
                                     onChange={(e) => handleNumberChange("fc_ramp_until", e.target.value)}
                                     required
                                     disabled={disabled}
@@ -511,7 +655,7 @@ const PatternModal = ({
                                     type="number"
                                     min={0}
                                     step={"any"}
-                                    value={tmp_data.fc_decay_rate ?? 0}
+                                    value={numberInputValue(tmp_data.fc_decay_rate)}
                                     onChange={(e) => handleNumberChange("fc_decay_rate", e.target.value)}
                                     required
                                     disabled={disabled}

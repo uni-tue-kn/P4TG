@@ -9,10 +9,15 @@ lazy_static! {
     pub static ref EXAMPLE_GET_1: TrafficGenData = TrafficGenData {
         name: None,
         mode: GenerationMode::Cbr,
+        rx_mapping_mode: RxMappingMode::PerStream,
         stream_settings: vec![StreamSetting {
             port: 1,
             channel: None,
             stream_id: 1,
+            rx_target: Some(RxTarget {
+                port: 2,
+                channel: 0,
+            }),
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string(),
@@ -51,8 +56,8 @@ lazy_static! {
             vxlan: false,
             gtpu: false,
             ip_version: Some(4),
-            n_packets: Some(5),
-            timeout: Some(88),
+            n_packets: Some(50),
+            timeout: Some(440),
             generation_accuracy: Some(100f32),
             n_pipes: Some(2),
             number_of_lse: None,
@@ -60,18 +65,14 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
-        port_tx_rx_mapping: HashMap::from([(
-            "1".to_string(),
-            HashMap::from([(
-                "0".to_string(),
-                RxTarget {
-                    port: 2,
-                    channel: 0
-                }
-            )])
-        )]),
+        port_tx_rx_mapping: HashMap::new(),
         duration: Some(10),
+        repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
@@ -81,18 +82,22 @@ lazy_static! {
                     max: 2000,
                     num_bins: 100,
                     percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                    stream_groups: None,
                 }
             )])
         )])),
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_GET_2: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Cbr,
+        rx_mapping_mode: RxMappingMode::PerTxPort,
         name: None,
         stream_settings: vec![StreamSetting {
             port: 1,
             channel: None,
             stream_id: 1,
+            rx_target: None,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string()
@@ -132,8 +137,8 @@ lazy_static! {
             vxlan: true,
             gtpu: false,
             ip_version: Some(4),
-            n_packets: Some(5),
-            timeout: Some(876),
+            n_packets: Some(50),
+            timeout: Some(4380),
             generation_accuracy: Some(99.908676f32),
             n_pipes: Some(2),
             number_of_lse: None,
@@ -141,6 +146,9 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -153,6 +161,8 @@ lazy_static! {
             )])
         )]),
         duration: None,
+        repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
@@ -162,10 +172,12 @@ lazy_static! {
                     max: 2000,
                     num_bins: 100,
                     percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                    stream_groups: None,
                 }
             )])
         )])),
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_POST_1_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -176,8 +188,8 @@ lazy_static! {
         traffic_rate: 100f32,
         burst: 100,
         batches: Some(true),
-        n_packets: Some(5),
-        timeout: Some(876),
+        n_packets: Some(50),
+        timeout: Some(4380),
         generation_accuracy: Some(99.908676f32),
         n_pipes: Some(2),
         vxlan: true,
@@ -187,14 +199,19 @@ lazy_static! {
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
         pattern: None,
+        detnet_cw: None,
+        detnet_seq_num_length: None,
+        mna_post_stack: None,
     }];
     pub static ref EXAMPLE_POST_1_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
         mode: GenerationMode::Cbr,
+        rx_mapping_mode: RxMappingMode::PerTxPort,
         stream_settings: vec![StreamSetting {
             port: 1,
             channel: None,
             stream_id: 1,
+            rx_target: None,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string()
@@ -243,6 +260,9 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -255,6 +275,8 @@ lazy_static! {
             )])
         )]),
         duration: None,
+        repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
@@ -264,18 +286,22 @@ lazy_static! {
                     max: 2000,
                     num_bins: 100,
                     percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                    stream_groups: None,
                 }
             )])
         )])),
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_POST_2_REQUEST: TrafficGenData = TrafficGenData {
         name: None,
         mode: GenerationMode::Cbr,
+        rx_mapping_mode: RxMappingMode::PerTxPort,
         stream_settings: vec![StreamSetting {
             port: 1,
             channel: None,
             stream_id: 1,
+            rx_target: None,
             ethernet: Ethernet {
                 eth_src: "32:D5:42:2A:F6:92".to_string(),
                 eth_dst: "81:E7:9D:E3:AD:47".to_string(),
@@ -323,6 +349,9 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -335,6 +364,8 @@ lazy_static! {
             )])
         )]),
         duration: None,
+        repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: Some(HashMap::from([(
             "2".to_string(),
             HashMap::from([(
@@ -344,10 +375,12 @@ lazy_static! {
                     max: 2000,
                     num_bins: 100,
                     percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                    stream_groups: None,
                 }
             )])
         )])),
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_POST_2_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -358,8 +391,8 @@ lazy_static! {
         traffic_rate: 80f32,
         burst: 100,
         batches: Some(true),
-        n_packets: Some(5),
-        timeout: Some(88),
+        n_packets: Some(50),
+        timeout: Some(440),
         generation_accuracy: Some(100f32),
         n_pipes: Some(2),
         vxlan: false,
@@ -369,9 +402,13 @@ lazy_static! {
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
         pattern: None,
+        detnet_cw: None,
+        detnet_seq_num_length: None,
+        mna_post_stack: None,
     }];
     pub static ref EXAMPLE_POST_3_REQUEST: TrafficGenData = TrafficGenData {
         mode: GenerationMode::Poisson,
+        rx_mapping_mode: RxMappingMode::PerTxPort,
         name: Some("Poisson".to_string()),
         port_tx_rx_mapping: HashMap::from([(
             "1".to_string(),
@@ -401,6 +438,7 @@ lazy_static! {
             mpls_stack: None,
             port: 1,
             stream_id: 1,
+            rx_target: None,
             vlan: None,
             vxlan: None,
             gtpu: None,
@@ -427,10 +465,16 @@ lazy_static! {
             srv6_ip_tunneling: None,
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
+            mna_post_stack: None,
         }],
         duration: None,
+        repetitions: 1,
+        drain_duration_secs: 0,
         rtt_histogram_config: None,
         iat_histogram_config: None,
+        rfc2544: None,
     };
     pub static ref EXAMPLE_POST_3_RESPONSE: Vec<Stream> = vec![Stream {
         stream_id: 1,
@@ -441,8 +485,8 @@ lazy_static! {
         traffic_rate: 30f32,
         burst: 100,
         batches: Some(true),
-        n_packets: Some(5),
-        timeout: Some(88),
+        n_packets: Some(50),
+        timeout: Some(1170),
         generation_accuracy: Some(100f32),
         n_pipes: Some(2),
         vxlan: false,
@@ -452,14 +496,19 @@ lazy_static! {
         srv6_ip_tunneling: None,
         unit: Some(GenerationUnit::Gbps),
         pattern: None,
+        detnet_cw: None,
+        detnet_seq_num_length: None,
+        mna_post_stack: None,
     }];
     pub static ref EXAMPLE_POST_4_REQUEST: Vec<TrafficGenData> = vec![
         TrafficGenData {
             mode: GenerationMode::Cbr,
+            rx_mapping_mode: RxMappingMode::PerTxPort,
             stream_settings: vec![StreamSetting {
                 port: 1,
                 channel: None,
                 stream_id: 1,
+                rx_target: None,
                 ethernet: Ethernet {
                     eth_src: "32:D5:42:2A:F6:92".to_string(),
                     eth_dst: "81:E7:9D:E3:AD:47".to_string()
@@ -511,6 +560,9 @@ lazy_static! {
                 srv6_ip_tunneling: Some(true),
                 unit: Some(GenerationUnit::Gbps),
                 pattern: None,
+                detnet_cw: None,
+                detnet_seq_num_length: None,
+                mna_post_stack: None,
             }],
             port_tx_rx_mapping: HashMap::from([(
                 "1".to_string(),
@@ -523,6 +575,8 @@ lazy_static! {
                 )])
             )]),
             duration: Some(10),
+            repetitions: 1,
+            drain_duration_secs: 0,
             rtt_histogram_config: Some(HashMap::from([(
                 "2".to_string(),
                 HashMap::from([(
@@ -532,18 +586,22 @@ lazy_static! {
                         max: 2000,
                         num_bins: 100,
                         percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                        stream_groups: None,
                     }
                 )])
             )])),
             iat_histogram_config: None,
+            rfc2544: None,
             name: Some("Test 1".to_string())
         },
         TrafficGenData {
             mode: GenerationMode::Cbr,
+            rx_mapping_mode: RxMappingMode::PerTxPort,
             stream_settings: vec![StreamSetting {
                 port: 1,
                 channel: None,
                 stream_id: 1,
+                rx_target: None,
                 ethernet: Ethernet {
                     eth_src: "32:D5:42:2A:F6:92".to_string(),
                     eth_dst: "81:E7:9D:E3:AD:47".to_string()
@@ -595,6 +653,9 @@ lazy_static! {
                 srv6_ip_tunneling: Some(true),
                 unit: Some(GenerationUnit::Gbps),
                 pattern: None,
+                detnet_cw: None,
+                detnet_seq_num_length: None,
+                mna_post_stack: None,
             }],
             port_tx_rx_mapping: HashMap::from([(
                 "1".to_string(),
@@ -607,6 +668,8 @@ lazy_static! {
                 )])
             )]),
             duration: Some(15),
+            repetitions: 1,
+            drain_duration_secs: 0,
             rtt_histogram_config: Some(HashMap::from([(
                 "2".to_string(),
                 HashMap::from([(
@@ -616,10 +679,12 @@ lazy_static! {
                         max: 2000,
                         num_bins: 100,
                         percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+                        stream_groups: None,
                     }
                 )])
             )])),
             iat_histogram_config: None,
+            rfc2544: None,
             name: Some("Another test".to_string())
         }
     ];
@@ -633,8 +698,8 @@ lazy_static! {
             traffic_rate: 100f32,
             burst: 100,
             batches: Some(true),
-            n_packets: Some(1),
-            timeout: Some(360),
+            n_packets: Some(20),
+            timeout: Some(1800),
             generation_accuracy: Some(99.91111f32),
             n_pipes: Some(4),
             vxlan: false,
@@ -644,6 +709,9 @@ lazy_static! {
             srv6_ip_tunneling: Some(true),
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
+            mna_post_stack: None,
         },
         Stream {
             stream_id: 1,
@@ -654,8 +722,8 @@ lazy_static! {
             traffic_rate: 100f32,
             burst: 100,
             batches: Some(true),
-            n_packets: Some(1),
-            timeout: Some(360),
+            n_packets: Some(20),
+            timeout: Some(1800),
             generation_accuracy: Some(99.91111f32),
             n_pipes: Some(4),
             vxlan: false,
@@ -665,6 +733,9 @@ lazy_static! {
             srv6_ip_tunneling: Some(true),
             unit: Some(GenerationUnit::Gbps),
             pattern: None,
+            detnet_cw: None,
+            detnet_seq_num_length: None,
+            mna_post_stack: None,
         }
     ];
 }

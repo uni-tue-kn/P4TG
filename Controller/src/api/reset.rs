@@ -38,6 +38,7 @@ use std::sync::Arc;
     ))
 )]
 pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
+    let _lifecycle = state.traffic_lifecycle.lock().await;
     let switch = &state.switch;
     let frame_size = state.frame_size_monitor.lock().await.on_reset(switch).await;
     let frame_type = state.frame_type_monitor.lock().await.on_reset(switch).await;
@@ -54,6 +55,7 @@ pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
     stats_lock.clear();
     let mut stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
     stats_lock.clear();
+    *state.rfc2544_results.lock().await = None;
 
     if frame_size.is_ok() && frame_type.is_ok() && rate.is_ok() && rtt_histogram.is_ok() {
         (

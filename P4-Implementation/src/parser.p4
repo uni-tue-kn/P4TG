@@ -239,7 +239,7 @@ parser SwitchIngressParser(
     state parse_udp {
         pkt.extract(hdr.udp);
         transition select(hdr.udp.dst_port) {
-            50083: parse_path;
+            UDP_P4TG_PORT: parse_path;
             default: accept;
         }
     }
@@ -272,8 +272,30 @@ parser SwitchIngressParser(
     state check_ip_version_mpls {
         bit<4> first_nibble = pkt.lookahead<bit<4>>();
         transition select (first_nibble) {
+            0x0: parse_dCW;
             0x4: parse_path;
             0x6: parse_path_v6;
+            // P4TG uses a non-standard pfn=0x3 for PSMHT so it can never collide with d-CW
+            // (version=0). PSD bytes are left as payload: the parser budget
+            // would prune parse_path after a post-stack chain anyway, so RTT /
+            // packet-loss measurement is unavailable when PSD is present on RX (works
+            // again if the DuT pops the MPLS stack before echoing the packet back).
+            default: accept;
+        }
+    }
+
+    state parse_dCW {
+        pkt.extract(hdr.dCW);
+        transition check_ip_version_dCW;
+    }
+
+    state check_ip_version_dCW {
+        bit<4> first_nibble = pkt.lookahead<bit<4>>();
+        transition select (first_nibble) {
+            0x4: parse_path;
+        #if __TARGET_TOFINO__ == 2
+            0x6: parse_path_v6;
+        #endif
             default: accept;
         }
     }
@@ -312,6 +334,7 @@ control SwitchIngressDeparser(
         pkt.emit(hdr.gtpu);
         pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
+        pkt.emit(hdr.dCW);        
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.inner_ipv4);
@@ -463,8 +486,29 @@ parser SwitchEgressParser(
     state check_ip_version_mpls {
         bit<4> first_nibble = pkt.lookahead<bit<4>>();
         transition select (first_nibble) {
+            0x0: parse_dCW;
             0x4: parse_path;
             0x6: parse_path_v6;
+            // PSD detection: see ingress parser comment. PSD bytes are left as payload
+            // — egress can't reach hdr.path (parser budget) and can't write into
+            // mpls_stack[] post-stack indices (never made valid here), so post-stack
+            // content passes through unmodified from the packet generator template.            
+            default: accept;
+        }
+    }
+
+    state parse_dCW {
+        pkt.extract(hdr.dCW);
+        transition check_ip_version_dCW;
+    }
+
+    state check_ip_version_dCW {
+        bit<4> first_nibble = pkt.lookahead<bit<4>>();
+        transition select (first_nibble) {
+            0x4: parse_path;
+        #if __TARGET_TOFINO__ == 2
+            0x6: parse_path_v6;
+        #endif
             default: accept;
         }
     }
@@ -661,6 +705,7 @@ control SwitchEgressDeparser(
         pkt.emit(hdr.gtpu);
         pkt.emit(hdr.inner_ethernet);
         pkt.emit(hdr.mpls_stack);
+        pkt.emit(hdr.dCW);
         pkt.emit(hdr.vlan);
         pkt.emit(hdr.q_in_q);
         pkt.emit(hdr.inner_ipv4);

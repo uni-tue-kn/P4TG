@@ -189,6 +189,10 @@ pub struct TimeStatistics {
     pub(crate) tx_rate_l1: HashMap<u32, BTreeMap<u32, f64>>,
     /// L1 receive rates per test and port
     pub(crate) rx_rate_l1: HashMap<u32, BTreeMap<u32, f64>>,
+    /// L2 send rates per port, application ID, and time
+    pub(crate) app_tx_l2: HashMap<u32, HashMap<u32, BTreeMap<u32, f64>>>,
+    /// L2 receive rates per port, application ID, and time
+    pub(crate) app_rx_l2: HashMap<u32, HashMap<u32, BTreeMap<u32, f64>>>,
     /// Number of lost packets per test and port
     pub(crate) packet_loss: HashMap<u32, BTreeMap<u32, u64>>,
     /// Number of out-of-order packets per test and port
@@ -205,11 +209,28 @@ impl TimeStatistics {
         TimeStatistics {
             tx_rate_l1: Default::default(),
             rx_rate_l1: Default::default(),
+            app_tx_l2: Default::default(),
+            app_rx_l2: Default::default(),
             packet_loss: Default::default(),
             out_of_order: Default::default(),
             rtt: Default::default(),
             name: None,
         }
+    }
+
+    /// Drops every recorded sample of every series.
+    ///
+    /// The series are keyed by switch-clock delta against the epoch of the
+    /// current test, so keys of different tests are not comparable and a
+    /// leftover series must never survive into the next one.
+    pub fn clear_series(&mut self) {
+        self.tx_rate_l1.clear();
+        self.rx_rate_l1.clear();
+        self.app_tx_l2.clear();
+        self.app_rx_l2.clear();
+        self.packet_loss.clear();
+        self.out_of_order.clear();
+        self.rtt.clear();
     }
 }
 
@@ -224,22 +245,58 @@ pub struct HistogramConfig {
     /// Percentiles to calculate from histogram data. Float values between 0 and 1.0
     #[serde(default)]
     pub percentiles: Option<Vec<f64>>,
+    /// Optional stream grouping for this histogram. Missing or empty groups
+    /// retain the legacy wildcard match over every application ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_groups: Option<HistogramStreamGroups>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema, Default, PartialEq, Eq)]
+pub struct HistogramStreamGroups {
+    /// Application IDs collected into one logical aggregate. The controller
+    /// uses the minimum number of ternary masks required to cover this set.
+    #[serde(default)]
+    pub aggregate: Vec<u8>,
+    /// Application IDs collected with exact matches and exposed separately.
+    #[serde(default)]
+    pub separate: Vec<u8>,
+}
+
+impl HistogramStreamGroups {
+    pub fn is_empty(&self) -> bool {
+        self.aggregate.is_empty() && self.separate.is_empty()
+    }
 }
 
 impl HistogramConfig {
     pub fn get_bin_width(&self) -> u32 {
         (self.max - self.min) / self.num_bins
     }
+
+    pub fn default_rtt() -> Self {
+        HistogramConfig {
+            min: 1024,
+            max: 2048,
+            num_bins: 16,
+            percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+            stream_groups: None,
+        }
+    }
+
+    pub fn default_iat() -> Self {
+        HistogramConfig {
+            min: 0,
+            max: 1024,
+            num_bins: 16,
+            percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
+            stream_groups: None,
+        }
+    }
 }
 
 impl Default for HistogramConfig {
     fn default() -> Self {
-        HistogramConfig {
-            min: 1500,
-            max: 2500,
-            num_bins: 10,
-            percentiles: Some(vec![0.25, 0.5, 0.75, 0.9]),
-        }
+        Self::default_rtt()
     }
 }
 
@@ -267,25 +324,26 @@ pub struct HistogramBinEntry {
     pub probability: f64,
 }
 
-#[derive(Serialize, Debug, Clone, ToSchema)]
+#[derive(Serialize, Debug, Clone, ToSchema, Default)]
 pub struct Histogram {
     pub config: HistogramConfig,
     pub data: HistogramPacketPath,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub breakdown: Option<HistogramBreakdown>,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema, Default)]
+pub struct HistogramBreakdown {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aggregate: Option<HistogramPacketPath>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub per_stream: HashMap<u8, HistogramPacketPath>,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema, Default)]
 pub struct HistogramPacketPath {
     pub tx: HistogramData,
     pub rx: HistogramData,
-}
-
-impl Histogram {
-    pub fn default() -> Histogram {
-        Histogram {
-            data: Default::default(),
-            config: Default::default(),
-        }
-    }
 }
 
 #[derive(Serialize, ToSchema, Clone)]
@@ -310,6 +368,8 @@ pub struct Statistics {
     /// L2 receive rate per stream and port.
     /// The number corresponds to the app_id in the Stream description.
     pub(crate) app_rx_l2: HashMap<u32, HashMap<u32, f64>>,
+    /// Number of L2 bytes counted per generated frame, keyed by application ID.
+    pub(crate) app_l2_frame_sizes: HashMap<u32, u32>,
     /// Statistics what kind of packets have been received per port
     pub(crate) frame_type_data: HashMap<u32, TypeCount>,
     /// Statistics of the inter arrival times per port.

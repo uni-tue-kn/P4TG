@@ -25,6 +25,14 @@ use include_dir::{include_dir, Dir};
 
 static GUI_BUILD_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/gui_build");
 
+fn cache_control(path: &str) -> &'static str {
+    if path.starts_with("assets/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache, must-revalidate"
+    }
+}
+
 pub async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
     let mut path = path.trim_start_matches('/');
 
@@ -45,6 +53,7 @@ pub async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
                 header::CONTENT_TYPE,
                 HeaderValue::from_str(mime_type.as_ref()).unwrap(),
             )
+            .header(header::CACHE_CONTROL, cache_control(path))
             .body(Body::from(file.contents()))
             .unwrap(),
     }
@@ -59,6 +68,7 @@ pub async fn serve_index() -> impl IntoResponse {
         Some(file) => Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "text/html")
+            .header(header::CACHE_CONTROL, "no-cache, must-revalidate")
             .body(Body::from(file.contents()))
             .unwrap(),
     }

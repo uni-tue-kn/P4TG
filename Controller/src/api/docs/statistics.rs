@@ -1536,6 +1536,9 @@ lazy_static! {
             "176": 0,
             "60": 0
         },
+        "app_l2_frame_sizes": {
+            "1": 60
+        },
         "elapsed_time": 0
     })
     .to_string();
@@ -1543,6 +1546,12 @@ lazy_static! {
 
 lazy_static! {
     pub static ref EXAMPLE_GET_2: String = json!({
+            "app_tx_l2": {
+              "1": { "0": { "1": { "0": 0, "1": 56000000000.0 } } }
+            },
+            "app_rx_l2": {
+              "2": { "0": { "1": { "0": 0, "1": 56000000000.0 } } }
+            },
             "tx_rate_l1": {
               "136": {
                 "0": 100137345491.58797,

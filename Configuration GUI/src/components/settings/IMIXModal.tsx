@@ -83,7 +83,7 @@ const IMIXModal = ({
                             }))}
                             style={{ maxWidth: "110px" }}
                         >
-                            <option value={GenerationUnit.Gbps}>Gbps</option>
+                            <option value={GenerationUnit.Gbps}>Gbit/s</option>
                             <option value={GenerationUnit.Mpps}>Mpps</option>
                         </Form.Select>
                     </InputGroup>

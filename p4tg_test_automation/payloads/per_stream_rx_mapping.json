@@ -1,0 +1,78 @@
+{
+  "name": "Per-stream RX mapping",
+  "mode": 1,
+  "rx_mapping_mode": "per_stream",
+  "stream_settings": [
+    {
+      "port": 1,
+      "channel": 0,
+      "stream_id": 1,
+      "rx_target": { "port": 2, "channel": 0 },
+      "ethernet": {
+        "eth_src": "00:aa:bb:cc:dd:01",
+        "eth_dst": "00:aa:bb:cc:dd:02"
+      },
+      "ip": {
+        "ip_src": "192.0.2.1",
+        "ip_dst": "198.51.100.1",
+        "ip_tos": 0,
+        "ip_src_mask": "0.0.0.0",
+        "ip_dst_mask": "0.0.0.0"
+      },
+      "active": true
+    },
+    {
+      "port": 1,
+      "channel": 0,
+      "stream_id": 2,
+      "rx_target": { "port": 3, "channel": 0 },
+      "ethernet": {
+        "eth_src": "00:aa:bb:cc:dd:01",
+        "eth_dst": "00:aa:bb:cc:dd:03"
+      },
+      "ip": {
+        "ip_src": "192.0.2.2",
+        "ip_dst": "203.0.113.1",
+        "ip_tos": 0,
+        "ip_src_mask": "0.0.0.0",
+        "ip_dst_mask": "0.0.0.0"
+      },
+      "active": true
+    }
+  ],
+  "streams": [
+    {
+      "stream_id": 1,
+      "app_id": 1,
+      "frame_size": 64,
+      "encapsulation": 0,
+      "traffic_rate": 10,
+      "burst": 100,
+      "batches": true,
+      "vxlan": false,
+      "gtpu": false,
+      "ip_version": 4,
+      "unit": 0,
+      "pattern": null
+    },
+    {
+      "stream_id": 2,
+      "app_id": 2,
+      "frame_size": 128,
+      "encapsulation": 0,
+      "traffic_rate": 10,
+      "burst": 100,
+      "batches": true,
+      "vxlan": false,
+      "gtpu": false,
+      "ip_version": 4,
+      "unit": 0,
+      "pattern": null
+    }
+  ],
+  "port_tx_rx_mapping": {},
+  "duration": 15,
+  "repetitions": 1,
+  "rtt_histogram_config": {},
+  "iat_histogram_config": {}
+}

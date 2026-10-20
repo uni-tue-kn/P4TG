@@ -18,12 +18,15 @@
  */
 
 use crate::api::docs;
+use crate::core::{unix_secs, DIGEST_TIMEOUT_SECS};
 use crate::AppState;
-use axum::extract::State;
-use axum::http::StatusCode;
+use axum::extract::{ConnectInfo, State};
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::Serialize;
+use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -39,6 +42,13 @@ pub struct Online {
     pub(crate) version: String,
     pub(crate) asic: Asic,
     pub(crate) loopback: bool,
+    /// False if no digest arrived from the switch recently. In that case the
+    /// digest pipeline is dead and all rate/loss/RTT statistics are frozen;
+    /// the controller needs a restart.
+    pub(crate) digests_alive: bool,
+    /// Number of other GUI clients that polled this endpoint recently, i.e.
+    /// concurrent web sessions (excluding the requester's own session).
+    pub(crate) connected_clients: usize,
 }
 
 /// Online endpoint
@@ -53,7 +63,25 @@ pub struct Online {
     example = json!(*docs::online::EXAMPLE_GET_1)
     ))
 )]
-pub async fn online(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Online>) {
+pub async fn online(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> (StatusCode, Json<Online>) {
+    // Per-tab id sent by the GUI; clients without one (e.g. curl) fall back
+    // to their IP as session id. Truncated so arbitrarily large header
+    // values cannot bloat the tracker.
+    let fallback = addr.ip().to_string();
+    let session_id = headers
+        .get("x-session-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or(fallback.as_str());
+    let session_id = &session_id[..session_id.len().min(64)];
+    let connected_clients = state
+        .connected_clients
+        .track_and_count_others(session_id)
+        .await;
+
     (
         StatusCode::OK,
         Json(Online {
@@ -65,6 +93,9 @@ pub async fn online(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Onl
                 Asic::Tofino1
             },
             loopback: state.loopback_mode,
+            digests_alive: unix_secs().saturating_sub(state.last_digest.load(Ordering::Relaxed))
+                <= DIGEST_TIMEOUT_SECS,
+            connected_clients,
         }),
     )
 }

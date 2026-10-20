@@ -18,7 +18,7 @@
 #
 #
 # p4tg.sh — manage kernel module, data plane, and control plane
-# Usage: ./p4tg.sh [install|update|start|stop|restart|status][--nightly]
+# Usage: ./p4tg.sh [--nightly|--stable] [install|update|start|stop|restart|status]
 #
 # Exit codes:
 #   0  : success
@@ -31,24 +31,45 @@
 
 set -Eeuo pipefail
 
-# sudo's secure_path overrides PATH even with -E; ensure SDE paths are included.
-if [[ -n "${SDE_INSTALL:-}" ]]; then
-  PATH="$SDE_INSTALL/bin:$PATH"
-fi
-if [[ -n "${SDE:-}" ]]; then
-  PATH="$SDE:$PATH"
-fi
-export PATH
+########################################
+# Required user configuration          #
+########################################
+# P4TG itself needs only these two environment variables. They must point to
+# an installed Intel/Barefoot SDE before running install, update, start, or
+# restart. Example:
+#
+#   export SDE=/opt/bf-sde-9.13.4
+#   export SDE_INSTALL="$SDE/install"
+#   sudo -E ./p4tg.sh install
+#
+# P4TG_DIR normally does NOT need configuration: it is derived from this
+# script's real location, including when invoked through /usr/local/bin/p4tg.sh.
+# Review Controller/config.json separately to select the TG ports for the host.
 
-###########################
-# Configuration (edit me) #
-###########################
+add_sde_paths_to_path() {
+  # sudo's secure_path overrides PATH even with -E; restore the SDE paths.
+  if [[ -n "${SDE_INSTALL:-}" && ":$PATH:" != *":$SDE_INSTALL/bin:"* ]]; then
+    PATH="$SDE_INSTALL/bin:$PATH"
+  fi
+  if [[ -n "${SDE:-}" && ":$PATH:" != *":$SDE:"* ]]; then
+    PATH="$SDE:$PATH"
+  fi
+  export PATH
+}
+
+add_sde_paths_to_path
+
+########################################
+# Derived paths and optional overrides #
+########################################
 # Resolve default repo root from the script location (handles symlinked invocations).
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
 if command -v readlink >/dev/null 2>&1; then
   SCRIPT_SOURCE="$(readlink -f "$SCRIPT_SOURCE" 2>/dev/null || echo "$SCRIPT_SOURCE")"
 fi
-SCRIPT_DIR="$(cd -P -- "$(dirname -- "$SCRIPT_SOURCE")" 2>/dev/null && pwd || pwd)"
+if ! SCRIPT_DIR="$(cd -P -- "$(dirname -- "$SCRIPT_SOURCE")" 2>/dev/null && pwd)"; then
+  SCRIPT_DIR="$(pwd)"
+fi
 
 P4TG_DIR="${P4TG_DIR:-$SCRIPT_DIR}"                         # root of repository checkout
 if [[ -d "$P4TG_DIR" ]]; then
@@ -67,7 +88,13 @@ TARGET="unknown"
 PROGRAM_NAME="${PROGRAM_NAME:-traffic_gen}"                 # passed to run_switchd.sh via -p
 CONTROLLER_CONTAINER="${CONTROLLER_CONTAINER:-p4tg-controller}"
 READY_PORT="${READY_PORT:-9999}"                            # port bf_switchd listens on when ready
-NIGHTLY_MODE=false                                          # whether to use nightly branch/images
+P4TG_ENV_FILE="${P4TG_ENV_FILE:-/etc/default/p4tg}"
+COMMAND_LINK="${COMMAND_LINK:-/usr/local/bin/p4tg.sh}"
+SERVICE_DEST="${SERVICE_DEST:-/etc/systemd/system/p4tg.service}"
+P4TG_CHANNEL="${P4TG_CHANNEL:-}"                            # latest or nightly; CLI flags override it
+P4TG_INTERNAL_REEXEC="${P4TG_INTERNAL_REEXEC:-0}"
+P4TG_WAS_RUNNING="${P4TG_WAS_RUNNING:-0}"
+COMPILE_TARGET=""
 
 #################
 # Pretty output #
@@ -109,25 +136,85 @@ require_cmd() {
   fi
 }
 
+load_persisted_configuration() {
+  if [[ ! -r "$P4TG_ENV_FILE" ]]; then
+    return 0
+  fi
+
+  local key value
+  while IFS='=' read -r key value; do
+    value="${value%\"}"
+    value="${value#\"}"
+    case "$key" in
+      SDE) [[ -z "${SDE:-}" ]] && SDE="$value" ;;
+      SDE_INSTALL) [[ -z "${SDE_INSTALL:-}" ]] && SDE_INSTALL="$value" ;;
+      P4TG_CHANNEL) [[ -z "$P4TG_CHANNEL" ]] && P4TG_CHANNEL="$value" ;;
+    esac
+  done < "$P4TG_ENV_FILE"
+  add_sde_paths_to_path
+}
+
+validate_channel() {
+  case "$P4TG_CHANNEL" in
+    latest|nightly) return 0 ;;
+    *)
+      error "Invalid P4TG channel '$P4TG_CHANNEL' (expected 'latest' or 'nightly')."
+      return 1
+      ;;
+  esac
+}
+
+run_privileged() {
+  if (( EUID == 0 )); then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    error "Root privileges are required to run: $*"
+    return 1
+  fi
+}
+
+persist_configuration() {
+  local channel_dir
+  channel_dir="$(dirname -- "$P4TG_ENV_FILE")"
+
+  if ! run_privileged mkdir -p "$channel_dir"; then
+    error "Failed to create channel configuration directory: $channel_dir"
+    return 1
+  fi
+  if ! printf 'SDE="%s"\nSDE_INSTALL="%s"\nP4TG_CHANNEL="%s"\n' \
+      "$SDE" "$SDE_INSTALL" "$P4TG_CHANNEL" | run_privileged tee "$P4TG_ENV_FILE" >/dev/null; then
+    error "Failed to persist P4TG configuration in $P4TG_ENV_FILE"
+    return 1
+  fi
+  info "Persisted SDE paths and P4TG channel '$P4TG_CHANNEL' in $P4TG_ENV_FILE."
+}
+
 ensure_log_dir() {
   if [[ ! -d "$LOG_DIR" ]]; then
-    sudo mkdir -p "$LOG_DIR" 2>/dev/null || mkdir -p "$LOG_DIR" || {
+    run_privileged mkdir -p "$LOG_DIR" || {
       error "Unable to create log directory: $LOG_DIR (try running with sudo)."
-      exit 1
+      return 1
     }
   fi
-  touch "$SWITCHD_LOG" 2>/dev/null || true
+  if ! touch "$SWITCHD_LOG" 2>/dev/null; then
+    error "Log file is not writable: $SWITCHD_LOG (try running with sudo)."
+    return 1
+  fi
 }
 
 ensure_runtime_dir() {
   local dir="$RUNTIME_DIR"
-  if [[ ! -d "$dir" ]]; then
-    if ! (sudo mkdir -p "$dir" 2>/dev/null || mkdir -p "$dir"); then
-      warn "Cannot create $dir; using fallback $FALLBACK_RUNTIME_DIR"
-      RUNTIME_DIR="$FALLBACK_RUNTIME_DIR"
-      DP_PIDFILE="$RUNTIME_DIR/dp.pid"
-      mkdir -p "$RUNTIME_DIR"
-    fi
+  if [[ ! -d "$dir" ]] && ! run_privileged mkdir -p "$dir"; then
+    warn "Cannot create $dir; using fallback $FALLBACK_RUNTIME_DIR"
+    RUNTIME_DIR="$FALLBACK_RUNTIME_DIR"
+    DP_PIDFILE="$RUNTIME_DIR/dp.pid"
+    mkdir -p "$RUNTIME_DIR"
+  fi
+  if [[ ! -w "$RUNTIME_DIR" ]]; then
+    error "Runtime directory is not writable: $RUNTIME_DIR (try running with sudo)."
+    return 1
   fi
 }
 
@@ -141,7 +228,7 @@ backup_platform_conf() {
 
   local dest="$bak"
   if [[ -e "$bak" ]]; then
-    dest="${bak}.$(date +%s)"
+    dest="${bak}.$(date +%Y%m%d%H%M%S).$$"
     warn "$bak already exists; backing up to $dest instead."
   fi
 
@@ -150,10 +237,8 @@ backup_platform_conf() {
     return 0
   fi
 
-  if command -v sudo >/dev/null 2>&1; then
-    if sudo mv "$conf" "$dest"; then
-      return 0
-    fi
+  if run_privileged mv "$conf" "$dest"; then
+    return 0
   fi
 
   error "Failed to move $conf to $dest (insufficient permissions?)."
@@ -178,11 +263,9 @@ run_xt_cfgen_fallback() {
   fi
 
   info "Attempting fallback loader for '$target_mod' via: $script"
-  set +e
   # xt-cfgen.sh expects sibling scripts (e.g. xt-setup.sh) to be in PATH
-  PATH="$SDE_INSTALL/bin:$PATH" "$script"
-  local rc=$?
-  set -e
+  local rc=0
+  PATH="$SDE_INSTALL/bin:$PATH" "$script" || rc=$?
 
   if [[ $rc -eq 0 ]] && is_mod_loaded "$target_mod"; then
     info "Fallback xt-cfgen.sh loaded '$target_mod' successfully."
@@ -214,6 +297,11 @@ load_kernel_module_if_needed() {
     local kmod="${modules[$idx]}"
     local loader="${loaders[$idx]}"
 
+    if is_mod_loaded "$kmod"; then
+      info "Kernel module '$kmod' already loaded. Skipping load step."
+      continue
+    fi
+
     if [[ "$kmod" == "bf_fpga" && ! -x "$loader" ]]; then
       warn "Loader for '$kmod' not found at $loader; trying xt-cfgen.sh fallback."
       if run_xt_cfgen_fallback "$kmod"; then
@@ -228,26 +316,26 @@ load_kernel_module_if_needed() {
       return 2
     fi
 
-    require_exe "$loader"
-
-    if is_mod_loaded "$kmod"; then
-      info "Kernel module '$kmod' already loaded. Skipping load step."
-      continue
+    if [[ ! -x "$loader" ]]; then
+      error "Required module loader not found or not executable: $loader"
+      return 2
     fi
 
     info "Loading kernel module via: $loader $SDE_INSTALL"
-    set +e
-    "$loader" "$SDE_INSTALL"
-    local rc=$?
-    set -e
+    local rc=0
+    "$loader" "$SDE_INSTALL" || rc=$?
 
-    if [[ $rc -eq 0 ]]; then
-      info "Kernel module '$kmod' loaded successfully."
+    if is_mod_loaded "$kmod"; then
+      if [[ $rc -eq 0 ]]; then
+        info "Kernel module '$kmod' loaded successfully."
+      else
+        warn "Loader returned $rc, but module '$kmod' appears loaded. Continuing."
+      fi
       continue
     fi
 
     if [[ "$kmod" == "bf_fpga" ]]; then
-      warn "Primary loader for '$kmod' failed (exit $rc); attempting xt-cfgen.sh fallback."
+      warn "Primary loader for '$kmod' did not load the module (exit $rc); attempting xt-cfgen.sh fallback."
       if run_xt_cfgen_fallback "$kmod"; then
         continue
       fi
@@ -258,11 +346,11 @@ load_kernel_module_if_needed() {
       fi
     fi
 
-    if is_mod_loaded "$kmod"; then
-      warn "Loader returned $rc, but module '$kmod' appears loaded. Continuing."
-      continue
+    if [[ $rc -eq 0 ]]; then
+      error "Loader returned success, but kernel module '$kmod' is not loaded."
+    else
+      error "Failed to load kernel module '$kmod' (exit $rc)."
     fi
-    error "Failed to load kernel module '$kmod' (exit $rc)."
     return 2
   done
 
@@ -276,8 +364,8 @@ start_dataplane_background() {
   local runner="$SDE/run_switchd.sh"
   require_exe "$runner"
   detect_tofino_generation
-  ensure_log_dir
-  ensure_runtime_dir
+  ensure_log_dir || return 1
+  ensure_runtime_dir || return 1
 
   if dp_is_running; then
     info "Data plane already running (PID $(cat "$DP_PIDFILE" 2>/dev/null || echo '?'))."
@@ -307,18 +395,20 @@ start_dataplane_background() {
 
   info "Starting data plane in background: $runner --arch $arch -p $PROGRAM_NAME"
   if command -v stdbuf >/dev/null 2>&1; then
-    if "${runner_wrapper[@]}" stdbuf -oL -eL "${runner_cmd[@]}" </dev/null >>"$SWITCHD_LOG" 2>&1 & then :; else
-      warn "Direct write to $SWITCHD_LOG failed; attempting via sudo tee."
-      "${runner_wrapper[@]}" stdbuf -oL -eL "${runner_cmd[@]}" </dev/null 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
-    fi
+    "${runner_wrapper[@]}" stdbuf -oL -eL "${runner_cmd[@]}" </dev/null >>"$SWITCHD_LOG" 2>&1 &
   else
-    if "${runner_wrapper[@]}" "${runner_cmd[@]}" </dev/null >>"$SWITCHD_LOG" 2>&1 & then :; else
-      warn "Direct write to $SWITCHD_LOG failed; attempting via sudo tee."
-      "${runner_wrapper[@]}" "${runner_cmd[@]}" </dev/null 2>&1 | sudo tee -a "$SWITCHD_LOG" >/dev/null &
-    fi
+    "${runner_wrapper[@]}" "${runner_cmd[@]}" </dev/null >>"$SWITCHD_LOG" 2>&1 &
   fi
 
   local dp_pid=$!
+  sleep 0.2
+  if ! ps -p "$dp_pid" >/dev/null 2>&1 && ! dp_is_running; then
+    local rc=0
+    wait "$dp_pid" || rc=$?
+    error "Data plane process exited immediately (exit $rc)."
+    tail -n 20 "$SWITCHD_LOG" 2>/dev/null || true
+    return 3
+  fi
   echo "$dp_pid" > "$DP_PIDFILE"
   disown "$dp_pid" || true
   info "Data plane started (PID: $dp_pid); logging to $SWITCHD_LOG"
@@ -473,42 +563,70 @@ controller_is_running() {
   [[ "$(docker inspect -f '{{.State.Running}}' "$CONTROLLER_CONTAINER" 2>/dev/null || echo false)" == "true" ]]
 }
 
-start_controller_container() {
-  ensure_docker_ready || return 6
+controller_compose() {
   local controller_dir="$P4TG_DIR/Controller"
   if [[ ! -d "$controller_dir" ]]; then
     error "Controller directory not found: $controller_dir"
     return 5
   fi
-  local compose_cmd="docker compose up -d"
-  if [[ "$NIGHTLY_MODE" == "true" ]]; then
-    compose_cmd="TAG=nightly docker compose up -d"
+
+  (
+    cd "$controller_dir"
+    env \
+      TAG="$P4TG_CHANNEL" \
+      P4TG_CONFIG_PATH="$controller_dir/config.json" \
+      docker compose "$@"
+  )
+}
+
+expected_controller_image() {
+  local images
+  images="$(controller_compose config --images)" || return 5
+  printf '%s\n' "$images" | sed -n '1p'
+}
+
+verify_controller_container() {
+  local expected_image actual_image
+  expected_image="$(expected_controller_image)" || return 5
+  actual_image="$(docker inspect -f '{{.Config.Image}}' "$CONTROLLER_CONTAINER" 2>/dev/null)" || {
+    error "Controller container '$CONTROLLER_CONTAINER' was not created."
+    return 5
+  }
+
+  if [[ "$actual_image" != "$expected_image" ]]; then
+    error "Controller image mismatch: expected '$expected_image', found '$actual_image'."
+    return 5
   fi
-  info "Starting control plane containers via $compose_cmd"
-  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
+  if ! controller_is_running; then
+    error "Controller container '$CONTROLLER_CONTAINER' is not running."
+    return 5
+  fi
+  info "Verified running controller image: $actual_image"
+}
+
+start_controller_container() {
+  ensure_docker_ready || return 6
+  info "Starting control plane containers with channel '$P4TG_CHANNEL'."
+  if ! controller_compose up -d; then
     error "docker compose up failed."
     return 5
   fi
+  verify_controller_container || return $?
   info "Control plane containers started."
 }
 
 stop_controller_container() {
   ensure_docker_ready || return 6
-  local controller_dir="$P4TG_DIR/Controller"
-  if [[ ! -d "$controller_dir" ]]; then
-    info "Controller directory not found: $controller_dir; nothing to stop."
+  if [[ ! -d "$P4TG_DIR/Controller" ]]; then
+    info "Controller directory not found: $P4TG_DIR/Controller; nothing to stop."
     return 0
-  fi
-  local compose_cmd="docker compose down"
-  if [[ "$NIGHTLY_MODE" == "true" ]]; then
-    compose_cmd="TAG=nightly docker compose down"
   fi
   if controller_is_running; then
     info "Stopping control plane container: $CONTROLLER_CONTAINER"
   else
-    info "Ensuring control plane containers are stopped via $compose_cmd"
+    info "Ensuring control plane containers are stopped."
   fi
-  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
+  if ! controller_compose down; then
     error "docker compose down failed."
     return 5
   fi
@@ -518,44 +636,66 @@ stop_controller_container() {
 ########################################
 # High-level commands
 ########################################
-cmd_install() {
-  info "=== p4tg: INSTALL ==="
-
+preflight_install_update() {
+  require_env_dir SDE
+  require_env_dir SDE_INSTALL
   require_cmd git
   require_cmd make
   require_cmd docker
   require_cmd ln
+  ensure_docker_ready || return $?
 
   if [[ ! -d "$P4TG_DIR" ]]; then
     error "P4TG directory not found: $P4TG_DIR"
     return 1
   fi
+}
 
+compile_target_for_host() {
   detect_tofino_generation
-  local compile_target=""
   case "$TARGET" in
-    tofino2)
-      compile_target="tofino2"
-      ;;
-    tofino1)
-      compile_target="tofino"
-      ;;
+    tofino2) COMPILE_TARGET="tofino2" ;;
+    tofino1) COMPILE_TARGET="tofino" ;;
     *)
       error "Target '$TARGET' unknown."
-      exit 1
+      return 1
       ;;
   esac
+}
+
+sync_repository() {
+  local operation="$1"
+  local branch="main"
+  [[ "$P4TG_CHANNEL" == "nightly" ]] && branch="nightly"
+
+  if [[ "$P4TG_INTERNAL_REEXEC" == "1" ]]; then
+    info "Repository already synchronized; continuing with the updated script."
+    return 0
+  fi
 
   info "Updating repository at $P4TG_DIR"
-  local branch="main"
-  if [[ "$NIGHTLY_MODE" == "true" ]]; then
-    branch="nightly"
-  fi
   info "Checking out branch: $branch"
   if ! (cd "$P4TG_DIR" && git checkout "$branch" && git pull); then
     error "git checkout/pull failed for branch '$branch' in $P4TG_DIR"
     return 1
   fi
+
+  # Continue with the script version that was just checked out instead of
+  # running the remainder of an update with stale in-memory function bodies.
+  info "Continuing $operation with the updated p4tg.sh."
+  # shellcheck disable=SC2093 # Intentionally replace the stale, pre-update script process.
+  exec env \
+    P4TG_INTERNAL_REEXEC=1 \
+    P4TG_WAS_RUNNING="$P4TG_WAS_RUNNING" \
+    P4TG_CHANNEL="$P4TG_CHANNEL" \
+    P4TG_DIR="$P4TG_DIR" \
+    bash "$P4TG_DIR/p4tg.sh" "$operation"
+  error "Failed to re-execute the updated p4tg.sh."
+  return 1
+}
+
+build_and_pull() {
+  compile_target_for_host || return 1
 
   local dataplane_dir="$P4TG_DIR/P4-Implementation"
   if [[ ! -d "$dataplane_dir" ]]; then
@@ -563,8 +703,8 @@ cmd_install() {
     return 1
   fi
 
-  info "Building data plane: make compile TARGET=$compile_target"
-  if ! (cd "$dataplane_dir" && make compile TARGET="$compile_target"); then
+  info "Building data plane: make compile TARGET=$COMPILE_TARGET"
+  if ! (cd "$dataplane_dir" && make compile TARGET="$COMPILE_TARGET"); then
     error "Data plane build failed."
     return 1
   fi
@@ -576,41 +716,61 @@ cmd_install() {
   fi
 
   info "Updating control plane containers with docker compose pull"
-  local compose_cmd="docker compose pull"
-  if [[ "$NIGHTLY_MODE" == "true" ]]; then
-    compose_cmd="TAG=nightly docker compose pull"
-  fi
-  if ! (cd "$controller_dir" && eval "$compose_cmd"); then
+  if ! controller_compose pull; then
     error "docker compose pull failed."
-    return 1
+    return 5
   fi
+}
 
-  local symlink_target="/usr/local/bin/p4tg.sh"
-  if [[ ! -e "$symlink_target" ]]; then
-    info "Creating symlink $symlink_target -> $P4TG_DIR/p4tg.sh"
-    if ! ln -s "$P4TG_DIR/p4tg.sh" "$symlink_target"; then
-      error "Failed to create symlink at $symlink_target"
+install_integration_files() {
+  local desired_script="$P4TG_DIR/p4tg.sh"
+  if [[ -L "$COMMAND_LINK" && "$(readlink -f "$COMMAND_LINK" 2>/dev/null || true)" == "$desired_script" ]]; then
+    info "Command symlink is current: $COMMAND_LINK -> $desired_script"
+  elif [[ -d "$COMMAND_LINK" && ! -L "$COMMAND_LINK" ]]; then
+    error "Cannot replace command path because it is a directory: $COMMAND_LINK"
+    return 1
+  else
+    info "Installing symlink $COMMAND_LINK -> $desired_script"
+    if ! run_privileged ln -sfn "$desired_script" "$COMMAND_LINK"; then
+      error "Failed to install symlink at $COMMAND_LINK"
       return 1
     fi
-  else
-    info "Symlink target $symlink_target already exists; skipping creation."
   fi
 
   local service_src="$P4TG_DIR/p4tg.service"
-  local service_dest="/etc/systemd/system/p4tg.service"
   if [[ ! -f "$service_src" ]]; then
     error "Service file not found: $service_src"
     return 1
   fi
-  if [[ ! -f "$service_dest" ]]; then
-    info "Copying service file to $service_dest"
-    if ! cp "$service_src" "$service_dest"; then
-      error "Failed to copy service file to $service_dest"
+  if [[ -f "$SERVICE_DEST" ]] && cmp -s "$service_src" "$SERVICE_DEST"; then
+    info "Systemd service file is current: $SERVICE_DEST"
+  else
+    info "Installing service file at $SERVICE_DEST"
+    if ! run_privileged install -m 0644 "$service_src" "$SERVICE_DEST"; then
+      error "Failed to install service file at $SERVICE_DEST"
       return 1
     fi
-  else
-    info "Service file $service_dest already exists; skipping copy."
+    if command -v systemctl >/dev/null 2>&1; then
+      if ! run_privileged systemctl daemon-reload; then
+        error "Failed to reload systemd after updating $SERVICE_DEST"
+        return 1
+      fi
+    fi
   fi
+}
+
+perform_install_update() {
+  local operation="$1"
+  preflight_install_update || return $?
+  sync_repository "$operation" || return $?
+  build_and_pull || return $?
+  install_integration_files || return $?
+}
+
+cmd_install() {
+  info "=== p4tg: INSTALL ($P4TG_CHANNEL) ==="
+  P4TG_WAS_RUNNING=0
+  perform_install_update install || return $?
 
   info "✅ Install completed."
 
@@ -624,13 +784,9 @@ cmd_install() {
   case "${start_choice,,}" in
     y|yes)
       info "Stopping any running instance before start."
-      if ! sudo -E /usr/local/bin/p4tg.sh stop; then
-        warn "p4tg stop command failed; proceeding with start attempt."
-      fi
-      info "Starting p4tg via sudo -E /usr/local/bin/p4tg.sh start"
-      if ! sudo -E /usr/local/bin/p4tg.sh start; then
-        warn "p4tg start command failed; please check logs."
-      fi
+      cmd_stop || return $?
+      info "Starting p4tg with channel '$P4TG_CHANNEL'."
+      cmd_start || return $?
       ;;
     *)
       info "Skipping immediate start."
@@ -648,7 +804,7 @@ cmd_install() {
     case "${enable_choice,,}" in
       y|yes)
         info "Enabling p4tg service via systemctl."
-        if ! sudo systemctl enable p4tg; then
+        if ! run_privileged systemctl enable p4tg; then
           warn "Failed to enable p4tg service."
         fi
         ;;
@@ -663,22 +819,90 @@ cmd_install() {
   return 0
 }
 
+should_restart_after_update() {
+  if [[ ! -t 0 ]]; then
+    info "No interactive terminal detected; restarting the previously running stack."
+    return 0
+  fi
+
+  local choice="y"
+  read -r -p "Restart p4tg now to apply the update? [Y/n]: " choice
+  case "${choice,,}" in
+    ""|y|yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+should_start_after_update() {
+  if [[ ! -t 0 ]]; then
+    info "No interactive terminal detected; leaving the previously stopped stack stopped."
+    return 1
+  fi
+
+  local choice="n"
+  read -r -p "Start p4tg now? [y/N]: " choice
+  case "${choice,,}" in
+    y|yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+cmd_update() {
+  info "=== p4tg: UPDATE ($P4TG_CHANNEL) ==="
+  preflight_install_update || return $?
+
+  if [[ "$P4TG_INTERNAL_REEXEC" != "1" ]]; then
+    if dp_is_running || controller_is_running; then
+      P4TG_WAS_RUNNING=1
+    else
+      P4TG_WAS_RUNNING=0
+    fi
+  fi
+
+  sync_repository update || return $?
+  build_and_pull || return $?
+  install_integration_files || return $?
+
+  if [[ "$P4TG_WAS_RUNNING" == "1" ]]; then
+    if should_restart_after_update; then
+      info "Restarting the full stack with the update."
+      cmd_restart || return $?
+    else
+      info "Restart skipped; the existing stack continues running until it is restarted manually."
+    fi
+  else
+    if should_start_after_update; then
+      info "Starting the full stack with the update."
+      cmd_start || return $?
+    else
+      info "P4TG was stopped before the update; the new images and data plane are staged but remain stopped."
+    fi
+  fi
+  info "✅ Update completed."
+}
+
 cmd_start() {
-  info "=== p4tg: START ==="
-  backup_platform_conf
+  info "=== p4tg: START ($P4TG_CHANNEL) ==="
   require_env_dir SDE
   require_env_dir SDE_INSTALL
-  load_kernel_module_if_needed || exit $?
-  start_dataplane_background || exit $?
-  wait_for_dataplane_port || exit $?
-  start_controller_container || exit $?
+  ensure_docker_ready || return $?
+  require_exe "$SDE/run_switchd.sh"
+  # Asterfusion's xt-cfgen.sh fallback generates /etc/platform.conf while
+  # loading bf_fpga. Move an existing file only after preflight checks, but
+  # before module loading, so xt-cfgen.sh does not stop at its overwrite prompt.
+  backup_platform_conf || return $?
+  load_kernel_module_if_needed || return $?
+  start_dataplane_background || return $?
+  wait_for_dataplane_port || return $?
+  start_controller_container || return $?
   info "✅ Start completed."
 }
 
 cmd_stop() {
   info "=== p4tg: STOP ==="
+  local controller_rc=0
   if command -v docker >/dev/null 2>&1; then
-    stop_controller_container || true
+    stop_controller_container || controller_rc=$?
   else
     info "Docker not installed; skipping control plane stop."
   fi
@@ -688,18 +912,23 @@ cmd_stop() {
   else
     info "Data plane not running."
   fi
+  if [[ $controller_rc -ne 0 ]]; then
+    error "Control plane stop failed (exit $controller_rc)."
+    return "$controller_rc"
+  fi
   info "✅ Stop completed."
 }
 
 cmd_restart() {
   info "=== p4tg: RESTART ==="
-  cmd_stop
+  cmd_stop || return $?
   sleep 1
-  cmd_start
+  cmd_start || return $?
 }
 
 cmd_status() {
   info "=== p4tg: STATUS ==="
+  info "Release channel: $P4TG_CHANNEL"
   detect_tofino_generation
 
   local kmods=("bf_kdrv")
@@ -750,14 +979,15 @@ cmd_status() {
 # Entry point
 ########################################
 usage() {
-  echo "Usage: $0 [--nightly] [install|update|start|stop|restart|status]"
+  echo "Usage: $0 [--nightly|--stable] [install|update|start|stop|restart|status]"
   echo ""
   echo "Options:"
-  echo "  --nightly    Use the nightly branch and nightly Docker images"
+  echo "  --nightly    Use the nightly branch/image channel"
+  echo "  --stable     Use the main branch/latest image channel"
   echo ""
   echo "Commands:"
   echo "  install      Install P4TG (build data plane, pull containers, setup service)"
-  echo "  update       Same as install"
+  echo "  update       Update P4TG and restart it only if it was already running"
   echo "  start        Start data plane and control plane"
   echo "  stop         Stop data plane and control plane"
   echo "  restart      Stop and then start"
@@ -765,26 +995,77 @@ usage() {
 }
 
 main() {
-  # Parse --nightly flag
-  local -a args=()
+  load_persisted_configuration
+
+  local cmd=""
+  local channel_override=""
+  local arg
   for arg in "$@"; do
-    if [[ "$arg" == "--nightly" ]]; then
-      NIGHTLY_MODE=true
-    else
-      args+=("$arg")
-    fi
+    case "$arg" in
+      --nightly)
+        if [[ -n "$channel_override" && "$channel_override" != "nightly" ]]; then
+          error "--nightly and --stable cannot be used together."
+          return 1
+        fi
+        channel_override="nightly"
+        ;;
+      --stable)
+        if [[ -n "$channel_override" && "$channel_override" != "latest" ]]; then
+          error "--nightly and --stable cannot be used together."
+          return 1
+        fi
+        channel_override="latest"
+        ;;
+      -h|--help)
+        usage
+        return 0
+        ;;
+      install|update|start|stop|restart|status)
+        if [[ -n "$cmd" ]]; then
+          error "Multiple commands specified: '$cmd' and '$arg'."
+          return 1
+        fi
+        cmd="$arg"
+        ;;
+      -* )
+        error "Unknown option: $arg"
+        return 1
+        ;;
+      *)
+        error "Unexpected argument: $arg"
+        return 1
+        ;;
+    esac
   done
 
-  local cmd="${args[0]:-help}"
+  if [[ -n "$channel_override" ]]; then
+    P4TG_CHANNEL="$channel_override"
+  elif [[ -z "$P4TG_CHANNEL" ]]; then
+    P4TG_CHANNEL="latest"
+  fi
+  validate_channel || return 1
+
+  if [[ -z "$cmd" ]]; then
+    usage
+    return 1
+  fi
+
+  local rc=0
   case "$cmd" in
-    install) cmd_install ;;
-    update) cmd_install ;;
-    start)   cmd_start ;;
-    stop)    cmd_stop ;;
-    restart) cmd_restart ;;
-    status)  cmd_status ;;
-    *) usage; exit 1 ;;
+    install) cmd_install || rc=$? ;;
+    update)  cmd_update || rc=$? ;;
+    start)   cmd_start || rc=$? ;;
+    stop)    cmd_stop || rc=$? ;;
+    restart) cmd_restart || rc=$? ;;
+    status)  cmd_status || rc=$? ;;
+  esac
+  [[ $rc -eq 0 ]] || return "$rc"
+
+  case "$cmd" in
+    install|update|start|restart) persist_configuration || return $? ;;
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

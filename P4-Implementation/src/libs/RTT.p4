@@ -48,6 +48,7 @@ control RTT(inout header_t hdr,
         key = {
             ig_md.ig_port: exact;
             ig_md.rtt: ternary;
+            hdr.path.app_id: ternary;
         }
         actions = {
             count_histogram_bin;

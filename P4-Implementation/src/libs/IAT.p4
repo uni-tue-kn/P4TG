@@ -122,6 +122,7 @@ control IAT(inout header_t hdr,
         key = {
             ig_md.ig_port: exact;
             ig_md.iat: ternary;
+            hdr.path.app_id: ternary;
         }
         actions = {
             count_histogram_bin;
@@ -129,7 +130,7 @@ control IAT(inout header_t hdr,
         } 
         counters = histogram_counter;
         default_action = count_missed_bin;
-        size = 4196;
+        size = 8192;
     }
 
 

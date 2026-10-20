@@ -38,7 +38,7 @@ pub use multicast::create_simple_multicast_group;
 
 pub use traffic_gen::TrafficGen;
 
-pub use rate_monitor::RateMonitor;
+pub use rate_monitor::{unix_secs, RateMonitor, DIGEST_TIMEOUT_SECS};
 
 mod arp;
 pub mod config;
@@ -53,3 +53,5 @@ pub use patterns::build_pattern_generation_entries;
 
 pub mod ports;
 pub use ports::configure_ports;
+
+pub mod rfc2544;

@@ -34,7 +34,7 @@ jobs:
       uses: actions/cache@v3
       with:
         path: Configuration\ GUI/node_modules
-        key: ${{ runner.os }}-node-${{ hashFiles('Configuration GUI/package-lock.json') }}
+        key: ${{ runner.os }}-node-${{ hashFiles('Configuration GUI/package.json') }}
         restore-keys: |
           ${{ runner.os }}-node-
 

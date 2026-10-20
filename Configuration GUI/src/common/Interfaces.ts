@@ -22,6 +22,7 @@
 export interface MPLSHeader {
     label: number,
     tc: number,
+    bos?: boolean,
     ttl: number
 }
 
@@ -30,6 +31,12 @@ export type HistogramConfig = {
     max: number;
     num_bins: number;
     percentiles?: Array<number>;
+    stream_groups?: HistogramStreamGroups;
+};
+
+export type HistogramStreamGroups = {
+    aggregate: number[];
+    separate: number[];
 };
 
 // nested map: { [rxPort]: { [rxChannel]: HistogramConfig } }
@@ -57,6 +64,12 @@ export type HistogramPacketPath = {
 export type Histogram = {
     config: HistogramConfig;
     data: HistogramPacketPath;
+    breakdown?: HistogramBreakdown;
+};
+
+export type HistogramBreakdown = {
+    aggregate?: HistogramPacketPath;
+    per_stream?: Record<string, HistogramPacketPath>;
 };
 
 export type Statistics = Array<StatisticsEntry>;
@@ -133,6 +146,7 @@ export type StatisticsEntry = {
             [channel: string]: { [appId: string]: number };
         };
     };
+    app_l2_frame_sizes: { [appId: string]: number };
 
     elapsed_time: number;
 
@@ -140,6 +154,7 @@ export type StatisticsEntry = {
     rtt_histogram: { [port: string]: { [channel: string]: Histogram } };
     iat_histogram: { [port: string]: { [channel: string]: Histogram } };
 
+    rfc2544?: Rfc2544Results;
     name?: string;
 };
 
@@ -157,6 +172,7 @@ export const StatisticsObject: StatisticsEntry = {
     packet_loss: {},
     app_tx_l2: {},
     app_rx_l2: {},
+    app_l2_frame_sizes: {},
     out_of_order: {},
     elapsed_time: 0,
     rtt_histogram: {},
@@ -179,15 +195,40 @@ export type TimeStatisticsEntry = {
             };
         };
     };
+    app_tx_l2: {
+        [port: number]: {
+            [channel: number]: {
+                [appId: number]: {
+                    [time: number]: number;
+                };
+            };
+        };
+    };
+    app_rx_l2: {
+        [port: number]: {
+            [channel: number]: {
+                [appId: number]: {
+                    [time: number]: number;
+                };
+            };
+        };
+    };
     name?: string;
 };
 
 export type RxTarget = { port: number; channel: number };
 export type PortTxRxMap = { [port: string]: { [channel: string]: RxTarget } };
 
+export enum RxMappingMode {
+    PerTxPort = "per_tx_port",
+    PerStream = "per_stream",
+}
+
 export const TimeStatisticsObject: TimeStatisticsEntry = {
     tx_rate_l1: {},
-    rx_rate_l1: {}
+    rx_rate_l1: {},
+    app_tx_l2: {},
+    app_rx_l2: {},
 }
 
 export interface StreamSettings {
@@ -195,6 +236,7 @@ export interface StreamSettings {
     port: number,
     channel: number,
     stream_id: number,
+    rx_target?: RxTarget,
     vlan?: {
         vlan_id: number,
         pcp: number,
@@ -261,11 +303,19 @@ export enum GenerationMode {
     MPPS = 2, // DEPRECATED. Only kept for backward compatibility
     POISSON = 3,
     ANALYZE = 4,
+    RFC2544 = 5,
 }
 export enum GenerationUnit {
     Gbps = 0,
     Mpps = 1,
 }
+
+export enum DetNetSeqNumLength {
+    Eight = 8,
+    Sixteen = 16,
+    TwentyEight = 28,
+}
+
 export interface Stream {
     stream_id: number,
     frame_size: number,
@@ -282,6 +332,10 @@ export interface Stream {
     batches: boolean,
     unit: GenerationUnit,
     pattern: GenerationPatternConfig | null,
+    detnet_cw: boolean,
+    detnet_seq_num_length: DetNetSeqNumLength | null,
+    mna_in_stack: boolean,
+    mna_post_stack: boolean,
 }
 
 export const DefaultMPLSHeader = () => {
@@ -310,6 +364,10 @@ export const DefaultStream = (id: number) => {
         ip_version: 4,
         unit: GenerationUnit.Gbps,
         pattern: null,
+        detnet_cw: false,
+        detnet_seq_num_length: null,
+        mna_in_stack: false,
+        mna_post_stack: false,
     }
 
     return stream
@@ -396,6 +454,7 @@ export enum SPEED {
     BF_SPEED_40G = "BF_SPEED_40G",
     BF_SPEED_50G = "BF_SPEED_50G",
     BF_SPEED_100G = "BF_SPEED_100G",
+    BF_SPEED_200G = "BF_SPEED_200G",
     BF_SPEED_400G = "BF_SPEED_400G"
 }
 
@@ -406,6 +465,7 @@ export const SPEED_GBPS: Record<SPEED, number> = {
     [SPEED.BF_SPEED_40G]: 40,
     [SPEED.BF_SPEED_50G]: 50,
     [SPEED.BF_SPEED_100G]: 100,
+    [SPEED.BF_SPEED_200G]: 200,
     [SPEED.BF_SPEED_400G]: 400,
 };
 
@@ -428,18 +488,178 @@ export interface P4TGInfos {
     status: String,
     version: String,
     asic: ASIC,
-    loopback: boolean
+    loopback: boolean,
+    // false if the controller no longer receives digests from the switch;
+    // rate/loss/RTT statistics are frozen and the controller needs a restart
+    digests_alive?: boolean,
+    // number of other clients with an open web session on this controller
+    connected_clients?: number
 }
 
 export interface TrafficGenData {
     mode: GenerationMode,
+    rx_mapping_mode: RxMappingMode,
     streams: Stream[],
     stream_settings: StreamSettings[],
     port_tx_rx_mapping: PortTxRxMap,
     duration: number,
+    repetitions: number,
+    drain_duration_secs?: number,
     rtt_histogram_config: HistogramConfigMap,
     iat_histogram_config: HistogramConfigMap,
+    rfc2544?: Rfc2544Config,
     name?: string,
+    // Response-only lifecycle state from GET /trafficgen.
+    draining?: boolean,
+    cooldown?: boolean,
+    source_name?: string,
+}
+
+export const MAX_DRAIN_DURATION_SECS = 60;
+
+export interface Rfc2544Config {
+    throughput: boolean,
+    reset: boolean,
+    latency: boolean,
+    frame_loss: boolean,
+    system_recovery: boolean,
+    frame_sizes: number[],
+    line_rate_gbps: number,
+    trial_duration_secs: number,
+    throughput_search_steps: number,
+    throughput_repetitions: number,
+    throughput_aggregation: Rfc2544ThroughputAggregation,
+    throughput_cluster_tolerance_gbps: number,
+    throughput_loss_tolerance: Rfc2544LossTolerance,
+    latency_duration_secs: number,
+    latency_repetitions: number,
+    reset_timeout_secs: number,
+    system_recovery_overload_duration_secs: number,
+    system_recovery_observation_duration_secs: number,
+    warmup_duration_secs: number,
+    warmup_once_per_mapping: boolean,
+    cooldown_duration_secs: number,
+}
+
+export interface Rfc2544LossTolerance {
+    unit: "packets" | "percent",
+    value: number,
+}
+
+export type Rfc2544ThroughputAggregation = "raw" | "clustered" | "median" | "minimum";
+
+export const RFC2544_FRAME_SIZES = [64, 128, 256, 512, 1024, 1280, 1518];
+
+export const DefaultRfc2544Config = (): Rfc2544Config => ({
+    throughput: true,
+    reset: false,
+    latency: true,
+    frame_loss: true,
+    system_recovery: false,
+    frame_sizes: RFC2544_FRAME_SIZES,
+    line_rate_gbps: 100,
+    trial_duration_secs: 10,
+    throughput_search_steps: 7,
+    throughput_repetitions: 1,
+    throughput_aggregation: "clustered",
+    throughput_cluster_tolerance_gbps: 0.5,
+    throughput_loss_tolerance: { unit: "packets", value: 0 },
+    latency_duration_secs: 10,
+    latency_repetitions: 1,
+    reset_timeout_secs: 120,
+    system_recovery_overload_duration_secs: 60,
+    system_recovery_observation_duration_secs: 60,
+    warmup_duration_secs: 0,
+    warmup_once_per_mapping: true,
+    cooldown_duration_secs: 2,
+});
+
+export interface Rfc2544Results {
+    running: boolean,
+    status: string,
+    selected_frame_sizes: number[],
+    selected_mappings?: Rfc2544PortMapping[],
+    line_rate_gbps: number,
+    throughput_selected?: boolean,
+    latency_selected?: boolean,
+    reset_selected?: boolean,
+    frame_loss_selected?: boolean,
+    system_recovery_selected?: boolean,
+    estimated_remaining_runtime_secs: number,
+    throughput: Rfc2544ThroughputResult[],
+    latency: Rfc2544LatencyResult[],
+    reset: Rfc2544ResetResult[],
+    frame_loss: Rfc2544FrameLossResult[],
+    system_recovery: Rfc2544SystemRecoveryResult[],
+}
+
+export interface Rfc2544PortMapping {
+    tx_port: number,
+    tx_channel: number,
+    rx_port: number,
+    rx_channel: number,
+}
+
+export interface Rfc2544ThroughputResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    zero_loss_rate_gbps: number,
+    first_loss_rate_gbps?: number,
+    lost_frames: number,
+    aggregation: Rfc2544ThroughputAggregation,
+    repetition_count: number,
+    cluster_tolerance_gbps: number,
+    repetitions: Rfc2544ThroughputRepetitionResult[],
+}
+
+export interface Rfc2544ThroughputRepetitionResult {
+    repetition: number,
+    zero_loss_rate_gbps: number,
+    first_loss_rate_gbps?: number,
+    lost_frames: number,
+}
+
+export interface Rfc2544LatencyResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    rate_gbps: number,
+    mean_latency_ns: number,
+    current_latency_ns: number,
+    min_latency_ns: number,
+    max_latency_ns: number,
+    jitter_ns: number,
+    samples: number,
+}
+
+export interface Rfc2544ResetResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    rate_gbps: number,
+    reset_time_ms?: number,
+    status: string,
+}
+
+export interface Rfc2544FrameLossResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    offered_percent: number,
+    offered_rate_gbps: number,
+    tx_frames: number,
+    rx_frames: number,
+    lost_frames: number,
+    loss_percentage: number,
+}
+
+export interface Rfc2544SystemRecoveryResult {
+    mapping: Rfc2544PortMapping,
+    frame_size: number,
+    throughput_rate_gbps: number,
+    overload_rate_gbps: number,
+    recovery_rate_gbps: number,
+    recovery_time_ms?: number,
+    lost_frames_after_reduction: number,
+    recovered: boolean,
+    status: string,
 }
 
 export interface PortInfo {
@@ -457,6 +677,8 @@ export interface GenerationPatternConfig {
     pattern_type: GenerationPattern,
     period: number,
     sample_rate: number,
+    burst_packets: number | null,
+    inverted: boolean | null,
     fc_quiet_until: number | null,
     fc_ramp_until: number | null,
     fc_decay_rate: number | null,
@@ -470,6 +692,7 @@ export enum GenerationPattern {
     Triangle = "Triangle",
     Sawtooth = "Sawtooth",
     Flashcrowd = "Flashcrowd",
+    CatWave = "CatWave",
 }
 
 export const unitOptions = [

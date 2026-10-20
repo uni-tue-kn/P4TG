@@ -22,7 +22,7 @@ import { Button, Modal } from "react-bootstrap";
 import styled from "styled-components";
 
 interface Info {
-    children: JSX.Element
+    children: React.ReactNode
 }
 
 const Wrapper = styled.div`

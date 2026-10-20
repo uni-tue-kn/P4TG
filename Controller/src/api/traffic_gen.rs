@@ -17,9 +17,13 @@
  * Steffen Lindner (steffen.lindner@uni-tuebingen.de)
  */
 
-use crate::api::helper::validate::{validate_multiple_test, validate_request};
+use crate::api::helper::validate::{
+    normalize_stream_patterns, validate_multiple_test, validate_request,
+};
+use crate::core::traffic_gen_core::expected_routes::resolve_per_stream_topology;
 use crate::core::traffic_gen_core::helper::{
-    generate_front_panel_to_dev_port_mappings, translate_fp_channel_to_dev_port_mapping,
+    create_packet, generate_front_panel_to_dev_port_mappings,
+    translate_fp_channel_to_dev_port_mapping,
 };
 use axum::debug_handler;
 use axum::extract::{Query, State};
@@ -27,13 +31,19 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use log::info;
 use rbfrt::error::RBFRTError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
 use std::time::SystemTime;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::api::server::Error;
+use crate::core::histogram_monitor::{
+    build_histogram_selections, build_iat_histogram_configs, build_iat_histogram_configs_for_edges,
+    build_rtt_histogram_configs, build_rtt_histogram_configs_for_rx_ports, histogram_edge_roles,
+    histogram_port_roles,
+};
 use crate::core::statistics::{Histogram, HistogramPacketPath};
+use crate::core::traffic_gen::stop_traffic_generation_locked;
 use crate::AppState;
 
 use crate::api::docs::traffic_gen::{
@@ -48,6 +58,21 @@ pub struct StopTrafficGenParams {
     pub skip: Option<bool>,
 }
 
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct TrafficGenStatus {
+    #[serde(flatten)]
+    configuration: TrafficGenData,
+    /// Stable name of the source configuration. RFC2544 trial names in
+    /// `configuration.name` may change while this value remains constant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_name: Option<String>,
+    /// True while packet generation is disabled but the RX measurement path
+    /// remains active for in-flight packets.
+    draining: bool,
+    /// True while a multi-test sequence is idle before its next run.
+    cooldown: bool,
+}
+
 /// Method called on GET /trafficgen
 /// Returns the currently configured traffic generation
 #[utoipa::path(
@@ -56,7 +81,7 @@ pub struct StopTrafficGenParams {
         responses(
             (status = 200,
             description = "Returns the currently configured traffic generation.",
-            body = TrafficGenData,
+            body = TrafficGenStatus,
             examples(("Example 1" = (summary = "First example", value = json!(*EXAMPLE_GET_1))),
                      ("Example 2" = (summary = "Second example", value = json!(*EXAMPLE_GET_2)))
             )
@@ -65,9 +90,23 @@ pub struct StopTrafficGenParams {
         )
 )]
 pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
+    let rfc2544_running = state
+        .rfc2544_results
+        .lock()
+        .await
+        .as_ref()
+        .is_some_and(|results| results.running);
+    let multiple_tests_running = state
+        .multiple_tests
+        .multiple_test_monitor_task
+        .lock()
+        .await
+        .handle
+        .as_ref()
+        .is_some_and(|handle| !handle.is_finished());
     let tg = &state.traffic_generator.lock().await;
 
-    if !tg.running {
+    if !tg.running && !rfc2544_running && !multiple_tests_running {
         (
             StatusCode::ACCEPTED,
             Json(EmptyResponse {
@@ -80,14 +119,26 @@ pub async fn traffic_gen(State(state): State<Arc<AppState>>) -> Response {
             mode: tg.mode,
             stream_settings: tg.stream_settings.clone(),
             streams: tg.streams.clone(),
+            rx_mapping_mode: tg.rx_mapping_mode,
             port_tx_rx_mapping: tg.port_mapping.clone(),
             duration: tg.duration,
+            repetitions: tg.repetitions,
+            drain_duration_secs: tg.drain_duration_secs,
             rtt_histogram_config: Some(tg.rtt_histogram_config.clone()),
             iat_histogram_config: Some(tg.iat_histogram_config.clone()),
+            rfc2544: tg.rfc2544_config.clone(),
             name: tg.name.clone(),
         };
-
-        (StatusCode::OK, Json(tg_data)).into_response()
+        (
+            StatusCode::OK,
+            Json(TrafficGenStatus {
+                configuration: tg_data,
+                source_name: tg.source_name.clone(),
+                draining: tg.draining,
+                cooldown: !tg.running && multiple_tests_running,
+            }),
+        )
+            .into_response()
     }
 }
 
@@ -121,36 +172,66 @@ pub async fn configure_traffic_gen(
     State(state): State<Arc<AppState>>,
     payload: Json<TrafficGenTests>,
 ) -> Response {
-    // Cancel any existing duration monitor task
-    state
-        .monitor_task
-        .lock()
-        .await
-        .cancel_existing_monitoring_task()
-        .await;
-    state
-        .multiple_tests
-        .multiple_test_monitor_task
-        .lock()
-        .await
-        .cancel_existing_monitoring_task()
-        .await;
-
-    // Clear History statistics
-    let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;
-    stats_lock.clear();
-    let mut stats_lock = state.multiple_tests.collected_time_statistics.lock().await;
-    stats_lock.clear();
-
     let port_mapping = &state.port_mapping;
 
     match payload {
-        axum::Json(TrafficGenTests::SingleTest(traffic_gen_data)) => {
+        axum::Json(TrafficGenTests::SingleTest(mut traffic_gen_data)) => {
             // Just start a single test.
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
             match validate_request(&traffic_gen_data, port_mapping, is_tofino2) {
-                Ok(_) => {
+                Ok(active_streams) => {
                     info!("Test validation successful.");
+                    prepare_for_new_test(&state).await;
+                    traffic_gen_data.streams = normalize_stream_patterns(traffic_gen_data.streams);
+                    state.traffic_generator.lock().await.source_name =
+                        traffic_gen_data.name.clone();
+
+                    if traffic_gen_data.mode == GenerationMode::Rfc2544 {
+                        {
+                            let mut tg = state.traffic_generator.lock().await;
+                            tg.port_mapping = traffic_gen_data.port_tx_rx_mapping.clone();
+                            tg.rx_mapping_mode = traffic_gen_data.rx_mapping_mode;
+                            tg.stream_settings = traffic_gen_data.stream_settings.clone();
+                            tg.streams = traffic_gen_data.streams.clone();
+                            tg.rtt_histogram_config = traffic_gen_data
+                                .rtt_histogram_config
+                                .clone()
+                                .unwrap_or_default();
+                            tg.iat_histogram_config = traffic_gen_data
+                                .iat_histogram_config
+                                .clone()
+                                .unwrap_or_default();
+                            tg.rfc2544_config = traffic_gen_data.rfc2544.clone();
+                            tg.mode = traffic_gen_data.mode;
+                            tg.duration = traffic_gen_data.duration;
+                            tg.repetitions = 1;
+                            tg.drain_duration_secs = traffic_gen_data.drain_duration_secs;
+                            tg.name = traffic_gen_data.name.clone();
+                        }
+                        state.experiment.lock().await.start = SystemTime::now();
+                        state.experiment.lock().await.running = true;
+                        state
+                            .multiple_tests
+                            .multiple_test_monitor_task
+                            .lock()
+                            .await
+                            .start_rfc2544(&state, traffic_gen_data)
+                            .await;
+
+                        return (StatusCode::OK, Json(active_streams)).into_response();
+                    }
+
+                    if traffic_gen_data.repetitions > 1 {
+                        state
+                            .multiple_tests
+                            .multiple_test_monitor_task
+                            .lock()
+                            .await
+                            .start_multiple_tests(&state, vec![traffic_gen_data])
+                            .await;
+                        return (StatusCode::OK, Json(active_streams)).into_response();
+                    }
+
                     match start_single_test(&state, traffic_gen_data).await {
                         Ok(streams) => (StatusCode::OK, Json(streams)).into_response(),
                         Err(e) => {
@@ -169,18 +250,22 @@ pub async fn configure_traffic_gen(
                 Err(e) => (StatusCode::BAD_REQUEST, Json(e)).into_response(),
             }
         }
-        axum::Json(TrafficGenTests::MultipleTest(traffic_gen_datas)) => {
+        axum::Json(TrafficGenTests::MultipleTest(mut traffic_gen_datas)) => {
             // This starts an async task that sequentially runs all the tests.
-            let streams: Vec<Vec<Stream>> = traffic_gen_datas
-                .clone()
-                .into_iter()
-                .map(|t: TrafficGenData| t.streams)
-                .collect();
             let is_tofino2 = state.traffic_generator.lock().await.is_tofino2;
 
             // Request validation
             match validate_multiple_test(traffic_gen_datas.clone(), port_mapping, is_tofino2) {
                 Ok(_) => {
+                    prepare_for_new_test(&state).await;
+                    for test in &mut traffic_gen_datas {
+                        test.streams = normalize_stream_patterns(test.streams.clone());
+                    }
+                    let streams: Vec<Vec<Stream>> = traffic_gen_datas
+                        .clone()
+                        .into_iter()
+                        .map(|t: TrafficGenData| t.streams)
+                        .collect();
                     state
                         .multiple_tests
                         .multiple_test_monitor_task
@@ -196,10 +281,48 @@ pub async fn configure_traffic_gen(
     }
 }
 
+/// Stops the current orchestration and clears results only after the replacement
+/// request has passed validation. Cancelling the outer task first prevents a
+/// multi-test runner from advancing while its per-test duration task is stopped.
+async fn prepare_for_new_test(state: &Arc<AppState>) {
+    state
+        .multiple_tests
+        .multiple_test_monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
+    state
+        .monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
+
+    state
+        .multiple_tests
+        .collected_statistics
+        .lock()
+        .await
+        .clear();
+    state
+        .multiple_tests
+        .collected_time_statistics
+        .lock()
+        .await
+        .clear();
+    *state.rfc2544_results.lock().await = None;
+    state.traffic_generator.lock().await.source_name = None;
+}
+
 pub async fn start_single_test(
     state: &Arc<AppState>,
     payload: TrafficGenData,
 ) -> Result<Vec<Stream>, RBFRTError> {
+    let _lifecycle = state.traffic_lifecycle.lock().await;
+    stop_traffic_generation_locked(state).await?;
+    state.experiment.lock().await.running = false;
+
     let port_mapping = &state.port_mapping;
 
     let front_panel_dev_port_mappings =
@@ -230,6 +353,14 @@ pub async fn start_single_test(
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
 
+    let per_stream_topology = resolve_per_stream_topology(
+        payload.rx_mapping_mode,
+        &payload.stream_settings,
+        &active_streams,
+        &front_panel_dev_port_mappings,
+    )
+    .map_err(|message| RBFRTError::from(crate::error::P4TGError::Error { message }))?;
+
     // contains the mapping of Send->Receive ports. Uses the channel info to calculate dev ports
     // required for analyze mode
     let tx_rx_port_mapping = translate_fp_channel_to_dev_port_mapping(
@@ -237,97 +368,104 @@ pub async fn start_single_test(
         &front_panel_dev_port_mappings,
     );
 
-    // Clear RTT histogram config state and release lock when out of scope
-    {
-        let mut histogram_configs = state.rtt_histogram_monitor.lock().await;
-        histogram_configs.histogram.clear();
-    }
+    // TX/RX roles of the active dev ports. They control which recirculation
+    // paths get histogram table entries.
+    let (histogram_tx_ports, histogram_rx_ports) =
+        if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            histogram_edge_roles(&per_stream_topology.edges)
+        } else {
+            histogram_port_roles(&tx_rx_port_mapping)
+        };
 
-    // Clear IAT histogram config state and release lock when out of scope
-    {
-        let mut histogram_configs = state.iat_histogram_monitor.lock().await;
-        histogram_configs.histogram.clear();
-    }
+    let stream_to_app: HashMap<u8, u8> = active_streams
+        .iter()
+        .map(|stream| (stream.stream_id, stream.app_id))
+        .collect();
+    let histogram_routes: Vec<(u32, u32, u8)> =
+        if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            per_stream_topology
+                .routes
+                .iter()
+                .map(|route| (route.tx_dev_port, route.rx_dev_port, route.app_id))
+                .collect()
+        } else {
+            active_stream_settings
+                .iter()
+                .filter_map(|setting| {
+                    Some((
+                        setting.port,
+                        *tx_rx_port_mapping.get(&setting.port.to_string())?,
+                        *stream_to_app.get(&setting.stream_id)?,
+                    ))
+                })
+                .collect()
+        };
 
     // Write IAT histogram config into state. The tables will be later populated by init_histogram_config
-    let histogram_config_cloned = payload.iat_histogram_config.clone();
-    for (rx, channel_map) in histogram_config_cloned.unwrap_or_default() {
-        let front_panel_port = rx.parse::<u32>().unwrap_or(0);
-        for (channel, config) in channel_map {
-            let histogram_monitor = &mut state.iat_histogram_monitor.lock().await;
-            let channel_num = channel.parse::<u32>().unwrap_or(0);
-            let dev_port = front_panel_dev_port_mappings
-                .get(&front_panel_port)
-                .unwrap()
-                + channel_num;
-            // Create new histogram config with empty data from payload
-            histogram_monitor.histogram.insert(
-                dev_port,
-                Histogram {
-                    config: config.clone(),
-                    data: HistogramPacketPath::default(),
-                },
-            );
+    {
+        let mut histogram_monitor = state.iat_histogram_monitor.lock().await;
+        histogram_monitor.histogram.clear();
+        histogram_monitor.tx_ports = histogram_tx_ports.clone();
+        histogram_monitor.rx_ports = histogram_rx_ports.clone();
 
-            // For IAT histograms, also write an entry for the mapped TX front panel port
-            let tx_dev_port = tx_rx_port_mapping
-                .iter()
-                .find_map(|(k, &v)| (v == dev_port).then(|| k.clone()));
-            if let Some(tx_dev_port) = tx_dev_port {
-                let tx_dev_port_int = tx_dev_port.parse::<u32>().unwrap_or(0);
-                histogram_monitor.histogram.insert(
-                    tx_dev_port_int,
-                    Histogram {
-                        config,
-                        data: HistogramPacketPath::default(),
-                    },
-                );
-            }
-        }
-    }
-    // Write default IAT histogram config for active tx/rx ports that do not have a histogram config set
-    for (tx, rx) in tx_rx_port_mapping.clone() {
-        let histogram_monitor = &mut state.iat_histogram_monitor.lock().await;
-        if histogram_monitor.histogram.get_mut(&rx).is_none() {
-            info!("Adding default IAT histogram config for rx port {rx}");
-            histogram_monitor.histogram.insert(rx, Histogram::default());
-        }
-        let tx_int = tx.parse::<u32>().unwrap_or(0);
-        if histogram_monitor.histogram.get_mut(&tx_int).is_none() {
-            info!("Adding default IAT histogram config for tx port {tx_int}");
-            histogram_monitor
-                .histogram
-                .insert(tx_int, Histogram::default());
-        }
-    }
-
-    // Write RTT histogram config into state. The tables will be later populated by init_histogram_config
-    let histogram_config_cloned = payload.rtt_histogram_config.clone();
-    for (rx, channel_map) in histogram_config_cloned.unwrap_or_default() {
-        let front_panel_port = rx.parse::<u32>().unwrap_or(0);
-        for (channel, config) in channel_map {
-            let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
-            let channel_num = channel.parse::<u32>().unwrap_or(0);
-            let dev_port = front_panel_dev_port_mappings
-                .get(&front_panel_port)
-                .unwrap()
-                + channel_num;
-            // Create new histogram config with empty data from payload
+        let iat_configs = if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            build_iat_histogram_configs_for_edges(
+                payload.iat_histogram_config.as_ref(),
+                &per_stream_topology.edges,
+                &front_panel_dev_port_mappings,
+            )
+        } else {
+            build_iat_histogram_configs(
+                payload.iat_histogram_config.as_ref(),
+                &tx_rx_port_mapping,
+                &front_panel_dev_port_mappings,
+            )
+        };
+        histogram_monitor.selections =
+            build_histogram_selections(&histogram_routes, &iat_configs, &HistogramType::Iat);
+        for (dev_port, config) in iat_configs {
             histogram_monitor.histogram.insert(
                 dev_port,
                 Histogram {
                     config,
                     data: HistogramPacketPath::default(),
+                    breakdown: None,
                 },
             );
         }
     }
-    // Write default RTT histogram config for active rx ports that do not have a histogram config set
-    for &rx in tx_rx_port_mapping.values() {
-        let histogram_monitor = &mut state.rtt_histogram_monitor.lock().await;
-        if histogram_monitor.histogram.get_mut(&rx).is_none() {
-            info!("Adding default RTT histogram config for rx port {rx}");
-            histogram_monitor.histogram.insert(rx, Histogram::default());
+
+    // Write RTT histogram config into state. The tables will be later populated by init_histogram_config
+    {
+        let mut histogram_monitor = state.rtt_histogram_monitor.lock().await;
+        histogram_monitor.histogram.clear();
+        histogram_monitor.tx_ports = histogram_tx_ports;
+        histogram_monitor.rx_ports = histogram_rx_ports;
+
+        let rtt_configs = if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            build_rtt_histogram_configs_for_rx_ports(
+                payload.rtt_histogram_config.as_ref(),
+                &per_stream_topology.rx_ports,
+                &front_panel_dev_port_mappings,
+            )
+        } else {
+            build_rtt_histogram_configs(
+                payload.rtt_histogram_config.as_ref(),
+                &tx_rx_port_mapping,
+                &front_panel_dev_port_mappings,
+            )
+        };
+        histogram_monitor.selections =
+            build_histogram_selections(&histogram_routes, &rtt_configs, &HistogramType::Rtt);
+        for (dev_port, config) in rtt_configs {
+            histogram_monitor.histogram.insert(
+                dev_port,
+                Histogram {
+                    config,
+                    data: HistogramPacketPath::default(),
+                    breakdown: None,
+                },
+            );
         }
     }
 
@@ -346,13 +484,38 @@ pub async fn start_single_test(
         Ok(streams) => {
             // store the settings for synchronization between multiple
             // GUI clients
+            // merge only the solver outputs into the original payload streams;
+            // the annotated streams also carry rewritten frame_size/traffic_rate
+            // values that must not be stored (restart & GUI sync re-feed them)
+            let mut stored_streams = payload.streams.clone();
+            for s in &mut stored_streams {
+                if let Some(annotated) = streams.iter().find(|a| a.app_id == s.app_id) {
+                    s.n_packets = annotated.n_packets;
+                    s.timeout = annotated.timeout;
+                    s.generation_accuracy = annotated.generation_accuracy;
+                    s.n_pipes = annotated.n_pipes;
+                }
+            }
             tg.port_mapping = payload.port_tx_rx_mapping.clone();
+            tg.rx_mapping_mode = payload.rx_mapping_mode;
             tg.stream_settings = payload.stream_settings.clone();
-            tg.streams = payload.streams.clone();
+            tg.app_l2_frame_sizes = streams
+                .iter()
+                .map(|stream| {
+                    (
+                        stream.app_id as u32,
+                        create_packet(stream, false).len() as u32,
+                    )
+                })
+                .collect();
+            tg.streams = stored_streams;
             tg.rtt_histogram_config = payload.rtt_histogram_config.unwrap_or_default();
             tg.iat_histogram_config = payload.iat_histogram_config.unwrap_or_default();
+            tg.rfc2544_config = payload.rfc2544;
             tg.mode = payload.mode;
             tg.duration = payload.duration;
+            tg.repetitions = payload.repetitions;
+            tg.drain_duration_secs = payload.drain_duration_secs;
             tg.name = payload.name;
 
             // experiment starts now
@@ -389,21 +552,11 @@ pub async fn stop_traffic_gen(
     State(state): State<Arc<AppState>>,
     Query(params): Query<StopTrafficGenParams>,
 ) -> Response {
-    let tg = &state.traffic_generator;
-    let switch = &state.switch;
-
-    // Cancel any existing duration monitor task
-    state
-        .monitor_task
-        .lock()
-        .await
-        .cancel_existing_monitoring_task()
-        .await;
-
     let skip_current_test = params.skip.unwrap_or(false);
 
     if !skip_current_test {
-        // Cancel the multiple test monitor task if skip is set to false
+        // Stop the outer orchestrator first so it cannot advance to another
+        // test while the current duration monitor is being cancelled.
         state
             .multiple_tests
             .multiple_test_monitor_task
@@ -413,7 +566,19 @@ pub async fn stop_traffic_gen(
             .await;
     }
 
-    match tg.lock().await.stop(switch).await {
+    // Cancel the monitor for the current run. For skip=true the outer
+    // orchestrator remains active and will advance after this run stops.
+    state
+        .monitor_task
+        .lock()
+        .await
+        .cancel_existing_monitoring_task()
+        .await;
+
+    let _lifecycle = state.traffic_lifecycle.lock().await;
+    let stop_result = stop_traffic_generation_locked(&state).await;
+
+    match stop_result {
         Ok(_) => {
             info!("Traffic generation stopped.");
             state.experiment.lock().await.running = false;

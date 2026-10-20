@@ -25,8 +25,25 @@ import { ReactNode, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ToastVariant } from "./Interfaces";
 
+// Per-tab session id so the controller can count open web sessions even
+// when they share one IP (e.g. SSH tunnels). sessionStorage is per
+// tab/window; the controller subtracts the requester's own session, so a
+// single open tab shows no warning. crypto.randomUUID is unavailable
+// outside secure contexts (plain http), hence the Math.random fallback.
+const getSessionId = () => {
+    let id = sessionStorage.getItem("p4tg-session-id")
+    if (id === null) {
+        id = typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : Math.random().toString(36).slice(2) + Date.now().toString(36)
+        sessionStorage.setItem("p4tg-session-id", id)
+    }
+    return id
+}
+
 const instance = axios.create({
-    baseURL: Config.API_URL
+    baseURL: Config.API_URL,
+    headers: { "X-Session-Id": getSessionId() }
 })
 
 interface Request {
@@ -49,7 +66,7 @@ const getHeader = (token?: string) => {
 }
 
 
-const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError: (message: string, bg: ToastVariant) => void, onOffline: () => void, onOnline: () => void, children: JSX.Element }) => {
+const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError: (message: string, bg: ToastVariant) => void, onOffline: () => void, onOnline: () => void, children: ReactNode }) => {
 
     useEffect(() => {
 
@@ -81,6 +98,11 @@ const AxiosInterceptor = ({ onError, children, onOffline, onOnline }: { onError:
             }
             else if (error.response.status === 404) {
                 onError("Request endpoint not found.", "danger")
+            }
+            else {
+                const message = error.response?.data?.message
+                    ?? `Request failed with HTTP ${error.response.status}.`
+                onError(message, "danger")
             }
 
             return Promise.resolve();

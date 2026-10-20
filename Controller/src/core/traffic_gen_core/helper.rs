@@ -2,12 +2,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::core::traffic_gen_core::const_definitions::{
-    GTPU_UDP_PORT, P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK,
+    BATCH_FACTOR, GTPU_UDP_PORT, P4TG_DST_PORT, P4TG_SOURCE_PORT, REMOVE_PORT_CHANNEL_MASK,
     REMOVE_PORT_CHANNEL_MASK_TOFINO_2, VX_LAN_UDP_PORT,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::{AppState, PortMapping};
-use etherparse::{IpHeader, Ipv6RawExtensionHeader, PacketBuilder};
+use etherparse::{
+    EtherType, IpHeaders, IpNumber, Ipv6RawExtHeader, PacketBuilder, VlanId, VlanPcp,
+};
 use log::error;
 use rbfrt::util::{Speed, FEC};
 
@@ -81,11 +83,11 @@ pub(crate) fn remap_port_map<V: Clone>(
     out
 }
 
-pub(crate) fn remap_app_map(
-    src: &HashMap<u32, HashMap<u32, f64>>, // dev_port -> app_id -> f64
+pub(crate) fn remap_app_map<V: Clone>(
+    src: &HashMap<u32, HashMap<u32, V>>, // dev_port -> app_id -> value
     dev_to_fpch: &HashMap<u32, (u32, u8)>,
-) -> HashMap<u32, HashMap<u8, HashMap<u32, f64>>> {
-    let mut out: HashMap<u32, HashMap<u8, HashMap<u32, f64>>> = HashMap::new();
+) -> HashMap<u32, HashMap<u8, HashMap<u32, V>>> {
+    let mut out: HashMap<u32, HashMap<u8, HashMap<u32, V>>> = HashMap::new();
     for (&dev, per_app) in src {
         if let Some(&(fp, ch)) = dev_to_fpch.get(&dev) {
             out.entry(fp).or_default().insert(ch, per_app.clone());
@@ -106,33 +108,41 @@ where
 /// Those ports are either contained in one of the stream settings, or in the TX/RX port mapping.
 /// This function obtains a lock on the state.
 pub(crate) async fn get_used_ports(state: &Arc<AppState>) -> HashSet<u32> {
+    let traffic_generator = state.traffic_generator.lock().await;
+    collect_used_ports(
+        traffic_generator.rx_mapping_mode,
+        &traffic_generator.stream_settings,
+        &traffic_generator.port_mapping,
+    )
+}
+
+fn collect_used_ports(
+    rx_mapping_mode: RxMappingMode,
+    stream_settings: &[StreamSetting],
+    port_mapping: &HashMap<String, HashMap<String, RxTarget>>,
+) -> HashSet<u32> {
     let mut used_ports: HashSet<u32> = HashSet::new();
 
-    // Collect ports from active stream settings
-    state
-        .traffic_generator
-        .lock()
-        .await
-        .stream_settings
-        .iter()
-        .filter(|s| s.active)
-        .for_each(|s| {
-            used_ports.insert(s.port);
-        });
-
-    // Collect ports from port_mapping
-    state
-        .traffic_generator
-        .lock()
-        .await
-        .port_mapping
-        .iter()
-        .for_each(|(tx, channel)| {
-            used_ports.insert(tx.parse().unwrap_or(1));
-            for rx_target in channel.values() {
+    for setting in stream_settings.iter().filter(|setting| setting.active) {
+        used_ports.insert(setting.port);
+        if rx_mapping_mode == RxMappingMode::PerStream {
+            if let Some(rx_target) = setting.rx_target {
                 used_ports.insert(rx_target.port);
             }
-        });
+        }
+    }
+
+    if rx_mapping_mode == RxMappingMode::PerTxPort {
+        for (tx, channels) in port_mapping {
+            if let Ok(tx_port) = tx.parse() {
+                used_ports.insert(tx_port);
+            }
+            for rx_target in channels.values() {
+                used_ports.insert(rx_target.port);
+            }
+        }
+    }
+
     used_ports
 }
 
@@ -176,8 +186,16 @@ pub(crate) fn calculate_overhead(stream: &Stream) -> u32 {
         Encapsulation::SRv6 => 40 + 8 + stream.number_of_srv6_sids.unwrap() as u32 * 16, // Base IPv6 Header + SRH + each SID has 16 bytes
     };
 
-    if stream.vxlan || stream.gtpu {
-        encapsulation_overhead += 50; // VxLAN has 50 byte overhead
+    if stream.encapsulation == Encapsulation::Mpls && stream.detnet_cw == Some(true) {
+        encapsulation_overhead += 4; // dCW adds 4 bytes after the MPLS stack
+    }
+
+    if stream.vxlan {
+        encapsulation_overhead += 50; // outer Ethernet (14) + IPv4 (20) + UDP (8) + VxLAN (8)
+    }
+
+    if stream.gtpu {
+        encapsulation_overhead += 36; // outer IPv4 (20) + UDP (8) + GTP-U (8); the inner packet carries no Ethernet header
     }
 
     encapsulation_overhead
@@ -207,7 +225,7 @@ pub(crate) fn resolve_front_panel_mode(
 ) -> Option<ResolvedPortMode> {
     match effective_channel_count(channel_count) {
         1 => {
-            if *speed == Speed::BF_SPEED_400G && !is_tofino2 {
+            if !is_tofino2 && matches!(speed, Speed::BF_SPEED_200G | Speed::BF_SPEED_400G) {
                 None
             } else {
                 Some(ResolvedPortMode {
@@ -217,24 +235,68 @@ pub(crate) fn resolve_front_panel_mode(
                 })
             }
         }
-        4 => match speed {
-            Speed::BF_SPEED_10G => Some(ResolvedPortMode {
-                channels: (0..=3).collect(),
-                speed: Speed::BF_SPEED_10G,
-                n_lanes: None,
-            }),
-            Speed::BF_SPEED_25G => Some(ResolvedPortMode {
-                channels: (0..=3).collect(),
-                speed: Speed::BF_SPEED_25G,
-                n_lanes: None,
-            }),
-            Speed::BF_SPEED_100G if is_tofino2 => Some(ResolvedPortMode {
-                channels: vec![0, 2, 4, 6],
-                speed: Speed::BF_SPEED_100G,
-                n_lanes: Some(2),
-            }),
-            _ => None,
-        },
+        // Two equally sized halves of the cage, addressed by their starting
+        // lane. A speed fits a half if its default lane count does; no
+        // `n_lanes` override is needed for any of them.
+        2 => {
+            if is_tofino2 {
+                // 8-lane cage -> two 4-lane halves. Only 400G (R8) is too wide.
+                match speed {
+                    Speed::BF_SPEED_400G => None,
+                    _ => Some(ResolvedPortMode {
+                        channels: vec![0, 4],
+                        speed: speed.clone(),
+                        n_lanes: None,
+                    }),
+                }
+            } else {
+                // 4-lane cage -> two 2-lane halves. 40G and 100G default to R4
+                // and would claim the whole cage.
+                match speed {
+                    Speed::BF_SPEED_10G | Speed::BF_SPEED_25G | Speed::BF_SPEED_50G => {
+                        Some(ResolvedPortMode {
+                            channels: vec![0, 2],
+                            speed: speed.clone(),
+                            n_lanes: None,
+                        })
+                    }
+                    _ => None,
+                }
+            }
+        }
+        // Four equally sized slots of the cage.
+        4 => {
+            if is_tofino2 {
+                // 8-lane cage -> four 2-lane slots. 10G and 25G have no 2-lane
+                // variant and use the first lane of their slot.
+                match speed {
+                    Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => Some(ResolvedPortMode {
+                        channels: vec![0, 2, 4, 6],
+                        speed: speed.clone(),
+                        n_lanes: None,
+                    }),
+                    // 40G is deliberately absent: the SDE rejects 40G-R2
+                    // ("Table Add failed table:$PORT Invalid arguments"), so
+                    // 40G only exists as R4 and cannot fit a 2-lane slot.
+                    Speed::BF_SPEED_50G | Speed::BF_SPEED_100G => Some(ResolvedPortMode {
+                        channels: vec![0, 2, 4, 6],
+                        speed: speed.clone(),
+                        n_lanes: Some(2),
+                    }),
+                    _ => None,
+                }
+            } else {
+                // 4-lane cage -> four 1-lane slots.
+                match speed {
+                    Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => Some(ResolvedPortMode {
+                        channels: (0..=3).collect(),
+                        speed: speed.clone(),
+                        n_lanes: None,
+                    }),
+                    _ => None,
+                }
+            }
+        }
         8 => match speed {
             Speed::BF_SPEED_10G | Speed::BF_SPEED_25G | Speed::BF_SPEED_50G if is_tofino2 => {
                 Some(ResolvedPortMode {
@@ -250,7 +312,6 @@ pub(crate) fn resolve_front_panel_mode(
 }
 
 pub(crate) fn resolve_recirculation_mode(
-    speed: &Speed,
     channel_count: Option<u8>,
     is_tofino2: bool,
 ) -> Option<ResolvedPortMode> {
@@ -264,19 +325,31 @@ pub(crate) fn resolve_recirculation_mode(
             },
             n_lanes: None,
         }),
-        4 => match speed {
-            Speed::BF_SPEED_100G if is_tofino2 => Some(ResolvedPortMode {
-                channels: vec![0, 2, 4, 6],
-                speed: Speed::BF_SPEED_100G,
-                n_lanes: Some(2),
-            }),
-            Speed::BF_SPEED_10G | Speed::BF_SPEED_25G => Some(ResolvedPortMode {
-                channels: (0..=3).collect(),
-                speed: Speed::BF_SPEED_25G,
-                n_lanes: None,
-            }),
-            _ => None,
-        },
+        // Ceiling of a half on the respective ASIC, so the recirculation ports
+        // never need reconfiguring when a half changes speed.
+        2 => Some(ResolvedPortMode {
+            channels: if is_tofino2 { vec![0, 4] } else { vec![0, 2] },
+            speed: if is_tofino2 {
+                Speed::BF_SPEED_200G
+            } else {
+                Speed::BF_SPEED_50G
+            },
+            n_lanes: None,
+        }),
+        // Ceiling of a slot on the respective ASIC.
+        4 => Some(ResolvedPortMode {
+            channels: if is_tofino2 {
+                vec![0, 2, 4, 6]
+            } else {
+                (0..=3).collect()
+            },
+            speed: if is_tofino2 {
+                Speed::BF_SPEED_100G
+            } else {
+                Speed::BF_SPEED_25G
+            },
+            n_lanes: if is_tofino2 { Some(2) } else { None },
+        }),
         8 => {
             if is_tofino2 {
                 Some(ResolvedPortMode {
@@ -299,7 +372,7 @@ pub(crate) fn resolve_port_layout(
 ) -> Option<ResolvedPortLayout> {
     Some(ResolvedPortLayout {
         front_panel: resolve_front_panel_mode(speed, channel_count, is_tofino2)?,
-        recirculation: resolve_recirculation_mode(speed, channel_count, is_tofino2)?,
+        recirculation: resolve_recirculation_mode(channel_count, is_tofino2)?,
     })
 }
 
@@ -326,7 +399,8 @@ pub(crate) fn sanitize_fec(speed: &Speed, channel_count: Option<u8>, requested: 
 
 fn requires_rs(speed: &Speed, channel_count: Option<u8>) -> bool {
     *speed == Speed::BF_SPEED_400G
-        || (*speed == Speed::BF_SPEED_50G && effective_channel_count(channel_count) != 4)
+        || *speed == Speed::BF_SPEED_200G
+        || (*speed == Speed::BF_SPEED_50G && effective_channel_count(channel_count) == 8)
         || (*speed == Speed::BF_SPEED_100G && effective_channel_count(channel_count) == 4)
 }
 
@@ -360,7 +434,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         let pkt = etherparse::Ethernet2Header {
             source: [0, 0, 0, 0, 0, 0],
             destination: [0, 0, 0, 0, 0, 0],
-            ether_type: 0x800,
+            ether_type: EtherType::IPV4,
         };
 
         pkt.write(&mut result).unwrap();
@@ -369,10 +443,11 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         let outer_ip_header = etherparse::Ipv4Header::new(
             (p4tg_packet.len() as u16) + 8 + 8,
             64,
-            17,
+            IpNumber::UDP,
             [0, 0, 0, 0],
             [0, 0, 0, 0],
-        );
+        )
+        .unwrap();
         outer_ip_header.write(&mut result).unwrap();
 
         let outer_udp_header = etherparse::UdpHeader {
@@ -420,7 +495,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         let pkt = etherparse::Ethernet2Header {
             source: [0, 0, 0, 0, 0, 0],
             destination: [0, 0, 0, 0, 0, 0],
-            ether_type: 0x800,
+            ether_type: EtherType::IPV4,
         };
 
         pkt.write(&mut result).unwrap();
@@ -429,10 +504,11 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
         let outer_ip_header = etherparse::Ipv4Header::new(
             (p4tg_packet.len() as u16) + 8 + 8,
             64,
-            17,
+            IpNumber::UDP,
             [0, 0, 0, 0],
             [0, 0, 0, 0],
-        );
+        )
+        .unwrap();
         outer_ip_header.write(&mut result).unwrap();
 
         let outer_udp_header = etherparse::UdpHeader {
@@ -524,7 +600,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
             Encapsulation::Vlan => {
                 let builder = match s.ip_version {
                     Some(6) => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .single_vlan(0)
+                        .single_vlan(VlanId::ZERO)
                         .ipv6(
                             [
                                 11, 12, 13, 14, 15, 16, 17, 18, 19, 10, 21, 22, 23, 24, 25, 26,
@@ -537,7 +613,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                     // This covers Some(4) | None | _
                     _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .single_vlan(0)
+                        .single_vlan(VlanId::ZERO)
                         .ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                 };
@@ -564,7 +640,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
             Encapsulation::QinQ => {
                 let builder = match s.ip_version {
                     Some(6) => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .double_vlan(0, 0)
+                        .double_vlan(VlanId::ZERO, VlanId::ZERO)
                         .ipv6(
                             [
                                 11, 12, 13, 14, 15, 16, 17, 18, 19, 10, 21, 22, 23, 24, 25, 26,
@@ -577,7 +653,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                     // This covers Some(4) | None | _
                     _ => PacketBuilder::ethernet2([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0])
-                        .double_vlan(0, 0)
+                        .double_vlan(VlanId::ZERO, VlanId::ZERO)
                         .ipv4([192, 168, 0, 0], [192, 168, 0, 0], 64)
                         .udp(P4TG_SOURCE_PORT, P4TG_DST_PORT),
                 };
@@ -606,12 +682,14 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 let pkt = etherparse::Ethernet2Header {
                     source: [0, 0, 0, 0, 0, 0],
                     destination: [0, 0, 0, 0, 0, 0],
-                    ether_type: 0x8847, // MPLS ether type
+                    ether_type: EtherType(0x8847), // MPLS ether type
                 };
+                let detnet_cw_overhead = if s.detnet_cw == Some(true) { 4 } else { 0 };
+                let packet_capacity = (s.frame_size
+                    + s.number_of_lse.unwrap() as u32 * 4
+                    + detnet_cw_overhead) as usize;
 
-                let mut result = Vec::<u8>::with_capacity(
-                    (s.frame_size + s.number_of_lse.unwrap() as u32 * 4) as usize,
-                );
+                let mut result = Vec::<u8>::with_capacity(packet_capacity);
 
                 pkt.write(&mut result).unwrap();
 
@@ -625,23 +703,34 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     };
 
                     let vlan_header = etherparse::SingleVlanHeader {
-                        priority_code_point: 0,
+                        pcp: VlanPcp::ZERO,
                         drop_eligible_indicator: false,
-                        vlan_identifier: 0,
-                        ether_type,
+                        vlan_id: VlanId::ZERO,
+                        ether_type: EtherType(ether_type),
                     };
 
                     vlan_header.write(&mut result).unwrap();
                 }
 
-                let ip_header: etherparse::IpHeader = match s.ip_version {
-                    Some(6) => etherparse::IpHeader::Version6(
+                if s.detnet_cw == Some(true) {
+                    // Write another "empty VLAN header", aka 32 bits.
+                    let d_cw_lse = etherparse::SingleVlanHeader {
+                        pcp: VlanPcp::ZERO,
+                        drop_eligible_indicator: false,
+                        vlan_id: VlanId::ZERO,
+                        ether_type: EtherType(0),
+                    };
+                    d_cw_lse.write(&mut result).unwrap();
+                }
+
+                let ip_header: IpHeaders = match s.ip_version {
+                    Some(6) => IpHeaders::Ipv6(
                         etherparse::Ipv6Header {
                             source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                             hop_limit: 64,
-                            payload_length: ((frame_size - 40 - 14 - 4) as u16).max(8),
-                            next_header: 17,
+                            payload_length: ((frame_size as isize - 40 - 14 - 4).max(8)) as u16,
+                            next_header: IpNumber::UDP,
                             ..Default::default()
                         },
                         etherparse::Ipv6Extensions::default(),
@@ -650,14 +739,15 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     _ =>
                     // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
                     {
-                        etherparse::IpHeader::Version4(
+                        IpHeaders::Ipv4(
                             etherparse::Ipv4Header::new(
-                                (frame_size - 20 - 14 - 4) as u16,
+                                ((frame_size as isize - 20 - 14 - 4).max(8)) as u16,
                                 64,
-                                17,
+                                IpNumber::UDP,
                                 [0, 0, 0, 0],
                                 [0, 0, 0, 0],
-                            ),
+                            )
+                            .unwrap(),
                             etherparse::Ipv4Extensions::default(),
                         )
                     }
@@ -667,9 +757,9 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
 
                 // Subtract IP, Ethernet, CRC size
                 let udp_size = if s.ip_version == Some(6) {
-                    ((frame_size - 40 - 14 - 4) as u16).max(8)
+                    ((frame_size as isize - 40 - 14 - 4).max(8)) as u16
                 } else {
-                    (frame_size - 20 - 14 - 4) as u16
+                    ((frame_size as isize - 20 - 14 - 4).max(8)) as u16
                 };
                 let mut udp_header = etherparse::UdpHeader {
                     source_port: P4TG_SOURCE_PORT,
@@ -679,7 +769,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 };
 
                 // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = (result.capacity() as isize
+                let remaining = (packet_capacity as isize
                     - result.len() as isize
                     - 8
                     - payload.len() as isize
@@ -689,10 +779,10 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
 
                 payload.extend_from_slice(&padding);
                 match ip_header {
-                    IpHeader::Version6(v6, _) => {
+                    IpHeaders::Ipv6(v6, _) => {
                         udp_header.checksum = udp_header.calc_checksum_ipv6(&v6, &payload).unwrap();
                     }
-                    IpHeader::Version4(v4, _) => {
+                    IpHeaders::Ipv4(v4, _) => {
                         udp_header.checksum = udp_header.calc_checksum_ipv4(&v4, &payload).unwrap();
                     }
                 }
@@ -707,7 +797,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 let pkt = etherparse::Ethernet2Header {
                     source: [0, 0, 0, 0, 0, 0],
                     destination: [0, 0, 0, 0, 0, 0],
-                    ether_type: 0x86dd, // IPv6 ether type
+                    ether_type: EtherType::IPV6,
                 };
 
                 // Frame size + Base IPv6 Header + SRH + SID list
@@ -722,7 +812,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                     hop_limit: 64,
                     payload_length: ((result.capacity() as isize - 14 - 40 - 4) as u16).max(8),
-                    next_header: 43,
+                    next_header: IpNumber::IPV6_ROUTE_HEADER,
                     ..Default::default()
                 };
 
@@ -752,8 +842,10 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 }
 
                 // IPv6 raw includes the next header field and the length field. All SRH specific fields are added in the payload
-                let srh =
-                    Ipv6RawExtensionHeader::new_raw(next_header_ip_version, &extension_hdr_payload);
+                let srh = Ipv6RawExtHeader::new_raw(
+                    IpNumber(next_header_ip_version),
+                    &extension_hdr_payload,
+                );
 
                 match srh {
                     Ok(s) => s.write(&mut result).unwrap(),
@@ -762,12 +854,12 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                     }
                 }
 
-                let inner_ip_header: Option<IpHeader> = match s.srv6_ip_tunneling {
+                let inner_ip_header: Option<IpHeaders> = match s.srv6_ip_tunneling {
                     Some(false) => None, // No IP header beneath SRv6 header
                     None | Some(true) => {
                         // Inner IP Header, either v4 or v6
-                        let ip_header: etherparse::IpHeader = match s.ip_version {
-                            Some(6) => etherparse::IpHeader::Version6(
+                        let ip_header: IpHeaders = match s.ip_version {
+                            Some(6) => IpHeaders::Ipv6(
                                 etherparse::Ipv6Header {
                                     source: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                                     destination: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -778,7 +870,7 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                                         - 4)
                                     .max(8))
                                         as u16,
-                                    next_header: 17,
+                                    next_header: IpNumber::UDP,
                                     ..Default::default()
                                 },
                                 etherparse::Ipv6Extensions::default(),
@@ -787,15 +879,16 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                             _ =>
                             // Subtract IP header and Ethernet header size and CRC from frame_size to set as payload_len in IPv4 header
                             {
-                                etherparse::IpHeader::Version4(
+                                IpHeaders::Ipv4(
                                     etherparse::Ipv4Header::new(
                                         ((frame_size as isize - 14 - inner_ip_header_size - 4)
                                             .max(8)) as u16,
                                         64,
-                                        17,
+                                        IpNumber::UDP,
                                         [0, 0, 0, 0],
                                         [0, 0, 0, 0],
-                                    ),
+                                    )
+                                    .unwrap(),
                                     etherparse::Ipv4Extensions::default(),
                                 )
                             }
@@ -816,16 +909,16 @@ pub(crate) fn create_packet(s: &Stream, is_gtpu_payload: bool) -> Vec<u8> {
                 };
 
                 // Subtract UDP header size und payload (P4tg header) size, pad rest with random data
-                let remaining = udp_size - 8 - 11;
+                let remaining = (udp_size as isize - 8 - 11).max(0) as usize;
                 let padding: Vec<u8> = (0..remaining).map(|_| rand::random::<u8>()).collect();
 
                 payload.extend_from_slice(&padding);
 
                 match inner_ip_header {
-                    Some(IpHeader::Version6(v6, _)) => {
+                    Some(IpHeaders::Ipv6(v6, _)) => {
                         udp_header.checksum = udp_header.calc_checksum_ipv6(&v6, &payload).unwrap();
                     }
-                    Some(IpHeader::Version4(v4, _)) => {
+                    Some(IpHeaders::Ipv4(v4, _)) => {
                         udp_header.checksum = udp_header.calc_checksum_ipv4(&v4, &payload).unwrap();
                     }
                     None => {
@@ -909,6 +1002,32 @@ pub fn range_to_prefixes(start: u32, end: u32) -> Vec<(u32, u8)> {
     }
 
     res
+}
+
+/// Determine the number of batches that the packet generator sends per timer expiration.
+///
+/// Batches are only used in rate precision mode (`burst != 1`). In that case, the timeout
+/// computed by the solver is multiplied by [`BATCH_FACTOR`] as well, i.e., the offered rate
+/// stays the same but the traffic becomes more bursty.
+pub fn get_batch_factor(s: &Stream) -> u32 {
+    if s.batches.is_some_and(|b| b && s.burst != 1) {
+        BATCH_FACTOR
+    } else {
+        1
+    }
+}
+
+/// Determine the overall number of packets that are generated for a stream per `timeout` ns.
+///
+/// The solver only computes the number of packets that are generated per pipe and per batch.
+/// The packet generator, however, sends [`get_batch_factor`] batches per timer expiration and
+/// the same generation behaviour is replicated on all pipes used by the stream
+/// (see [`get_num_pipes`]). This is the number that is reported through the REST API.
+pub fn get_total_generated_packets(s: &Stream) -> Option<u16> {
+    let scale = get_batch_factor(s) * s.n_pipes.unwrap_or(1) as u32;
+    let total = (s.n_packets? as u32).saturating_mul(scale);
+
+    Some(total.min(u16::MAX as u32) as u16)
 }
 
 /// Determine the number of pipes to use for a stream based on its configuration.

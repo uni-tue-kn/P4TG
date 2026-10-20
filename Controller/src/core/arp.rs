@@ -21,6 +21,7 @@ use log::info;
 use macaddr::MacAddr;
 use std::collections::HashMap;
 
+use crate::core::Config;
 use crate::PortMapping;
 use rbfrt::error::RBFRTError;
 use rbfrt::table::MatchValue;
@@ -43,6 +44,7 @@ impl Arp {
         &self,
         switch: &SwitchConnection,
         port_mapping: &HashMap<u32, PortMapping>,
+        config: &Config,
     ) -> Result<(), RBFRTError> {
         switch.clear_table(ARP_REPLY_TABLE).await?;
 
@@ -57,7 +59,10 @@ impl Arp {
                 .action(&format!("{ACTION_PREFIX}.answer_arp"))
                 .action_data("e_port", mapping.tx_recirculation)
                 .action_data("src_addr", mapping.mac.as_bytes().to_vec())
-                .action_data("valid", false);
+                .action_data(
+                    "valid",
+                    config.arp_reply_for_channel(mapping.front_panel_port, mapping.channel),
+                );
 
             reqs.push(req);
         }
@@ -69,15 +74,17 @@ impl Arp {
         Ok(())
     }
 
+    /// Updates the ARP reply rules for the given port mappings.
+    /// Each mapping carries its own source MAC so that channels of a
+    /// channelized port keep replying with their individual addresses.
     pub async fn modify_arp(
         &self,
         switch: &SwitchConnection,
-        ports: &[PortMapping],
+        ports: &[(PortMapping, MacAddr)],
         active: bool,
-        mac: MacAddr,
     ) -> Result<(), RBFRTError> {
         let mut requests = vec![];
-        for port in ports {
+        for (port, mac) in ports {
             let req = table::Request::new(ARP_REPLY_TABLE)
                 .match_key(
                     "ig_intr_md.ingress_port",
@@ -89,8 +96,8 @@ impl Arp {
                 .action_data("valid", active);
             requests.push(req);
             info!(
-                "ARP reply rule for front panel port {}/{} (rx recirc {}) changed to {}.",
-                port.front_panel_port, port.channel, port.rx_recirculation, active
+                "ARP reply rule for front panel port {}/{} (rx recirc {}) changed to {} with MAC {}.",
+                port.front_panel_port, port.channel, port.rx_recirculation, active, mac
             );
         }
 

@@ -75,6 +75,26 @@ control egress(
         size = 128;
     }
 
+    // For PSD streams, hdr.path is not parseable on the final TX port (parser
+    // stops on any non-0/4/6 nibble), so is_egress cannot write tx_tstmp
+    // there. Match on app_id and write the timestamp one pass earlier, on
+    // the TX recirc where hdr.path is still valid. This adds a small constant
+    // recirc->TX bias to RTT but keeps measurement working when the DuT pops
+    // the PSD before echoing the packet back.
+    table is_egress_psd {
+        key = {
+            hdr.path.app_id: exact;
+        }
+        actions = {
+            set_tx;
+        }
+        #if __TARGET_TOFINO__ == 2
+            size = 16;
+        #else 
+            size = 8;
+        #endif
+}
+
     action no_action() {}
     table is_tx_recirc {
         key = {
@@ -154,8 +174,11 @@ control egress(
                 pkt_len = eg_intr_md.pkt_length - 6; // minus pkt gen header
 
                 // we are on tx recirc; set sequence number
-                if(hdr.path.isValid() && hdr.path.dst_port == UDP_P4TG_PORT) { // make sure its PTG's traffic
+                if(hdr.path.isValid() && hdr.path.dst_port == UDP_P4TG_PORT) { // make sure its P4TG's traffic
                   hdr.path.seq = get_next_tx_seq.execute(eg_intr_md.egress_port);
+                  // PSD streams write tx_tstmp here because hdr.path is not
+                  // parseable on the final TX port when the PSMHT is present.
+                  is_egress_psd.apply();
                 }
             }
 
@@ -165,7 +188,7 @@ control egress(
             app.apply(dummy, l_2, index);
 
             // set tx tstamp
-            if(hdr.path.isValid() && hdr.path.dst_port == UDP_P4TG_PORT) { // make sure its PTG's traffic
+            if(hdr.path.isValid() && hdr.path.dst_port == UDP_P4TG_PORT) { // make sure its P4TG's traffic
                 is_egress.apply();
             }
 

@@ -19,21 +19,74 @@
 */
 
 use log::warn;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::api::server::Error;
+use crate::core::histogram_monitor::{
+    build_histogram_selections, build_iat_histogram_configs_for_edges,
+    build_rtt_histogram_configs_for_rx_ports, histogram_app_filter_count, histogram_edge_roles,
+    histogram_entry_count,
+};
 use crate::core::statistics::HistogramConfig;
 use crate::core::traffic_gen_core::const_definitions::{
-    IAT_HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
+    IAT_HISTOGRAM_TABLE, IAT_HISTOGRAM_TABLE_SIZE, MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO1,
     MAX_ADDRESS_RANDOMIZATION_IPV6_TOFINO2, MAX_BUFFER_SIZE, MAX_NUM_MPLS_LABEL, MAX_NUM_SRV6_SIDS,
+    MAX_PATTERN_BURST_PACKETS, MAX_PATTERN_SAMPLE_RATE, MIN_PATTERN_BURST_PACKETS,
     RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE, TG_MAX_RATE, TG_MAX_RATE_TF2,
 };
+use crate::core::traffic_gen_core::expected_routes::resolve_per_stream_topology;
 use crate::core::traffic_gen_core::helper::{
-    calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps, range_to_ternary,
+    calculate_overhead, generate_front_panel_to_dev_port_mappings, mpps_to_gbps,
+    translate_fp_channel_to_dev_port_mapping,
 };
 use crate::core::traffic_gen_core::types::*;
 use crate::core::traffic_gen_core::types::{Encapsulation, GenerationMode};
 use crate::PortMapping;
+
+/// Checks if a `(front panel port, channel)` combination is configured on the device.
+fn channel_configured(
+    available_ports: &HashMap<u32, PortMapping>,
+    front_panel_port: u32,
+    channel: u8,
+) -> bool {
+    available_ports
+        .values()
+        .any(|entry| entry.front_panel_port == front_panel_port && entry.channel == channel)
+}
+
+fn pattern_supports_inverted(pattern_type: &GenerationPattern) -> bool {
+    matches!(
+        pattern_type,
+        GenerationPattern::Square | GenerationPattern::Sawtooth
+    )
+}
+
+fn normalize_pattern_config(
+    mut pattern: GenerationPatternConfig,
+    stream_id: u8,
+) -> GenerationPatternConfig {
+    if !pattern_supports_inverted(&pattern.pattern_type) {
+        if pattern.inverted == Some(true) {
+            warn!(
+                "Inverted flag ignored for pattern {:?} in stream with ID #{}.",
+                pattern.pattern_type, stream_id
+            );
+        }
+        pattern.inverted = None;
+    }
+
+    pattern
+}
+
+pub fn normalize_stream_patterns(mut streams: Vec<Stream>) -> Vec<Stream> {
+    for stream in &mut streams {
+        if let Some(pattern) = stream.pattern.take() {
+            stream.pattern = Some(normalize_pattern_config(pattern, stream.stream_id));
+        }
+    }
+
+    streams
+}
 
 /// Validates an incoming traffic generation request.
 /// Checks if the MPLS/SRv6 configuration is correct, i.e., if the MPLS stack matches the number of LSEs.
@@ -42,6 +95,39 @@ pub fn validate_request(
     available_ports: &HashMap<u32, PortMapping>,
     is_tofino2: bool,
 ) -> Result<Vec<Stream>, Error> {
+    if payload.drain_duration_secs > MAX_DRAIN_DURATION_SECS {
+        return Err(Error::new(format!(
+            "Drain duration must not exceed {MAX_DRAIN_DURATION_SECS} seconds."
+        )));
+    }
+
+    if payload.rx_mapping_mode == RxMappingMode::PerStream
+        && matches!(
+            payload.mode,
+            GenerationMode::Analyze | GenerationMode::Rfc2544
+        )
+    {
+        return Err(Error::new(
+            "Per-stream RX mapping is not supported in Analyze or RFC2544 mode.",
+        ));
+    }
+
+    if payload.repetitions == 0 {
+        return Err(Error::new("Test repetitions must be greater than 0."));
+    }
+
+    if payload.mode == GenerationMode::Rfc2544 && payload.repetitions != 1 {
+        return Err(Error::new(
+            "RFC2544 tests do not support the general repetitions parameter.",
+        ));
+    }
+
+    if payload.repetitions > 1 && payload.duration.unwrap_or(0) == 0 {
+        return Err(Error::new(
+            "Repeated tests require a test duration greater than 0.",
+        ));
+    }
+
     let front_panel_dev_port_mappings =
         generate_front_panel_to_dev_port_mappings(available_ports, is_tofino2);
 
@@ -61,19 +147,30 @@ pub fn validate_request(
             )));
         }
         // Validate that configured channels are available when a port is channelized.
-        if let Some(x) = setting.channel {
-            if x != 0 {
-                let default_pm = PortMapping::default();
-                let dev_port = front_panel_dev_port_mappings
-                    .get(&setting.port)
-                    .unwrap_or(&0u32);
-                let channel_count = available_ports
-                    .get(dev_port)
-                    .unwrap_or(&default_pm)
-                    .channel_count;
-                if channel_count.is_none() {
-                    return Err(Error::new(format!("Port {:?} is not configured with channel_count > 1, but multiple channels are configured for generation. Try resetting your local storage.", &setting.port)));
-                }
+        // Without this check, an out-of-range channel would resolve to a dev port of
+        // a different front panel port (or panic on a missing port mapping).
+        let channel = setting.channel.unwrap_or(0);
+        if !channel_configured(available_ports, setting.port, channel) {
+            return Err(Error::new(format!("Channel {} is not configured for port {} in StreamSettings. Try resetting your local storage.", channel, setting.port)));
+        }
+        if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            let rx_target = setting.rx_target.ok_or_else(|| {
+                Error::new(format!(
+                    "Active stream {} on TX port {}/{} requires an RX target in per-stream mapping mode.",
+                    setting.stream_id, setting.port, channel
+                ))
+            })?;
+            if !front_panel_dev_port_mappings.contains_key(&rx_target.port) {
+                return Err(Error::new(format!(
+                    "No mapping for front panel RX port {} in StreamSettings.",
+                    rx_target.port
+                )));
+            }
+            if !channel_configured(available_ports, rx_target.port, rx_target.channel) {
+                return Err(Error::new(format!(
+                    "Channel {} is not configured for RX port {} in StreamSettings.",
+                    rx_target.channel, rx_target.port
+                )));
             }
         }
     }
@@ -85,21 +182,65 @@ pub fn validate_request(
         .into_iter()
         .filter(|s| active_stream_ids.contains(&s.stream_id))
         .collect();
+    let active_streams = normalize_stream_patterns(active_streams);
+    let per_stream_topology = resolve_per_stream_topology(
+        payload.rx_mapping_mode,
+        &active_stream_settings,
+        &active_streams,
+        &front_panel_dev_port_mappings,
+    )
+    .map_err(Error::new)?;
+
+    // App id 0 is reserved for the monitoring packet application. A stream with
+    // app id 0 overwrites its pktgen entry in hardware, which permanently kills
+    // all digest-based statistics until the controller is restarted.
+    let max_app_id: u8 = if is_tofino2 { 15 } else { 7 };
+    let mut seen_app_ids = HashSet::new();
+    for stream in active_streams.iter() {
+        if stream.app_id < 1 || stream.app_id > max_app_id {
+            return Err(Error::new(format!(
+                "Stream {} uses app id {}. App ids must be in [1, {max_app_id}]; app id 0 is reserved for the monitoring packets.",
+                stream.stream_id, stream.app_id
+            )));
+        }
+        if !seen_app_ids.insert(stream.app_id) {
+            return Err(Error::new(format!(
+                "App id {} is used by multiple streams. App ids must be unique.",
+                stream.app_id
+            )));
+        }
+    }
 
     let tx_rx_port_mapping = &payload.port_tx_rx_mapping;
 
-    // Validate that front panel port is available
-    for (tx, channel) in tx_rx_port_mapping.iter() {
-        if !front_panel_dev_port_mappings.contains_key(&tx.parse().unwrap_or(u32::MAX)) {
+    // Validate that front panel port and channel are available
+    for (tx, channel) in tx_rx_port_mapping
+        .iter()
+        .filter(|_| payload.rx_mapping_mode == RxMappingMode::PerTxPort)
+    {
+        let tx_port = tx.parse().unwrap_or(u32::MAX);
+        if !front_panel_dev_port_mappings.contains_key(&tx_port) {
             return Err(Error::new(format!(
                 "No mapping for front panel port {tx:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
             )));
         }
-        for (_, rx_target) in channel.iter() {
+        for (tx_channel, rx_target) in channel.iter() {
+            let tx_channel_num = tx_channel.parse().unwrap_or(u8::MAX);
+            if !channel_configured(available_ports, tx_port, tx_channel_num) {
+                return Err(Error::new(format!(
+                    "Channel {tx_channel} is not configured for TX port {tx} in TX-RX mapping."
+                )));
+            }
             if !front_panel_dev_port_mappings.contains_key(&rx_target.port) {
                 return Err(Error::new(format!(
                 "No mapping for front panel port {:?} in TX-RX mapping. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number.", rx_target.port
             )));
+            }
+            if !channel_configured(available_ports, rx_target.port, rx_target.channel) {
+                return Err(Error::new(format!(
+                    "Channel {} is not configured for RX port {} in TX-RX mapping.",
+                    rx_target.channel, rx_target.port
+                )));
             }
         }
     }
@@ -107,7 +248,7 @@ pub fn validate_request(
     let rtt_histogram_config = &payload.rtt_histogram_config;
     // Validate that front panel port is available
     if let Some(h_cfg) = rtt_histogram_config {
-        for (rx, _) in h_cfg.iter() {
+        for rx in h_cfg.keys() {
             if !front_panel_dev_port_mappings.contains_key(&rx.parse().unwrap_or(u32::MAX)) {
                 return Err(Error::new(format!(
                 "No mapping for front panel port {rx:?} in RTT histogram config. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
@@ -118,7 +259,7 @@ pub fn validate_request(
     let iat_histogram_config = &payload.iat_histogram_config;
     // Validate that front panel port is available
     if let Some(h_cfg) = iat_histogram_config {
-        for (rx, _) in h_cfg.iter() {
+        for rx in h_cfg.keys() {
             if !front_panel_dev_port_mappings.contains_key(&rx.parse().unwrap_or(u32::MAX)) {
                 return Err(Error::new(format!(
                 "No mapping for front panel port {rx:?} in IAT histogram config. From version 2.5.0 onwards, the configuration requires the front panel port number instead of the dev port number."
@@ -139,10 +280,175 @@ pub fn validate_request(
         return Err(Error::new("No stream definition in analyze mode allowed."));
     }
 
+    if payload.mode == GenerationMode::Rfc2544 {
+        let Some(config) = &payload.rfc2544 else {
+            return Err(Error::new("RFC2544 configuration missing."));
+        };
+
+        if !config.throughput
+            && !config.reset
+            && !config.latency
+            && !config.frame_loss
+            && !config.system_recovery
+        {
+            return Err(Error::new("At least one RFC2544 test must be selected."));
+        }
+
+        if config.frame_sizes.is_empty() {
+            return Err(Error::new(
+                "At least one RFC2544 frame size must be selected.",
+            ));
+        }
+
+        if config.frame_sizes.iter().any(|frame_size| {
+            *frame_size != crate::core::traffic_gen_core::types::RFC2544_IMIX_FRAME_SIZE
+                && *frame_size < 64
+        }) {
+            return Err(Error::new("RFC2544 frame sizes must be at least 64 bytes."));
+        }
+
+        if config
+            .frame_sizes
+            .contains(&crate::core::traffic_gen_core::types::RFC2544_IMIX_FRAME_SIZE)
+            && !config.throughput
+        {
+            return Err(Error::new(
+                "The RFC2544 IMIX profile requires zero-loss throughput.",
+            ));
+        }
+
+        if config.frame_sizes.iter().all(|frame_size| {
+            *frame_size == crate::core::traffic_gen_core::types::RFC2544_IMIX_FRAME_SIZE
+        }) && (config.latency || config.reset || config.frame_loss || config.system_recovery)
+        {
+            return Err(Error::new(
+                "Latency, reset, frame loss, and system recovery require at least one fixed RFC2544 frame size; IMIX applies to zero-loss throughput only.",
+            ));
+        }
+
+        if active_streams.is_empty() {
+            return Err(Error::new("RFC2544 requires at least one active stream."));
+        }
+
+        if active_stream_settings.is_empty() {
+            return Err(Error::new(
+                "RFC2544 requires at least one active stream setting.",
+            ));
+        }
+
+        if tx_rx_port_mapping.is_empty()
+            || tx_rx_port_mapping
+                .values()
+                .all(|channel_map| channel_map.is_empty())
+        {
+            return Err(Error::new("RFC2544 requires a TX/RX port mapping."));
+        }
+
+        if config.line_rate_gbps <= 0.0 {
+            return Err(Error::new("RFC2544 line rate must be greater than 0."));
+        }
+
+        let max_rate = if is_tofino2 {
+            TG_MAX_RATE_TF2
+        } else {
+            TG_MAX_RATE
+        };
+
+        if config.line_rate_gbps > max_rate {
+            return Err(Error::new(
+                "RFC2544 line rate larger than maximal supported rate.",
+            ));
+        }
+
+        if config.trial_duration_secs == 0 {
+            return Err(Error::new("RFC2544 trial duration must be greater than 0."));
+        }
+
+        if config.throughput && config.throughput_search_steps == 0 {
+            return Err(Error::new(
+                "RFC2544 throughput search steps must be greater than 0.",
+            ));
+        }
+
+        if config.throughput_repetitions == 0 {
+            return Err(Error::new(
+                "RFC2544 throughput repetitions must be greater than 0.",
+            ));
+        }
+
+        if matches!(
+            config.throughput_aggregation,
+            Rfc2544ThroughputAggregation::Clustered
+        ) && config.throughput_cluster_tolerance_gbps <= 0.0
+        {
+            return Err(Error::new(
+                "RFC2544 throughput cluster tolerance must be greater than 0.",
+            ));
+        }
+
+        if config.latency && config.latency_duration_secs == 0 {
+            return Err(Error::new(
+                "RFC2544 latency duration must be greater than 0.",
+            ));
+        }
+
+        if config.latency && config.latency_repetitions == 0 {
+            return Err(Error::new(
+                "RFC2544 latency repetitions must be greater than 0.",
+            ));
+        }
+
+        if config.reset && config.reset_timeout_secs == 0 {
+            return Err(Error::new("RFC2544 reset timeout must be greater than 0."));
+        }
+
+        if config.system_recovery && config.system_recovery_overload_duration_secs == 0 {
+            return Err(Error::new(
+                "RFC2544 system recovery overload duration must be greater than 0.",
+            ));
+        }
+
+        if config.system_recovery && config.system_recovery_observation_duration_secs == 0 {
+            return Err(Error::new(
+                "RFC2544 system recovery observation duration must be greater than 0.",
+            ));
+        }
+    }
+
     for stream in active_streams.iter() {
+        // Frame sizes below the Ethernet minimum underflow the header size
+        // subtractions in packet construction.
+        if stream.frame_size < 64 {
+            return Err(Error::new(format!(
+                "Frame size of stream with ID #{} must be at least 64 bytes.",
+                stream.stream_id
+            )));
+        }
+
         if stream.gtpu && stream.vxlan {
             return Err(Error::new(format!(
                 "VxLAN and GTP-U are mutually exclusive (Stream with ID #{})",
+                stream.stream_id
+            )));
+        }
+
+        if stream.detnet_cw == Some(true) && stream.encapsulation != Encapsulation::Mpls {
+            return Err(Error::new(format!(
+                "DetNet CW is only supported with MPLS encapsulation (Stream with ID #{})",
+                stream.stream_id
+            )));
+        }
+
+        if stream.detnet_cw == Some(true) && stream.detnet_seq_num_length.is_none() {
+            return Err(Error::new(format!(
+                "DetNet CW sequence number length missing for stream #{}",
+                stream.stream_id
+            )));
+        }
+
+        if stream.detnet_cw != Some(true) && stream.detnet_seq_num_length.is_some() {
+            return Err(Error::new(format!(
+                "DetNet CW sequence number length configured without enabling DetNet CW (Stream with ID #{})",
                 stream.stream_id
             )));
         }
@@ -166,6 +472,13 @@ pub fn validate_request(
             if stream.number_of_lse.unwrap() == 0 {
                 return Err(Error::new(format!(
                     "MPLS encapsulation selected for stream with ID #{} but #LSE is zero.",
+                    stream.stream_id
+                )));
+            }
+
+            if !is_tofino2 && stream.detnet_cw == Some(true) && stream.ip_version == Some(6) {
+                return Err(Error::new(format!(
+                    "DetNet CW with IPv6 is not supported on Tofino1 (Stream with ID #{})",
                     stream.stream_id
                 )));
             }
@@ -388,6 +701,7 @@ pub fn validate_request(
         .sum();
 
     if payload.mode != GenerationMode::Analyze
+        && payload.mode != GenerationMode::Rfc2544
         && rate
             > if is_tofino2 {
                 TG_MAX_RATE_TF2
@@ -400,13 +714,79 @@ pub fn validate_request(
         ));
     }
 
-    if let Some(histogram_config) = rtt_histogram_config {
-        // Validate histogram configuration
-        validate_histogram(histogram_config, payload.name.clone(), HistogramType::Rtt)?;
-    }
-    if let Some(histogram_config) = iat_histogram_config {
-        // Validate histogram configuration
-        validate_histogram(histogram_config, payload.name.clone(), HistogramType::Iat)?;
+    // Validate histogram configurations. Runs even without explicit configs
+    // because active ports fall back to default configs that also consume
+    // table entries. Safe to translate here: all mapping ports were validated above.
+    let tx_rx_dev_mapping = translate_fp_channel_to_dev_port_mapping(
+        &payload.port_tx_rx_mapping,
+        &front_panel_dev_port_mappings,
+    );
+    let stream_to_app: HashMap<u8, u8> = active_streams
+        .iter()
+        .map(|stream| (stream.stream_id, stream.app_id))
+        .collect();
+    let histogram_routes: Vec<(u32, u32, u8)> =
+        if payload.rx_mapping_mode == RxMappingMode::PerStream {
+            per_stream_topology
+                .routes
+                .iter()
+                .map(|route| (route.tx_dev_port, route.rx_dev_port, route.app_id))
+                .collect()
+        } else {
+            active_stream_settings
+                .iter()
+                .filter_map(|setting| {
+                    let tx = front_panel_dev_port_mappings.get(&setting.port)?
+                        + setting.channel.unwrap_or(0) as u32;
+                    Some((
+                        tx,
+                        *tx_rx_dev_mapping.get(&tx.to_string())?,
+                        *stream_to_app.get(&setting.stream_id)?,
+                    ))
+                })
+                .collect()
+        };
+    let configured_app_ids: HashSet<u8> =
+        payload.streams.iter().map(|stream| stream.app_id).collect();
+
+    if payload.rx_mapping_mode == RxMappingMode::PerStream {
+        validate_histogram_for_edges(
+            rtt_histogram_config.as_ref(),
+            &per_stream_topology.edges,
+            &histogram_routes,
+            &configured_app_ids,
+            &front_panel_dev_port_mappings,
+            payload.name.clone(),
+            HistogramType::Rtt,
+        )?;
+        validate_histogram_for_edges(
+            iat_histogram_config.as_ref(),
+            &per_stream_topology.edges,
+            &histogram_routes,
+            &configured_app_ids,
+            &front_panel_dev_port_mappings,
+            payload.name.clone(),
+            HistogramType::Iat,
+        )?;
+    } else {
+        validate_histogram(
+            rtt_histogram_config.as_ref(),
+            &tx_rx_dev_mapping,
+            &histogram_routes,
+            &configured_app_ids,
+            &front_panel_dev_port_mappings,
+            payload.name.clone(),
+            HistogramType::Rtt,
+        )?;
+        validate_histogram(
+            iat_histogram_config.as_ref(),
+            &tx_rx_dev_mapping,
+            &histogram_routes,
+            &configured_app_ids,
+            &front_panel_dev_port_mappings,
+            payload.name.clone(),
+            HistogramType::Iat,
+        )?;
     }
 
     validate_patterns(&active_streams)?;
@@ -417,6 +797,22 @@ pub fn validate_request(
 pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
     for s in active_streams.iter() {
         if let Some(pattern) = &s.pattern {
+            validate_pattern_burst(pattern, s.stream_id)?;
+
+            if pattern.sample_rate == 0 || pattern.sample_rate > MAX_PATTERN_SAMPLE_RATE {
+                return Err(Error::new(format!(
+                    "Pattern sample rate in stream with ID #{} must be in [1, {}].",
+                    s.stream_id, MAX_PATTERN_SAMPLE_RATE
+                )));
+            }
+
+            if !pattern.period.is_finite() || pattern.period <= 0.0 {
+                return Err(Error::new(format!(
+                    "Pattern period in stream with ID #{} must be a finite value greater than zero.",
+                    s.stream_id
+                )));
+            }
+
             let period_secs = pattern.period / 1e9_f64; // convert from ns to s
 
             if let GenerationPattern::Flashcrowd = pattern.pattern_type {
@@ -510,25 +906,64 @@ pub fn validate_patterns(active_streams: &[Stream]) -> Result<(), Error> {
     Ok(())
 }
 
+fn validate_pattern_burst(pattern: &GenerationPatternConfig, stream_id: u8) -> Result<(), Error> {
+    if let Some(burst_packets) = pattern.burst_packets {
+        if !(MIN_PATTERN_BURST_PACKETS..=MAX_PATTERN_BURST_PACKETS).contains(&burst_packets) {
+            return Err(Error::new(format!(
+                "Pattern meter burst in stream with ID #{} must be in [{}, {}] packets or omitted.",
+                stream_id, MIN_PATTERN_BURST_PACKETS, MAX_PATTERN_BURST_PACKETS
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 pub fn validate_histogram(
-    request: &HashMap<String, HashMap<String, HistogramConfig>>,
+    request: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    tx_rx_dev_mapping: &HashMap<String, u32>,
+    routes: &[(u32, u32, u8)],
+    configured_app_ids: &HashSet<u8>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
     test_name: Option<String>,
     hist_type: HistogramType,
 ) -> Result<(), Error> {
-    let mut num_requests = 1; // 1 for default_action entry
+    let edges: HashSet<(u32, u32)> = tx_rx_dev_mapping
+        .iter()
+        .filter_map(|(tx, rx)| tx.parse().ok().map(|tx| (tx, *rx)))
+        .collect();
+    validate_histogram_for_edges(
+        request,
+        &edges,
+        routes,
+        configured_app_ids,
+        front_panel_dev_port_mappings,
+        test_name,
+        hist_type,
+    )
+}
 
+pub fn validate_histogram_for_edges(
+    request: Option<&HashMap<String, HashMap<String, HistogramConfig>>>,
+    edges: &HashSet<(u32, u32)>,
+    routes: &[(u32, u32, u8)],
+    configured_app_ids: &HashSet<u8>,
+    front_panel_dev_port_mappings: &HashMap<u32, u32>,
+    test_name: Option<String>,
+    hist_type: HistogramType,
+) -> Result<(), Error> {
     let mut t_name = "".to_string();
     if let Some(name) = test_name {
         t_name = format!(", Test: {name:?},");
     }
 
-    let max_table_size = match hist_type {
-        HistogramType::Rtt => RTT_HISTOGRAM_TABLE_SIZE,
-        HistogramType::Iat => IAT_HISTOGRAM_TABLE_SIZE,
+    let (table_name, max_table_size) = match hist_type {
+        HistogramType::Rtt => (RTT_HISTOGRAM_TABLE, RTT_HISTOGRAM_TABLE_SIZE),
+        HistogramType::Iat => (IAT_HISTOGRAM_TABLE, IAT_HISTOGRAM_TABLE_SIZE),
     };
 
-    for (port, channel_map) in request.iter() {
-        num_requests += 1; // Missed bin action for this port.
+    // Per-config sanity checks
+    for (port, channel_map) in request.into_iter().flatten() {
         for config in channel_map.values() {
             let port: u32 = match port.parse() {
                 Ok(p) => p,
@@ -536,9 +971,6 @@ pub fn validate_histogram(
             };
             if config.min >= config.max {
                 return Err(Error::new(format!("Histogram config error {t_name} port {port}: Minimum value must be less than maximum value of range.")));
-            }
-            if config.num_bins > 500 {
-                return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins. 500 bins per port are supported at maximum.")));
             }
             if config.num_bins > (config.max - config.min) {
                 return Err(Error::new(format!("Histogram config error {t_name} port {port}: Too many bins for too less of range. Increase range, or decrease number of bins.")));
@@ -562,31 +994,91 @@ pub fn validate_histogram(
                 }
             }
 
-            // Calculate bin width based on config params
-            let bin_width = config.get_bin_width();
-
-            for bin_index in 0..config.num_bins {
-                // For each bin, write table entries
-                let start = config.min + bin_index * bin_width;
-                let mut end = start + bin_width - 1;
-                if end > config.max {
-                    end = config.max;
+            if let Some(groups) = config
+                .stream_groups
+                .as_ref()
+                .filter(|groups| !groups.is_empty())
+            {
+                let aggregate: HashSet<u8> = groups.aggregate.iter().copied().collect();
+                let separate: HashSet<u8> = groups.separate.iter().copied().collect();
+                if aggregate.len() != groups.aggregate.len()
+                    || separate.len() != groups.separate.len()
+                {
+                    return Err(Error::new(format!(
+                        "Histogram config error {t_name} port {port}: Stream group lists must not contain duplicate app IDs."
+                    )));
                 }
-
-                let new_requests = range_to_ternary(start, end).len() as u32;
-
-                if let HistogramType::Iat = hist_type {
-                    // Double the number because we write entries for TX and RX
-                    num_requests += 2 * new_requests;
-                } else {
-                    // Only RX
-                    num_requests += new_requests;
+                if let Some(app_id) = aggregate.intersection(&separate).next() {
+                    return Err(Error::new(format!(
+                        "Histogram config error {t_name} port {port}: App ID {app_id} cannot be both aggregated and separate."
+                    )));
                 }
-
-                if num_requests > max_table_size {
-                    return Err(Error::new(format!("Number of table entries exceeds available space in table {RTT_HISTOGRAM_TABLE}")));
+                if let Some(app_id) = aggregate
+                    .union(&separate)
+                    .find(|app_id| !configured_app_ids.contains(app_id))
+                {
+                    return Err(Error::new(format!(
+                        "Histogram config error {t_name} port {port}: App ID {app_id} does not identify a configured stream."
+                    )));
                 }
             }
+        }
+    }
+
+    // Count the table entries that will actually be written. This mirrors the
+    // table writer: configs (including defaults for unconfigured active ports)
+    // are resolved per dev port, and each port only gets entries for the
+    // recirculation paths matching its TX/RX role. Each written path costs the
+    // ternary bin entries plus one wildcard missed-bin entry.
+    let dev_port_configs = match hist_type {
+        HistogramType::Rtt => build_rtt_histogram_configs_for_rx_ports(
+            request,
+            &histogram_edge_roles(edges).1,
+            front_panel_dev_port_mappings,
+        ),
+        HistogramType::Iat => {
+            build_iat_histogram_configs_for_edges(request, edges, front_panel_dev_port_mappings)
+        }
+    };
+    let (tx_ports, rx_ports) = histogram_edge_roles(edges);
+    let selections = build_histogram_selections(routes, &dev_port_configs, &hist_type);
+
+    let mut num_requests: u64 = 0;
+    for (dev_port, config) in dev_port_configs.iter() {
+        let selection = selections.get(dev_port).cloned().unwrap_or_default();
+        let rx_filters = if rx_ports.contains(dev_port) {
+            histogram_app_filter_count(&selection.rx) as u64
+        } else {
+            0
+        };
+        let tx_filters = if matches!(hist_type, HistogramType::Iat) && tx_ports.contains(dev_port) {
+            histogram_app_filter_count(&selection.tx) as u64
+        } else {
+            0
+        };
+        let filter_count = rx_filters + tx_filters;
+
+        // Explicit configs for inactive ports are retained by the config
+        // resolver, but the table writer skips them because neither path can
+        // match traffic. Skip them here as well so an unused, very large bin
+        // count cannot trigger unnecessary expansion work during validation.
+        if filter_count == 0 && !rx_ports.contains(dev_port) && !tx_ports.contains(dev_port) {
+            continue;
+        }
+
+        // Every bin needs at least one ternary entry. Reject configurations
+        // that cannot possibly fit before calculating their exact expansion;
+        // without a fixed bin cap, this also keeps validation work bounded by
+        // the table's actual capacity.
+        let minimum_requests = filter_count * (u64::from(config.num_bins) + 1);
+        if num_requests + minimum_requests > u64::from(max_table_size) {
+            return Err(Error::new(format!("Histogram config error {t_name}: Number of table entries requires at least {} entries, which exceeds available space ({max_table_size}) in table {table_name}. Reduce the number of bins or the histogram range.", num_requests + minimum_requests)));
+        }
+
+        num_requests += filter_count * (u64::from(histogram_entry_count(config)) + 1);
+
+        if num_requests > u64::from(max_table_size) {
+            return Err(Error::new(format!("Histogram config error {t_name}: Number of table entries ({num_requests}) exceeds available space ({max_table_size}) in table {table_name}. Reduce the number of bins or the histogram range.")));
         }
     }
 
@@ -603,6 +1095,12 @@ pub fn validate_multiple_test(
     }
 
     for (idx, test) in tests.iter().enumerate() {
+        if test.mode == GenerationMode::Rfc2544 {
+            return Err(Error::new(
+                "RFC2544 tests cannot be nested in multiple-test runs.",
+            ));
+        }
+
         // Validate that each test has a name
         if test.name.is_none() {
             return Err(Error::new(format!("Test #{idx} has no name.")));

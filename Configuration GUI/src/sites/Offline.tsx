@@ -22,6 +22,7 @@ import styled from 'styled-components'
 import { Row } from "react-bootstrap";
 import { get } from "../common/API";
 import { ASIC } from '../common/Interfaces';
+import { startPolling } from '../common/Polling';
 
 const StyledIcon = styled.i`
     font-size: 100px;
@@ -45,11 +46,7 @@ const Offline = ({ setP4TGInfos }: { setP4TGInfos: (arg0: any) => void }) => {
             }
         }
 
-        const interval = setInterval(loadStatus, 2000)
-
-        return () => {
-            clearInterval(interval)
-        }
+        return startPolling(loadStatus, 2000, true)
 
     }, [])
 

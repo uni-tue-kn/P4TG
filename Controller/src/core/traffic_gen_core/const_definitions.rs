@@ -71,6 +71,11 @@ pub const TRAFFIC_GEN_MODE: &str = "ingress.tg_mode";
 /// If thats the case, the packet is timestamped for RTT calculation.
 pub const IS_EGRESS_TABLE: &str = "egress.is_egress";
 
+/// Table keyed on app_id. Matches PSD streams and writes the
+/// TX timestamp on the TX recirc pass, because the final-TX-port parser
+/// cannot reach hdr.path past the PSMHT.
+pub const IS_EGRESS_PSD_TABLE: &str = "egress.is_egress_psd";
+
 /// Table that indicates that a packet is on TX egress recirculation port.
 /// Packets on this path have an additional 6 byte generation header that is removed
 /// if this table matches.
@@ -105,7 +110,7 @@ pub const RTT_HISTOGRAM_TABLE: &str = "ingress.p4tg.rtt.rtt_histogram";
 pub const RTT_HISTOGRAM_TABLE_SIZE: u32 = 8192;
 
 /// Maximum number of entries in the IAT_HISTOGRAM_TABLE
-pub const IAT_HISTOGRAM_TABLE_SIZE: u32 = 4196;
+pub const IAT_HISTOGRAM_TABLE_SIZE: u32 = 8192;
 
 /// Table used to configure the bins of RTT Histogram
 pub const IAT_HISTOGRAM_TABLE: &str = "ingress.p4tg.iat.iat_histogram";
@@ -118,6 +123,10 @@ pub const VLAN_HEADER_REPLACE_TABLE: &str = "egress.header_replace.vlan_header_r
 /// This table replaces the header content of the MPLS stack
 pub const MPLS_HEADER_REPLACE_TABLE: &str =
     "egress.header_replace.mpls_replace_c.mpls_header_replace";
+
+/// MPLS d-CW replace table
+/// This table writes the P4TG sequence number into the d-CW field
+pub const DCW_HEADER_REPLACE_TABLE: &str = "egress.header_replace.mpls_replace_c.dCW_seq_num";
 
 /// SRv6 replace table
 /// This table replaces the header content of the SRv6 header
@@ -160,8 +169,25 @@ pub const PATTERN_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_generation
 /// Table used to store pattern configuration
 pub const PATTERN_CONFIG_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_config";
 
+/// Indexed meter used by pattern shaping.
+pub const PATTERN_METER_TABLE: &str = "ingress.p4tg.pattern_shaping.pattern_meter";
+
 /// Maximum number of table entries we are allowed to program.
 pub const MAX_PATTERN_TABLE_ENTRIES_TOFINO_2: usize = 40000;
 pub const MAX_PATTERN_TABLE_ENTRIES: usize = 8192;
+
+/// Maximum number of pattern meter indices we are allowed to program.
+pub const MAX_PATTERN_METER_ENTRIES_TOFINO_2: usize = 16384;
+pub const MAX_PATTERN_METER_ENTRIES: usize = 8192;
+
+/// Maximum number of requested samples per traffic-pattern period. Pattern
+/// entries are materialized in controller memory before they are sent to BfRt,
+/// so this also bounds CPU and memory consumption for an API request.
+pub const MAX_PATTERN_SAMPLE_RATE: u32 = 10000;
+
+/// Supported range for an explicitly configured pattern meter burst. Larger
+/// hardware bursts remain supported through the automatic calculation.
+pub const MIN_PATTERN_BURST_PACKETS: u64 = 1;
+pub const MAX_PATTERN_BURST_PACKETS: u64 = 1000;
 
 pub const PATTERN_INTERVAL_REGISTER: &str = "ingress.p4tg.pattern_shaping.pattern_interval_number";

@@ -1,0 +1,84 @@
+[
+  {
+    "streams": [
+      {
+        "stream_id": 1,
+        "app_id": 1,
+        "frame_size": 1024,
+        "encapsulation": 0,
+        "number_of_lse": 0,
+        "number_of_srv6_sids": 0,
+        "srv6_ip_tunneling": true,
+        "traffic_rate": 1,
+        "burst": 100,
+        "batches": true,
+        "vxlan": false,
+        "gtpu": false,
+        "ip_version": 4,
+        "unit": 0,
+        "pattern": null,
+        "detnet_cw": false,
+        "detnet_seq_num_length": null,
+        "mna_in_stack": false,
+        "mna_post_stack": false
+      }
+    ],
+    "mode": 5,
+    "duration": 0,
+    "stream_settings": [
+      {
+        "port": 1,
+        "channel": 0,
+        "stream_id": 1,
+        "ethernet": {
+          "eth_src": "32:D5:42:2A:F6:92",
+          "eth_dst": "81:E7:9D:E3:AD:47"
+        },
+        "ip": {
+          "ip_src": "192.168.178.10",
+          "ip_dst": "192.168.178.11",
+          "ip_tos": 0,
+          "ip_src_mask": "0.0.0.0",
+          "ip_dst_mask": "0.0.0.0"
+        },
+        "active": true
+      }
+    ],
+    "rtt_histogram_config": {},
+    "iat_histogram_config": {},
+    "port_tx_rx_mapping": {
+      "1": {
+        "0": {
+          "port": 2,
+          "channel": 0
+        }
+      },
+      "10": {
+        "0": {
+          "port": 10,
+          "channel": 0
+        }
+      }
+    },
+    "rfc2544": {
+      "throughput": true,
+      "reset": false,
+      "latency": true,
+      "frame_loss": true,
+      "system_recovery": false,
+      "frame_sizes": [
+        64,
+        128
+      ],
+      "line_rate_gbps": 10,
+      "trial_duration_secs": 10,
+      "throughput_search_steps": 7,
+      "latency_duration_secs": 10,
+      "latency_repetitions": 1,
+      "reset_timeout_secs": 120,
+      "system_recovery_overload_duration_secs": 10,
+      "system_recovery_observation_duration_secs": 10
+    },
+    "name": "RFC2544 10G 64/128"
+  }
+]

@@ -299,14 +299,17 @@ impl FrameTypeMonitor {
                         frame_type = "qinq";
                     }
 
-                    let count = 'get_count: {
-                        for action in &entry.action_data {
-                            if action.get_key() == "$COUNTER_SPEC_PKTS" {
-                                break 'get_count action.get_data().to_u128();
-                            }
-                        }
+                    let count = entry
+                        .action_data
+                        .iter()
+                        .find(|action| action.get_key() == "$COUNTER_SPEC_PKTS")
+                        .map(|action| action.get_data().to_u128());
 
-                        panic!("$COUNTER_SPEC_PKTS missing in {entry:#?}")
+                    // Skip instead of panicking; a panic here would silently
+                    // kill the monitoring task and freeze the statistics.
+                    let Some(count) = count else {
+                        warn!("$COUNTER_SPEC_PKTS missing for entry in table {t}.");
+                        continue;
                     };
 
                     if tx_mapping.contains_key(&port) {

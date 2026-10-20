@@ -178,7 +178,7 @@ control Header_Replace(
 
         // we only rewrite IP header for P4TG packets
         // identified by valid path header and UDP port
-        if(hdr.path.isValid() && hdr.path.dst_port == 50083) {
+        if(hdr.path.isValid() && hdr.path.dst_port == UDP_P4TG_PORT) {
             if(header_replace.apply().hit) {
                 if (eg_md.ip_version == 4){
                     // get random 32 bit number and make bitwise AND with network mask

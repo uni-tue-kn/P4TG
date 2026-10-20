@@ -31,44 +31,51 @@ import Ports from "./sites/Ports";
 import Settings from "./sites/Settings";
 import Offline from "./sites/Offline"
 import Tables from "./sites/Tables";
-import { ASIC, P4TGInfos, StreamSettings, ToastVariant } from "./common/Interfaces";
-import { Stream } from "./common/Interfaces";
+import { ASIC, P4TGInfos, ToastVariant } from "./common/Interfaces";
 import Loader from "./components/Loader";
-import { validateStreams, validateStreamSettings } from "./common/Validators";
 import { isUpdateAvailable } from './common/Helper'
+import { startPolling } from './common/Polling'
+
+const Wrapper = styled.div``
+
+const ASICVersion = styled.div`
+  margin-right: 10px;
+  margin-bottom: 10px;
+  background: var(--color-primary);
+  padding: 5px 25px 5px 25px;
+  color: #FFF;
+  border-radius: 10px;
+  text-align: center;
+  display: inline-block;
+`
+
+const DigestWarning = styled(ASICVersion)`
+  background: var(--bs-danger);
+`
+
+const SessionWarning = styled(ASICVersion)`
+  background: var(--bs-warning);
+  color: #000;
+`
+
+const EXPERT_MODE_STORAGE_KEY = "p4tg.expertMode"
 
 const App = () => {
     const [online, set_online] = useState(true)
     const [loaded, set_loaded] = useState(false)
     const [p4tg_infos, set_p4tg_infos] = useState<P4TGInfos>({ status: "", version: "", asic: ASIC.Tofino1, loopback: false })
-    const [toast, setToast] = useState({ time: "00:00", show: false, message: "", bg: "success" })
+    const [toast, setToast] = useState<{ show: boolean, message: string, bg: ToastVariant }>({
+        show: false,
+        message: "",
+        bg: "success",
+    })
     const [updateAvailable, setUpdateAvailable] = useState(false)
     const [showUpdateModal, setShowUpdateModal] = useState(false)
+    const [expertMode, setExpertMode] = useState(
+        () => window.localStorage.getItem(EXPERT_MODE_STORAGE_KEY) === "true",
+    )
 
     useEffect(() => {
-        // Validates the stored streams and stream settings in the local storage
-        // Clears local storage if some streams/settings are not valid
-        // This may be needed if the UI got an update (new stream properties), but the local storage
-        // holds "old" streams/settings without the new property
-        const validateLocalStorage = () => {
-            try {
-                let stored_streams: Stream[] = JSON.parse(localStorage.getItem("streams") ?? "[]")
-                let stored_settings: StreamSettings[] = JSON.parse(localStorage.getItem("streamSettings") ?? "[]")
-
-                if (!validateStreams(stored_streams) || !validateStreamSettings(stored_settings)) {
-                    showToast("Incompatible stream description found. This may be due to an update. Resetting local storage.", "danger")
-                    localStorage.clear()
-                    window.location.reload()
-                    return
-                }
-            }
-            catch {
-                showToast("Error in reading local storage. Resetting local storage.", "danger")
-                localStorage.clear()
-                window.location.reload()
-            }
-        }
-
         const loadInfos = async () => {
             let stats = await get({ route: "/online" })
 
@@ -81,8 +88,35 @@ const App = () => {
             set_loaded(true)
         }
 
-        validateLocalStorage()
-        loadInfos()
+        let disposed = false
+        let stopPolling = () => { }
+
+        // Keep the digest pipeline health (digests_alive) fresh; /online is
+        // otherwise only fetched once at page load
+        const pollInfos = async () => {
+            let stats = await get({ route: "/online" })
+
+            if (stats !== undefined && stats.status === 200) {
+                // Keep the previous object if nothing changed so the poll
+                // does not trigger a re-render every 5 s
+                set_p4tg_infos(prev =>
+                    JSON.stringify(prev) === JSON.stringify(stats.data) ? prev : stats.data
+                )
+            }
+        }
+
+        const initialize = async () => {
+            await loadInfos()
+            if (!disposed) {
+                stopPolling = startPolling(pollInfos, 5000)
+            }
+        }
+        void initialize()
+
+        return () => {
+            disposed = true
+            stopPolling()
+        }
     }, [])
 
     useEffect(() => {
@@ -93,29 +127,29 @@ const App = () => {
 
 
     const showToast = (message: string, bg: ToastVariant) => {
-        let now = new Date();
-        let time = now.getHours() + ":" + now.getMinutes();
-        setToast({ time: time, show: true, message, bg })
+        setToast({ show: true, message, bg })
     }
 
-    const Wrapper = styled.div``
-
-    const ASICVersion = styled.div`
-      margin-right: 10px;
-      margin-bottom: 10px;
-      background: var(--color-primary);
-      padding: 5px 25px 5px 25px;
-      color: #FFF;
-      border-radius: 10px;
-      text-align: center;
-      display: inline-block;
-    `
+    const toggleExpertMode = () => {
+        const enabled = !expertMode
+        setExpertMode(enabled)
+        window.localStorage.setItem(EXPERT_MODE_STORAGE_KEY, String(enabled))
+        showToast(
+            enabled ? "Expert mode enabled: Cat wave unlocked." : "Expert mode disabled.",
+            "info",
+        )
+    }
 
     return <Loader loaded={loaded}>
         <Router basename={Config.BASE_PATH}>
             <Row>
                 <Col className={'col-2 col-sm-2 col-xl-1 fixed-navbar'}>
-                    <Navbar p4tg_infos={p4tg_infos} updateAvailable={updateAvailable} />
+                    <Navbar
+                        p4tg_infos={p4tg_infos}
+                        updateAvailable={updateAvailable}
+                        expertMode={expertMode}
+                        onExpertModeToggle={toggleExpertMode}
+                    />
                 </Col>
                 <Col className={"col-10 col-sm-10 col-xl-11 offset-xl-1 offset-2 offset-sm-2 p-3"}>
                     <AxiosInterceptor onError={showToast} onOffline={() => set_online(false)}
@@ -123,6 +157,16 @@ const App = () => {
                         <Container fluid className={"pb-2"}>
                             <Wrapper>
                                 <ASICVersion>{p4tg_infos.asic}</ASICVersion>
+                                {p4tg_infos.digests_alive === false &&
+                                    <DigestWarning title="The controller no longer receives statistic digests from the switch. Rate, loss, and RTT values are frozen. Restart the controller to recover.">
+                                        &#9888; Statistics unavailable &mdash; restart controller
+                                    </DigestWarning>
+                                }
+                                {(p4tg_infos.connected_clients ?? 0) > 0 &&
+                                    <SessionWarning>
+                                        &#9888; Currently, {p4tg_infos.connected_clients} other user{p4tg_infos.connected_clients! > 1 ? "s are" : " is"} connected to this P4TG instance
+                                    </SessionWarning>
+                                }
                                 {online ?
                                     <>
                                         <Routes>
@@ -131,13 +175,13 @@ const App = () => {
                                             <Route path={"/home"} element={<Home p4tg_infos={p4tg_infos} showToast={showToast} />} />
                                             <Route path={"/ports"} element={<Ports p4tg_infos={p4tg_infos} />} />
                                             <Route path={"/tables"} element={<Tables />} />
-                                            <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} />} />
+                                            <Route path={"/settings"} element={<Settings p4tg_infos={p4tg_infos} showToast={showToast} expertMode={expertMode} />} />
                                         </Routes>
                                         <ToastMessage
-                                            time={toast.time}
                                             show={toast.show}
                                             message={toast.message}
                                             bg={toast.bg as ToastVariant}
+                                            onClose={() => setToast(t => ({ ...t, show: false }))}
                                         />
                                     </>
                                     :

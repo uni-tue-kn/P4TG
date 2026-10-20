@@ -28,7 +28,7 @@ const Overline = styled.span`
   text-decoration: overline;
 `
 
-const StatViewHistogram = ({ stats, port_mapping, rx_port, type, includeTx = true }: { stats: { [port: string]: { [channel: string]: Histogram } }, port_mapping: PortTxRxMap, rx_port: number, type: string, includeTx?: boolean }) => {
+const StatViewHistogram = ({ stats, port_mapping, rx_port, type, includeTx = true, selection = "total" }: { stats: { [port: string]: { [channel: string]: Histogram } }, port_mapping: PortTxRxMap, rx_port: number, type: string, includeTx?: boolean, selection?: string }) => {
     const [minValue, set_min_value] = useState(0);
     const [maxValue, set_max_value] = useState(0);
     const [numBins, set_num_bins] = useState(0);
@@ -75,8 +75,16 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port, type, includeTx = tru
         const config = histRx?.config ?? histTx?.config;
         if (!config) return;
 
-        const txData = includeTx ? histTx?.data?.tx : undefined;
-        const rxData = histRx?.data?.rx;
+        const selectPath = (histogram?: Histogram) => {
+            if (!histogram) return undefined;
+            if (selection === "aggregate") return histogram.breakdown?.aggregate;
+            if (selection.startsWith("stream:")) {
+                return histogram.breakdown?.per_stream?.[selection.slice("stream:".length)];
+            }
+            return histogram.data;
+        };
+        const txData = includeTx ? selectPath(histTx)?.tx : undefined;
+        const rxData = selectPath(histRx)?.rx;
 
         set_tx_label(txPortKey && txChKey ? `TX ${txPortKey}/${txChKey}` : "TX");
         set_rx_label(`RX ${rxPortKey}/${rxChKey}`);
@@ -98,7 +106,7 @@ const StatViewHistogram = ({ stats, port_mapping, rx_port, type, includeTx = tru
             tx: txData?.percentiles ? { ...txData.percentiles } : {},
             rx: rxData?.percentiles ? { ...rxData.percentiles } : {},
         });
-    }, [stats, port_mapping, rx_port, includeTx]);
+    }, [stats, port_mapping, rx_port, includeTx, selection]);
 
     const calculateBinWidth = (minValue: number, maxValue: number, numBins: number) => {
         return (maxValue - minValue) / numBins;

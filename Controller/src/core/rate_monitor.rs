@@ -19,11 +19,12 @@
 
 use std::cmp::max;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 
 use async_trait::async_trait;
-use log::{info, warn};
+use log::{error, info, warn};
 use rbfrt::error::RBFRTError;
 use rbfrt::register::Register;
 use rbfrt::table::{MatchValue, ToBytes};
@@ -31,6 +32,7 @@ use rbfrt::{register, table, SwitchConnection};
 use tokio::time::sleep;
 
 use crate::core::statistics::{IATStatistics, RateMonitorStatistics, TimeStatistics};
+use crate::core::traffic_gen_core::const_definitions::MONITORING_PACKET_INTERVAL;
 use crate::core::traffic_gen_core::event::TrafficGenEvent;
 use crate::core::traffic_gen_core::types::GenerationMode;
 use crate::core::traffic_gen_core::types::MonitoringMapping;
@@ -51,6 +53,37 @@ const RTT_IAT_DIGEST_NAME: &str = "pipe.SwitchIngressDeparser.digest_2";
 
 /// Number of RTTs that should be stored
 const RTT_STORAGE: usize = 50000;
+
+/// Monitoring packets create digests every 500 ms per port, independent of
+/// running tests. No digests for this long means the digest pipeline is dead.
+pub const DIGEST_TIMEOUT_SECS: u64 = 10;
+
+/// Seconds since the unix epoch.
+pub fn unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Wrap period of `monitor_t.tstmp`, a `bit<48>` ns counter (~78.2 h).
+const TSTMP_WRAP: u64 = 1 << 48;
+
+/// Elapsed seconds since `start`, the switch timestamp of the test's first
+/// digest. `None` for digests generated before it.
+fn elapsed_secs(now: u64, start: u64) -> Option<u32> {
+    let delta = if now >= start {
+        now - start
+    } else if start - now > TSTMP_WRAP / 2 {
+        // Clock wrapped. A pre-epoch straggler is only ms behind, a wrap almost
+        // a full period, so the half-period split separates them below ~39 h.
+        now + TSTMP_WRAP - start
+    } else {
+        return None;
+    };
+
+    Some((delta / Duration::from_secs(1).as_nanos() as u64) as u32)
+}
 
 /// This module handles the initialization of the `egress.frame_size_monitor` table
 /// that counts the different frame sizes that are received/sent
@@ -314,7 +347,7 @@ impl RateMonitor {
                         // a register has a value per pipe
                         let pipe = (index >> 7) as usize; // index = port number
 
-                        if sum.len() >= pipe {
+                        if sum.len() > pipe {
                             let sum = sum.get(pipe).unwrap().to_u128();
                             let n = max(1, n.get(pipe).unwrap().to_u128());
 
@@ -373,7 +406,7 @@ impl RateMonitor {
                     if let Some(n) = n {
                         let pipe = (index >> 7) as usize; // index = port number
 
-                        if sum.len() >= pipe {
+                        if sum.len() > pipe {
                             let sum = sum.get(pipe).unwrap().to_u128();
                             let n = max(1, n.get(pipe).unwrap().to_u128());
 
@@ -423,7 +456,28 @@ impl RateMonitor {
         (current_byte_count_l1, current_byte_count_l2, current_tstmp): (u64, u64, u64),
         last_rate: &DataRate,
     ) -> DataRate {
-        if current_tstmp > (last_rate.timestamp + (Duration::from_secs(1).as_nanos() as u64)) {
+        if current_byte_count_l1 < last_rate.byte_count_l1
+            || current_byte_count_l2 < last_rate.byte_count_l2
+        {
+            // Counter regression, e.g. after a data plane restart.
+            // Re-seed the measurement instead of underflowing the difference.
+            return DataRate::new(
+                current_byte_count_l1,
+                current_byte_count_l2,
+                current_tstmp,
+                last_rate.rate_l1,
+                last_rate.rate_l2,
+            );
+        }
+
+        // Monitoring digests arrive every MONITORING_PACKET_INTERVAL with a few
+        // µs of jitter. Comparing against exactly 1 s would sometimes reject the
+        // digest at ~1 s and stretch the window to 1.5 s, shifting the series
+        // by half an interval. Half an interval of slack absorbs the jitter.
+        let min_window = Duration::from_secs(1).as_nanos() as u64
+            - MONITORING_PACKET_INTERVAL as u64 / 2;
+
+        if current_tstmp >= last_rate.timestamp + min_window {
             let time_diff: f64 = (current_tstmp - last_rate.timestamp) as f64;
             let byte_diff_l1: f64 = (current_byte_count_l1 - last_rate.byte_count_l1) as f64;
 
@@ -456,11 +510,12 @@ impl RateMonitor {
         index_mapping: &HashMap<u32, MonitoringMapping>,
         sample_mode: bool,
     ) {
+        // Tofino2 supports 15 generation apps (1..=15), Tofino1 supports 7 (1..=7).
         let app_ids: Vec<u32> = {
             if state.traffic_generator.lock().await.is_tofino2 {
-                (1..8).collect()
-            } else {
                 (1..16).collect()
+            } else {
+                (1..8).collect()
             }
         };
 
@@ -525,32 +580,67 @@ impl RateMonitor {
             last_app_rx.insert(*index, DataRate::new(0, 0, 0, 0.0, 0.0));
         }
 
+        // Skip malformed digests instead of panicking; a panic here would
+        // silently kill this task and freeze all rate statistics.
+        macro_rules! field {
+            ($data:expr, $name:expr) => {
+                match $data.get($name) {
+                    Some(v) => v,
+                    None => {
+                        warn!("Digest without expected field {}. Digest skipped.", $name);
+                        continue;
+                    }
+                }
+            };
+        }
+
+        let mut stale_logged: Option<Instant> = None;
+
+        // Test currently being attributed; a changed start means a new test.
+        let mut seen_start: Option<SystemTime> = None;
+        // Epoch: switch timestamp of the test's first digest.
+        let mut start_tstmp: Option<u64> = None;
+        // Highest elapsed second seen; RTT/IAT digests have no timestamp.
+        let mut dp_elapsed: Option<u32> = None;
+        // Per RX port RTT accumulator: (elapsed second, sum, count).
+        let mut rtt_bucket: HashMap<u32, (u32, u64, u64)> = HashMap::new();
+
         // listen on the channel that receives digests
         loop {
             match state.switch.digest_queue.try_recv() {
                 Ok(digest) => {
-                    let (elapsed_time, running) = {
+                    state.last_digest.store(unix_secs(), Ordering::Relaxed);
+                    let (exp_start, running) = {
                         let exp = state.experiment.lock().await;
-
-                        if exp.running {
-                            (
-                                exp.start
-                                    .elapsed()
-                                    .unwrap_or(Duration::from_secs(0))
-                                    .as_secs() as u32,
-                                true,
-                            )
-                        } else {
-                            (0, false)
-                        }
+                        (exp.start, exp.running)
                     };
+
+                    if running && seen_start != Some(exp_start) {
+                        // New test. Discard queued pre-start digests: their
+                        // counters predate `on_reset` and anchoring the epoch on
+                        // one would shift the series early.
+                        while state.switch.digest_queue.try_recv().is_ok() {}
+
+                        state
+                            .rate_monitor
+                            .lock()
+                            .await
+                            .time_statistics
+                            .clear_series();
+
+                        seen_start = Some(exp_start);
+                        start_tstmp = None;
+                        dp_elapsed = None;
+                        rtt_bucket.clear();
+
+                        // This digest predates the test too.
+                        continue;
+                    }
 
                     if digest.name == RATE_DIGEST_NAME {
                         let data = &digest.data;
 
-                        // we know how the digest is build
-                        // unwrap without error handling
-                        let port = data.get("port").unwrap().to_u32();
+                        let port = field!(data, "port").to_u32();
 
                         if !tx_reverse_mapping.contains_key(&port)
                             && !rx_reverse_mapping.contains_key(&port)
@@ -559,14 +649,40 @@ impl RateMonitor {
                             continue;
                         }
 
-                        let time = data.get("tstmp").unwrap().to_u64();
+                        let time = field!(data, "tstmp").to_u64();
 
-                        let l1_byte = data.get("byte_counter_l1").unwrap().to_u64();
-                        let l2_byte = data.get("byte_counter_l2").unwrap().to_u64();
-                        let app_byte = data.get("app_counter").unwrap().to_u64();
-                        let app_index = data.get("index").unwrap().to_u32();
-                        let packet_loss = data.get("packet_loss").unwrap().to_u64();
-                        let out_of_order = data.get("out_of_order").unwrap().to_u64();
+                        let epoch = *start_tstmp.get_or_insert(time);
+
+                        // Key off the switch clock, so a digest delayed in the
+                        // queue still lands in the second it was generated in.
+                        let digest_elapsed = elapsed_secs(time, epoch);
+
+                        // Cache it for the RTT/IAT digests, which carry no
+                        // timestamp of their own. Only ever advance it: the
+                        // digests of one batch are not ordered by timestamp, so
+                        // caching the raw timestamp would let a straggler pull
+                        // the clock backwards and strand every RTT digest
+                        // behind it in the same round.
+                        if let Some(secs) = digest_elapsed {
+                            dp_elapsed = Some(dp_elapsed.map_or(secs, |last| last.max(secs)));
+                        }
+
+                        // The epoch is a digest itself, so later digests land
+                        // within ns of a full second and jitter would floor some
+                        // into the previous one. A quarter interval of slack
+                        // keeps them in their second; RTT keeps digest_elapsed.
+                        let elapsed_time = if running {
+                            elapsed_secs(time + MONITORING_PACKET_INTERVAL as u64 / 4, epoch)
+                        } else {
+                            None
+                        };
+
+                        let l1_byte = field!(data, "byte_counter_l1").to_u64();
+                        let l2_byte = field!(data, "byte_counter_l2").to_u64();
+                        let app_byte = field!(data, "app_counter").to_u64();
+                        let app_index = field!(data, "index").to_u32();
+                        let packet_loss = field!(data, "packet_loss").to_u64();
+                        let out_of_order = field!(data, "out_of_order").to_u64();
 
                         // out of order packets are also counted as packet loss in the data plane
                         // therefore subtract them from the packet loss counter
@@ -613,7 +729,7 @@ impl RateMonitor {
                                     .insert(*port, new_rate.rate_l2);
 
                                 // time statistic
-                                if running {
+                                if let Some(elapsed_time) = elapsed_time {
                                     state
                                         .rate_monitor
                                         .lock()
@@ -623,17 +739,6 @@ impl RateMonitor {
                                         .entry(*port)
                                         .or_default()
                                         .insert(elapsed_time, new_rate.rate_l1);
-
-                                    // remove potential old data
-                                    state
-                                        .rate_monitor
-                                        .lock()
-                                        .await
-                                        .time_statistics
-                                        .tx_rate_l1
-                                        .entry(*port)
-                                        .or_default()
-                                        .retain(|key, _| *key <= elapsed_time);
                                 }
                             } else {
                                 state
@@ -652,7 +757,7 @@ impl RateMonitor {
                                     .insert(*port, new_rate.rate_l2);
 
                                 // time statistics
-                                if running {
+                                if let Some(elapsed_time) = elapsed_time {
                                     state
                                         .rate_monitor
                                         .lock()
@@ -680,35 +785,6 @@ impl RateMonitor {
                                         .entry(*port)
                                         .or_default()
                                         .insert(elapsed_time, out_of_order);
-
-                                    // remove potential old data
-                                    state
-                                        .rate_monitor
-                                        .lock()
-                                        .await
-                                        .time_statistics
-                                        .rx_rate_l1
-                                        .entry(*port)
-                                        .or_default()
-                                        .retain(|key, _| *key <= elapsed_time);
-                                    state
-                                        .rate_monitor
-                                        .lock()
-                                        .await
-                                        .time_statistics
-                                        .packet_loss
-                                        .entry(*port)
-                                        .or_default()
-                                        .retain(|key, _| *key <= elapsed_time);
-                                    state
-                                        .rate_monitor
-                                        .lock()
-                                        .await
-                                        .time_statistics
-                                        .out_of_order
-                                        .entry(*port)
-                                        .or_default()
-                                        .retain(|key, _| *key <= elapsed_time);
                                 }
 
                                 // only write packet loss if its from a rx recirc port
@@ -738,7 +814,15 @@ impl RateMonitor {
                         if index_port_app_mapping.is_some() {
                             // we need to subtract 1 on the RX path of the app index
                             let app_index = if is_tx { app_index } else { app_index - 1 };
-                            let last_app = last_update_app.get(&app_index).unwrap();
+                            // guards against digests with an unexpected index;
+                            // index_mapping has the same key set, so the unwrap
+                            // below is covered by this check as well
+                            let Some(last_app) = last_update_app.get(&app_index) else {
+                                warn!(
+                                    "Digest with unexpected app index {app_index}. Digest skipped."
+                                );
+                                continue;
+                            };
 
                             if last_app.timestamp != 0 && last_app.byte_count_l2 <= app_byte {
                                 // catch overflow of 48 bit stream byte register
@@ -756,6 +840,20 @@ impl RateMonitor {
                                         .get_mut(port)
                                         .unwrap()
                                         .insert(mapping.app_id as u32, new_app_rate.rate_l2);
+
+                                    if let Some(elapsed_time) = elapsed_time {
+                                        state
+                                            .rate_monitor
+                                            .lock()
+                                            .await
+                                            .time_statistics
+                                            .app_tx_l2
+                                            .entry(*port)
+                                            .or_default()
+                                            .entry(mapping.app_id as u32)
+                                            .or_default()
+                                            .insert(elapsed_time, new_app_rate.rate_l2);
+                                    }
                                 } else {
                                     state
                                         .rate_monitor
@@ -766,6 +864,20 @@ impl RateMonitor {
                                         .get_mut(port)
                                         .unwrap()
                                         .insert(mapping.app_id as u32, new_app_rate.rate_l2);
+
+                                    if let Some(elapsed_time) = elapsed_time {
+                                        state
+                                            .rate_monitor
+                                            .lock()
+                                            .await
+                                            .time_statistics
+                                            .app_rx_l2
+                                            .entry(*port)
+                                            .or_default()
+                                            .entry(mapping.app_id as u32)
+                                            .or_default()
+                                            .insert(elapsed_time, new_app_rate.rate_l2);
+                                    }
                                 }
 
                                 last_update_app.insert(app_index, new_app_rate);
@@ -777,11 +889,13 @@ impl RateMonitor {
                     } else if digest.name == RTT_IAT_DIGEST_NAME {
                         let data = &digest.data;
 
-                        // we know how the digest is build
-                        // unwrap without error handling
-                        let port = data.get("port").unwrap().to_u32();
+                        let port = field!(data, "port").to_u32();
 
-                        let rtt = data.get("rtt").unwrap().to_u64();
+                        let rtt = field!(data, "rtt").to_u64();
+
+                        // No timestamp in this digest; fall back to the second
+                        // cached from the last rate digest.
+                        let elapsed_time = if running { dp_elapsed } else { None };
 
                         // catch timestamp overflow
                         if rtt > 0
@@ -790,34 +904,44 @@ impl RateMonitor {
                         {
                             let port = rx_reverse_mapping.get(&port).unwrap();
 
-                            state
-                                .rate_monitor
-                                .lock()
-                                .await
-                                .rtt_storage
-                                .entry(*port)
-                                .or_insert(VecDeque::with_capacity(RTT_STORAGE))
-                                .push_back(rtt);
-                            state
-                                .rate_monitor
-                                .lock()
-                                .await
-                                .time_statistics
-                                .rtt
-                                .entry(*port)
-                                .or_insert(BTreeMap::default())
-                                .insert(elapsed_time, rtt);
+                            {
+                                let mut rate_monitor = state.rate_monitor.lock().await;
+                                let samples = rate_monitor
+                                    .rtt_storage
+                                    .entry(*port)
+                                    .or_insert(VecDeque::with_capacity(RTT_STORAGE));
+                                // keep the storage bounded; drop the oldest sample when full
+                                if samples.len() >= RTT_STORAGE {
+                                    samples.pop_front();
+                                }
+                                samples.push_back(rtt);
+                            }
+                            if let Some(elapsed_time) = elapsed_time {
+                                // Hundreds of RTT digests share one second, so
+                                // store their running mean instead of whichever
+                                // arrived last. The final write of a second is
+                                // that second's complete mean.
+                                let mean = {
+                                    let bucket =
+                                        rtt_bucket.entry(*port).or_insert((elapsed_time, 0, 0));
+                                    if bucket.0 != elapsed_time {
+                                        *bucket = (elapsed_time, 0, 0);
+                                    }
+                                    bucket.1 += rtt;
+                                    bucket.2 += 1;
+                                    bucket.1 / bucket.2
+                                };
 
-                            // remove potential old data
-                            state
-                                .rate_monitor
-                                .lock()
-                                .await
-                                .time_statistics
-                                .rtt
-                                .entry(*port)
-                                .or_default()
-                                .retain(|key, _| *key <= elapsed_time);
+                                state
+                                    .rate_monitor
+                                    .lock()
+                                    .await
+                                    .time_statistics
+                                    .rtt
+                                    .entry(*port)
+                                    .or_insert(BTreeMap::default())
+                                    .insert(elapsed_time, mean);
+                            }
                         }
 
                         if sample_mode {
@@ -829,30 +953,34 @@ impl RateMonitor {
                                     .elapsed()
                                     .is_ok_and(|x| x > Duration::from_secs(3))
                             {
-                                let iat = data.get("iat").unwrap().to_u64();
+                                let iat = field!(data, "iat").to_u64();
 
                                 if iat > 0 && iat < (u32::MAX / 2) as u64 {
                                     // catch overflow
                                     if rx_reverse_mapping.contains_key(&port) {
                                         let port = rx_reverse_mapping.get(&port).unwrap();
-                                        state
-                                            .rate_monitor
-                                            .lock()
-                                            .await
+                                        let mut rate_monitor = state.rate_monitor.lock().await;
+                                        let samples = rate_monitor
                                             .rx_iat_storage
                                             .entry(*port)
-                                            .or_insert(VecDeque::with_capacity(RTT_STORAGE))
-                                            .push_back(iat);
+                                            .or_insert(VecDeque::with_capacity(RTT_STORAGE));
+                                        // keep the storage bounded; drop the oldest sample when full
+                                        if samples.len() >= RTT_STORAGE {
+                                            samples.pop_front();
+                                        }
+                                        samples.push_back(iat);
                                     } else if tx_reverse_mapping.contains_key(&port) {
                                         let port = tx_reverse_mapping.get(&port).unwrap();
-                                        state
-                                            .rate_monitor
-                                            .lock()
-                                            .await
+                                        let mut rate_monitor = state.rate_monitor.lock().await;
+                                        let samples = rate_monitor
                                             .tx_iat_storage
                                             .entry(*port)
-                                            .or_insert(VecDeque::with_capacity(RTT_STORAGE))
-                                            .push_back(iat);
+                                            .or_insert(VecDeque::with_capacity(RTT_STORAGE));
+                                        // keep the storage bounded; drop the oldest sample when full
+                                        if samples.len() >= RTT_STORAGE {
+                                            samples.pop_front();
+                                        }
+                                        samples.push_back(iat);
                                     }
                                 }
                             } else {
@@ -862,9 +990,30 @@ impl RateMonitor {
                         }
                     }
                 }
-                Err(_) => {
+                Err(e) => {
+                    if e.is_disconnected() {
+                        // The rbfrt digest stream died (e.g., gRPC stream error).
+                        // It cannot recover in-process; all digest-based statistics
+                        // freeze from now on.
+                        error!("Digest channel to the switch disconnected. Rate/loss/RTT statistics will no longer update. Restart the controller to recover.");
+                        return;
+                    }
+
                     // Sleep if there’s nothing to process. If we do not do this, the CPU load is very high.
                     sleep(Duration::from_millis(400)).await; // Sleep for 400ms before trying again
+
+                    // Watchdog: even a connected channel can starve if digest
+                    // delivery stalls on the switch side.
+                    let silent_for =
+                        unix_secs().saturating_sub(state.last_digest.load(Ordering::Relaxed));
+                    if silent_for > DIGEST_TIMEOUT_SECS {
+                        if stale_logged.is_none_or(|t| t.elapsed() >= Duration::from_secs(60)) {
+                            error!("No digests received from the switch for {silent_for}s. Statistics are stale; restart the controller if this persists.");
+                            stale_logged = Some(Instant::now());
+                        }
+                    } else {
+                        stale_logged = None;
+                    }
                 }
             }
             tokio::task::yield_now().await;
@@ -883,8 +1032,8 @@ impl TrafficGenEvent for RateMonitor {
             .clear_tables(vec![MONITOR_IAT_TABLE, IS_INGRESS_TABLE])
             .await?;
 
-        self.time_statistics.tx_rate_l1.clear();
-        self.time_statistics.rx_rate_l1.clear();
+        // Keys are per-test switch-clock deltas, so nothing may carry over.
+        self.time_statistics.clear_series();
 
         // allow iat generation
         let req = table::Request::new(MONITOR_IAT_TABLE)
@@ -916,11 +1065,26 @@ impl TrafficGenEvent for RateMonitor {
         self.rtt_storage.clear();
         self.tx_iat_storage.clear();
         self.rx_iat_storage.clear();
-        self.time_statistics.tx_rate_l1.clear();
-        self.time_statistics.rx_rate_l1.clear();
-        self.time_statistics.packet_loss.clear();
-        self.time_statistics.out_of_order.clear();
-        self.time_statistics.rtt.clear();
+        self.time_statistics.clear_series();
+
+        // Reset the in-memory gauges as well. They are only refreshed by
+        // digests (one per MONITORING_PACKET_INTERVAL), so without this a
+        // consumer sampling right after a reset reads the previous test's
+        // final values, e.g. as a baseline for RFC2544 loss measurements.
+        for port in self.port_mapping.keys() {
+            self.statistics.packet_loss.insert(*port, 0);
+            self.statistics.out_of_order.insert(*port, 0);
+            self.statistics.tx_rate_l1.insert(*port, 0.0);
+            self.statistics.tx_rate_l2.insert(*port, 0.0);
+            self.statistics.rx_rate_l1.insert(*port, 0.0);
+            self.statistics.rx_rate_l2.insert(*port, 0.0);
+            if let Some(app_rates) = self.statistics.app_tx_l2.get_mut(port) {
+                app_rates.values_mut().for_each(|rate| *rate = 0.0);
+            }
+            if let Some(app_rates) = self.statistics.app_rx_l2.get_mut(port) {
+                app_rates.values_mut().for_each(|rate| *rate = 0.0);
+            }
+        }
 
         let monitoring_registers = vec![
             "ingress.p4tg.rx_seq",

@@ -79,6 +79,18 @@ header mpls_h {
     bit<8> ttl;
 }
 
+header mpls_post_stack_lookahead_t {
+    bit<4> pfn;
+    bit<4> reserved;
+    bit<8> psmh_len;
+    bit<16> type;
+}
+
+header detnet_dCW_h {
+    bit<4> version;
+    bit<28> seq_num;
+}
+
 header vlan_t {
         bit<3> pcp;
         bit<1> dei;
@@ -215,6 +227,7 @@ struct header_t {
     sid_t sid3;
     ethernet_h inner_ethernet;
     mpls_h[15] mpls_stack;
+    detnet_dCW_h dCW;
     ipv4_t ipv4;
     ipv6_t ipv6;
     ipv4_t inner_ipv4;
@@ -250,6 +263,7 @@ struct ingress_metadata_t {
     bit<16> bin_index_iat;
     bit<8> pattern_color;
     bit<32> pattern_interval_number;
+    bit<32> pattern_interval_id;
 }
 
 struct egress_metadata_t {

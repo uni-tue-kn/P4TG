@@ -54,6 +54,19 @@ pub enum GenerationMode {
     Poisson = 3,
     /// Analyze mode. In this mode, traffic is not generated and external traffic is forwarded and analyzed.
     Analyze = 4,
+    /// RFC2544 benchmark orchestration. Trials are run as regular generated traffic.
+    Rfc2544 = 5,
+}
+
+/// Selects how expected RX ports are assigned to generated traffic.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RxMappingMode {
+    /// One expected RX port/channel is configured for each TX port/channel.
+    #[default]
+    PerTxPort,
+    /// Every active TX port/channel and stream pair configures its own RX target.
+    PerStream,
 }
 
 /// Describes the unit for a generated traffic stream
@@ -145,6 +158,9 @@ pub struct MPLSHeader {
     pub label: u32,
     /// Traffic class field of this MPLS LSE
     pub tc: u32,
+    /// Bottom-of-stack bit of this MPLS LSE
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bos: Option<bool>,
     /// Time-to-live of this MPLS LSE
     pub ttl: u32,
 }
@@ -156,6 +172,283 @@ pub enum TrafficGenTests {
     MultipleTest(Vec<TrafficGenData>),
 }
 
+pub fn default_rfc2544_frame_sizes() -> Vec<u32> {
+    vec![64, 128, 256, 512, 1024, 1280, 1518]
+}
+
+/// Sentinel used in `frame_sizes` for the non-standard IMIX ZLT profile.
+/// Trial construction expands this into 64/512/1518-byte streams before any
+/// traffic is programmed, so a zero-byte frame never reaches the data plane.
+pub const RFC2544_IMIX_FRAME_SIZE: u32 = 0;
+
+fn default_repetitions() -> u32 {
+    1
+}
+
+pub fn default_drain_duration_secs() -> u32 {
+    0
+}
+
+/// Upper bound for a drain phase. Lifecycle operations are serialized while
+/// draining, so accepting arbitrary `u32` values could block the controller
+/// for years after packet generation has already stopped.
+pub const MAX_DRAIN_DURATION_SECS: u32 = 60;
+
+fn default_rfc2544_line_rate_gbps() -> f32 {
+    100.0
+}
+
+fn default_rfc2544_trial_duration_secs() -> u32 {
+    10
+}
+
+fn default_rfc2544_throughput_search_steps() -> u32 {
+    7
+}
+
+fn default_rfc2544_throughput_repetitions() -> u32 {
+    1
+}
+
+fn default_rfc2544_throughput_aggregation() -> Rfc2544ThroughputAggregation {
+    Rfc2544ThroughputAggregation::Clustered
+}
+
+fn default_rfc2544_throughput_cluster_tolerance_gbps() -> f64 {
+    0.5
+}
+
+fn default_rfc2544_latency_duration_secs() -> u32 {
+    10
+}
+
+fn default_rfc2544_latency_repetitions() -> u32 {
+    1
+}
+
+fn default_rfc2544_reset_timeout_secs() -> u32 {
+    120
+}
+
+fn default_rfc2544_system_recovery_overload_duration_secs() -> u32 {
+    60
+}
+
+fn default_rfc2544_system_recovery_observation_duration_secs() -> u32 {
+    60
+}
+
+fn default_rfc2544_warmup_duration_secs() -> u32 {
+    0
+}
+
+fn default_rfc2544_cooldown_duration_secs() -> u32 {
+    2
+}
+
+fn default_rfc2544_throughput_loss_tolerance() -> Rfc2544LossTolerance {
+    Rfc2544LossTolerance {
+        unit: Rfc2544LossToleranceUnit::Packets,
+        value: 0.0,
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Rfc2544LossToleranceUnit {
+    Packets,
+    Percent,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544LossTolerance {
+    pub unit: Rfc2544LossToleranceUnit,
+    pub value: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Rfc2544ThroughputAggregation {
+    Raw,
+    Clustered,
+    Median,
+    Minimum,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544Config {
+    #[serde(default = "default_true")]
+    pub throughput: bool,
+    #[serde(default)]
+    pub reset: bool,
+    #[serde(default = "default_true")]
+    pub latency: bool,
+    #[serde(default = "default_true")]
+    pub frame_loss: bool,
+    #[serde(default)]
+    pub system_recovery: bool,
+    #[serde(default = "default_rfc2544_frame_sizes")]
+    /// Fixed Ethernet frame sizes; zero selects the non-standard IMIX ZLT profile.
+    pub frame_sizes: Vec<u32>,
+    #[serde(default = "default_rfc2544_line_rate_gbps")]
+    pub line_rate_gbps: f32,
+    #[serde(default = "default_rfc2544_trial_duration_secs")]
+    pub trial_duration_secs: u32,
+    #[serde(default = "default_rfc2544_throughput_search_steps")]
+    pub throughput_search_steps: u32,
+    #[serde(default = "default_rfc2544_throughput_repetitions")]
+    pub throughput_repetitions: u32,
+    #[serde(default = "default_rfc2544_throughput_aggregation")]
+    pub throughput_aggregation: Rfc2544ThroughputAggregation,
+    #[serde(default = "default_rfc2544_throughput_cluster_tolerance_gbps")]
+    pub throughput_cluster_tolerance_gbps: f64,
+    #[serde(default = "default_rfc2544_throughput_loss_tolerance")]
+    pub throughput_loss_tolerance: Rfc2544LossTolerance,
+    #[serde(default = "default_rfc2544_latency_duration_secs")]
+    pub latency_duration_secs: u32,
+    #[serde(default = "default_rfc2544_latency_repetitions")]
+    pub latency_repetitions: u32,
+    #[serde(default = "default_rfc2544_reset_timeout_secs")]
+    pub reset_timeout_secs: u32,
+    #[serde(default = "default_rfc2544_system_recovery_overload_duration_secs")]
+    pub system_recovery_overload_duration_secs: u32,
+    #[serde(default = "default_rfc2544_system_recovery_observation_duration_secs")]
+    pub system_recovery_observation_duration_secs: u32,
+    #[serde(default = "default_rfc2544_warmup_duration_secs")]
+    pub warmup_duration_secs: u32,
+    #[serde(default = "default_true")]
+    pub warmup_once_per_mapping: bool,
+    #[serde(default = "default_rfc2544_cooldown_duration_secs")]
+    pub cooldown_duration_secs: u32,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544Results {
+    pub running: bool,
+    pub status: String,
+    pub selected_frame_sizes: Vec<u32>,
+    pub selected_mappings: Vec<Rfc2544PortMapping>,
+    pub line_rate_gbps: f32,
+    pub throughput_selected: bool,
+    pub latency_selected: bool,
+    pub reset_selected: bool,
+    pub frame_loss_selected: bool,
+    pub system_recovery_selected: bool,
+    pub estimated_remaining_runtime_secs: u32,
+    pub throughput: Vec<Rfc2544ThroughputResult>,
+    pub latency: Vec<Rfc2544LatencyResult>,
+    pub reset: Vec<Rfc2544ResetResult>,
+    pub frame_loss: Vec<Rfc2544FrameLossResult>,
+    pub system_recovery: Vec<Rfc2544SystemRecoveryResult>,
+}
+
+impl Rfc2544Results {
+    pub fn new(config: &Rfc2544Config) -> Self {
+        Rfc2544Results {
+            running: true,
+            status: "Starting RFC2544 benchmark.".to_string(),
+            selected_frame_sizes: config.frame_sizes.clone(),
+            selected_mappings: vec![],
+            line_rate_gbps: config.line_rate_gbps,
+            throughput_selected: config.throughput,
+            latency_selected: config.latency,
+            reset_selected: config.reset,
+            frame_loss_selected: config.frame_loss,
+            system_recovery_selected: config.system_recovery,
+            estimated_remaining_runtime_secs: 0,
+            throughput: vec![],
+            latency: vec![],
+            reset: vec![],
+            frame_loss: vec![],
+            system_recovery: vec![],
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
+pub struct Rfc2544PortMapping {
+    pub tx_port: u32,
+    pub tx_channel: u8,
+    pub rx_port: u32,
+    pub rx_channel: u8,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544ThroughputResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub zero_loss_rate_gbps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_loss_rate_gbps: Option<f64>,
+    pub lost_frames: u64,
+    pub aggregation: Rfc2544ThroughputAggregation,
+    pub repetition_count: u32,
+    pub cluster_tolerance_gbps: f64,
+    pub repetitions: Vec<Rfc2544ThroughputRepetitionResult>,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544ThroughputRepetitionResult {
+    pub repetition: u32,
+    pub zero_loss_rate_gbps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_loss_rate_gbps: Option<f64>,
+    pub lost_frames: u64,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544LatencyResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub rate_gbps: f64,
+    pub mean_latency_ns: f64,
+    pub current_latency_ns: f64,
+    pub min_latency_ns: u32,
+    pub max_latency_ns: u32,
+    pub jitter_ns: f64,
+    pub samples: u32,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544ResetResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub rate_gbps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reset_time_ms: Option<f64>,
+    pub status: String,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544FrameLossResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub offered_percent: u32,
+    pub offered_rate_gbps: f64,
+    pub tx_frames: u128,
+    pub rx_frames: u128,
+    pub lost_frames: u64,
+    pub loss_percentage: f64,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct Rfc2544SystemRecoveryResult {
+    pub mapping: Rfc2544PortMapping,
+    pub frame_size: u32,
+    pub throughput_rate_gbps: f64,
+    pub overload_rate_gbps: f64,
+    pub recovery_rate_gbps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_time_ms: Option<f64>,
+    pub lost_frames_after_reduction: u64,
+    pub recovered: bool,
+    pub status: String,
+}
+
 /// Represents the body of the GET / POST endpoints of /trafficgen
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct TrafficGenData {
@@ -165,6 +458,9 @@ pub struct TrafficGenData {
     /// This also configures which streams are replicated to which ports.
     pub(crate) stream_settings: Vec<StreamSetting>,
     pub(crate) streams: Vec<Stream>,
+    /// Selects whether RX targets are configured per TX port or per stream/TX pair.
+    #[serde(default)]
+    pub(crate) rx_mapping_mode: RxMappingMode,
     /// Mapping between TX (send) ports, and RX (receive) ports.
     /// Traffic send on port TX are expected to be received on port RX.
     /// Mapping from TX-front_panel/channel to RX-front-panel/channel
@@ -172,12 +468,23 @@ pub struct TrafficGenData {
     /// The duration of this test in seconds.
     #[serde(default)]
     pub(crate) duration: Option<u32>,
+    /// Number of times this test is executed. RFC2544 uses its own repetition settings.
+    #[serde(default = "default_repetitions")]
+    pub(crate) repetitions: u32,
+    /// Time after packet generation is disabled during which the RX measurement
+    /// path remains active so in-flight packets can still update statistics.
+    /// Limited to [`MAX_DRAIN_DURATION_SECS`].
+    #[serde(default = "default_drain_duration_secs")]
+    pub(crate) drain_duration_secs: u32,
     /// Mapping between RX port and RTT histogram config.
     #[serde(default)]
     pub(crate) rtt_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,
     /// Mapping between RX port and IAT histogram config.
     #[serde(default)]
     pub(crate) iat_histogram_config: Option<HashMap<String, HashMap<String, HistogramConfig>>>,
+    /// RFC2544 orchestration configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) rfc2544: Option<Rfc2544Config>,
     /// The name of the test. This is used to identify the test in the UI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) name: Option<String>,
@@ -265,6 +572,9 @@ pub struct StreamSetting {
     pub channel: Option<u8>,
     /// ID of the stream. This stream_id maps to the stream_id in the Stream description.
     pub stream_id: u8,
+    /// Expected receive port for this stream/TX pair in per-stream mapping mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rx_target: Option<RxTarget>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vlan: Option<Vlan>,
     /// An MPLS stack to be combined with Encapsulation = MPLS. The length of the MPLS stack has to equal the number_of_lse parameter in each Stream.
@@ -319,10 +629,13 @@ pub struct Stream {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) batches: Option<bool>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
-    #[schema(example = 11)]
+    /// Overall number of packets that are generated for this stream per `timeout` ns, i.e., over all
+    /// `n_pipes` pipes and including all batches of a burst. Values provided by the client are ignored.
+    #[schema(example = 110)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) n_packets: Option<u16>,
     /// These values are set by P4TG when the stream is generated to indicate the applied configuration.
+    /// Time between two packet generator timer expirations in ns. Includes the batch factor.
     #[schema(example = 81)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) timeout: Option<u32>,
@@ -357,6 +670,17 @@ pub struct Stream {
     /// Traffic shaping pattern applied to this stream
     #[serde(default)]
     pub pattern: Option<GenerationPatternConfig>,
+    /// d-CW of DetNet, with sequence numbers based on RFC 8964
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) detnet_cw: Option<bool>,
+    /// Length of Sequence numbers in the d-CW. 8, 16, or 28.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) detnet_seq_num_length: Option<DetNetSeqNumLength>,
+    /// Flag that indicates the MPLS stack contains post-stack data (MNA PSD).
+    /// When set, TX timestamp is written on the TX recirc pass because the
+    /// final-TX-port parser cannot reach hdr.path past the PSMHT.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) mna_post_stack: Option<bool>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -378,6 +702,19 @@ pub struct GenerationPatternConfig {
     pub period: f64,
     /// The number of samples per period.
     pub sample_rate: u32,
+    /// Meter burst size in packets for every interval of this pattern. Valid values
+    /// are 1 through 1000. When omitted, P4TG calculates a burst per interval from a
+    /// preferred 100-packet capacity, its target rate and duration, and the packet
+    /// generator's hardware burst size. A supplied value overrides every interval;
+    /// values below the hardware burst can reduce the achieved rate, while large
+    /// values can blur pattern transitions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 100, minimum = 1, maximum = 1000)]
+    pub burst_packets: Option<u64>,
+    /// Inverts supported patterns. For square waves, the period starts in the low phase.
+    /// For sawtooth, the period starts high and decreases linearly.
+    #[serde(default)]
+    pub inverted: Option<bool>,
     /// Flash-crowd specific setting: time in nanoseconds within the period
     /// until the quiet phase ends.
     #[serde(default)]
@@ -410,4 +747,12 @@ pub enum GenerationPattern {
 pub enum HistogramType {
     Rtt,
     Iat,
+}
+
+#[derive(Copy, Clone, Serialize_repr, Deserialize_repr, Debug, ToSchema)]
+#[repr(u8)]
+pub enum DetNetSeqNumLength {
+    Eight = 8,
+    Sixteen = 16,
+    TwentyEight = 28,
 }
