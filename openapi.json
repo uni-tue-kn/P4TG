@@ -11,7 +11,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "2.7.1"
+    "version": "2.8.1"
   },
   "paths": {
     "/api/histogram": {
@@ -19,7 +19,7 @@
         "tags": [
           "histogram"
         ],
-        "summary": "Method called on GET /histogram\nReturns the histogram configuration of all RX ports.",
+        "summary": "Method called on GET /histogram\nReturns the histogram configuration of all RX ports.\nPorts are front panel numbers with a channel map, like all other endpoints.",
         "operationId": "config",
         "responses": {
           "200": {
@@ -29,7 +29,15 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/HistogramConfig"
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/HistogramConfig"
+                    },
+                    "propertyNames": {
+                      "type": "integer",
+                      "format": "int32",
+                      "minimum": 0
+                    }
                   },
                   "propertyNames": {
                     "type": "integer",
@@ -37,7 +45,7 @@
                     "minimum": 0
                   }
                 },
-                "example": "{\"136\":{\"max\":2500,\"min\":1500,\"num_bins\":50},\"144\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"152\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"160\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"168\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"176\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"184\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"192\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"312\":{\"max\":2500,\"min\":1500,\"num_bins\":10},\"320\":{\"max\":2500,\"min\":1500,\"num_bins\":10}}"
+                "example": "{\"1\":{\"0\":{\"max\":2048,\"min\":1024,\"num_bins\":16}},\"2\":{\"0\":{\"max\":2048,\"min\":1024,\"num_bins\":16},\"1\":{\"max\":2048,\"min\":1024,\"num_bins\":16}},\"3\":{\"0\":{\"max\":2048,\"min\":1024,\"num_bins\":16}}}"
               }
             }
           }
@@ -59,7 +67,7 @@
                 "schema": {
                   "$ref": "#/components/schemas/Online"
                 },
-                "example": "[{\"asic\":\"Tofino2\",\"loopback\":false,\"status\":\"online\",\"version\":\"2.4.0\"}]"
+                "example": "[{\"asic\":\"Tofino2\",\"connected_clients\":0,\"digests_alive\":true,\"loopback\":false,\"status\":\"online\",\"version\":\"2.8.1\"}]"
               }
             }
           }
@@ -77,11 +85,39 @@
           "200": {
             "description": "Returns the currently configured ports.",
             "content": {
-              "text/plain": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PortResponse"
+                  }
                 },
-                "example": "[{\"auto_neg\":\"PM_AN_DEFAULT\",\"channel\":0,\"enable\":true,\"fec\":\"BF_FEC_TYP_NONE\",\"loopback\":\"BF_LPBK_NONE\",\"pid\":128,\"port\":1,\"speed\":\"BF_SPEED_100G\",\"status\":true},{\"auto_neg\":\"PM_AN_DEFAULT\",\"channel\":0,\"enable\":true,\"fec\":\"BF_FEC_TYP_NONE\",\"loopback\":\"BF_LPBK_NONE\",\"pid\":136,\"port\":2,\"speed\":\"BF_SPEED_100G\",\"status\":true}]"
+                "example": [
+                  {
+                    "auto_neg": "PM_AN_DEFAULT",
+                    "channel": 0,
+                    "enable": true,
+                    "fec": "BF_FEC_TYP_NONE",
+                    "loopback": "BF_LPBK_NONE",
+                    "n_lanes": 4,
+                    "pid": 128,
+                    "port": 1,
+                    "speed": "BF_SPEED_100G",
+                    "status": true
+                  },
+                  {
+                    "auto_neg": "PM_AN_DEFAULT",
+                    "channel": 0,
+                    "enable": true,
+                    "fec": "BF_FEC_TYP_NONE",
+                    "loopback": "BF_LPBK_NONE",
+                    "n_lanes": 4,
+                    "pid": 136,
+                    "port": 2,
+                    "speed": "BF_SPEED_100G",
+                    "status": true
+                  }
+                ]
               }
             }
           }
@@ -97,12 +133,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Pet"
+                "$ref": "#/components/schemas/PortConfiguration"
               },
               "examples": {
                 "Example 1": {
-                  "summary": "Configure dev port 136 with 100G, no FEC, and auto negotiation.",
-                  "value": "[{\"auto_neg\":\"PM_AN_DEFAULT\",\"fec\":\"BF_FEC_TYP_NONE\",\"pid\":136,\"speed\":\"BF_SPEED_100G\"}]"
+                  "summary": "Configure front panel port 2, channel 0 with 100G, no FEC, and auto negotiation.",
+                  "value": {
+                    "auto_neg": "PM_AN_DEFAULT",
+                    "channel": 0,
+                    "fec": "BF_FEC_TYP_NONE",
+                    "front_panel_port": 2,
+                    "speed": "BF_SPEED_100G"
+                  }
                 }
               }
             }
@@ -110,8 +152,160 @@
           "required": true
         },
         "responses": {
+          "201": {
+            "description": "Port configuration applied."
+          },
+          "400": {
+            "description": "Invalid port, channel layout, or FEC configuration."
+          },
+          "500": {
+            "description": "The switch rejected the port update."
+          }
+        }
+      }
+    },
+    "/api/ports/arp": {
+      "post": {
+        "tags": [
+          "ports"
+        ],
+        "operationId": "arp_reply",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArpReply"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "ARP reply configuration applied."
+          },
+          "400": {
+            "description": "Invalid or unavailable port/channel/MAC."
+          },
+          "500": {
+            "description": "Hardware table update failed."
+          }
+        }
+      }
+    },
+    "/api/qsfp": {
+      "get": {
+        "tags": [
+          "crate::api::qsfp"
+        ],
+        "summary": "Returns the hardware QSFP information reported by the platform module.",
+        "operationId": "qsfp",
+        "parameters": [
+          {
+            "name": "port",
+            "in": "query",
+            "description": "Front-panel module number. If omitted, the module overview is returned.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "channel",
+            "in": "query",
+            "description": "Front-panel channel used by `module-show` (defaults to 0).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
           "200": {
-            "description": ""
+            "description": "Returns a QSFP module overview or detailed information for one module.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QsfpResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The requested front-panel port or channel is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The bf_switchd CLI or QSFP platform command is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/report": {
+      "post": {
+        "tags": [
+          "crate::api::pdf_report"
+        ],
+        "operationId": "p4tg_report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/P4tgReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Returns a PDF report with P4TG statistics and RFC2544 results when available.",
+            "content": {
+              "application/pdf": {}
+            }
+          },
+          "400": {
+            "description": "No statistics are available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to generate the report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -168,11 +362,11 @@
                     "generation_accuracy": 99.90867614746094,
                     "gtpu": false,
                     "ip_version": 4,
-                    "n_packets": 5,
+                    "n_packets": 50,
                     "n_pipes": 2,
                     "pattern": null,
                     "stream_id": 1,
-                    "timeout": 876,
+                    "timeout": 4380,
                     "traffic_rate": 100.0,
                     "unit": 0,
                     "vxlan": true
@@ -205,7 +399,7 @@
                     "$ref": "#/components/schemas/Statistics"
                   }
                 },
-                "example": "{\"app_rx_l2\":{\"128\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"136\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"144\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"152\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"160\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"168\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"176\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"184\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"52\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"60\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0}},\"app_tx_l2\":{\"128\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"136\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"144\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"152\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"160\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"168\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"176\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"184\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"52\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"60\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0}},\"elapsed_time\":0,\"frame_size\":{\"128\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":1763654244},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"136\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":1763654244},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"144\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"152\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"160\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"168\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"176\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"184\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"52\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"60\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]}},\"frame_type_data\":{\"128\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":1763654244,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":1763654244}},\"136\":{\"rx\":{\"arp\":0,\"ipv4\":1763654244,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":1763654244},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"144\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"152\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"160\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"168\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"176\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"184\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"52\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"60\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}}},\"iats\":{\"128\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":1.0767169,\"mean\":10.758202,\"n\":166744604,\"std\":null}},\"136\":{\"rx\":{\"mae\":1.0738868,\"mean\":10.758202,\"n\":166744605,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"144\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"152\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"160\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"168\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"176\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"184\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"52\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"60\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}}},\"out_of_order\":{\"128\":0,\"136\":0,\"144\":0,\"152\":0,\"160\":0,\"168\":0,\"176\":0,\"184\":0,\"52\":0,\"60\":0},\"packet_loss\":{\"128\":0,\"136\":0,\"144\":0,\"152\":0,\"160\":0,\"168\":0,\"176\":0,\"184\":0,\"52\":0,\"60\":0},\"rtts\":{\"136\":{\"current\":1040,\"jitter\":5.407541284205046,\"max\":1060,\"mean\":1040.6738382099827,\"min\":1020,\"n\":1162}},\"rx_rate_l1\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"rx_rate_l2\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"sample_mode\":false,\"tx_rate_l1\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"tx_rate_l2\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0}}"
+                "example": "{\"app_l2_frame_sizes\":{\"1\":60},\"app_rx_l2\":{\"128\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"136\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"144\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"152\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"160\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"168\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"176\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"184\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"52\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"60\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0}},\"app_tx_l2\":{\"128\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"136\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"144\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"152\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"160\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"168\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"176\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"184\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"52\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0},\"60\":{\"1\":0.0,\"2\":0.0,\"3\":0.0,\"4\":0.0,\"5\":0.0,\"6\":0.0,\"7\":0.0}},\"elapsed_time\":0,\"frame_size\":{\"128\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":1763654244},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"136\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":1763654244},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"144\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"152\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"160\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"168\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"176\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"184\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"52\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]},\"60\":{\"rx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}],\"tx\":[{\"high\":63,\"low\":0,\"packets\":0},{\"high\":64,\"low\":64,\"packets\":0},{\"high\":127,\"low\":65,\"packets\":0},{\"high\":255,\"low\":128,\"packets\":0},{\"high\":511,\"low\":256,\"packets\":0},{\"high\":1023,\"low\":512,\"packets\":0},{\"high\":1518,\"low\":1024,\"packets\":0},{\"high\":21519,\"low\":1519,\"packets\":0}]}},\"frame_type_data\":{\"128\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":1763654244,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":1763654244}},\"136\":{\"rx\":{\"arp\":0,\"ipv4\":1763654244,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":1763654244},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"144\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"152\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"160\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"168\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"176\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"184\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"52\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}},\"60\":{\"rx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0},\"tx\":{\"arp\":0,\"ipv4\":0,\"ipv6\":0,\"mpls\":0,\"multicast\":0,\"qinq\":0,\"unicast\":0,\"unknown\":0,\"vlan\":0,\"vxlan\":0}}},\"iats\":{\"128\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":1.0767169,\"mean\":10.758202,\"n\":166744604,\"std\":null}},\"136\":{\"rx\":{\"mae\":1.0738868,\"mean\":10.758202,\"n\":166744605,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"144\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"152\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"160\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"168\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"176\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"184\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"52\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}},\"60\":{\"rx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null},\"tx\":{\"mae\":0.0,\"mean\":0.0,\"n\":1,\"std\":null}}},\"out_of_order\":{\"128\":0,\"136\":0,\"144\":0,\"152\":0,\"160\":0,\"168\":0,\"176\":0,\"184\":0,\"52\":0,\"60\":0},\"packet_loss\":{\"128\":0,\"136\":0,\"144\":0,\"152\":0,\"160\":0,\"168\":0,\"176\":0,\"184\":0,\"52\":0,\"60\":0},\"rtts\":{\"136\":{\"current\":1040,\"jitter\":5.407541284205046,\"max\":1060,\"mean\":1040.6738382099827,\"min\":1020,\"n\":1162}},\"rx_rate_l1\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"rx_rate_l2\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"sample_mode\":false,\"tx_rate_l1\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0},\"tx_rate_l2\":{\"128\":0.0,\"136\":0.0,\"144\":0.0,\"152\":0.0,\"160\":0.0,\"168\":0.0,\"176\":0.0,\"184\":0.0,\"52\":0.0,\"60\":0.0}}"
               }
             }
           }
@@ -254,7 +448,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Only retrieve the last *limit* entries",
+            "description": "Reduce each series to at most *limit* data points, evenly spaced across the whole test. The first data point is always kept, and the last one whenever *limit* > 1.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -270,10 +464,10 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/TimeStatistics"
+                    "$ref": "#/components/schemas/TimeStatisticsApi"
                   }
                 },
-                "example": "{\"out_of_order\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"packet_loss\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":17896232,\"1\":41711833,\"2\":65527482,\"3\":89343132,\"4\":113158704,\"5\":136974370},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"rtt\":{\"144\":{\"0\":2507,\"1\":2501,\"2\":2519,\"3\":2506,\"4\":2510,\"5\":2510}},\"rx_rate_l1\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":25185835458.60229,\"1\":99999989456.00134,\"2\":100000006703.98941,\"3\":99999993656.00053,\"4\":99999999204.00131,\"5\":100000000855.99998},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"tx_rate_l1\":{\"136\":{\"0\":100137345491.58797,\"1\":397599999034.4001,\"2\":397599997160.0049,\"3\":397600000624.8,\"4\":397599999943.2001,\"5\":397600001022.3999},\"144\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":100137345491.58797,\"1\":397599999034.4001,\"2\":397599995967.2069,\"3\":397600001419.9999,\"4\":397600001533.59735,\"5\":397599999432.00006},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":100137345391.45062,\"1\":397599999034.4001,\"2\":397599996364.8062,\"3\":397599999829.6,\"4\":397600001135.99805,\"5\":397600002215.1999},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}}}"
+                "example": "{\"app_rx_l2\":{\"2\":{\"0\":{\"1\":{\"0\":0,\"1\":56000000000.0}}}},\"app_tx_l2\":{\"1\":{\"0\":{\"1\":{\"0\":0,\"1\":56000000000.0}}}},\"out_of_order\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"packet_loss\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":17896232,\"1\":41711833,\"2\":65527482,\"3\":89343132,\"4\":113158704,\"5\":136974370},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"rtt\":{\"144\":{\"0\":2507,\"1\":2501,\"2\":2519,\"3\":2506,\"4\":2510,\"5\":2510}},\"rx_rate_l1\":{\"136\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"144\":{\"0\":25185835458.60229,\"1\":99999989456.00134,\"2\":100000006703.98941,\"3\":99999993656.00053,\"4\":99999999204.00131,\"5\":100000000855.99998},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}},\"tx_rate_l1\":{\"136\":{\"0\":100137345491.58797,\"1\":397599999034.4001,\"2\":397599997160.0049,\"3\":397600000624.8,\"4\":397599999943.2001,\"5\":397600001022.3999},\"144\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"152\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"160\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"168\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"176\":{\"0\":100137345491.58797,\"1\":397599999034.4001,\"2\":397599995967.2069,\"3\":397600001419.9999,\"4\":397600001533.59735,\"5\":397599999432.00006},\"184\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"192\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0},\"312\":{\"0\":100137345391.45062,\"1\":397599999034.4001,\"2\":397599996364.8062,\"3\":397599999829.6,\"4\":397600001135.99805,\"5\":397600002215.1999},\"320\":{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}}}"
               }
             }
           }
@@ -293,23 +487,18 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrafficGenData"
+                  "$ref": "#/components/schemas/TrafficGenStatus"
                 },
                 "examples": {
                   "Example 1": {
                     "summary": "First example",
                     "value": {
+                      "drain_duration_secs": 0,
                       "duration": 10,
                       "iat_histogram_config": null,
                       "mode": 1,
-                      "port_tx_rx_mapping": {
-                        "1": {
-                          "0": {
-                            "channel": 0,
-                            "port": 2
-                          }
-                        }
-                      },
+                      "port_tx_rx_mapping": {},
+                      "repetitions": 1,
                       "rtt_histogram_config": {
                         "2": {
                           "0": {
@@ -325,6 +514,7 @@
                           }
                         }
                       },
+                      "rx_mapping_mode": "per_stream",
                       "stream_settings": [
                         {
                           "active": true,
@@ -341,6 +531,10 @@
                             "ip_tos": 0
                           },
                           "port": 1,
+                          "rx_target": {
+                            "channel": 0,
+                            "port": 2
+                          },
                           "stream_id": 1,
                           "vlan": {
                             "dei": 0,
@@ -362,11 +556,11 @@
                           "generation_accuracy": 100.0,
                           "gtpu": false,
                           "ip_version": 4,
-                          "n_packets": 5,
+                          "n_packets": 50,
                           "n_pipes": 2,
                           "pattern": null,
                           "stream_id": 1,
-                          "timeout": 88,
+                          "timeout": 440,
                           "traffic_rate": 80.0,
                           "unit": 0,
                           "vxlan": false
@@ -377,6 +571,7 @@
                   "Example 2": {
                     "summary": "Second example",
                     "value": {
+                      "drain_duration_secs": 0,
                       "duration": null,
                       "iat_histogram_config": null,
                       "mode": 1,
@@ -388,6 +583,7 @@
                           }
                         }
                       },
+                      "repetitions": 1,
                       "rtt_histogram_config": {
                         "2": {
                           "0": {
@@ -403,6 +599,7 @@
                           }
                         }
                       },
+                      "rx_mapping_mode": "per_tx_port",
                       "stream_settings": [
                         {
                           "active": true,
@@ -441,11 +638,11 @@
                           "generation_accuracy": 99.90867614746094,
                           "gtpu": false,
                           "ip_version": 4,
-                          "n_packets": 5,
+                          "n_packets": 50,
                           "n_pipes": 2,
                           "pattern": null,
                           "stream_id": 1,
-                          "timeout": 876,
+                          "timeout": 4380,
                           "traffic_rate": 100.0,
                           "unit": 0,
                           "vxlan": true
@@ -485,6 +682,7 @@
                 "Example 1": {
                   "summary": "VxLAN 1024 (+50) byte @ 100 Gbps",
                   "value": {
+                    "drain_duration_secs": 0,
                     "duration": null,
                     "iat_histogram_config": null,
                     "mode": 1,
@@ -496,6 +694,7 @@
                         }
                       }
                     },
+                    "repetitions": 1,
                     "rtt_histogram_config": {
                       "2": {
                         "0": {
@@ -511,6 +710,7 @@
                         }
                       }
                     },
+                    "rx_mapping_mode": "per_tx_port",
                     "stream_settings": [
                       {
                         "active": true,
@@ -560,6 +760,7 @@
                 "Example 2": {
                   "summary": "VLAN 64 (+4) byte @ 80 Gbps",
                   "value": {
+                    "drain_duration_secs": 0,
                     "duration": null,
                     "iat_histogram_config": null,
                     "mode": 1,
@@ -571,6 +772,7 @@
                         }
                       }
                     },
+                    "repetitions": 1,
                     "rtt_histogram_config": {
                       "2": {
                         "0": {
@@ -586,6 +788,7 @@
                         }
                       }
                     },
+                    "rx_mapping_mode": "per_tx_port",
                     "stream_settings": [
                       {
                         "active": true,
@@ -634,6 +837,7 @@
                 "Example 3": {
                   "summary": "Poisson @ 30 Gbps",
                   "value": {
+                    "drain_duration_secs": 0,
                     "duration": null,
                     "iat_histogram_config": null,
                     "mode": 3,
@@ -646,7 +850,9 @@
                         }
                       }
                     },
+                    "repetitions": 1,
                     "rtt_histogram_config": null,
+                    "rx_mapping_mode": "per_tx_port",
                     "stream_settings": [
                       {
                         "active": true,
@@ -688,6 +894,7 @@
                   "summary": "Multiple tests",
                   "value": [
                     {
+                      "drain_duration_secs": 0,
                       "duration": 10,
                       "iat_histogram_config": null,
                       "mode": 1,
@@ -700,6 +907,7 @@
                           }
                         }
                       },
+                      "repetitions": 1,
                       "rtt_histogram_config": {
                         "2": {
                           "0": {
@@ -715,6 +923,7 @@
                           }
                         }
                       },
+                      "rx_mapping_mode": "per_tx_port",
                       "stream_settings": [
                         {
                           "active": true,
@@ -767,6 +976,7 @@
                       ]
                     },
                     {
+                      "drain_duration_secs": 0,
                       "duration": 15,
                       "iat_histogram_config": null,
                       "mode": 1,
@@ -779,6 +989,7 @@
                           }
                         }
                       },
+                      "repetitions": 1,
                       "rtt_histogram_config": {
                         "2": {
                           "0": {
@@ -794,6 +1005,7 @@
                           }
                         }
                       },
+                      "rx_mapping_mode": "per_tx_port",
                       "stream_settings": [
                         {
                           "active": true,
@@ -876,11 +1088,11 @@
                         "generation_accuracy": 99.90867614746094,
                         "gtpu": false,
                         "ip_version": 4,
-                        "n_packets": 5,
+                        "n_packets": 50,
                         "n_pipes": 2,
                         "pattern": null,
                         "stream_id": 1,
-                        "timeout": 876,
+                        "timeout": 4380,
                         "traffic_rate": 100.0,
                         "unit": 0,
                         "vxlan": true
@@ -899,11 +1111,11 @@
                         "generation_accuracy": 99.90867614746094,
                         "gtpu": false,
                         "ip_version": 4,
-                        "n_packets": 5,
+                        "n_packets": 50,
                         "n_pipes": 2,
                         "pattern": null,
                         "stream_id": 1,
-                        "timeout": 876,
+                        "timeout": 4380,
                         "traffic_rate": 100.0,
                         "unit": 0,
                         "vxlan": true
@@ -922,11 +1134,11 @@
                         "generation_accuracy": 100.0,
                         "gtpu": false,
                         "ip_version": 4,
-                        "n_packets": 5,
+                        "n_packets": 50,
                         "n_pipes": 2,
                         "pattern": null,
                         "stream_id": 1,
-                        "timeout": 88,
+                        "timeout": 1170,
                         "traffic_rate": 30.0,
                         "unit": 0,
                         "vxlan": false
@@ -945,13 +1157,13 @@
                         "generation_accuracy": 99.9111099243164,
                         "gtpu": false,
                         "ip_version": 6,
-                        "n_packets": 1,
+                        "n_packets": 20,
                         "n_pipes": 4,
                         "number_of_srv6_sids": 2,
                         "pattern": null,
                         "srv6_ip_tunneling": true,
                         "stream_id": 1,
-                        "timeout": 360,
+                        "timeout": 1800,
                         "traffic_rate": 100.0,
                         "unit": 0,
                         "vxlan": false
@@ -965,13 +1177,13 @@
                         "generation_accuracy": 99.9111099243164,
                         "gtpu": false,
                         "ip_version": 6,
-                        "n_packets": 1,
+                        "n_packets": 20,
                         "n_pipes": 4,
                         "number_of_srv6_sids": 2,
                         "pattern": null,
                         "srv6_ip_tunneling": true,
                         "stream_id": 1,
-                        "timeout": 360,
+                        "timeout": 1800,
                         "traffic_rate": 100.0,
                         "unit": 0,
                         "vxlan": false
@@ -1011,11 +1223,50 @@
   },
   "components": {
     "schemas": {
+      "ArpReply": {
+        "type": "object",
+        "required": [
+          "front_panel_port",
+          "arp_reply"
+        ],
+        "properties": {
+          "arp_reply": {
+            "type": "boolean"
+          },
+          "channel": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "front_panel_port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "mac": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "Asic": {
         "type": "string",
         "enum": [
           "Tofino1",
           "Tofino2"
+        ]
+      },
+      "DetNetSeqNumLength": {
+        "type": "string",
+        "enum": [
+          "Eight",
+          "Sixteen",
+          "TwentyEight"
         ]
       },
       "EmptyResponse": {
@@ -1040,6 +1291,17 @@
           "Mpls",
           "SRv6"
         ]
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
       },
       "Ethernet": {
         "type": "object",
@@ -1067,7 +1329,8 @@
           "Cbr",
           "Mpps",
           "Poisson",
-          "Analyze"
+          "Analyze",
+          "Rfc2544"
         ]
       },
       "GenerationPattern": {
@@ -1089,6 +1352,17 @@
           "sample_rate"
         ],
         "properties": {
+          "burst_packets": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Meter burst size in packets for every interval of this pattern. Valid values\nare 1 through 1000. When omitted, P4TG calculates a burst per interval from a\npreferred 100-packet capacity, its target rate and duration, and the packet\ngenerator's hardware burst size. A supplied value overrides every interval;\nvalues below the hardware burst can reduce the achieved rate, while large\nvalues can blur pattern transitions.",
+            "example": 100,
+            "maximum": 1000,
+            "minimum": 1
+          },
           "fc_decay_rate": {
             "type": [
               "number",
@@ -1111,6 +1385,13 @@
             ],
             "format": "double",
             "description": "Flash-crowd specific setting: time in nanoseconds within the period\nuntil the ramp phase ends."
+          },
+          "inverted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Inverts supported patterns. For square waves, the period starts in the low phase.\nFor sawtooth, the period starts high and decreases linearly."
           },
           "pattern_type": {
             "$ref": "#/components/schemas/GenerationPattern"
@@ -1199,6 +1480,16 @@
           "data"
         ],
         "properties": {
+          "breakdown": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HistogramBreakdown"
+              }
+            ]
+          },
           "config": {
             "$ref": "#/components/schemas/HistogramConfig"
           },
@@ -1223,6 +1514,32 @@
             "type": "number",
             "format": "double",
             "description": "Probability for this bin based on total_pkt_count."
+          }
+        }
+      },
+      "HistogramBreakdown": {
+        "type": "object",
+        "properties": {
+          "aggregate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HistogramPacketPath"
+              }
+            ]
+          },
+          "per_stream": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HistogramPacketPath"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         }
       },
@@ -1261,6 +1578,17 @@
               "format": "double"
             },
             "description": "Percentiles to calculate from histogram data. Float values between 0 and 1.0"
+          },
+          "stream_groups": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HistogramStreamGroups",
+                "description": "Optional stream grouping for this histogram. Missing or empty groups\nretain the legacy wildcard match over every application ID."
+              }
+            ]
           }
         }
       },
@@ -1334,6 +1662,29 @@
           },
           "tx": {
             "$ref": "#/components/schemas/HistogramData"
+          }
+        }
+      },
+      "HistogramStreamGroups": {
+        "type": "object",
+        "properties": {
+          "aggregate": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Application IDs collected into one logical aggregate. The controller\nuses the minimum number of ternary masks required to cover this set."
+          },
+          "separate": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Application IDs collected with exact matches and exposed separately."
           }
         }
       },
@@ -1477,6 +1828,13 @@
           "ttl"
         ],
         "properties": {
+          "bos": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Bottom-of-stack bit of this MPLS LSE"
+          },
           "label": {
             "type": "integer",
             "format": "int32",
@@ -1503,11 +1861,22 @@
           "status",
           "version",
           "asic",
-          "loopback"
+          "loopback",
+          "digests_alive",
+          "connected_clients"
         ],
         "properties": {
           "asic": {
             "$ref": "#/components/schemas/Asic"
+          },
+          "connected_clients": {
+            "type": "integer",
+            "description": "Number of other GUI clients that polled this endpoint recently, i.e.\nconcurrent web sessions (excluding the requester's own session).",
+            "minimum": 0
+          },
+          "digests_alive": {
+            "type": "boolean",
+            "description": "False if no digest arrived from the switch recently. In that case the\ndigest pipeline is dead and all rate/loss/RTT statistics are frozen;\nthe controller needs a restart."
           },
           "loopback": {
             "type": "boolean"
@@ -1520,31 +1889,171 @@
           }
         }
       },
-      "Pet": {
+      "P4tgReportRequest": {
+        "type": "object",
+        "properties": {
+          "data_stream_format": {
+            "type": "string"
+          },
+          "dut_configuration": {
+            "type": "string"
+          },
+          "dut_model": {
+            "type": "string"
+          },
+          "dut_name": {
+            "type": "string"
+          },
+          "dut_software_version": {
+            "type": "string"
+          },
+          "dut_vendor": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "test_location": {
+            "type": "string"
+          },
+          "tester": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "PortConfiguration": {
         "type": "object",
         "required": [
-          "id",
+          "front_panel_port",
           "speed",
           "fec",
           "auto_neg"
         ],
         "properties": {
           "auto_neg": {
-            "type": "string"
+            "type": "string",
+            "example": "PM_AN_DEFAULT"
+          },
+          "channel": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "example": 2,
+            "minimum": 0
           },
           "channel_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "example": 4,
+            "minimum": 0
+          },
+          "fec": {
+            "type": "string",
+            "example": "BF_FEC_TYP_NONE"
+          },
+          "front_panel_port": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "example": 3,
+            "minimum": 0
+          },
+          "speed": {
+            "type": "string",
+            "example": "BF_SPEED_50G"
+          }
+        }
+      },
+      "PortResponse": {
+        "type": "object",
+        "description": "OpenAPI representation of the `rbfrt::util::Port` returned by `GET /ports`.",
+        "required": [
+          "port",
+          "channel",
+          "speed",
+          "auto_neg",
+          "fec",
+          "loopback",
+          "enable",
+          "status"
+        ],
+        "properties": {
+          "auto_neg": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "enable": {
+            "type": "boolean"
           },
           "fec": {
             "type": "string"
           },
+          "loopback": {
+            "type": "string"
+          },
+          "n_lanes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
           "pid": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "port": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "minimum": 0
           },
           "speed": {
             "type": "string"
+          },
+          "status": {
+            "type": "boolean"
+          }
+        }
+      },
+      "QsfpResponse": {
+        "type": "object",
+        "required": [
+          "command",
+          "output"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Command executed inside the platform QSFP uCLI node."
+          },
+          "output": {
+            "type": "string",
+            "description": "Text produced by the platform-specific QSFP command."
           }
         }
       },
@@ -1649,6 +2158,548 @@
           }
         }
       },
+      "Rfc2544Config": {
+        "type": "object",
+        "properties": {
+          "cooldown_duration_secs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "frame_loss": {
+            "type": "boolean"
+          },
+          "frame_sizes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Fixed Ethernet frame sizes; zero selects the non-standard IMIX ZLT profile."
+          },
+          "latency": {
+            "type": "boolean"
+          },
+          "latency_duration_secs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "latency_repetitions": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "line_rate_gbps": {
+            "type": "number",
+            "format": "float"
+          },
+          "reset": {
+            "type": "boolean"
+          },
+          "reset_timeout_secs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "system_recovery": {
+            "type": "boolean"
+          },
+          "system_recovery_observation_duration_secs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "system_recovery_overload_duration_secs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "throughput": {
+            "type": "boolean"
+          },
+          "throughput_aggregation": {
+            "$ref": "#/components/schemas/Rfc2544ThroughputAggregation"
+          },
+          "throughput_cluster_tolerance_gbps": {
+            "type": "number",
+            "format": "double"
+          },
+          "throughput_loss_tolerance": {
+            "$ref": "#/components/schemas/Rfc2544LossTolerance"
+          },
+          "throughput_repetitions": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "throughput_search_steps": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "trial_duration_secs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "warmup_duration_secs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "warmup_once_per_mapping": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Rfc2544FrameLossResult": {
+        "type": "object",
+        "required": [
+          "mapping",
+          "frame_size",
+          "offered_percent",
+          "offered_rate_gbps",
+          "tx_frames",
+          "rx_frames",
+          "lost_frames",
+          "loss_percentage"
+        ],
+        "properties": {
+          "frame_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "loss_percentage": {
+            "type": "number",
+            "format": "double"
+          },
+          "lost_frames": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/Rfc2544PortMapping"
+          },
+          "offered_percent": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "offered_rate_gbps": {
+            "type": "number",
+            "format": "double"
+          },
+          "rx_frames": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tx_frames": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Rfc2544LatencyResult": {
+        "type": "object",
+        "required": [
+          "mapping",
+          "frame_size",
+          "rate_gbps",
+          "mean_latency_ns",
+          "current_latency_ns",
+          "min_latency_ns",
+          "max_latency_ns",
+          "jitter_ns",
+          "samples"
+        ],
+        "properties": {
+          "current_latency_ns": {
+            "type": "number",
+            "format": "double"
+          },
+          "frame_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "jitter_ns": {
+            "type": "number",
+            "format": "double"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/Rfc2544PortMapping"
+          },
+          "max_latency_ns": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "mean_latency_ns": {
+            "type": "number",
+            "format": "double"
+          },
+          "min_latency_ns": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "rate_gbps": {
+            "type": "number",
+            "format": "double"
+          },
+          "samples": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "Rfc2544LossTolerance": {
+        "type": "object",
+        "required": [
+          "unit",
+          "value"
+        ],
+        "properties": {
+          "unit": {
+            "$ref": "#/components/schemas/Rfc2544LossToleranceUnit"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "Rfc2544LossToleranceUnit": {
+        "type": "string",
+        "enum": [
+          "packets",
+          "percent"
+        ]
+      },
+      "Rfc2544PortMapping": {
+        "type": "object",
+        "required": [
+          "tx_port",
+          "tx_channel",
+          "rx_port",
+          "rx_channel"
+        ],
+        "properties": {
+          "rx_channel": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "rx_port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "tx_channel": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "tx_port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "Rfc2544ResetResult": {
+        "type": "object",
+        "required": [
+          "mapping",
+          "frame_size",
+          "rate_gbps",
+          "status"
+        ],
+        "properties": {
+          "frame_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/Rfc2544PortMapping"
+          },
+          "rate_gbps": {
+            "type": "number",
+            "format": "double"
+          },
+          "reset_time_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Rfc2544Results": {
+        "type": "object",
+        "required": [
+          "running",
+          "status",
+          "selected_frame_sizes",
+          "selected_mappings",
+          "line_rate_gbps",
+          "throughput_selected",
+          "latency_selected",
+          "reset_selected",
+          "frame_loss_selected",
+          "system_recovery_selected",
+          "estimated_remaining_runtime_secs",
+          "throughput",
+          "latency",
+          "reset",
+          "frame_loss",
+          "system_recovery"
+        ],
+        "properties": {
+          "estimated_remaining_runtime_secs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "frame_loss": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rfc2544FrameLossResult"
+            }
+          },
+          "frame_loss_selected": {
+            "type": "boolean"
+          },
+          "latency": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rfc2544LatencyResult"
+            }
+          },
+          "latency_selected": {
+            "type": "boolean"
+          },
+          "line_rate_gbps": {
+            "type": "number",
+            "format": "float"
+          },
+          "reset": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rfc2544ResetResult"
+            }
+          },
+          "reset_selected": {
+            "type": "boolean"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "selected_frame_sizes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "selected_mappings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rfc2544PortMapping"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "system_recovery": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rfc2544SystemRecoveryResult"
+            }
+          },
+          "system_recovery_selected": {
+            "type": "boolean"
+          },
+          "throughput": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rfc2544ThroughputResult"
+            }
+          },
+          "throughput_selected": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Rfc2544SystemRecoveryResult": {
+        "type": "object",
+        "required": [
+          "mapping",
+          "frame_size",
+          "throughput_rate_gbps",
+          "overload_rate_gbps",
+          "recovery_rate_gbps",
+          "lost_frames_after_reduction",
+          "recovered",
+          "status"
+        ],
+        "properties": {
+          "frame_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "lost_frames_after_reduction": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/Rfc2544PortMapping"
+          },
+          "overload_rate_gbps": {
+            "type": "number",
+            "format": "double"
+          },
+          "recovered": {
+            "type": "boolean"
+          },
+          "recovery_rate_gbps": {
+            "type": "number",
+            "format": "double"
+          },
+          "recovery_time_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "status": {
+            "type": "string"
+          },
+          "throughput_rate_gbps": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "Rfc2544ThroughputAggregation": {
+        "type": "string",
+        "enum": [
+          "raw",
+          "clustered",
+          "median",
+          "minimum"
+        ]
+      },
+      "Rfc2544ThroughputRepetitionResult": {
+        "type": "object",
+        "required": [
+          "repetition",
+          "zero_loss_rate_gbps",
+          "lost_frames"
+        ],
+        "properties": {
+          "first_loss_rate_gbps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "lost_frames": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "repetition": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "zero_loss_rate_gbps": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "Rfc2544ThroughputResult": {
+        "type": "object",
+        "required": [
+          "mapping",
+          "frame_size",
+          "zero_loss_rate_gbps",
+          "lost_frames",
+          "aggregation",
+          "repetition_count",
+          "cluster_tolerance_gbps",
+          "repetitions"
+        ],
+        "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/Rfc2544ThroughputAggregation"
+          },
+          "cluster_tolerance_gbps": {
+            "type": "number",
+            "format": "double"
+          },
+          "first_loss_rate_gbps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "frame_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "lost_frames": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/Rfc2544PortMapping"
+          },
+          "repetition_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "repetitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rfc2544ThroughputRepetitionResult"
+            }
+          },
+          "zero_loss_rate_gbps": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "RxMappingMode": {
+        "type": "string",
+        "description": "Selects how expected RX ports are assigned to generated traffic.",
+        "enum": [
+          "per_tx_port",
+          "per_stream"
+        ]
+      },
       "RxTarget": {
         "type": "object",
         "required": [
@@ -1679,6 +2730,7 @@
           "rx_rate_l2",
           "app_tx_l2",
           "app_rx_l2",
+          "app_l2_frame_sizes",
           "frame_type_data",
           "iats",
           "rtts",
@@ -1689,6 +2741,20 @@
           "iat_histogram"
         ],
         "properties": {
+          "app_l2_frame_sizes": {
+            "type": "object",
+            "description": "Number of L2 bytes counted per generated frame, keyed by application ID.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
           "app_rx_l2": {
             "type": "object",
             "description": "L2 receive rate per stream and port.\nThe number corresponds to the app_id in the Stream description.",
@@ -1935,6 +3001,24 @@
             "example": 100,
             "minimum": 0
           },
+          "detnet_cw": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "d-CW of DetNet, with sequence numbers based on RFC 8964"
+          },
+          "detnet_seq_num_length": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DetNetSeqNumLength",
+                "description": "Length of Sequence numbers in the d-CW. 8, 16, or 28."
+              }
+            ]
+          },
           "encapsulation": {
             "$ref": "#/components/schemas/Encapsulation",
             "description": "Encapsulation type."
@@ -1970,14 +3054,21 @@
             "example": 4,
             "minimum": 0
           },
+          "mna_post_stack": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Flag that indicates the MPLS stack contains post-stack data (MNA PSD).\nWhen set, TX timestamp is written on the TX recirc pass because the\nfinal-TX-port parser cannot reach hdr.path past the PSMHT."
+          },
           "n_packets": {
             "type": [
               "integer",
               "null"
             ],
             "format": "int32",
-            "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
-            "example": 11,
+            "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.\nOverall number of packets that are generated for this stream per `timeout` ns, i.e., over all\n`n_pipes` pipes and including all batches of a burst. Values provided by the client are ignored.",
+            "example": 110,
             "minimum": 0
           },
           "n_pipes": {
@@ -2039,7 +3130,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.",
+            "description": "These values are set by P4TG when the stream is generated to indicate the applied configuration.\nTime between two packet generator timer expirations in ns. Includes the batch factor.",
             "example": 81,
             "minimum": 0
           },
@@ -2139,6 +3230,17 @@
             "description": "Egress port to which the stream should be sent.",
             "minimum": 0
           },
+          "rx_target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RxTarget",
+                "description": "Expected receive port for this stream/TX pair in per-stream mapping mode."
+              }
+            ]
+          },
           "sid_list": {
             "type": "array",
             "items": {
@@ -2217,11 +3319,71 @@
         "required": [
           "tx_rate_l1",
           "rx_rate_l1",
+          "app_tx_l2",
+          "app_rx_l2",
           "packet_loss",
           "out_of_order",
           "rtt"
         ],
         "properties": {
+          "app_rx_l2": {
+            "type": "object",
+            "description": "L2 receive rates per port, application ID, and time",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "format": "double"
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "app_tx_l2": {
+            "type": "object",
+            "description": "L2 send rates per port, application ID, and time",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "format": "double"
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
           "name": {
             "type": [
               "string",
@@ -2339,6 +3501,241 @@
           }
         }
       },
+      "TimeStatisticsApi": {
+        "type": "object",
+        "required": [
+          "tx_rate_l1",
+          "rx_rate_l1",
+          "app_tx_l2",
+          "app_rx_l2",
+          "packet_loss",
+          "out_of_order",
+          "rtt"
+        ],
+        "properties": {
+          "app_rx_l2": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "propertyNames": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "app_tx_l2": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "propertyNames": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "out_of_order": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "packet_loss": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "rtt": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "rx_rate_l1": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "format": "double"
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "tx_rate_l1": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "format": "double"
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        }
+      },
       "TrafficGenData": {
         "type": "object",
         "description": "Represents the body of the GET / POST endpoints of /trafficgen",
@@ -2349,6 +3746,12 @@
           "port_tx_rx_mapping"
         ],
         "properties": {
+          "drain_duration_secs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Time after packet generation is disabled during which the RX measurement\npath remains active so in-flight packets can still update statistics.\nLimited to [`MAX_DRAIN_DURATION_SECS`].",
+            "minimum": 0
+          },
           "duration": {
             "type": [
               "integer",
@@ -2404,6 +3807,23 @@
               "type": "string"
             }
           },
+          "repetitions": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of times this test is executed. RFC2544 uses its own repetition settings.",
+            "minimum": 0
+          },
+          "rfc2544": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Rfc2544Config",
+                "description": "RFC2544 orchestration configuration."
+              }
+            ]
+          },
           "rtt_histogram_config": {
             "type": [
               "object",
@@ -2423,6 +3843,10 @@
               "type": "string"
             }
           },
+          "rx_mapping_mode": {
+            "$ref": "#/components/schemas/RxMappingMode",
+            "description": "Selects whether RX targets are configured per TX port or per stream/TX pair."
+          },
           "stream_settings": {
             "type": "array",
             "items": {
@@ -2437,6 +3861,37 @@
             }
           }
         }
+      },
+      "TrafficGenStatus": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TrafficGenData"
+          },
+          {
+            "type": "object",
+            "required": [
+              "draining",
+              "cooldown"
+            ],
+            "properties": {
+              "cooldown": {
+                "type": "boolean",
+                "description": "True while a multi-test sequence is idle before its next run."
+              },
+              "draining": {
+                "type": "boolean",
+                "description": "True while packet generation is disabled but the RX measurement path\nremains active for in-flight packets."
+              },
+              "source_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Stable name of the source configuration. RFC2544 trial names in\n`configuration.name` may change while this value remains constant."
+              }
+            }
+          }
+        ]
       },
       "TypeCount": {
         "type": "object",
