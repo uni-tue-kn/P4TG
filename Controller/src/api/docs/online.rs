@@ -5,7 +5,7 @@ lazy_static! {
     pub static ref EXAMPLE_GET_1: String = json!([
         {
             "status": "online",
-            "version": "2.4.0",
+            "version": "2.8.1",
             "asic": "Tofino2",
             "loopback": false,
             "digests_alive": true,
