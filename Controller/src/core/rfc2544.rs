@@ -169,10 +169,21 @@ fn positive_rate(rate_gbps: f64) -> bool {
     rate_gbps.is_finite() && rate_gbps > 0.0
 }
 
-fn confirmed_zero_loss_rate(confirmed_pass_rate: Option<f64>) -> f64 {
-    confirmed_pass_rate
-        .filter(|rate| positive_rate(*rate))
-        .unwrap_or(0.0)
+/// Requested rate of a fixed-rate trial and the TX rate it actually achieved.
+/// The ILP and the hardware cannot realize every requested rate exactly.
+#[derive(Clone, Copy, Debug)]
+struct TrialRate {
+    requested_gbps: f64,
+    measured_gbps: f64,
+}
+
+fn confirmed_zero_loss_rate(confirmed_pass: Option<TrialRate>) -> TrialRate {
+    confirmed_pass
+        .filter(|rate| positive_rate(rate.requested_gbps))
+        .unwrap_or(TrialRate {
+            requested_gbps: 0.0,
+            measured_gbps: 0.0,
+        })
 }
 
 fn usable_trial_rate(rate_gbps: f64, config: &Rfc2544Config) -> f64 {
@@ -917,6 +928,37 @@ async fn stop_trial(state: &Arc<AppState>) {
     state.experiment.lock().await.running = false;
 }
 
+/// Like [`wait_with_cancel`], but also samples the TX rate gauge. Returns
+/// `None` on cancellation, otherwise the median TX rate in Gbit/s over all
+/// samples that saw traffic (0 if none did).
+async fn wait_measuring_tx_rate(
+    state: &Arc<AppState>,
+    payload: &TrafficGenData,
+    duration: Duration,
+    cancel_token: &CancellationToken,
+) -> Option<f64> {
+    let deadline = Instant::now() + duration;
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    let mut rates = Vec::new();
+
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                let rate = sample_trial(state, payload).await.tx_rate_gbps;
+                if positive_rate(rate) {
+                    rates.push(rate);
+                }
+                if Instant::now() >= deadline {
+                    return Some(measured_rate(rates));
+                }
+            }
+            _ = cancel_token.cancelled() => {
+                return None;
+            }
+        }
+    }
+}
+
 async fn wait_with_cancel(duration: Duration, cancel_token: &CancellationToken) -> bool {
     let deadline = Instant::now() + duration;
     let mut interval = tokio::time::interval(Duration::from_secs(1));
@@ -1075,6 +1117,15 @@ fn latency_result(
         max_latency_ns: samples.iter().max().copied().unwrap_or(0) as u32 / 2,
         jitter_ns: jitter_rtt / 2.0,
         samples: samples.len() as u32,
+    }
+}
+
+/// Median of the TX rate samples that saw traffic, 0 if none did.
+fn measured_rate(rates: Vec<f64>) -> f64 {
+    if rates.is_empty() {
+        0.0
+    } else {
+        median_rate(rates)
     }
 }
 
@@ -1390,12 +1441,12 @@ async fn run_throughput_repetition(
     .await?;
 
     let mut next_trial = 2;
-    let mut confirmed_pass_rate: Option<f64>;
-    let mut confirmed_fail: (f64, u64);
+    let mut confirmed_pass: Option<TrialRate>;
+    let mut confirmed_fail: (TrialRate, u64);
 
     match sweep_outcome {
         ThroughputSweepOutcome::NoLoss => {
-            let line_rate_loss = run_fixed_rate_loss_trial(
+            let (line_rate_loss, line_trial_rate) = run_fixed_rate_loss_trial(
                 state,
                 base,
                 config,
@@ -1416,16 +1467,17 @@ async fn run_throughput_repetition(
             if !line_rate_loss.exceeds_tolerance(config) {
                 return Some(Rfc2544ThroughputRepetitionResult {
                     repetition: repetition_index,
-                    zero_loss_rate_gbps: line_rate_gbps,
+                    zero_loss_rate_gbps: line_trial_rate.measured_gbps,
                     first_loss_rate_gbps: None,
                     lost_frames: 0,
+                    requested_zero_loss_rate_gbps: line_trial_rate.requested_gbps,
                 });
             }
 
             // A loss-free ramp does not prove that its brief highest-rate
             // segment is sustainable. Line rate is now a confirmed failure.
-            confirmed_pass_rate = None;
-            confirmed_fail = (line_rate_gbps, line_rate_loss.lost_frames);
+            confirmed_pass = None;
+            confirmed_fail = (line_trial_rate, line_rate_loss.lost_frames);
         }
         ThroughputSweepOutcome::Loss {
             low_rate_gbps,
@@ -1435,7 +1487,7 @@ async fn run_throughput_repetition(
             // The sweep bounds are estimates, not fixed-rate evidence. Probe
             // the upper estimate first so a low estimate cannot trap all
             // refinements in a narrow, unconfirmed interval.
-            let high_loss = run_fixed_rate_loss_trial(
+            let (high_loss, high_trial_rate) = run_fixed_rate_loss_trial(
                 state,
                 base,
                 config,
@@ -1455,14 +1507,14 @@ async fn run_throughput_repetition(
             next_trial = next_trial.saturating_add(1);
 
             if high_loss.exceeds_tolerance(config) {
-                confirmed_pass_rate = None;
-                confirmed_fail = (high_rate_gbps, high_loss.lost_frames);
+                confirmed_pass = None;
+                confirmed_fail = (high_trial_rate, high_loss.lost_frames);
 
                 // If the padded lower estimate is positive, verify it once.
                 // A failure moves the upper boundary down immediately; zero
                 // remains the implicit lower boundary for subsequent search.
                 if positive_rate(low_rate_gbps) && (high_rate_gbps - low_rate_gbps).abs() >= 0.001 {
-                    let low_loss = run_fixed_rate_loss_trial(
+                    let (low_loss, low_trial_rate) = run_fixed_rate_loss_trial(
                         state,
                         base,
                         config,
@@ -1482,26 +1534,27 @@ async fn run_throughput_repetition(
                     next_trial = next_trial.saturating_add(1);
 
                     if low_loss.exceeds_tolerance(config) {
-                        confirmed_fail = (low_rate_gbps, low_loss.lost_frames);
+                        confirmed_fail = (low_trial_rate, low_loss.lost_frames);
                     } else {
-                        confirmed_pass_rate = Some(low_rate_gbps);
+                        confirmed_pass = Some(low_trial_rate);
                     }
                 }
             } else {
-                confirmed_pass_rate = Some(high_rate_gbps);
+                confirmed_pass = Some(high_trial_rate);
                 if (line_rate_gbps - high_rate_gbps).abs() < 0.001 {
                     return Some(Rfc2544ThroughputRepetitionResult {
                         repetition: repetition_index,
-                        zero_loss_rate_gbps: line_rate_gbps,
+                        zero_loss_rate_gbps: high_trial_rate.measured_gbps,
                         first_loss_rate_gbps: None,
                         lost_frames: 0,
+                        requested_zero_loss_rate_gbps: high_trial_rate.requested_gbps,
                     });
                 }
 
                 // The approximate upper bound passed. Jump directly to line
                 // rate; only binary-search this widened interval if line rate
                 // is a confirmed failure.
-                let line_rate_loss = run_fixed_rate_loss_trial(
+                let (line_rate_loss, line_trial_rate) = run_fixed_rate_loss_trial(
                     state,
                     base,
                     config,
@@ -1523,19 +1576,22 @@ async fn run_throughput_repetition(
                 if !line_rate_loss.exceeds_tolerance(config) {
                     return Some(Rfc2544ThroughputRepetitionResult {
                         repetition: repetition_index,
-                        zero_loss_rate_gbps: line_rate_gbps,
+                        zero_loss_rate_gbps: line_trial_rate.measured_gbps,
                         first_loss_rate_gbps: None,
                         lost_frames: 0,
+                        requested_zero_loss_rate_gbps: line_trial_rate.requested_gbps,
                     });
                 }
 
-                confirmed_fail = (line_rate_gbps, line_rate_loss.lost_frames);
+                confirmed_fail = (line_trial_rate, line_rate_loss.lost_frames);
             }
         }
     }
 
-    let (mut high_rate, mut result_lost_frames) = confirmed_fail;
-    let mut low_rate = confirmed_pass_rate.unwrap_or(0.0);
+    // The search runs on requested rates; results report measured rates.
+    let (mut first_loss, mut result_lost_frames) = confirmed_fail;
+    let mut high_rate = first_loss.requested_gbps;
+    let mut low_rate = confirmed_pass.map_or(0.0, |rate| rate.requested_gbps);
 
     for _ in 0..config.throughput_search_steps {
         let mid_rate = (low_rate + high_rate) / 2.0;
@@ -1543,7 +1599,7 @@ async fn run_throughput_repetition(
             break;
         }
 
-        let mid_loss = run_fixed_rate_loss_trial(
+        let (mid_loss, mid_trial_rate) = run_fixed_rate_loss_trial(
             state,
             base,
             config,
@@ -1564,15 +1620,16 @@ async fn run_throughput_repetition(
 
         if mid_loss.exceeds_tolerance(config) {
             high_rate = mid_rate;
+            first_loss = mid_trial_rate;
             result_lost_frames = mid_loss.lost_frames;
         } else {
             low_rate = mid_rate;
-            confirmed_pass_rate = Some(mid_rate);
+            confirmed_pass = Some(mid_trial_rate);
         }
     }
 
-    let zero_loss_rate_gbps = confirmed_zero_loss_rate(confirmed_pass_rate);
-    if !positive_rate(zero_loss_rate_gbps) {
+    let zero_loss_rate = confirmed_zero_loss_rate(confirmed_pass);
+    if !positive_rate(zero_loss_rate.requested_gbps) {
         warn!(
             "RFC2544 throughput for {} did not find a positive no-loss fixed-rate trial; reporting zero throughput.",
             frame_profile
@@ -1581,9 +1638,10 @@ async fn run_throughput_repetition(
 
     Some(Rfc2544ThroughputRepetitionResult {
         repetition: repetition_index,
-        zero_loss_rate_gbps,
-        first_loss_rate_gbps: Some(high_rate),
+        zero_loss_rate_gbps: zero_loss_rate.measured_gbps,
+        first_loss_rate_gbps: Some(first_loss.measured_gbps),
         lost_frames: result_lost_frames,
+        requested_zero_loss_rate_gbps: zero_loss_rate.requested_gbps,
     })
 }
 
@@ -1642,6 +1700,7 @@ async fn run_throughput(
         representative_throughput_repetition(config, &repetitions, zero_loss_rate_gbps);
     let first_loss_rate_gbps = selected_repetition.first_loss_rate_gbps;
     let lost_frames = selected_repetition.lost_frames;
+    let requested_zero_loss_rate_gbps = selected_repetition.requested_zero_loss_rate_gbps;
     let result = Rfc2544ThroughputResult {
         mapping: mapping.clone(),
         frame_size,
@@ -1652,6 +1711,7 @@ async fn run_throughput(
         repetition_count,
         cluster_tolerance_gbps: config.throughput_cluster_tolerance_gbps,
         repetitions,
+        requested_zero_loss_rate_gbps,
     };
 
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
@@ -1677,7 +1737,7 @@ async fn run_fixed_rate_loss_trial(
     trial_count: u32,
     mapping_warmup_done: &mut bool,
     cancel_token: &CancellationToken,
-) -> Option<ThroughputTrialLoss> {
+) -> Option<(ThroughputTrialLoss, TrialRate)> {
     let rate_gbps = usable_trial_rate(rate_gbps, config);
     let frame_profile = frame_profile_label(frame_size);
     set_status(
@@ -1738,7 +1798,9 @@ async fn run_fixed_rate_loss_trial(
 
     let baseline = sample_trial(state, &trial).await;
     let baseline_counters = ThroughputCounters::from_sample(&baseline);
-    let completed = wait_with_cancel(
+    let measured_gbps = wait_measuring_tx_rate(
+        state,
+        &trial,
         Duration::from_secs(config.trial_duration_secs as u64),
         cancel_token,
     )
@@ -1746,10 +1808,10 @@ async fn run_fixed_rate_loss_trial(
 
     stop_trial(state).await;
 
-    if !completed {
+    let Some(measured_gbps) = measured_gbps else {
         finish(state, "RFC2544 benchmark cancelled.".to_string()).await;
         return None;
-    }
+    };
 
     if !trial_cooldown(state, config, context, cancel_token).await {
         return None;
@@ -1771,7 +1833,13 @@ async fn run_fixed_rate_loss_trial(
         return None;
     }
 
-    Some(trial_loss)
+    Some((
+        trial_loss,
+        TrialRate {
+            requested_gbps: rate_gbps,
+            measured_gbps,
+        },
+    ))
 }
 
 async fn run_latency(
@@ -1799,6 +1867,7 @@ async fn run_latency(
 
     let rate_gbps = usable_trial_rate(rate_gbps, config);
     let mut all_rtts = Vec::new();
+    let mut measured_rates = Vec::new();
     for repetition in 0..config.latency_repetitions {
         let trial = build_trial_payload(base, frame_size, rate_gbps, None);
         if let Err(err) = start_single_test(state, trial.clone()).await {
@@ -1846,7 +1915,9 @@ async fn run_latency(
         )
         .await;
 
-        let completed = wait_with_cancel(
+        let measured_gbps = wait_measuring_tx_rate(
+            state,
+            &trial,
             Duration::from_secs(config.latency_duration_secs as u64),
             cancel_token,
         )
@@ -1854,9 +1925,12 @@ async fn run_latency(
 
         stop_trial(state).await;
 
-        if !completed {
+        let Some(measured_gbps) = measured_gbps else {
             finish(state, "RFC2544 benchmark cancelled.".to_string()).await;
             return false;
+        };
+        if positive_rate(measured_gbps) {
+            measured_rates.push(measured_gbps);
         }
 
         if !trial_cooldown(state, config, context, cancel_token).await {
@@ -1870,7 +1944,12 @@ async fn run_latency(
         all_rtts.extend(sample.rtts.into_iter().skip(baseline_rtt_count));
     }
 
-    let result = latency_result(mapping, frame_size, rate_gbps, &all_rtts);
+    let result = latency_result(
+        mapping,
+        frame_size,
+        measured_rate(measured_rates),
+        &all_rtts,
+    );
     if let Some(results) = state.rfc2544_results.lock().await.as_mut() {
         results.latency.push(result);
     }
@@ -1936,7 +2015,9 @@ async fn run_frame_loss(
         }
 
         let mut baseline = sample_trial(state, &trial).await;
-        let completed = wait_with_cancel(
+        let measured_gbps = wait_measuring_tx_rate(
+            state,
+            &trial,
             Duration::from_secs(config.trial_duration_secs as u64),
             cancel_token,
         )
@@ -1944,10 +2025,10 @@ async fn run_frame_loss(
 
         stop_trial(state).await;
 
-        if !completed {
+        let Some(measured_gbps) = measured_gbps else {
             finish(state, "RFC2544 benchmark cancelled.".to_string()).await;
             return false;
-        }
+        };
 
         if !trial_cooldown(state, config, context, cancel_token).await {
             return false;
@@ -1972,7 +2053,7 @@ async fn run_frame_loss(
             mapping: mapping.clone(),
             frame_size,
             offered_percent,
-            offered_rate_gbps,
+            offered_rate_gbps: measured_gbps,
             tx_frames,
             rx_frames,
             lost_frames,
@@ -2006,7 +2087,7 @@ async fn run_system_recovery(
     mapping_index: usize,
     mapping_count: usize,
     frame_size: u32,
-    throughput_rate_gbps: f64,
+    throughput_rate: TrialRate,
     cancel_token: &CancellationToken,
 ) -> bool {
     set_status(
@@ -2020,9 +2101,10 @@ async fn run_system_recovery(
     )
     .await;
 
-    let throughput_rate_gbps = usable_trial_rate(throughput_rate_gbps, config);
+    // Generate relative to the requested ZLT rate, report the measured one.
+    let throughput_rate_gbps = throughput_rate.measured_gbps;
     let Some((trial, overload_rate_gbps, recovery_rate_gbps)) =
-        build_system_recovery_payload(base, config, frame_size, throughput_rate_gbps)
+        build_system_recovery_payload(base, config, frame_size, throughput_rate.requested_gbps)
     else {
         let result = Rfc2544SystemRecoveryResult {
             mapping: mapping.clone(),
@@ -2111,17 +2193,18 @@ async fn run_system_recovery(
     )
     .await;
 
-    let overload_completed = wait_with_cancel(
+    let Some(measured_overload_rate_gbps) = wait_measuring_tx_rate(
+        state,
+        &trial,
         Duration::from_secs(config.system_recovery_overload_duration_secs as u64),
         cancel_token,
     )
-    .await;
-
-    if !overload_completed {
+    .await
+    else {
         stop_trial(state).await;
         finish(state, "RFC2544 benchmark cancelled.".to_string()).await;
         return false;
-    }
+    };
 
     let reduction_at = Instant::now();
     let baseline = sample_trial(state, &trial).await;
@@ -2131,6 +2214,7 @@ async fn run_system_recovery(
     let mut last_loss_increase_at: Option<Instant> = None;
     let mut stable_samples_after_loss = 0_u32;
     let mut status = "No post-reduction loss observed.".to_string();
+    let mut recovery_tx_rates = Vec::new();
     let observation_deadline =
         reduction_at + Duration::from_secs(config.system_recovery_observation_duration_secs as u64);
     let mut interval = tokio::time::interval(Duration::from_millis(500));
@@ -2151,6 +2235,9 @@ async fn run_system_recovery(
         tokio::select! {
             _ = interval.tick() => {
                 let sample = sample_trial(state, &trial).await;
+                if positive_rate(sample.tx_rate_gbps) {
+                    recovery_tx_rates.push(sample.tx_rate_gbps);
+                }
                 if sample.lost_frames > last_loss {
                     lost_frames_after_reduction = sample.lost_frames.saturating_sub(baseline_loss);
                     last_loss = sample.lost_frames;
@@ -2212,8 +2299,8 @@ async fn run_system_recovery(
         mapping: mapping.clone(),
         frame_size,
         throughput_rate_gbps,
-        overload_rate_gbps,
-        recovery_rate_gbps,
+        overload_rate_gbps: measured_overload_rate_gbps,
+        recovery_rate_gbps: measured_rate(recovery_tx_rates),
         recovery_time_ms,
         lost_frames_after_reduction,
         recovered,
@@ -2301,12 +2388,16 @@ async fn run_reset(
     let mut down_at: Option<Instant> = None;
     let mut reset_time_ms = None;
     let mut status = "No reset/offline event observed before timeout.".to_string();
+    let mut tx_rates = Vec::new();
     let mut interval = tokio::time::interval(Duration::from_millis(500));
 
     loop {
         tokio::select! {
             _ = interval.tick() => {
                 let sample = sample_trial(state, &trial).await;
+                if positive_rate(sample.tx_rate_gbps) {
+                    tx_rates.push(sample.tx_rate_gbps);
+                }
                 if sample.rx_rate_gbps > zero_threshold_gbps {
                     if let Some(down) = down_at {
                         reset_time_ms = Some(down.elapsed().as_secs_f64() * 1000.0);
@@ -2348,7 +2439,7 @@ async fn run_reset(
     let result = Rfc2544ResetResult {
         mapping: mapping.clone(),
         frame_size,
-        rate_gbps,
+        rate_gbps: measured_rate(tx_rates),
         reset_time_ms,
         status,
     };
@@ -2398,7 +2489,7 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
             continue;
         };
 
-        let mut throughput_rates: HashMap<u32, f64> = HashMap::new();
+        let mut throughput_rates: HashMap<u32, TrialRate> = HashMap::new();
         let mut mapping_warmup_done = false;
 
         set_status(
@@ -2434,7 +2525,15 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                 else {
                     return;
                 };
-                throughput_rates.insert(frame_size, result.zero_loss_rate_gbps);
+                // Dependent procedures re-request the rate that passed so they
+                // run with the same generator configuration as the ZLT trial.
+                throughput_rates.insert(
+                    frame_size,
+                    TrialRate {
+                        requested_gbps: result.requested_zero_loss_rate_gbps,
+                        measured_gbps: result.zero_loss_rate_gbps,
+                    },
+                );
 
                 if !positive_rate(result.zero_loss_rate_gbps)
                     && (config.latency || config.reset || config.system_recovery)
@@ -2455,11 +2554,14 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                 continue;
             }
 
-            let zero_loss_rate = throughput_rates
+            let throughput_rate = throughput_rates
                 .get(&frame_size)
                 .copied()
-                .unwrap_or(config.line_rate_gbps as f64);
-            let zero_loss_rate = usable_trial_rate(zero_loss_rate, &config);
+                .unwrap_or(TrialRate {
+                    requested_gbps: config.line_rate_gbps as f64,
+                    measured_gbps: config.line_rate_gbps as f64,
+                });
+            let zero_loss_rate = usable_trial_rate(throughput_rate.requested_gbps, &config);
 
             if config.latency
                 && !run_latency(
@@ -2505,7 +2607,10 @@ pub async fn run(state: Arc<AppState>, payload: TrafficGenData, cancel_token: Ca
                     mapping_index,
                     mapping_count,
                     frame_size,
-                    zero_loss_rate,
+                    TrialRate {
+                        requested_gbps: zero_loss_rate,
+                        ..throughput_rate
+                    },
                     &cancel_token,
                 )
                 .await

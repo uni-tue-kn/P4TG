@@ -491,11 +491,8 @@ fn write_frame_loss(pdf: &mut PdfReport, rfc: &Rfc2544Results) {
             points: FRAME_LOSS_GRAPH_STEPS
                 .iter()
                 .filter_map(|offered_percent| {
-                    let offered_rate_gbps =
-                        rfc.line_rate_gbps as f64 * *offered_percent as f64 / 100.0;
-                    let x = gbps_to_mpps(offered_rate_gbps, *frame_size);
                     if *offered_percent == 0 {
-                        Some((x, 0.0))
+                        Some((0.0, 0.0))
                     } else {
                         rfc.frame_loss
                             .iter()
@@ -504,7 +501,12 @@ fn write_frame_loss(pdf: &mut PdfReport, rfc: &Rfc2544Results) {
                                     && row.offered_percent == *offered_percent
                                     && same_mapping(&row.mapping, mapping)
                             })
-                            .map(|row| (x, row.loss_percentage))
+                            .map(|row| {
+                                (
+                                    gbps_to_mpps(row.offered_rate_gbps, *frame_size),
+                                    row.loss_percentage,
+                                )
+                            })
                     }
                 })
                 .collect(),
