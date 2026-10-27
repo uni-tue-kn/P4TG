@@ -491,14 +491,13 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
             return {
                 label: `${mappingLabel(mapping)} ${frameSize} B`,
                 data: RFC2544_FRAME_LOSS_GRAPH_STEPS.map((offeredPercent) => {
-                    const x = rfc2544RateValue(rfc2544.line_rate_gbps * offeredPercent / 100, frameSize);
-                    if (offeredPercent === 0) return { x, y: 0 };
+                    if (offeredPercent === 0) return { x: 0, y: 0 };
                     const row = rfc2544.frame_loss.find((entry) =>
                         entry.frame_size === frameSize &&
                         entry.offered_percent === offeredPercent &&
                         mappingMatches(entry.mapping, mapping)
                     );
-                    return row ? { x, y: row.loss_percentage } : null;
+                    return row ? { x: rfc2544RateValue(row.offered_rate_gbps, frameSize), y: row.loss_percentage } : null;
                 }).filter((point): point is { x: number, y: number } => point !== null),
                 borderColor: color,
                 backgroundColor: `${color.replace("rgb", "rgba").replace(")", ", 0.25)")}`,
@@ -1091,7 +1090,7 @@ const StatView = ({ stats, time_stats, port_mapping, mode, visual, is_summary, r
                                         entry.offered_percent === offeredPercent &&
                                         mappingMatches(entry.mapping, mapping)
                                     );
-                                    const rate = formatGbps(rfc2544.line_rate_gbps * offeredPercent / 100);
+                                    const rate = formatGbps(row ? row.offered_rate_gbps : rfc2544.line_rate_gbps * offeredPercent / 100);
                                     const tooltip = row
                                         ? `Rate: ${rate}; TX: ${formatFrameCount(row.tx_frames)}; RX: ${formatFrameCount(row.rx_frames)}; Lost: ${formatFrameCount(row.lost_frames)}`
                                         : `${rfc2544.running ? "Pending" : "Not run or skipped after two zero-loss trials"} at ${rate}`;

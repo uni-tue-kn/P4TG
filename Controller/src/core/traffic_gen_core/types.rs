@@ -389,6 +389,10 @@ pub struct Rfc2544ThroughputResult {
     pub repetition_count: u32,
     pub cluster_tolerance_gbps: f64,
     pub repetitions: Vec<Rfc2544ThroughputRepetitionResult>,
+    /// Requested rate of the representative repetition. Follow-up procedures
+    /// re-request this rate so they reproduce the same generator configuration.
+    #[serde(skip)]
+    pub(crate) requested_zero_loss_rate_gbps: f64,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
@@ -398,6 +402,9 @@ pub struct Rfc2544ThroughputRepetitionResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_loss_rate_gbps: Option<f64>,
     pub lost_frames: u64,
+    /// Requested rate of the trial that confirmed `zero_loss_rate_gbps`.
+    #[serde(skip)]
+    pub(crate) requested_zero_loss_rate_gbps: f64,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]

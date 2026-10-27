@@ -2,6 +2,12 @@
 # Created by https://www.toptal.com/developers/gitignore/api/osx,node,python
 # Edit at https://www.toptal.com/developers/gitignore?templates=osx,node,python
 
+CLAUDE.md
+AGENTS.md
+tests/
+test_configs/
+pattern_shape_battery.py
+
 P4-Implementation/docker-compose.yml
 .codex
 rfc2544.txt
