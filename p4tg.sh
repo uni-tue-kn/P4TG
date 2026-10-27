@@ -641,6 +641,7 @@ preflight_install_update() {
   require_env_dir SDE_INSTALL
   require_cmd git
   require_cmd make
+  require_cmd cmake
   require_cmd docker
   require_cmd ln
   ensure_docker_ready || return $?
