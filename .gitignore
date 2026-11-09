@@ -4,7 +4,8 @@
 
 CLAUDE.md
 AGENTS.md
-tests/
+# The repository-level Rust/TypeScript integration suite lives here.
+!tests/
 test_configs/
 pattern_shape_battery.py
 

@@ -1,0 +1,15 @@
+[package]
+name = "p4tg-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "common/lib.rs"
+
+[dependencies]
+rbfrt = "0.1.11"
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }
