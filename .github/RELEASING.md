@@ -68,6 +68,20 @@ directly by `release.yml` after the version is reserved. The conditional
 nightly-image job in `tests.yml` publishes `:nightly` only after the complete
 test matrix passes on the `nightly` branch.
 
+## Dependency updates
+
+Dependabot checks Cargo, npm, GitHub Actions, and Docker dependencies weekly.
+Version-update pull requests target `nightly`. Patch and minor updates are
+configured for squash auto-merge after all ruleset requirements pass; major
+updates remain open for manual review. Dependabot security updates target the
+default branch (`main`) and follow its normal review and release process.
+
+Periodically promote the accumulated changes with a reviewed `nightly` to
+`main` pull request. The normal release workflow makes the patch release after
+that PR passes and is merged. Merge the generated release commit from `main`
+back into `nightly` afterward so application versions and changelog history do
+not diverge.
+
 ## Local validation
 
 Run the deterministic release tests without publishing anything:

@@ -42,7 +42,7 @@ case "$target" in
     port_fec=BF_FEC_TYP_NONE
     channel_mac_1='{"0":"02:00:00:00:00:01","1":"02:00:00:00:00:02","2":"02:00:00:00:00:03","3":"02:00:00:00:00:04"}'
     channel_mac_2='{"0":"02:00:00:00:00:11","1":"02:00:00:00:00:12","2":"02:00:00:00:00:13","3":"02:00:00:00:00:14"}'
-    probe_wait=12
+    probe_wait=45
     traffic_rate=${traffic_rate:-0.001}
     ;;
   tofino2)
@@ -55,7 +55,7 @@ case "$target" in
     port_fec=BF_FEC_TYP_REED_SOLOMON
     channel_mac_1='{"0":"02:00:00:00:00:01","2":"02:00:00:00:00:03","4":"02:00:00:00:00:05","6":"02:00:00:00:00:07"}'
     channel_mac_2='{"0":"02:00:00:00:00:11","2":"02:00:00:00:00:13","4":"02:00:00:00:00:15","6":"02:00:00:00:00:17"}'
-    probe_wait=25
+    probe_wait=60
     traffic_rate=${traffic_rate:-0.00001}
     ;;
   *)
@@ -190,15 +190,15 @@ printf 'ports=%s\n' "$(docker exec "$container" curl --fail --silent http://127.
 docker exec "$container" curl --fail --silent \
   -H 'content-type: application/json' --data-binary @/p4tg/runtime/traffic.json \
   http://127.0.0.1:18080/api/trafficgen > "$runtime/traffic-response.json"
-sleep "$probe_wait"
+docker run --rm --name "$test_container" --network "container:$container" \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  -e P4TG_ASSERT_DATA_PLANE=1 \
+  -e P4TG_DATA_PLANE_TIMEOUT="$probe_wait" \
+  --entrypoint /app/p4tg-model-tests p4tg-ci-controller:local
 docker exec "$container" curl --fail --silent http://127.0.0.1:18080/api/statistics \
   > "$runtime/statistics.json"
 docker exec "$container" curl --fail --silent http://127.0.0.1:18080/api/online \
   > "$runtime/online-after-traffic.json"
-docker run --rm --name "$test_container" --network "container:$container" \
-  --cap-drop ALL --security-opt no-new-privileges:true \
-  -e P4TG_ASSERT_DATA_PLANE=1 \
-  --entrypoint /app/p4tg-model-tests p4tg-ci-controller:local
 docker exec "$container" curl --fail --silent -X DELETE \
   'http://127.0.0.1:18080/api/trafficgen?skip=true' >/dev/null
 printf 'traffic=%s\n' "$(cat "$runtime/traffic-response.json")"
@@ -206,7 +206,7 @@ printf 'online_after_traffic=%s\n' "$(cat "$runtime/online-after-traffic.json")"
 printf 'statistics_file=%s/statistics.json\n' "$runtime"
 
 if grep -q '"digests_alive":false' "$runtime/online-after-traffic.json"; then
-  echo "$target digest pipeline did not become live during the feasibility window" >&2
+  echo "$target digest pipeline stopped after becoming ready" >&2
   exit 1
 fi
 
