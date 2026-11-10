@@ -24,6 +24,7 @@ use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// Resets the statistics
@@ -49,6 +50,21 @@ pub async fn reset(State(state): State<Arc<AppState>>) -> Response {
         .await
         .on_reset(switch)
         .await;
+
+    // Establish a history boundary while lifecycle transitions are excluded.
+    // A running test remains eligible for its post-reset result; a test that
+    // already completed cannot be restored from the multi-test cooldown.
+    let generation = state
+        .multiple_tests
+        .history_generation
+        .fetch_add(1, Ordering::AcqRel)
+        + 1;
+    if state.experiment.lock().await.running {
+        state
+            .multiple_tests
+            .active_run_generation
+            .store(generation, Ordering::Release);
+    }
 
     // Clear History statistics
     let mut stats_lock = state.multiple_tests.collected_statistics.lock().await;

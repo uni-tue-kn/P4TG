@@ -57,6 +57,7 @@ export const PortStatus = ({ active }: { active: boolean }) => {
 const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
     const [loaded, set_loaded] = useState(false)
     const [ports, set_ports] = useState([])
+    const [portsError, setPortsError] = useState("")
     const [config, set_config] = useState<P4TGConfig>({ tg_ports: [] })
     const [macInput, setMacInput] = useState<Record<string, string>>({})
     const [showQsfp, setShowQsfp] = useState(false)
@@ -69,16 +70,21 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
 
     const loadPorts = async () => {
+        setPortsError("")
         let stats = await get({ route: "/ports" })
-        let config = await get({ route: "/config" })
-
-        if (stats?.status === 200) {
-            set_ports(stats.data)
-            if (config?.status === 200) {
-                set_config(config.data)
-            }
+        if (stats?.status !== 200) {
+            set_ports([])
+            setPortsError("Could not load ports from the controller. Check the connection and retry.")
             set_loaded(true)
+            return
         }
+
+        let config = await get({ route: "/config" })
+        set_ports(stats.data)
+        if (config?.status === 200) {
+            set_config(config.data)
+        }
+        set_loaded(true)
     }
 
     const updatePort = async (front_panel_port: number, speed: string, fec: string, auto_neg: string, channel_count: number | null, channel: number) => {
@@ -366,6 +372,14 @@ const Ports = ({ p4tg_infos }: { p4tg_infos: P4TGInfos }) => {
 
 
     return <Loader loaded={loaded}>
+        {portsError &&
+            <Alert variant="danger" className="mt-3" role="alert">
+                <div>{portsError}</div>
+                <Button variant="outline-danger" size="sm" className="mt-2" onClick={refresh}>
+                    <i className="bi bi-arrow-clockwise" /> Retry
+                </Button>
+            </Alert>
+        }
         <Table striped bordered hover size="sm" className={"mt-3 mb-3 text-center"}>
             <thead className={"table-dark"}>
                 <tr>

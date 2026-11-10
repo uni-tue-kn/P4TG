@@ -26,6 +26,7 @@ use crate::{
     AppState,
 };
 use log::{error, info};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::{task::JoinHandle, time::Instant};
 use tokio_util::sync::CancellationToken;
@@ -149,10 +150,7 @@ impl DurationMonitorTask {
                 .map(|payload| u64::from(payload.repetitions))
                 .sum();
             let mut run_idx = 0_u64;
-            // TODO: Move this snapshot into reset-aware shared state. A call to
-            // /api/reset during cooldown currently cannot invalidate it, so the
-            // following run may add pre-reset statistics back to history.
-            let mut pending_history: Option<(StatisticsApi, TimeStatisticsApi)> = None;
+            let mut pending_history: Option<(u64, StatisticsApi, TimeStatisticsApi)> = None;
 
             'outer: for traffic_gen_data in &payloads {
                 for repetition_idx in 0..traffic_gen_data.repetitions {
@@ -180,6 +178,18 @@ impl DurationMonitorTask {
                         error!("Failed to start test run {run_idx} of {num_runs}: {err}");
                         state_clone.experiment.lock().await.running = false;
                         break 'outer;
+                    }
+                    // Use the existing lifecycle lock so reset cannot advance
+                    // the generation between this load and store.
+                    {
+                        let _lifecycle = state_clone.traffic_lifecycle.lock().await;
+                        state_clone.multiple_tests.active_run_generation.store(
+                            state_clone
+                                .multiple_tests
+                                .history_generation
+                                .load(Ordering::Acquire),
+                            Ordering::Release,
+                        );
                     }
 
                     // The newly started run now occupies the live statistics slot,
@@ -214,7 +224,18 @@ impl DurationMonitorTask {
                         // Keep the completed run locally during cooldown. Until the
                         // next run replaces the live slot, adding it to history would
                         // make /statistics return the same experiment twice.
-                        pending_history = Self::snapshot_current_stats(&state_clone).await;
+                        pending_history = Self::snapshot_current_stats(&state_clone).await.map(
+                            |(stats, time_stats)| {
+                                (
+                                    state_clone
+                                        .multiple_tests
+                                        .active_run_generation
+                                        .load(Ordering::Acquire),
+                                    stats,
+                                    time_stats,
+                                )
+                            },
+                        );
 
                         // Draining has completed at this point. Keep a separate
                         // idle phase so digest processing and controller-side
@@ -271,8 +292,22 @@ impl DurationMonitorTask {
 
     async fn store_stats_in_history(
         state: &Arc<AppState>,
-        (stats, time_stats): (StatisticsApi, TimeStatisticsApi),
+        (generation, stats, time_stats): (u64, StatisticsApi, TimeStatisticsApi),
     ) {
+        // Reset uses the same existing lifecycle lock. Whichever operation
+        // enters first either archives before reset clears history, or observes
+        // the new generation and discards the pre-reset snapshot.
+        let _lifecycle = state.traffic_lifecycle.lock().await;
+        if generation
+            != state
+                .multiple_tests
+                .history_generation
+                .load(Ordering::Acquire)
+        {
+            info!("Discarding multi-test statistics completed before the last reset.");
+            return;
+        }
+
         // Do not retain either history mutex across an await or while acquiring
         // the other history mutex. This keeps history writes out of lock-order
         // dependencies with API reads and resets.

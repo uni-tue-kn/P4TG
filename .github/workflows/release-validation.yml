@@ -1,0 +1,47 @@
+name: Validate release automation
+
+on:
+  push:
+    branches: [main, nightly]
+    paths:
+      - ".github/workflows/*release*.yml"
+      - ".github/workflows/tests.yml"
+      - ".github/RELEASING.md"
+      - "tests/ci/*release*.sh"
+  pull_request:
+    branches: [main, nightly]
+    paths:
+      - ".github/workflows/*release*.yml"
+      - ".github/workflows/tests.yml"
+      - ".github/RELEASING.md"
+      - "tests/ci/*release*.sh"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell scripts
+        run: |
+          bash -n tests/ci/prepare-release.sh tests/ci/release-notes.sh \
+            tests/ci/publish-release.sh tests/ci/test-release.sh
+          shellcheck tests/ci/prepare-release.sh tests/ci/release-notes.sh \
+            tests/ci/publish-release.sh tests/ci/test-release.sh
+      - name: Test version, changelog, and release-note generation
+        run: tests/ci/test-release.sh
+      - name: Validate GitHub Actions workflows
+        run: |
+          docker run --rm --name p4tg-ci-actionlint \
+            -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 \
+            -color \
+            .github/workflows/release.yml \
+            .github/workflows/release-validation.yml \
+            .github/workflows/tests.yml

@@ -1,0 +1,106 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, nightly]
+  pull_request:
+    branches: [main, nightly]
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  controller:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            Controller
+            tests
+      - name: Build and test controller and Rust integration crate
+        run: tests/ci/controller.sh
+
+  gui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: Configuration GUI/package-lock.json
+      - name: Build and test GUI
+        env:
+          CI: true
+        run: tests/ci/gui.sh
+
+  controller-image:
+    # The production image is only published after a merge; build it on pull
+    # requests so a broken Controller/Dockerfile is found before that.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production controller image
+        run: docker buildx build --file Controller/Dockerfile .
+
+  model-e2e-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [tofino, tofino2]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim hosted-runner space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          docker builder prune --all --force
+      - name: Build controller test image
+        run: tests/ci/build-controller-image.sh
+      - name: Compile P4 program
+        run: |
+          mkdir -p /tmp/p4tg-ci-bundle
+          tests/ci/compile-p4.sh "${{ matrix.target }}" /tmp/p4tg-ci-bundle
+      - name: Remove compiler image before loading model runtime
+        run: |
+          docker image rm unituekn/unicornp4-tofino-sdk@sha256:b6a4c770c9c483a2b125e4de4c3d32eb7d046a6e69648c534707ac7a655904a3
+          docker builder prune --all --force
+      - name: Run model, API, and changelog regression tests
+        run: tests/ci/model-smoke.sh "${{ matrix.target }}" /tmp/p4tg-ci-bundle
+
+  nightly-controller-image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/nightly'
+    needs: [controller, gui, model-e2e-regression]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build and publish tested nightly controller image
+        run: |
+          docker buildx build \
+            --cache-from=type=registry,ref=unituekn/p4tg-controller:buildcache \
+            --cache-to=type=registry,ref=unituekn/p4tg-controller:buildcache,mode=max \
+            --tag unituekn/p4tg-controller:nightly \
+            --file Controller/Dockerfile \
+            --push \
+            .

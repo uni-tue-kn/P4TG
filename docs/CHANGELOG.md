@@ -1,5 +1,15 @@
 # Changelog 
 
+## Unreleased
+### New features
+- Added comprehensive local and GitHub CI test infrastructure for the controller REST API, GUI, and P4 data plane on the Tofino 1 and Tofino 2 software models, including duration/drain/restart and multi-test orchestration lifecycles, 2/4/8-way breakout and manual recirculation mappings, port/ARP mutations and invalid combinations, changelog regression coverage, direct BfRt checks, and Playwright browser flows.
+- Added automated stable release management after successfully tested merges to `main`: semantic version updates, changelog and release-note generation, versioned controller images, Git tags, and GitHub Releases with install/update and conditional data-plane rebuild instructions.
+
+### Bug fixes
+- Fixed the Ports page remaining on an indefinite loading spinner when the initial `GET /api/ports` request fails. It now shows a recoverable error with a retry action.
+- Fixed `/api/reset` during a multi-test cooldown allowing a completed pre-reset result to reappear in history when the next test started. Reset now establishes an internal history boundary while preserving post-reset results from an active run and allowing the remaining sequence to continue.
+- Fatal controller startup errors now return a non-zero process exit status instead of being logged as a successful exit.
+
 ## v2.8.2
 ### Bug fixes
 - RFC2544 results now report the measured TX rate instead of the requested rate, which the generator cannot always reach exactly. This applies to zero-loss/first-loss throughput, latency, frame loss, reset, and system recovery rates. Follow-up procedures still request the rate that passed the zero-loss trial.

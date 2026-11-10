@@ -166,6 +166,11 @@ pub fn configure_recirculation_ports(
     recirc_ports_per_tg_choice: &HashMap<u32, RecirculationPair>,
     is_tofino2: bool,
 ) -> Vec<Port> {
+    // The Tofino model maps MAC-near loopback traffic to an internal recirculation
+    // device port instead of preserving the front-panel device port as hardware
+    // does. Tests can opt into Docker-provided same-port loopback instead.
+    let external_recirculation =
+        std::env::var("P4TG_EXTERNAL_RECIRCULATION").is_ok_and(|value| value == "1");
     // --- Configure recirc ports actually used ---
     let mut added_recirc_once: HashSet<(u32, u32)> = HashSet::new();
     let mut port_requests = Vec::new();
@@ -193,8 +198,10 @@ pub fn configure_recirculation_ports(
                 let mut port_req = Port::new(choice.tx_port, ch)
                     .speed(layout.recirculation.speed.clone())
                     .fec(fec.clone())
-                    .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
-                    .loopback(Loopback::BF_LPBK_MAC_NEAR);
+                    .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT);
+                if !external_recirculation {
+                    port_req = port_req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+                }
                 if let Some(n) = layout.recirculation.n_lanes {
                     port_req = port_req.n_lanes(n);
                 }
@@ -207,8 +214,10 @@ pub fn configure_recirculation_ports(
                 let mut port_req = Port::new(choice.rx_port, ch)
                     .speed(layout.recirculation.speed.clone())
                     .fec(fec.clone())
-                    .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT)
-                    .loopback(Loopback::BF_LPBK_MAC_NEAR);
+                    .auto_negotiation(AutoNegotiation::PM_AN_DEFAULT);
+                if !external_recirculation {
+                    port_req = port_req.loopback(Loopback::BF_LPBK_MAC_NEAR);
+                }
                 if let Some(n) = layout.recirculation.n_lanes {
                     port_req = port_req.n_lanes(n);
                 }
