@@ -1483,10 +1483,10 @@
           "breakdown": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/HistogramBreakdown"
               },
               {
-                "$ref": "#/components/schemas/HistogramBreakdown"
+                "type": "null"
               }
             ]
           },
@@ -1523,10 +1523,10 @@
           "aggregate": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/HistogramPacketPath"
               },
               {
-                "$ref": "#/components/schemas/HistogramPacketPath"
+                "type": "null"
               }
             ]
           },
@@ -1582,11 +1582,11 @@
           "stream_groups": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/HistogramStreamGroups",
                 "description": "Optional stream grouping for this histogram. Missing or empty groups\nretain the legacy wildcard match over every application ID."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -3011,11 +3011,11 @@
           "detnet_seq_num_length": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DetNetSeqNumLength",
                 "description": "Length of Sequence numbers in the d-CW. 8, 16, or 28."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -3104,11 +3104,11 @@
           "pattern": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/GenerationPatternConfig",
                 "description": "Traffic shaping pattern applied to this stream"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -3143,11 +3143,11 @@
           "unit": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/GenerationUnit",
                 "description": "Unit for stream generation, e.g., Gbps, Mbps, Mpps"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -3186,31 +3186,31 @@
           "gtpu": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/GtpU",
                 "description": "GTP-U tunnel settings"
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "ip": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IPv4"
               },
               {
-                "$ref": "#/components/schemas/IPv4"
+                "type": "null"
               }
             ]
           },
           "ipv6": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IPv6"
               },
               {
-                "$ref": "#/components/schemas/IPv6"
+                "type": "null"
               }
             ]
           },
@@ -3233,11 +3233,11 @@
           "rx_target": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RxTarget",
                 "description": "Expected receive port for this stream/TX pair in per-stream mapping mode."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -3252,10 +3252,10 @@
           "srv6_base_header": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IPv6"
               },
               {
-                "$ref": "#/components/schemas/IPv6"
+                "type": "null"
               }
             ]
           },
@@ -3268,21 +3268,21 @@
           "vlan": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Vlan"
               },
               {
-                "$ref": "#/components/schemas/Vlan"
+                "type": "null"
               }
             ]
           },
           "vxlan": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/VxLAN",
                 "description": "VxLAN tunnel settings"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -3816,11 +3816,11 @@
           "rfc2544": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Rfc2544Config",
                 "description": "RFC2544 orchestration configuration."
+              },
+              {
+                "type": "null"
               }
             ]
           },
