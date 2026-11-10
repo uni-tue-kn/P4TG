@@ -43,6 +43,13 @@ jobs:
         run: tests/ci/test-release.sh
       - name: Validate GitHub Actions workflows
         run: |
+          # Docker Hub token requests occasionally time out on hosted runners;
+          # retry the pull so a registry hiccup does not fail the lint.
+          for attempt in 1 2 3 4; do
+            docker pull rhysd/actionlint:1.7.7 && break
+            [[ $attempt == 4 ]] && exit 1
+            sleep $((attempt * 15))
+          done
           docker run --rm --name p4tg-ci-actionlint \
             -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 \
             -color \
