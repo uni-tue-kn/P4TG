@@ -50,6 +50,9 @@ cat > "$repo/docs/CHANGELOG.md" <<'EOF'
 # Changelog
 
 ## Unreleased
+### New features
+- Preserve this manually curated feature.
+
 ### Bug fixes
 - Preserve this manually curated fix.
 
@@ -118,6 +121,7 @@ assert_contains 'version = "1.2.4"' "$repo/Controller/Cargo.toml"
   || fail 'frontend root lockfile package version was not updated'
 assert_contains '## v1.2.4 — 2026-11-10' "$repo/docs/CHANGELOG.md"
 assert_contains '## Unreleased' "$repo/docs/CHANGELOG.md"
+assert_contains '- Preserve this manually curated feature.' "$repo/docs/CHANGELOG.md"
 assert_contains '### Bug fixes' "$repo/docs/CHANGELOG.md"
 assert_contains '- Preserve this manually curated fix.' "$repo/docs/CHANGELOG.md"
 assert_contains '- Exercise release generation ([#17](https://github.com/uni-tue-kn/P4TG/pull/17))' "$repo/docs/CHANGELOG.md"

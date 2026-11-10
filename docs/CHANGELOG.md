@@ -1,6 +1,10 @@
 # Changelog 
 
 ## Unreleased
+### New features
+- Added comprehensive local and GitHub CI test infrastructure for the controller REST API, GUI, and P4 data plane on the Tofino 1 and Tofino 2 software models, including changelog regression coverage, direct BfRt checks, and Playwright browser flows.
+- Added automated stable release management after successfully tested merges to `main`: semantic version updates, changelog and release-note generation, versioned controller images, Git tags, and GitHub Releases with install/update and conditional data-plane rebuild instructions.
+
 ### Bug fixes
 - Fixed the Ports page remaining on an indefinite loading spinner when the initial `GET /api/ports` request fails. It now shows a recoverable error with a retry action.
 
