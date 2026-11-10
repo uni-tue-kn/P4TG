@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v2.8.4 — 2026-11-10
+### Changes
+- Major dependency bump ([#64](https://github.com/uni-tue-kn/P4TG/pull/64))
+
+
+
 ## v2.8.3 — 2026-11-10
 ### New features
 - Added comprehensive local and GitHub CI test infrastructure for the controller REST API, GUI, and P4 data plane on the Tofino 1 and Tofino 2 software models, including duration/drain/restart and multi-test orchestration lifecycles, 2/4/8-way breakout and manual recirculation mappings, port/ARP mutations and invalid combinations, changelog regression coverage, direct BfRt checks, and Playwright browser flows.

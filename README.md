@@ -6,7 +6,7 @@
   ![License](https://img.shields.io/badge/licence-Apache%202.0-blue)
   ![Language](https://img.shields.io/badge/lang-rust-darkred)
   ![Built with P4](https://img.shields.io/badge/built%20with-P4-orange)
-  ![Version](https://img.shields.io/badge/v-2.8.3-yellow)
+  ![Version](https://img.shields.io/badge/v-2.8.4-yellow)
   [![Tests](https://github.com/uni-tue-kn/P4TG/actions/workflows/tests.yml/badge.svg)](https://github.com/uni-tue-kn/P4TG/actions/workflows/tests.yml)
 </div>
 
