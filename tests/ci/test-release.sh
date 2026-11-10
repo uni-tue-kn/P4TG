@@ -203,6 +203,8 @@ RELEASE_DATE=2026-11-10 "$script_dir/prepare-release.sh" \
   --commit --output "$output" >/dev/null
 release_commit=$(git -C "$repo" rev-parse HEAD)
 [[ $release_commit != "$tested_sha" ]] || fail 'release commit was not created'
+[[ $(git -C "$repo" log -1 --format=%s) == 'release: v1.2.4 [skip ci]' ]] \
+  || fail 'release commit does not suppress redundant CI'
 [[ $(git -C "$repo" rev-parse 'v1.2.4^{commit}') == "$release_commit" ]] || fail 'release tag is missing'
 assert_contains '1.2.4' "$repo/VERSION.md"
 assert_contains 'version = "1.2.4"' "$repo/Controller/Cargo.toml"
