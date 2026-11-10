@@ -5,14 +5,18 @@ on:
     branches: [main, nightly]
     paths:
       - ".github/workflows/*release*.yml"
+      - ".github/workflows/dependabot-automerge.yml"
       - ".github/workflows/tests.yml"
+      - ".github/dependabot.yml"
       - ".github/RELEASING.md"
       - "tests/ci/*release*.sh"
   pull_request:
     branches: [main, nightly]
     paths:
       - ".github/workflows/*release*.yml"
+      - ".github/workflows/dependabot-automerge.yml"
       - ".github/workflows/tests.yml"
+      - ".github/dependabot.yml"
       - ".github/RELEASING.md"
       - "tests/ci/*release*.sh"
 
@@ -42,6 +46,7 @@ jobs:
           docker run --rm --name p4tg-ci-actionlint \
             -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 \
             -color \
+            .github/workflows/dependabot-automerge.yml \
             .github/workflows/release.yml \
             .github/workflows/release-validation.yml \
             .github/workflows/tests.yml
