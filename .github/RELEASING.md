@@ -73,8 +73,10 @@ publishes `:nightly` only after the complete test matrix passes on `nightly`.
 Dependabot checks Cargo, npm, GitHub Actions, and Docker dependencies weekly.
 Version-update pull requests target `nightly`. Patch and minor updates are
 configured for squash auto-merge after all ruleset requirements pass; major
-updates remain open for manual review. Dependabot security updates target the
-default branch (`main`) and follow its normal review and release process.
+updates remain open for manual review. The `dtolnay/rust-toolchain` numeric ref
+is excluded because it selects the compiler rather than the action version and
+must be updated deliberately. Dependabot security updates target the default
+branch (`main`) and follow its normal review and release process.
 
 Periodically promote the accumulated changes with a reviewed `nightly` to
 `main` pull request. The normal release workflow makes the patch release after
