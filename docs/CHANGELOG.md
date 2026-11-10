@@ -1,5 +1,9 @@
 # Changelog 
 
+## Unreleased
+### Bug fixes
+- Fixed the Ports page remaining on an indefinite loading spinner when the initial `GET /api/ports` request fails. It now shows a recoverable error with a retry action.
+
 ## v2.8.2
 ### Bug fixes
 - RFC2544 results now report the measured TX rate instead of the requested rate, which the generator cannot always reach exactly. This applies to zero-loss/first-loss throughput, latency, frame loss, reset, and system recovery rates. Follow-up procedures still request the rate that passed the zero-loss trial.

@@ -40,8 +40,26 @@ bump_version() {
   esac
 }
 
+append_release_body() {
+  local source=$1 heading=$2 title=$3 number=$4 url=$5 line inserted=false
+  if grep -Fxq "### $heading" "$source"; then
+    while IFS= read -r line || [[ -n $line ]]; do
+      printf '%s\n' "$line"
+      if [[ $inserted == false && $line == "### $heading" ]]; then
+        printf -- '- %s ([#%s](%s))\n' "$title" "$number" "$url"
+        inserted=true
+      fi
+    done < "$source"
+  else
+    printf '### %s\n' "$heading"
+    printf -- '- %s ([#%s](%s))\n\n' "$title" "$number" "$url"
+    cat "$source"
+  fi
+}
+
 update_release_files() {
-  local old=$1 new=$2 heading=$3 title=$4 number=$5 url=$6 released_on=$7 tmp
+  local old=$1 new=$2 heading=$3 title=$4 number=$5 url=$6 released_on=$7
+  local tmp unreleased_body history unreleased_count
 
   [[ $(head -n 1 docs/CHANGELOG.md) == '# Changelog '* || $(head -n 1 docs/CHANGELOG.md) == '# Changelog' ]] \
     || die 'docs/CHANGELOG.md does not start with the expected title'
@@ -78,17 +96,39 @@ update_release_files() {
   chmod --reference=README.md "$tmp"
   mv "$tmp" README.md
 
+  unreleased_count=$(grep -Eci '^## [Uu]nreleased[[:space:]]*$' docs/CHANGELOG.md || true)
+  (( unreleased_count <= 1 )) || die 'docs/CHANGELOG.md contains multiple Unreleased sections'
   tmp=$(mktemp /tmp/p4tg-ci-release-changelog-XXXXXX)
+  unreleased_body=$(mktemp /tmp/p4tg-ci-release-unreleased-XXXXXX)
+  history=$(mktemp /tmp/p4tg-ci-release-history-XXXXXX)
+
+  if (( unreleased_count == 1 )); then
+    awk '
+      /^## [Uu]nreleased[[:space:]]*$/ { copying = 1; next }
+      copying && /^## / { exit }
+      copying { print }
+    ' docs/CHANGELOG.md > "$unreleased_body"
+    awk '
+      NR == 1 { next }
+      /^## [Uu]nreleased[[:space:]]*$/ { skipping = 1; next }
+      skipping && /^## / { skipping = 0 }
+      !skipping { print }
+    ' docs/CHANGELOG.md > "$history"
+  else
+    tail -n +2 docs/CHANGELOG.md > "$history"
+  fi
+
   {
     IFS= read -r first_line
     printf '%s\n\n' "$first_line"
+    printf '## Unreleased\n\n'
     printf '## v%s — %s\n' "$new" "$released_on"
-    printf '### %s\n' "$heading"
-    printf -- '- %s ([#%s](%s))\n\n' "$title" "$number" "$url"
-    tail -n +2
+    append_release_body "$unreleased_body" "$heading" "$title" "$number" "$url"
+    cat "$history"
   } < docs/CHANGELOG.md > "$tmp"
   chmod --reference=docs/CHANGELOG.md "$tmp"
   mv "$tmp" docs/CHANGELOG.md
+  rm -f "$unreleased_body" "$history"
 }
 
 validate_release_commit() {

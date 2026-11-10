@@ -49,6 +49,10 @@ EOF
 cat > "$repo/docs/CHANGELOG.md" <<'EOF'
 # Changelog
 
+## Unreleased
+### Bug fixes
+- Preserve this manually curated fix.
+
 ## v1.2.3
 ### Bug fixes
 - Previous release.
@@ -113,7 +117,9 @@ assert_contains 'version = "1.2.4"' "$repo/Controller/Cargo.toml"
 [[ $(jq -r '.packages[""].version' "$repo/Configuration GUI/package-lock.json") == 1.2.4 ]] \
   || fail 'frontend root lockfile package version was not updated'
 assert_contains '## v1.2.4 — 2026-11-10' "$repo/docs/CHANGELOG.md"
+assert_contains '## Unreleased' "$repo/docs/CHANGELOG.md"
 assert_contains '### Bug fixes' "$repo/docs/CHANGELOG.md"
+assert_contains '- Preserve this manually curated fix.' "$repo/docs/CHANGELOG.md"
 assert_contains '- Exercise release generation ([#17](https://github.com/uni-tue-kn/P4TG/pull/17))' "$repo/docs/CHANGELOG.md"
 
 notes=$tmp_root/notes.md

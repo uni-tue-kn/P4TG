@@ -117,7 +117,7 @@ TX/RX counts. No P4 product change is required.
 | Mpps, Poisson, Analyze, multiple-stream, per-stream RX, and rejected-request lifecycle | model | Programming paths beyond CBR and proof that invalid requests preserve live traffic |
 | IPv4, IPv6, VLAN, QinQ, MPLS, VxLAN, GTP-U, and T2 SRv6 payload lifecycles | model | Exercise controller-to-P4 header programming for every supported profile |
 | Direct `rbfrt` table read after controller shutdown | model/BfRt | Verify schema and table access without the REST facade |
-| Fifty-five Vitest component/logic tests | GUI | Validators, migrations, full settings/result import-export, tabs, protocol forms, ports/error paths, running state, results/report contracts, rate/IMIX logic, and polling |
+| Fifty-six Vitest component/logic tests | GUI | Validators, migrations, full settings/result import-export, tabs, protocol forms, ports/error and retry paths, running state, results/report contracts, rate/IMIX logic, and polling |
 | Three Playwright Chromium flows | GUI/browser | Actual JSON download/re-import, rejected-to-successful start lifecycle, and responsive offline behavior |
 | Tofino and Tofino 2 compilation | P4 | Compiler and target-specific source coverage |
 
@@ -176,13 +176,13 @@ The advisory's automatic fix is a semver-major downgrade of `serve`; the test
 work does not silently change that product dependency. The production GUI is
 embedded and served by the Rust controller, not by `serve`.
 
-The expanded GUI run covers 41.15% of statements and 33.68% of branches across
+The expanded GUI run covers 41.29% of statements and 33.77% of branches across
 all `src/`, including 59.34% of `Settings.tsx`, 61.74% of
-`SettingsModal.tsx`, 50.44% of `Ports.tsx`, and 79.45% of `SummaryView.tsx`.
-An initial `/ports` GET failure still leaves the existing Ports page spinner
-running indefinitely; config-fetch and ARP-update failures are regression
-tested and do not crash. Existing React DOM/key/NaN warnings and Vite's
-bundle-size/config warnings also remain visible without failing the build.
+`SettingsModal.tsx`, 53.04% of `Ports.tsx`, and 79.45% of `SummaryView.tsx`.
+Initial `/ports` GET failures, config-fetch failures, and ARP-update failures
+are regression tested; the initial failure now exits loading and offers a
+working Retry action. Existing React DOM/key/NaN warnings and Vite's bundle-size/config
+warnings remain visible without failing the build.
 
 ## Changelog regression inventory
 
@@ -218,7 +218,7 @@ script, security, or purely visual work).
 | 2.8.1 | Computed `n_packets`, `timeout`, accuracy, pipes and scaled packet count | T — `model::loopback` checks all four served fields; arithmetic remains existing optimization tests |
 | 2.8.1 | Correct T1/T2 app ID monitor ranges | T — both target model runs and `v2_8_1_app_id_zero` |
 | 2.8.1 | Histogram endpoint uses front-panel/channel map | T — endpoint smoke plus model histogram object assertions |
-| 2.8.1 | Ports-page request failures; dashboard rejected-start state | G/T — `v2_8_1_ports_request_failures` and Playwright `v2_8_1_rejected_start_state` |
+| Unreleased / 2.8.1 | Ports-page request failures; dashboard rejected-start state | G/T — `unreleased_initial_ports_get_failure_is_recoverable`, `v2_8_1_ports_request_failures`, and Playwright `v2_8_1_rejected_start_state` |
 | 2.8.1 | RX fan-in double counting and settings warning | G — `v2_8_1_rx_fan_in`; warning itself is presentation |
 | 2.8.1 | IMIX L1 weighting | G — `v2_8_1_imix_l1_weighting`; controller calculation has existing units |
 | 2.8.1 | Digest pipeline supervision/watchdog | T — both targets assert `digests_alive` and live digest-derived counters |

@@ -14,8 +14,11 @@ eligible. The workflow performs these steps:
    as both `unituekn/p4tg-controller:X.Y.Z` and `:latest`, then create or update
    the GitHub Release.
 
-The pull request title is the release-facing changelog entry. Keep it concise
-and meaningful to users. The PR number and link are appended automatically.
+Entries under `## Unreleased` are promoted into the new version and copied to
+the GitHub Release. The pull request title is also added as a release-facing
+entry, so keep it concise and meaningful to users; its PR number and link are
+appended automatically. A fresh empty `Unreleased` section is retained for the
+next change.
 
 ## Labels
 
