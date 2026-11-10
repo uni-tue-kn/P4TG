@@ -2,11 +2,11 @@
 
 ## Status
 
-The mandatory software-model feasibility spike is implemented, but the broader
-test suite and GitHub workflow are intentionally blocked. Tofino 2 forwards
-packets on the model but does not deliver either P4TG digest to the controller.
-Building digest-dependent end-to-end tests on this foundation would produce a
-suite that cannot pass the required two-target matrix.
+The mandatory software-model feasibility spike passes on both targets. Tofino
+2 requires a much lower offered load than Tofino 1: at 0.001 Gbit/s its
+simulated clock falls far enough behind wall time that digest batches arrive
+after the controller watchdog interval. The smoke test therefore defaults to
+0.00001 Gbit/s on Tofino 2 and 0.001 Gbit/s on Tofino 1.
 
 ## Feasibility spike
 
@@ -17,6 +17,12 @@ required; no host ports are published.
 tests/ci/build-controller-image.sh
 tests/ci/model-smoke.sh tofino
 tests/ci/model-smoke.sh tofino2
+```
+
+The rate and observation window can be overridden for diagnostics:
+
+```console
+P4TG_SMOKE_RATE=0.00001 P4TG_SMOKE_WAIT=25 tests/ci/model-smoke.sh tofino2
 ```
 
 To reuse an existing bundle and avoid recompilation:
@@ -46,11 +52,11 @@ emulate same-port loopback.
 | Controller startup and ASIC detection | Pass | Pass |
 | `config.json` and front-panel mapping | Pass (`1/0 -> 0`, `2/0 -> 4`) | Pass (`1/0 -> 8`, `2/0 -> 16`) |
 | `GET /api/online` and `GET /api/ports` | Pass | Pass |
-| pktgen at 0.001 Gbit/s | Pass | Pass |
+| pktgen at stable smoke rate | Pass (0.001 Gbit/s) | Pass (0.00001 Gbit/s) |
 | 1-to-2 veth forwarding | Pass | Pass |
 | frame-size/type counters | Pass | Pass |
-| `monitor_t` / `iat_rtt_monitor_t` digests | Pass | **Blocked** |
-| digest watchdog after 10 seconds | `digests_alive: true` | `digests_alive: false` |
+| `monitor_t` / `iat_rtt_monitor_t` digests | Pass | Pass |
+| digest watchdog after 10 seconds | `digests_alive: true` | `digests_alive: true` |
 
 The UniCorn DMA preload is required. Without external recirculation, MAC-near
 loopback re-enters the Tofino 1 model on internal device port 68 rather than the
@@ -59,9 +65,11 @@ The test-only `P4TG_EXTERNAL_RECIRCULATION=1` option leaves those ports in norma
 mode and lets Docker emulate the hardware loopback behavior. The option is off
 by default and therefore does not change hardware startup.
 
-At 0.001 Gbit/s the software model accumulates a substantial processing
-backlog. Counter presence and growth are testable, but the following are not
-meaningful assertions on the model:
+At 0.001 Gbit/s the Tofino 2 software model accumulates a substantial
+processing backlog. At its 0.00001 Gbit/s smoke rate, the observed Tofino 2
+TX/RX frame-size counts were both 198 after 25 seconds and both digest filters
+were draining regularly. Counter presence and growth are testable, but the
+following remain unsuitable as accuracy assertions on the model:
 
 - rate accuracy;
 - equality of instantaneous TX and RX counts or zero loss at a wall-clock
@@ -69,28 +77,40 @@ meaningful assertions on the model:
 - RTT and IAT values;
 - physical link status and port speed behavior.
 
-### Tofino 2 blocker evidence
+### Tofino 2 digest investigation
 
-The extended 25-second Tofino 2 probe produced 432 TX and 230 RX frame-size
-samples, but `/api/online` returned `"digests_alive":false`, RTT data remained
-empty, and the controller logged:
+At 0.001 Gbit/s, an extended Tofino 2 probe produced 432 TX and 230 RX
+frame-size samples and triggered the controller watchdog:
 
 ```text
 No digests received from the switch for 11s. Statistics are stale; restart the controller if this persists.
 ```
 
-Both compiled schemas contain the expected names
-`pipe.SwitchIngressDeparser.digest` and
-`pipe.SwitchIngressDeparser.digest_2`. The model trace executes deparser logic
-with `digest_type = 2`, but no notification reaches the controller's subscribed
-BfRt stream. This currently appears to be a Tofino 2 model/runtime digest issue,
-not schema drift.
+This was initially mistaken for a broken Tofino 2 digest path. The model trace
+shows the real behavior: it creates 124 learn quanta, but the first batch drain
+does not occur until about 13 wall-clock seconds later. Subsequent drains are
+roughly 12 seconds apart. The learn timeout is based on simulated time; the
+model is overloaded and advances that clock much more slowly than wall time,
+while the controller watchdog correctly uses wall time.
+
+The digest mechanism was isolated from P4TG with a minimal T2NA program and a
+Rust `rbfrt` listener. The zero-argument `Digest()` constructor delivered seven
+digests from seven injected frames. A two-filter variant using P4TG's
+`iat_rtt_monitor_t` layout also passed, as did the complete P4TG pipeline when
+forced to emit a known digest for each injected frame. Thus the SDK compiler,
+model DMA preload, BfRt server, schema, and Rust client all support Tofino 2
+digests.
+
+With the unmodified P4TG program at 0.00001 Gbit/s, the two model filters
+recorded 67 and 69 learns and 23 and 24 drains, respectively. The controller
+reported `"digests_alive":true`, populated RTT samples, and observed matching
+TX/RX counts. No P4 product change is required.
 
 ## Test plan
 
-Deferred until the Tofino 2 digest blocker is resolved. The next layers are the
-black-box REST API suite, model data-plane suite, changelog regressions, GUI
-Vitest suite, and the four-job GitHub Actions workflow described in the task.
+The next layers are the black-box REST API suite, model data-plane suite,
+changelog regressions, GUI Vitest suite, and the four-job GitHub Actions
+workflow described in the task.
 
 ## After lib refactor
 

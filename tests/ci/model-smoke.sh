@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
 target=${1:?usage: model-smoke.sh <tofino|tofino2> [bundle-directory]}
 bundle=${2:-}
+traffic_rate=${P4TG_SMOKE_RATE:-}
 netsim_image='unituekn/unicornp4-netsim@sha256:b9ef8d75d7639808226340e51a79120a4752a43e082237eec9d78677d2d9dd07'
 container="p4tg-ci-model-${target}-$$"
 controller_container="p4tg-ci-controller-${target}-$$"
@@ -35,6 +36,7 @@ case "$target" in
     recirc_ports=8,12,16,20
     port_map='{"PortToIf":[{"device_port":0,"if":"p0"},{"device_port":4,"if":"p4"},{"device_port":8,"if":"p8"},{"device_port":12,"if":"p12"},{"device_port":16,"if":"p16"},{"device_port":20,"if":"p20"}]}'
     probe_wait=12
+    traffic_rate=${traffic_rate:-0.001}
     ;;
   tofino2)
     ingress_port=8
@@ -42,12 +44,16 @@ case "$target" in
     recirc_ports=24,32,40,48
     port_map='{"PortToIf":[{"device_port":8,"if":"p8"},{"device_port":16,"if":"p16"},{"device_port":24,"if":"p24"},{"device_port":32,"if":"p32"},{"device_port":40,"if":"p40"},{"device_port":48,"if":"p48"}]}'
     probe_wait=25
+    traffic_rate=${traffic_rate:-0.00001}
     ;;
   *)
     echo "unsupported target: $target" >&2
     exit 2
     ;;
 esac
+if [[ -n "${P4TG_SMOKE_WAIT:-}" ]]; then
+  probe_wait=$P4TG_SMOKE_WAIT
+fi
 
 mkdir -p "$runtime/run"
 chmod 0777 "$runtime" "$runtime/run"
@@ -69,7 +75,7 @@ printf '%s\n' \
   '  }],' \
   '  "streams": [{' \
   '    "stream_id": 1, "app_id": 1, "frame_size": 128, "encapsulation": 0,' \
-  '    "traffic_rate": 0.001, "burst": 1, "batches": false,' \
+  "    \"traffic_rate\": $traffic_rate, \"burst\": 1, \"batches\": false," \
   '    "vxlan": false, "gtpu": false, "ip_version": 4, "unit": 0' \
   '  }],' \
   '  "rx_mapping_mode": "per_tx_port",' \
