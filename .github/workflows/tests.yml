@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.91
         with:
           components: clippy
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build production controller image
         run: docker buildx build --file Controller/Dockerfile .
@@ -65,7 +65,7 @@ jobs:
       matrix:
         target: [tofino, tofino2]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Reclaim hosted-runner space
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v4
         with:
