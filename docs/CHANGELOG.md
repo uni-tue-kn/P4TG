@@ -1,12 +1,15 @@
 # Changelog 
 
 ## Unreleased
+
+## v2.8.3 — 2026-11-10
 ### New features
 - Added comprehensive local and GitHub CI test infrastructure for the controller REST API, GUI, and P4 data plane on the Tofino 1 and Tofino 2 software models, including duration/drain/restart and multi-test orchestration lifecycles, 2/4/8-way breakout and manual recirculation mappings, port/ARP mutations and invalid combinations, changelog regression coverage, direct BfRt checks, and Playwright browser flows.
 - Added automated stable release management after successfully tested merges to `main`: semantic version updates, changelog and release-note generation, versioned controller images, Git tags, and GitHub Releases with install/update and conditional data-plane rebuild instructions.
 - Added weekly Dependabot updates for Cargo, npm, GitHub Actions, and Docker dependencies. Patch and minor version updates are tested and automatically merged into `nightly`; major and security updates remain subject to manual review.
 
 ### Bug fixes
+- Fix protected releases and Dependabot auto-merge ([#61](https://github.com/uni-tue-kn/P4TG/pull/61))
 - Replaced the software-model digest smoke test's fixed startup delay with a bounded readiness poll, avoiding false CI failures when digest DMA starts slowly on a loaded runner.
 - Fixed the Ports page remaining on an indefinite loading spinner when the initial `GET /api/ports` request fails. It now shows a recoverable error with a retry action.
 - Fixed `/api/reset` during a multi-test cooldown allowing a completed pre-reset result to reappear in history when the next test started. Reset now establishes an internal history boundary while preserving post-reset results from an active run and allowing the remaining sequence to continue.
@@ -15,6 +18,7 @@
 ### Security
 - Updated `utoipa` and `utoipa-swagger-ui`, replacing the vulnerable `zip` 3.x build dependency with `zip` 9.5.0 after Dependabot could not resolve the major-version constraint automatically.
 - Overrode `serve`'s vulnerable `compression` 1.8.1 transitive dependency with the compatible patched 1.8.2 release.
+
 
 ## v2.8.2
 ### Bug fixes
