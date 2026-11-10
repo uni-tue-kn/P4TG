@@ -57,11 +57,12 @@ Retrying an older reserved release always repairs its versioned image and
 release, but it does not move Docker's `latest` tag or GitHub's latest-release
 marker backwards once a newer version is present on `main`.
 
-Stable image publication on ordinary `main` pushes is deliberately disabled in
-`docker-image.yml`: at that point `VERSION.md` still contains the preceding
-version. Nightly publication and pull-request image validation remain there.
-Because pushes made with `GITHUB_TOKEN` do not start new workflows, the stable
-image is built directly by `release.yml` after the version is reserved.
+Stable image publication does not happen on the initial `main` push: at that
+point `VERSION.md` still contains the preceding version. Because pushes made
+with `GITHUB_TOKEN` do not start new workflows, the stable image is built
+directly by `release.yml` after the version is reserved. The conditional
+nightly-image job in `tests.yml` publishes `:nightly` only after the complete
+test matrix passes on the `nightly` branch.
 
 ## Local validation
 

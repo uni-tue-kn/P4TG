@@ -5,14 +5,14 @@ on:
     branches: [main, nightly]
     paths:
       - ".github/workflows/*release*.yml"
-      - ".github/workflows/docker-image.yml"
+      - ".github/workflows/tests.yml"
       - ".github/RELEASING.md"
       - "tests/ci/*release*.sh"
   pull_request:
     branches: [main, nightly]
     paths:
       - ".github/workflows/*release*.yml"
-      - ".github/workflows/docker-image.yml"
+      - ".github/workflows/tests.yml"
       - ".github/RELEASING.md"
       - "tests/ci/*release*.sh"
 
@@ -44,4 +44,4 @@ jobs:
             -color \
             .github/workflows/release.yml \
             .github/workflows/release-validation.yml \
-            .github/workflows/docker-image.yml
+            .github/workflows/tests.yml
