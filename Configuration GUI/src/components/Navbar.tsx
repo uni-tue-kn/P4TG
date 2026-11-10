@@ -131,7 +131,9 @@ const Navbar = ({
                                 placement="top"
                                 overlay={<Tooltip id="update-available-tooltip">New release available</Tooltip>}
                             >
-                                <>
+                                {/* The trigger must be an element: a fragment cannot take the
+                                    hover handlers and ref OverlayTrigger attaches. */}
+                                <span>
                                     &nbsp;&nbsp;<a
                                         href="https://github.com/uni-tue-kn/P4TG/releases"
                                         target="_blank"
@@ -141,7 +143,7 @@ const Navbar = ({
                                     >
                                         <i className="bi bi-arrow-up-circle-fill" />
                                     </a>
-                                </>
+                                </span>
                             </OverlayTrigger>
                         }
                     </span>

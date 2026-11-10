@@ -1,6 +1,9 @@
 # Changelog 
 
 ## Unreleased
+### Bug fixes
+- Fixed the web interface going blank when hovering the "Add stream" or "Add IMIX" button on the Settings page. The buttons passed an empty overlay to their tooltip, which crashes the fade transition with React 19.3 and later. Affected the v2.8.3 and v2.8.4 images, the first built with React 19.3.
+- Fixed the "New release available" tooltip in the navigation bar never appearing.
 
 ## v2.8.4 — 2026-11-10
 ### Changes
