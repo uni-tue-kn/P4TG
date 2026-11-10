@@ -21,7 +21,7 @@ RUN npm run build
 
 
 ### === Stage 2: Build Controller === ###
-FROM rust:1.91-bookworm AS controller-builder
+FROM rust:1.99-bookworm AS controller-builder
 
 ARG path="/Controller"
 WORKDIR /app
