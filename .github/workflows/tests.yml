@@ -41,6 +41,8 @@ jobs:
           cache: npm
           cache-dependency-path: Configuration GUI/package-lock.json
       - name: Build and test GUI
+        env:
+          CI: true
         run: tests/ci/gui.sh
 
   p4-compile:

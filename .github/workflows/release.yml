@@ -1,0 +1,143 @@
+name: Release merged main pull request
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: p4tg-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # workflow_run executes trusted workflow code from the default branch. The
+    # repository check also prevents fork workflows from receiving a write token.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve merged PR provenance and changed files
+        id: provenance
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPOSITORY/commits/$TESTED_SHA/pulls" > "$RUNNER_TEMP/merged-prs.json"
+          pr_number=$(jq -r --arg sha "$TESTED_SHA" --arg repository "$REPOSITORY" '
+            [ .[] | select(
+                .merged_at != null and
+                .merge_commit_sha == $sha and
+                .base.ref == "main" and
+                .base.repo.full_name == $repository
+              ) ] | unique_by(.number) |
+            if length == 1 then .[0].number else empty end
+          ' "$RUNNER_TEMP/merged-prs.json")
+          if [[ -z "$pr_number" ]]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "The tested SHA is not exactly one merged PR on main; no release will be created."
+            exit 0
+          fi
+          gh api --paginate "repos/$REPOSITORY/pulls/$pr_number/files?per_page=100" \
+            --jq '.[] | (.filename, (.previous_filename // empty))' \
+            > "$RUNNER_TEMP/changed-files.txt"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release commit and tag
+        id: prepare
+        if: steps.provenance.outputs.eligible == 'true'
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          tests/ci/prepare-release.sh \
+            --tested-sha "$TESTED_SHA" \
+            --merged-prs "$RUNNER_TEMP/merged-prs.json" \
+            --changed-files "$RUNNER_TEMP/changed-files.txt" \
+            --repository "$REPOSITORY" \
+            --commit \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Reserve release commit and tag atomically
+        if: steps.prepare.outputs.ready == 'true' && steps.prepare.outputs.reserve_needed == 'true'
+        env:
+          COMMIT: ${{ steps.prepare.outputs.commit }}
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: git push --atomic origin "$COMMIT:refs/heads/main" "refs/tags/$TAG"
+
+      - name: Generate release notes
+        if: steps.prepare.outputs.ready == 'true'
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+          DATA_PLANE_CHANGED: ${{ steps.prepare.outputs.data_plane_changed }}
+        run: |
+          tests/ci/release-notes.sh \
+            --version "$VERSION" \
+            --data-plane-changed "$DATA_PLANE_CHANGED" \
+            --output "$RUNNER_TEMP/release-notes.md"
+
+      - name: Decide whether this is still the latest stable version
+        id: promotion
+        if: steps.prepare.outputs.ready == 'true'
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          git fetch origin main
+          current=$(git show origin/main:VERSION.md | tr -d '[:space:]')
+          latest=false
+          if [[ "$VERSION" == "$current" ]]; then
+            latest=true
+          fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      # Pushes made with GITHUB_TOKEN do not start another workflow. Build the
+      # release image here so its embedded controller version matches the tag.
+      - uses: docker/setup-buildx-action@v3
+        if: steps.prepare.outputs.ready == 'true'
+      - uses: docker/login-action@v3
+        if: steps.prepare.outputs.ready == 'true'
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build and publish stable controller image
+        if: steps.prepare.outputs.ready == 'true'
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+          LATEST: ${{ steps.promotion.outputs.latest }}
+        run: |
+          tags=(--tag "unituekn/p4tg-controller:$VERSION")
+          if [[ "$LATEST" == true ]]; then
+            tags+=(--tag unituekn/p4tg-controller:latest)
+          fi
+          docker buildx build \
+            --cache-from=type=registry,ref=unituekn/p4tg-controller:buildcache \
+            --cache-to=type=registry,ref=unituekn/p4tg-controller:buildcache,mode=max \
+            "${tags[@]}" \
+            --file Controller/Dockerfile \
+            --push \
+            .
+
+      - name: Publish GitHub release
+        if: steps.prepare.outputs.ready == 'true'
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+          VERSION: ${{ steps.prepare.outputs.version }}
+          LATEST: ${{ steps.promotion.outputs.latest }}
+          RELEASE_NOTES: ${{ runner.temp }}/release-notes.md
+        run: tests/ci/publish-release.sh

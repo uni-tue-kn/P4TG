@@ -111,12 +111,14 @@ TX/RX counts. No P4 product change is required.
 | Test | Layer | Value |
 |---|---|---|
 | Controller's 3,653 existing Rust tests | controller | Rate solver and module-level behavior |
-| Public endpoint and OpenAPI-path smoke | API/model | Detect route removal, crashes, and schema drift |
-| Twelve named validation regressions | API/model | Exercise the real deserializer and validation response |
+| Eleven endpoint/response/OpenAPI checks | API/model | Detect route removal, response-shape changes, crashes, and payload/schema drift |
+| Fifty-two named validation regressions | API/model | Exercise real deserialization and semantic validation, including exact 400/422 behavior |
 | CBR loopback with counter, digest, histogram, loss, and ordering assertions | model | Complete controller/P4/model/DMA path |
-| Mpps, Poisson, Analyze, multiple-stream, and per-stream RX start/stop | model | Programming paths beyond the CBR smoke case |
+| Mpps, Poisson, Analyze, multiple-stream, per-stream RX, and rejected-request lifecycle | model | Programming paths beyond CBR and proof that invalid requests preserve live traffic |
+| IPv4, IPv6, VLAN, QinQ, MPLS, VxLAN, GTP-U, and T2 SRv6 payload lifecycles | model | Exercise controller-to-P4 header programming for every supported profile |
 | Direct `rbfrt` table read after controller shutdown | model/BfRt | Verify schema and table access without the REST facade |
-| Fourteen Vitest assertions | GUI | Validators, storage migration, optional payload fields, rate/IMIX logic, polling |
+| Fifty-five Vitest component/logic tests | GUI | Validators, migrations, full settings/result import-export, tabs, protocol forms, ports/error paths, running state, results/report contracts, rate/IMIX logic, and polling |
+| Three Playwright Chromium flows | GUI/browser | Actual JSON download/re-import, rejected-to-successful start lifecycle, and responsive offline behavior |
 | Tofino and Tofino 2 compilation | P4 | Compiler and target-specific source coverage |
 
 The OpenAPI check intentionally compares the independently maintained test
@@ -139,6 +141,7 @@ Focused jobs use the exact entrypoints called by GitHub Actions:
 ```console
 tests/ci/controller.sh
 tests/ci/gui.sh
+tests/ci/test-release.sh
 tests/ci/compile-p4.sh tofino /tmp/p4tg-ci-t1
 tests/ci/model-smoke.sh tofino /tmp/p4tg-ci-t1
 ```
@@ -148,10 +151,22 @@ No ports are published to the host. The model, switchd, controller, and Rust
 runner share one container network namespace.
 
 GitHub Actions splits this into `controller`, `gui`, `p4-compile`, and
-`model-e2e-regression` jobs. Both P4/model jobs are target matrices. The SDK is
-pinned by digest, and the model job removes that compiler image on the
-disposable hosted runner before loading the model runtime to stay within the
-runner disk limit. Workflow syntax is checked locally with `actionlint`.
+`model-e2e-regression` jobs. The GUI job runs coverage plus Playwright against
+a preview server on a random high localhost port. Both P4/model jobs are target
+matrices. The SDK is pinned by digest, and the model job removes that compiler
+image on the disposable hosted runner before loading the model runtime to stay
+within the runner disk limit. Workflow syntax is checked locally with
+`actionlint`.
+
+The stable release workflow is documented in [`.github/RELEASING.md`](../.github/RELEASING.md).
+After a successfully tested merged PR on `main`, it derives the semantic bump
+from labels (patch by default), writes the PR title into `docs/CHANGELOG.md`,
+updates all application version manifests, atomically reserves the release
+commit/tag, publishes the versioned controller image, and creates the GitHub
+Release. Release notes always contain install/update instructions and include
+both targets' manual `make compile`/`make start` commands when the data plane
+changed. `tests/ci/test-release.sh` validates generation and retry behavior
+without using the network.
 
 ### Known open issues
 
@@ -160,6 +175,14 @@ dependency chain: `serve` pulls `compression <1.8.2` (GHSA-vc2v-76pw-4v95).
 The advisory's automatic fix is a semver-major downgrade of `serve`; the test
 work does not silently change that product dependency. The production GUI is
 embedded and served by the Rust controller, not by `serve`.
+
+The expanded GUI run covers 41.15% of statements and 33.68% of branches across
+all `src/`, including 59.34% of `Settings.tsx`, 61.74% of
+`SettingsModal.tsx`, 50.44% of `Ports.tsx`, and 79.45% of `SummaryView.tsx`.
+An initial `/ports` GET failure still leaves the existing Ports page spinner
+running indefinitely; config-fetch and ARP-update failures are regression
+tested and do not crash. Existing React DOM/key/NaN warnings and Vite's
+bundle-size/config warnings also remain visible without failing the build.
 
 ## Changelog regression inventory
 
@@ -179,13 +202,13 @@ script, security, or purely visual work).
 | 2.8.1 | Unsupported FEC, omitted breakout `channel_count`, 1x50G/8x50G FEC, T1 200G, mixed breakout warning, per-channel ARP MAC | H — depends on physical port manager/channel layout |
 | 2.8.1 | Corrected ports Swagger and ARP docs | T — `schema::public_paths_and_payload` |
 | 2.8.1 | Python automation error handling and auto-negotiation constants | N — legacy Python harness intentionally unchanged |
-| 2.8.1 | Complete JSON result exports; single-point PDF chart; correct PDF time-series selection | G/L — export/report UI integration; no isolated stable function, report endpoint is schema-checked |
+| 2.8.1 | Complete JSON result exports; single-point PDF chart; correct PDF time-series selection | G/T/L — `v2_8_1_complete_json_result_export` and result-tab tests cover full fetch/selection; `v2_8_1_pdf_result_export_contract` plus model PDF covers the public contract, while single-point chart drawing remains controller-internal |
 | 2.8.1 | Square low/short-high pattern; pattern meter interval scope | L — pattern construction/data-plane meter internals |
 | 2.8.1 | RFC2544 mode/mapping frontend; throughput robustness; stale baselines; settle pacing; no-TX abort; runtime estimate; cooldown floor | L — RFC2544 orchestration internals; hardware accuracy unsuitable for model |
 | 2.8.1 | Consistent displayed rate units | N — presentation-only |
 | 2.8.1 | `time_statistics?limit=0` division by zero | T — endpoint smoke includes `limit=0` |
 | 2.8.1 | GTP-U overhead 36 B | G — `v2_8_1_gtpu_overhead` |
-| 2.8.1 | Duplicate RFC2544 dashboard tabs | G — component rendering integration, not exported logic |
+| 2.8.1 | Duplicate RFC2544 dashboard tabs | G — `v2_8_1_duplicate_rfc2544_dashboard_tabs` |
 | 2.8.1 | Restart/RFC2544 deadlock | L/H — destructive lifecycle and long RFC run are excluded from model CI |
 | 2.8.1 | Minimum 64-byte frame and MPLS/SRv6 underflow | T — `v2_8_1_minimum_frame_size` |
 | 2.8.1 | Stream/mapping channel range | T — `v2_8_1_channel_range` |
@@ -195,7 +218,7 @@ script, security, or purely visual work).
 | 2.8.1 | Computed `n_packets`, `timeout`, accuracy, pipes and scaled packet count | T — `model::loopback` checks all four served fields; arithmetic remains existing optimization tests |
 | 2.8.1 | Correct T1/T2 app ID monitor ranges | T — both target model runs and `v2_8_1_app_id_zero` |
 | 2.8.1 | Histogram endpoint uses front-panel/channel map | T — endpoint smoke plus model histogram object assertions |
-| 2.8.1 | Ports-page request failures; dashboard rejected-start state | G/T — public rejection is tested; React error rendering is component integration |
+| 2.8.1 | Ports-page request failures; dashboard rejected-start state | G/T — `v2_8_1_ports_request_failures` and Playwright `v2_8_1_rejected_start_state` |
 | 2.8.1 | RX fan-in double counting and settings warning | G — `v2_8_1_rx_fan_in`; warning itself is presentation |
 | 2.8.1 | IMIX L1 weighting | G — `v2_8_1_imix_l1_weighting`; controller calculation has existing units |
 | 2.8.1 | Digest pipeline supervision/watchdog | T — both targets assert `digests_alive` and live digest-derived counters |
@@ -205,15 +228,15 @@ script, security, or purely visual work).
 | 2.8.1 | Serialized frontend polling | G — `v2_8_1_serialized_polling` |
 | 2.8.1 | Navbar sizing, focus ring, light selected tab | N — visual CSS |
 | 2.8.1 | `p4tg.sh` fixes | N — management/packaging script outside model suite |
-| 2.8.1 | Cleared numeric pattern fields; per-tab/clone state leakage | G — React state integration; no exported pure logic |
+| 2.8.1 | Cleared numeric pattern fields; per-tab/clone state leakage | G — `v2_8_1_cleared_numeric_pattern_fields`, `v2_8_1_clone_state_and_tab_lifecycle`, and `v2_8_1_tab_state_isolation` |
 | 2.7.1 | Breakout channel calculation; channel ARP/MAC; unsupported T1 startup config | H — physical/breakout startup |
 | 2.7.1 | Poisson batching and IAT pipe selection | L/H — solver/data-plane timing; rate accuracy excluded on model |
 | 2.7.1 | Post-validation errors reach frontend | T — black-box POST response checks |
 | 2.7.1 | Histogram config crashes | T — `v2_8_1_histogram_range` (same public boundary) |
-| 2.7.1 | Enable/export controls during generation; visualization limit | G — component state/presentation integration |
+| 2.7.1 | Enable/export controls during generation; visualization limit | G — `v2_7_1_running_stream_controls`, `v2_7_1_running_settings_controls_and_export`, and `v2_7_1_visualization_limit_stable_window` |
 | 2.7.1 | Optional `StreamSettings` fields | T/G — valid minimal model payload and `v2_7_1_optional_protocol_fields` |
 | 2.7.1 | Missing IPv4 validation | T — `v2_7_1_missing_ipv4` |
-| 2.7.1 | Missing SRv6 base header validation | L/T2 — branch is internal-validation follow-up; valid SRv6 frame checking remains open |
+| 2.7.1 | Missing SRv6 base header validation | T — Tofino 2 `v2_7_1_missing_srv6_base_header`; valid SRv6 configuration is also programmed in the header-profile lifecycle |
 | 2.7.1 | Disabled protocol fields omitted; enabled features get defaults | G — `v2_7_1_optional_protocol_fields` |
 | 2.7.1 | RX dashboard aggregation by unique endpoint | G — `v2_8_1_rx_fan_in` |
 | 2.6.0 | RX frame/EtherType counters | T — model asserts IPv4 frame-size/type-derived TX/RX counters |
@@ -225,11 +248,11 @@ script, security, or purely visual work).
 | 2.6.0 | CVE, API docs, dependencies | N — security/docs/packaging changes |
 | 2.5.0 | Ports/multiple-traffic API docs; removed histogram POST; histogram example | T — OpenAPI public path/schema assertions |
 | 2.5.0 | Empty TX/RX mapping crash | T — `v2_5_0_missing_tx_rx_mapping` |
-| 2.5.0 | Disabled down-port streams; latest/aborted stats; offline crash; test count; direct-API rendering | G — React integration/presentation |
+| 2.5.0 | Disabled down-port streams; latest/aborted stats; offline crash; test count; direct-API rendering | G — `v2_5_0_disabled_down_port_stream`, `v2_5_0_latest_aborted_result_count`, `v2_5_0_dashboard_test_count`, `v2_5_0_direct_api_multiple_results`, plus the offline browser regression |
 | 2.5.0 | Invalid histograms in multiple tests; validation propagation | T — histogram rejection and `v2_5_0_multiple_test_validation` |
 | 2.5.0 | Malformed settings import and port/stream import validation | G — migration rejection plus validator tests |
 | 2.4.0 | Modal colors | N — visual CSS |
-| 2.4.0 | Offline frontend crash | G — polling/network component integration |
+| 2.4.0 | Offline frontend crash | G — Playwright `network failure switches to the responsive offline view` |
 | 2.4.0 | Port validation on import | G — `configuration validators` and malformed migration tests |
 | 2.4.0 | Missing online API docs | T — OpenAPI asserts `/api/online` |
 | 2.4.0 | ARP RX frame display | G — presentation; data-plane frame monitor covered by T2/T1 loopback |

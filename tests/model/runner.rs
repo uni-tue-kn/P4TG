@@ -4,7 +4,10 @@ mod api;
 mod regression;
 
 use api::{json_get, TestResult};
-use p4tg_tests::{api::ApiClient, payload::TrafficGenPayload};
+use p4tg_tests::{
+    api::ApiClient,
+    payload::{payload_for_profile, HeaderProfile, TrafficGenPayload},
+};
 use rbfrt::{table, SwitchConnection};
 use serde_json::{json, Value};
 
@@ -87,11 +90,57 @@ async fn start_stop(api: &ApiClient, name: &str, payload: &Value) -> TestResult 
     if !status.is_success() {
         return Err(format!("{name}: start returned {status} {body}").into());
     }
+    let started: Value = serde_json::from_str(&body)
+        .map_err(|error| format!("{name}: start returned invalid JSON: {error}: {body}"))?;
+    let expected_streams = payload["streams"].as_array().map_or(0, Vec::len);
+    if started.as_array().map_or(usize::MAX, Vec::len) != expected_streams {
+        return Err(format!(
+            "{name}: start returned unexpected stream count: expected {expected_streams}, got {started}"
+        )
+        .into());
+    }
+    for stream in started.as_array().into_iter().flatten() {
+        for field in ["n_packets", "timeout", "generation_accuracy", "n_pipes"] {
+            if stream.get(field).is_none() {
+                return Err(format!("{name}: start response omitted computed {field}").into());
+            }
+        }
+    }
+    let running = json_get(api, "/api/trafficgen").await?;
+    if running["name"] != payload["name"] || running["source_name"] != payload["name"] {
+        return Err(
+            format!("{name}: GET did not expose the running configuration: {running}").into(),
+        );
+    }
     let stop = api.delete("/api/trafficgen?skip=true").await?;
     if !stop.status().is_success() {
         return Err(format!("{name}: stop returned {}", stop.status()).into());
     }
+    let stopped = json_get(api, "/api/trafficgen").await?;
+    if stopped["message"] != "Not running." {
+        return Err(format!("{name}: traffic remained active after DELETE: {stopped}").into());
+    }
     println!("ok model::{name}");
+    Ok(())
+}
+
+async fn exercise_headers(api: &ApiClient, rate: f64, is_tofino2: bool) -> TestResult {
+    let mut profiles = vec![
+        HeaderProfile::Ipv4,
+        HeaderProfile::Ipv6,
+        HeaderProfile::Vlan,
+        HeaderProfile::QinQ,
+        HeaderProfile::Mpls,
+        HeaderProfile::Vxlan,
+        HeaderProfile::Gtpu,
+    ];
+    if is_tofino2 {
+        profiles.push(HeaderProfile::Srv6);
+    }
+    for profile in profiles {
+        let payload = payload_for_profile(rate, profile);
+        start_stop(api, &format!("header_{}", profile.name()), &payload).await?;
+    }
     Ok(())
 }
 
@@ -171,7 +220,9 @@ async fn main() -> TestResult {
     } else {
         api::endpoints_and_schema(&api).await?;
         regression::validation(&api, is_tofino2, true).await?;
-        exercise_modes(&api, if is_tofino2 { 0.00001 } else { 0.001 }).await?;
+        let rate = if is_tofino2 { 0.00001 } else { 0.001 };
+        exercise_modes(&api, rate).await?;
+        exercise_headers(&api, rate, is_tofino2).await?;
     }
 
     api.delete("/api/trafficgen?skip=true").await?;

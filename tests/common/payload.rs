@@ -122,3 +122,104 @@ impl TrafficGenPayload {
         serde_json::to_value(self).expect("test payload must serialize")
     }
 }
+
+/// Independently maintained payload variants used to exercise the controller's
+/// public wire format. Keeping these outside the binary catches serde/schema
+/// drift instead of compiling against controller-private types.
+#[derive(Clone, Copy, Debug)]
+pub enum HeaderProfile {
+    Ipv4,
+    Ipv6,
+    Vlan,
+    QinQ,
+    Mpls,
+    Vxlan,
+    Gtpu,
+    Srv6,
+}
+
+impl HeaderProfile {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Ipv4 => "ipv4",
+            Self::Ipv6 => "ipv6",
+            Self::Vlan => "vlan",
+            Self::QinQ => "qinq",
+            Self::Mpls => "mpls",
+            Self::Vxlan => "vxlan",
+            Self::Gtpu => "gtpu",
+            Self::Srv6 => "srv6",
+        }
+    }
+}
+
+pub fn payload_for_profile(rate: f64, profile: HeaderProfile) -> Value {
+    let mut payload = TrafficGenPayload::valid(rate).json();
+    match profile {
+        HeaderProfile::Ipv4 => {}
+        HeaderProfile::Ipv6 => {
+            payload["stream_settings"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("ip");
+            payload["stream_settings"][0]["ipv6"] = json!({
+                "ipv6_src": "2001:db8::1", "ipv6_dst": "2001:db8::2",
+                "ipv6_traffic_class": 0, "ipv6_src_mask": "::",
+                "ipv6_dst_mask": "::", "ipv6_flow_label": 0
+            });
+            payload["streams"][0]["ip_version"] = json!(6);
+        }
+        HeaderProfile::Vlan | HeaderProfile::QinQ => {
+            payload["streams"][0]["encapsulation"] =
+                json!(if matches!(profile, HeaderProfile::Vlan) {
+                    1
+                } else {
+                    2
+                });
+            payload["stream_settings"][0]["vlan"] = json!({
+                "vlan_id": 100, "pcp": 0, "dei": 0,
+                "inner_vlan_id": 200, "inner_pcp": 0, "inner_dei": 0
+            });
+        }
+        HeaderProfile::Mpls => {
+            payload["streams"][0]["encapsulation"] = json!(3);
+            payload["streams"][0]["number_of_lse"] = json!(2);
+            payload["stream_settings"][0]["mpls_stack"] = json!([
+                {"label": 100, "tc": 0, "bos": false, "ttl": 64},
+                {"label": 200, "tc": 0, "bos": true, "ttl": 64}
+            ]);
+        }
+        HeaderProfile::Vxlan => {
+            payload["streams"][0]["vxlan"] = json!(true);
+            payload["stream_settings"][0]["vxlan"] = json!({
+                "eth_src": "02:00:00:00:10:01", "eth_dst": "02:00:00:00:10:02",
+                "ip_src": "203.0.113.1", "ip_dst": "203.0.113.2", "ip_tos": 0,
+                "udp_source": 49152, "vni": 42
+            });
+        }
+        HeaderProfile::Gtpu => {
+            payload["streams"][0]["gtpu"] = json!(true);
+            payload["stream_settings"][0]["gtpu"] = json!({
+                "ip_src": "203.0.113.1", "ip_dst": "203.0.113.2", "ip_tos": 0,
+                "udp_source": 2152, "teid": 42
+            });
+        }
+        HeaderProfile::Srv6 => {
+            payload["streams"][0]["encapsulation"] = json!(4);
+            payload["streams"][0]["number_of_srv6_sids"] = json!(2);
+            payload["streams"][0]["srv6_ip_tunneling"] = json!(false);
+            payload["stream_settings"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("ip");
+            payload["stream_settings"][0]["srv6_base_header"] = json!({
+                "ipv6_src": "2001:db8:1::1", "ipv6_dst": "2001:db8:1::2",
+                "ipv6_traffic_class": 0, "ipv6_src_mask": "::",
+                "ipv6_dst_mask": "::", "ipv6_flow_label": 0
+            });
+            payload["stream_settings"][0]["sid_list"] = json!(["2001:db8:2::1", "2001:db8:2::2"]);
+        }
+    }
+    payload["name"] = json!(format!("rust {} model test", profile.name()));
+    payload
+}

@@ -2,7 +2,7 @@ name: Controller build
 
 on:
   push:
-    branches: [ "main", "nightly"]
+    branches: [ "nightly"]
   pull_request:
     branches: [ "main", "nightly" ]
 
@@ -11,27 +11,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set Docker tag based on branch
       id: vars
       run: |
-        if [ "${{ github.ref_name }}" = "main" ]; then
-          echo "tag=latest" >> $GITHUB_OUTPUT
-        elif [ "${{ github.ref_name }}" = "nightly" ]; then
-          echo "tag=nightly" >> $GITHUB_OUTPUT
+        if [ "${{ github.ref_name }}" = "nightly" ]; then
+          echo "tag=nightly" >> "$GITHUB_OUTPUT"
         else
-          echo "tag=dev" >> $GITHUB_OUTPUT
+          echo "tag=dev" >> "$GITHUB_OUTPUT"
         fi
 
-    - name: Read version from VERSION.md
-      id: version
-      run: |
-        version=$(cat VERSION.md | tr -d ' \n')
-        echo "version=$version" >> $GITHUB_OUTPUT
-
     - name: Cache Node.js modules
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: Configuration\ GUI/node_modules
         key: ${{ runner.os }}-node-${{ hashFiles('Configuration GUI/package.json') }}
@@ -44,11 +36,11 @@ jobs:
         CI: false
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3
 
     - name: Log in to Docker Hub
       if: github.event_name == 'push'
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
@@ -67,7 +59,6 @@ jobs:
           --cache-from=type=registry,ref=unituekn/p4tg-controller:buildcache \
           --cache-to=type=registry,ref=unituekn/p4tg-controller:buildcache,mode=max \
           --tag unituekn/p4tg-controller:${{ steps.vars.outputs.tag }} \
-          --tag unituekn/p4tg-controller:${{ steps.version.outputs.version }} \
           --file Controller/Dockerfile \
           --push \
           .

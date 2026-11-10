@@ -30,7 +30,9 @@
     "start": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test --config ../tests/gui/playwright.config.ts"
   },
   "browserslist": {
     "production": [
@@ -45,7 +47,9 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@vitejs/plugin-react": "^6.0.5",
+    "@vitest/coverage-v8": "^4.1.12",
     "jsdom": "^27.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",

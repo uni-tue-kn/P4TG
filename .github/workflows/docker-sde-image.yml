@@ -16,7 +16,7 @@ jobs:
         SDE_INSTALL: /open-p4studio/install
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Tofino1 CI
         run: cd P4-Implementation && sudo -E /open-p4studio/install/bin/bf-p4c -D__TARGET_TOFINO__=1 --target tofino -g --arch tna -o /opt/p4tg traffic_gen.p4
 
