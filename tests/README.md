@@ -185,10 +185,11 @@ are regression tested; the initial failure now exits loading and offers a
 working Retry action. Existing React DOM/key/NaN warnings and Vite's bundle-size/config
 warnings remain visible without failing the build.
 
-Controller lifecycle fault injection still needs an internal test seam after
-the binary-to-library refactor: simulated BfRt failures during start/stop,
-restart races, and RFC2544 trial failures cannot be induced reliably through
-the public API. The controller also documents a known reset/cooldown edge case:
+Controller lifecycle fault injection still needs an internal switch/BfRt test
+seam: simulated BfRt failures during start/stop, restart races, and RFC2544
+trial failures cannot be induced reliably through the public API. This does
+not depend on, or imply, a controller library refactor. The controller also
+documents a known reset/cooldown edge case:
 resetting during a multi-test cooldown may allow the pending pre-reset snapshot
 to be added back to result history. The black-box suite deliberately does not
 encode that incorrect behavior as the expected result.
@@ -205,7 +206,7 @@ script, security, or purely visual work).
 
 | Version | Changelog entry | Category and coverage |
 |---|---|---|
-| 2.8.2 | RFC2544 results use measured rather than requested TX rates | L — existing RFC2544/unit coverage; see After lib refactor for public orchestration |
+| 2.8.2 | RFC2544 results use measured rather than requested TX rates | L — existing RFC2544/unit coverage; public orchestration still needs an injectable switch/BfRt test seam |
 | 2.8.1 | Rate-digest timestamps; IAT pipe bounds; 50k RTT/IAT storage cap; counter-regression rate guard; TX/RX digest jitter | L — monitor/statistics internals |
 | 2.8.1 | Large histogram processing; histogram NaN/null for 0/1 samples; unexpected frame table entries | T — model histogram/counter presence plus finite zero-bin results; malformed-table injection remains L |
 | 2.8.1 | Unsupported FEC, omitted breakout `channel_count`, 1x50G/8x50G FEC, T1 200G, mixed breakout warning, per-channel ARP MAC | H — depends on physical port manager/channel layout |
@@ -273,11 +274,13 @@ v2.6.0 as `4a6be83`, v2.5.0 as `f30bd1b`, and v2.4.0 as `5c8a4af`.
 The table deliberately calls out UI/component and internal fault-injection gaps
 instead of pretending a shallow endpoint smoke covers them.
 
-## After lib refactor
+## Controller-internal coverage gaps
 
-The controller remains a binary crate. Internal tests for `optimization.rs`,
-`validate.rs`, and other module-private behavior are deferred until the planned
-library refactor. The priority list derived from the changelog is:
+The controller remains a binary crate. Module-local `#[cfg(test)]` tests can be
+added without converting it into a library. Tests that must simulate BfRt or
+switch failures additionally need a narrow injectable dependency seam. No
+controller library refactor is planned or assumed. The priority list derived
+from the changelog is:
 
 - RFC2544 measured-rate reporting, baseline reset/correction, pacing, and
   no-TX abort behavior;
@@ -290,5 +293,7 @@ library refactor. The priority list derived from the changelog is:
   calculation at the controller source level.
 
 These are not duplicated by importing private source files into the integration
-crate: doing so would bypass the real binary boundary and create exactly the
-coupling the planned `lib.rs` refactor is intended to solve.
+crate: doing so would bypass the real binary boundary and tightly couple the
+black-box suite to private controller implementation details. They should be
+covered with module-local unit tests and focused dependency injection where
+hardware failures must be simulated.
