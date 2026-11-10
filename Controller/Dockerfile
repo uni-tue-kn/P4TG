@@ -6,8 +6,8 @@ WORKDIR /app
 
 # Install dependencies (cacheable)
 COPY ${path}/package.json ./
-#COPY ${path}/package-lock.json ./
-RUN npm install
+COPY ${path}/package-lock.json ./
+RUN npm ci
 
 # Copy remaining GUI source files
 COPY ${path}/public ./public
