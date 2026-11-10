@@ -100,7 +100,7 @@ printf '%s\n' \
   '  }],' \
   '  "rx_mapping_mode": "per_tx_port",' \
   '  "port_tx_rx_mapping": {"1": {"0": {"port": 2, "channel": 0}}},' \
-  '  "duration": 30, "repetitions": 1, "drain_duration_secs": 0,' \
+  '  "duration": 120, "repetitions": 1, "drain_duration_secs": 0,' \
   '  "rtt_histogram_config": {}, "iat_histogram_config": {}' \
   '}' > "$runtime/traffic.json"
 printf '%s\n' "$port_map" > "$runtime/ports.json"

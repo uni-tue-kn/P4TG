@@ -35,6 +35,11 @@ fn all_numeric_leaves_are_zero(value: &Value) -> bool {
     }
 }
 
+/// A missing or empty report must not count as "no loss".
+fn is_zero_report(value: &Value) -> bool {
+    value.as_object().is_some_and(|map| !map.is_empty()) && all_numeric_leaves_are_zero(value)
+}
+
 async fn traffic_state(api: &ApiClient) -> TestResult<(StatusCode, Value)> {
     let response = api.get("/api/trafficgen").await?;
     let status = response.status();
@@ -120,9 +125,7 @@ async fn assert_data_plane(api: &ApiClient) -> TestResult {
     if tx == 0 || rx == 0 {
         return Err(format!("loopback counters did not grow: tx={tx}, rx={rx}").into());
     }
-    if !all_numeric_leaves_are_zero(&latest["packet_loss"])
-        || !all_numeric_leaves_are_zero(&latest["out_of_order"])
-    {
+    if !is_zero_report(&latest["packet_loss"]) || !is_zero_report(&latest["out_of_order"]) {
         return Err(format!(
             "loopback reported loss/order errors: loss={}, out_of_order={}",
             latest["packet_loss"], latest["out_of_order"]
@@ -653,6 +656,19 @@ async fn cancel_during_cooldown(api: &ApiClient, rate: f64) -> TestResult {
     let first = named_payload(rate, "cooldown first", 1, 1);
     let second = named_payload(rate, "cooldown must not start", 10, 1);
     start_payload(api, "cooldown cancellation", &json!([first, second])).await?;
+    // The API also reports a cooldown before the first run starts. Observe the
+    // first run so the following cooldown is the one between the two tests.
+    wait_for_traffic_state(
+        api,
+        "first run before cooldown cancellation",
+        Duration::from_secs(8),
+        |status, value| {
+            status == StatusCode::OK
+                && value["name"] == "cooldown first"
+                && value["cooldown"] == false
+        },
+    )
+    .await?;
     wait_for_traffic_state(
         api,
         "multi-test cooldown",
@@ -674,6 +690,9 @@ async fn cancel_during_cooldown(api: &ApiClient, rate: f64) -> TestResult {
     let names = result_names(&statistics);
     if names.contains(&"cooldown must not start") {
         return Err(format!("cancelled cooldown started the next test: {names:?}").into());
+    }
+    if !names.contains(&"cooldown first") {
+        return Err(format!("cancelled cooldown lost the completed test: {names:?}").into());
     }
     println!("ok lifecycle::cancel_during_cooldown");
     Ok(())
@@ -882,17 +901,6 @@ async fn reset_history_boundary(api: &ApiClient, rate: f64) -> TestResult {
     Ok(())
 }
 
-async fn exercise_orchestration(api: &ApiClient, rate: f64) -> TestResult {
-    duration_and_drain_lifecycle(api, rate).await?;
-    duration_monitor_replacement(api, rate).await?;
-    multiple_test_lifecycle(api, rate).await?;
-    skip_and_cancel_lifecycle(api, rate).await?;
-    cancel_during_cooldown(api, rate).await?;
-    restart_lifecycle(api, rate).await?;
-    reset_history_boundary(api, rate).await?;
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> TestResult {
     let base_url =
@@ -915,15 +923,79 @@ async fn main() -> TestResult {
         // v2.8.1: rejected requests must not cancel the already running test.
         assert_data_plane(&api).await?;
     } else {
-        api::endpoints_and_schema(&api).await?;
-        regression::validation(&api, is_tofino2, true).await?;
         let rate = if is_tofino2 { 0.00001 } else { 0.001 };
-        exercise_modes(&api, rate).await?;
-        exercise_headers(&api, rate, is_tofino2).await?;
-        exercise_orchestration(&api, rate).await?;
+        // Run every group so one failure does not hide the others. Stop any
+        // traffic a failed group left behind before the next one starts.
+        let mut failures = Vec::new();
+        macro_rules! check {
+            ($name:literal, $run:expr) => {
+                if let Err(error) = $run.await {
+                    eprintln!("FAILED {}: {error}", $name);
+                    failures.push($name);
+                    let _ = api.delete("/api/trafficgen").await;
+                }
+            };
+        }
+        check!("endpoints_and_schema", api::endpoints_and_schema(&api));
+        check!("validation", regression::validation(&api, is_tofino2, true));
+        check!("modes", exercise_modes(&api, rate));
+        check!("headers", exercise_headers(&api, rate, is_tofino2));
+        check!(
+            "duration_and_drain",
+            duration_and_drain_lifecycle(&api, rate)
+        );
+        check!(
+            "monitor_replacement",
+            duration_monitor_replacement(&api, rate)
+        );
+        check!("multiple_tests", multiple_test_lifecycle(&api, rate));
+        check!("skip_and_cancel", skip_and_cancel_lifecycle(&api, rate));
+        check!("cancel_during_cooldown", cancel_during_cooldown(&api, rate));
+        check!("restart", restart_lifecycle(&api, rate));
+        check!("reset_history_boundary", reset_history_boundary(&api, rate));
+        if !failures.is_empty() {
+            return Err(format!("failed test groups: {}", failures.join(", ")).into());
+        }
     }
 
     api.delete("/api/trafficgen?skip=true").await?;
     println!("all Rust black-box model tests passed");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packet_sum_adds_bins_and_treats_missing_data_as_zero() {
+        assert_eq!(packet_sum(&json!([{"packets": 2}, {"packets": 3}])), 5);
+        assert_eq!(packet_sum(&json!([{"other": 2}])), 0);
+        assert_eq!(packet_sum(&Value::Null), 0);
+    }
+
+    #[test]
+    fn zero_report_requires_present_all_zero_data() {
+        assert!(is_zero_report(&json!({"1": {"0": 0, "2": 0}})));
+        assert!(!is_zero_report(&json!({"1": {"0": 0, "2": 1}})));
+        assert!(!is_zero_report(&json!({"1": [0, 0.5]})));
+        assert!(!is_zero_report(&Value::Null));
+        assert!(!is_zero_report(&json!({})));
+    }
+
+    #[test]
+    fn result_names_lists_named_results_in_order() {
+        let results = json!([{"name": "a"}, {"other": 1}, {"name": "b"}]);
+        assert_eq!(result_names(&results), ["a", "b"]);
+        assert!(result_names(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn named_payload_overrides_only_the_requested_fields() {
+        let payload = named_payload(0.5, "run", 7, 3);
+        assert_eq!(payload["name"], "run");
+        assert_eq!(payload["duration"], 7);
+        assert_eq!(payload["repetitions"], 3);
+        assert_eq!(payload["streams"][0]["traffic_rate"], 0.5);
+    }
 }

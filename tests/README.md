@@ -121,6 +121,7 @@ TX/RX counts. No P4 product change is required.
 | Mpps, Poisson, Analyze, multiple-stream, per-stream RX, and rejected-request lifecycle | model | Programming paths beyond CBR and proof that invalid requests preserve live traffic |
 | IPv4, IPv6, VLAN, QinQ, MPLS, VxLAN, GTP-U, and T2 SRv6 payload lifecycles | model | Exercise controller-to-P4 header programming for every supported profile |
 | Direct `rbfrt` table read after controller shutdown | model/BfRt | Verify schema and table access without the REST facade |
+| Seven Rust unit tests for the suite's own helpers and payload builders | test infrastructure | Missing or malformed statistics cannot satisfy the loss/ordering assertions; every header profile carries its headers |
 | Fifty-six Vitest component/logic tests | GUI | Validators, migrations, full settings/result import-export, tabs, protocol forms, ports/error and retry paths, running state, results/report contracts, rate/IMIX logic, and polling |
 | Three Playwright Chromium flows | GUI/browser | Actual JSON download/re-import, rejected-to-successful start lifecycle, and responsive offline behavior |
 | Tofino and Tofino 2 compilation | P4 | Compiler and target-specific source coverage |
@@ -154,10 +155,11 @@ Temporary build/results directories are created only below `/tmp/p4tg-ci-*`.
 No ports are published to the host. The model, switchd, controller, and Rust
 runner share one container network namespace.
 
-GitHub Actions splits this into `controller`, `gui`, `p4-compile`, and
-`model-e2e-regression` jobs. The GUI job runs coverage plus Playwright against
-a preview server on a random high localhost port. Both P4/model jobs are target
-matrices. The SDK is pinned by digest, and the model job removes that compiler
+GitHub Actions splits this into `controller`, `gui`, and
+`model-e2e-regression` jobs; pull requests additionally build the production
+controller image. The GUI job runs coverage plus Playwright against a preview
+server on a random high localhost port. The model job compiles the P4 program
+and is a target matrix. The SDK is pinned by digest, and the model job removes that compiler
 image on the disposable hosted runner before loading the model runtime to stay
 within the runner disk limit. Workflow syntax is checked locally with
 `actionlint`.

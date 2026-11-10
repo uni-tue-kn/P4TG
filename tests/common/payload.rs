@@ -223,3 +223,76 @@ pub fn payload_for_profile(rate: f64, profile: HeaderProfile) -> Value {
     payload["name"] = json!(format!("rust {} model test", profile.name()));
     payload
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PROFILES: [HeaderProfile; 8] = [
+        HeaderProfile::Ipv4,
+        HeaderProfile::Ipv6,
+        HeaderProfile::Vlan,
+        HeaderProfile::QinQ,
+        HeaderProfile::Mpls,
+        HeaderProfile::Vxlan,
+        HeaderProfile::Gtpu,
+        HeaderProfile::Srv6,
+    ];
+
+    #[test]
+    fn valid_payload_maps_the_single_stream_from_port_1_to_port_2() {
+        let payload = TrafficGenPayload::valid(0.25).json();
+        assert_eq!(payload["streams"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["streams"][0]["traffic_rate"], 0.25);
+        assert_eq!(payload["stream_settings"][0]["port"], 1);
+        assert_eq!(payload["port_tx_rx_mapping"]["1"]["0"]["port"], 2);
+    }
+
+    #[test]
+    fn every_profile_is_named_and_carries_its_own_headers() {
+        for profile in PROFILES {
+            let payload = payload_for_profile(0.25, profile);
+            let setting = &payload["stream_settings"][0];
+            let stream = &payload["streams"][0];
+            assert_eq!(
+                payload["name"],
+                format!("rust {} model test", profile.name())
+            );
+            let (header, encapsulation) = match profile {
+                HeaderProfile::Ipv4 => ("ip", 0),
+                HeaderProfile::Ipv6 => ("ipv6", 0),
+                HeaderProfile::Vlan => ("vlan", 1),
+                HeaderProfile::QinQ => ("vlan", 2),
+                HeaderProfile::Mpls => ("mpls_stack", 3),
+                HeaderProfile::Vxlan => ("vxlan", 0),
+                HeaderProfile::Gtpu => ("gtpu", 0),
+                HeaderProfile::Srv6 => ("srv6_base_header", 4),
+            };
+            assert!(setting.get(header).is_some(), "{profile:?} lacks {header}");
+            assert_eq!(stream["encapsulation"], encapsulation, "{profile:?}");
+            // IPv4 settings are replaced, not kept, for the IPv6-only profiles.
+            let ipv6_only = matches!(profile, HeaderProfile::Ipv6 | HeaderProfile::Srv6);
+            assert_eq!(setting.get("ip").is_none(), ipv6_only, "{profile:?}");
+        }
+    }
+
+    #[test]
+    fn stack_lengths_match_the_declared_counts() {
+        let mpls = payload_for_profile(0.25, HeaderProfile::Mpls);
+        assert_eq!(
+            mpls["stream_settings"][0]["mpls_stack"]
+                .as_array()
+                .unwrap()
+                .len() as u64,
+            mpls["streams"][0]["number_of_lse"].as_u64().unwrap()
+        );
+        let srv6 = payload_for_profile(0.25, HeaderProfile::Srv6);
+        assert_eq!(
+            srv6["stream_settings"][0]["sid_list"]
+                .as_array()
+                .unwrap()
+                .len() as u64,
+            srv6["streams"][0]["number_of_srv6_sids"].as_u64().unwrap()
+        );
+    }
+}

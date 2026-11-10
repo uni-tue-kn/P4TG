@@ -78,6 +78,8 @@ const emptyStats = {
     app_tx_l2: {}, app_rx_l2: {}, app_l2_frame_sizes: {}, out_of_order: {},
     elapsed_time: 0, rtt_histogram: {}, iat_histogram: {},
 };
+// The controller answers an idle GET /api/trafficgen with 202 and this body.
+const idle = { status: 202, json: { message: "Not running." } };
 const emptyTimeStats = { tx_rate_l1: {}, rx_rate_l1: {}, app_tx_l2: {}, app_rx_l2: {} };
 
 async function mockReleaseCheck(page: import("../../Configuration GUI/node_modules/@playwright/test").Page) {
@@ -101,7 +103,7 @@ test("actual Chromium exports and re-imports the complete settings file", async 
         const path = new URL(route.request().url()).pathname;
         if (path === "/api/online") return route.fulfill({ json: online });
         if (path === "/api/ports") return route.fulfill({ json: ports });
-        if (path === "/api/trafficgen") return route.fulfill({ json: {} });
+        if (path === "/api/trafficgen") return route.fulfill(idle);
         return route.fulfill({ status: 404, json: { message: `unmocked ${path}` } });
     });
 
@@ -149,7 +151,7 @@ test("v2_8_1_rejected_start_state", async ({ page }) => {
         if (path === "/api/statistics") return route.fulfill({ json: [emptyStats] });
         if (path === "/api/time_statistics") return route.fulfill({ json: [emptyTimeStats] });
         if (path === "/api/trafficgen" && request.method() === "GET") {
-            return route.fulfill({ json: running ? { ...configuration(5), name: "Alpha [1/2]" } : {} });
+            return route.fulfill(running ? { json: { ...configuration(5), name: "Alpha [1/2]" } } : idle);
         }
         if (path === "/api/trafficgen" && request.method() === "POST") {
             postCount += 1;
@@ -192,7 +194,7 @@ test("v2_4_0_offline_controller_crash", async ({ page }) => {
         if (path === "/api/online") return route.fulfill({ json: online });
         if (path === "/api/statistics") return route.abort("connectionfailed");
         if (path === "/api/time_statistics") return route.fulfill({ json: [emptyTimeStats] });
-        if (path === "/api/trafficgen") return route.fulfill({ json: {} });
+        if (path === "/api/trafficgen") return route.fulfill(idle);
         return route.fulfill({ status: 404, json: {} });
     });
 

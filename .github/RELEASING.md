@@ -18,7 +18,8 @@ Entries under `## Unreleased` are promoted into the new version and copied to
 the GitHub Release. The pull request title is also added as a release-facing
 entry, so keep it concise and meaningful to users; its PR number and link are
 appended automatically. A fresh empty `Unreleased` section is retained for the
-next change.
+next change. Do not also describe the same change under `Unreleased`, or it
+appears twice in the release.
 
 ## Labels
 
@@ -51,7 +52,10 @@ The release workflow uses a non-cancelling concurrency group. A rerun recognizes
 its own release commit and tag and repairs the image or GitHub Release instead
 of incrementing the version again. If `main` advances beyond the tested SHA
 before a release is reserved, that stale run exits without changing anything.
-The subsequent tested merge is then eligible.
+The subsequent tested merge is then eligible; its release contains the stale
+merge's changes, but that pull request's title is not added to the changelog.
+Wait for the release of one merge before merging the next, or add the missing
+entry under `Unreleased` by hand.
 
 Retrying an older reserved release always repairs its versioned image and
 release, but it does not move Docker's `latest` tag or GitHub's latest-release
