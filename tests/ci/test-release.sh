@@ -37,6 +37,17 @@ cat > "$repo/Controller/Cargo.toml" <<'EOF'
 name = "p4tg-controller"
 version = "1.2.3"
 EOF
+cat > "$repo/Controller/Cargo.lock" <<'EOF'
+version = 4
+
+[[package]]
+name = "other"
+version = "1.2.3"
+
+[[package]]
+name = "p4tg-controller"
+version = "1.2.3"
+EOF
 cat > "$repo/Configuration GUI/package.json" <<'EOF'
 {
   "name": "frontend",
@@ -195,6 +206,10 @@ release_commit=$(git -C "$repo" rev-parse HEAD)
 [[ $(git -C "$repo" rev-parse 'v1.2.4^{commit}') == "$release_commit" ]] || fail 'release tag is missing'
 assert_contains '1.2.4' "$repo/VERSION.md"
 assert_contains 'version = "1.2.4"' "$repo/Controller/Cargo.toml"
+[[ $(grep -A1 '^name = "p4tg-controller"$' "$repo/Controller/Cargo.lock" | tail -n 1) == 'version = "1.2.4"' ]] \
+  || fail 'controller lockfile version was not updated'
+[[ $(grep -A1 '^name = "other"$' "$repo/Controller/Cargo.lock" | tail -n 1) == 'version = "1.2.3"' ]] \
+  || fail 'an unrelated lockfile package was changed'
 [[ $(jq -r '.version' "$repo/Configuration GUI/package.json") == 1.2.4 ]] \
   || fail 'frontend package version was not updated'
 [[ $(jq -r '.version' "$repo/Configuration GUI/package-lock.json") == 1.2.4 ]] \

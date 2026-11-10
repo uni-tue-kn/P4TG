@@ -75,6 +75,15 @@ update_release_files() {
   chmod --reference=Controller/Cargo.toml "$tmp"
   mv "$tmp" Controller/Cargo.toml
 
+  # Keep the lockfile's own package entry in step, or --locked builds fail.
+  tmp=$(mktemp /tmp/p4tg-ci-release-cargo-lock-XXXXXX)
+  sed -E "/^name = \"p4tg-controller\"$/{n;s/^version = \"${old//./\\.}\"$/version = \"$new\"/}" \
+    Controller/Cargo.lock > "$tmp"
+  [[ $(grep -A1 '^name = "p4tg-controller"$' "$tmp" | tail -n 1) == "version = \"$new\"" ]] \
+    || die 'could not update Controller/Cargo.lock'
+  chmod --reference=Controller/Cargo.lock "$tmp"
+  mv "$tmp" Controller/Cargo.lock
+
   for manifest in 'Configuration GUI/package.json' 'Configuration GUI/package-lock.json'; do
     tmp=$(mktemp /tmp/p4tg-ci-release-package-XXXXXX)
     if [[ $manifest == *package-lock.json ]]; then
@@ -141,7 +150,7 @@ validate_release_commit() {
   grep -Fxq "P4TG-Release-Version: $version" <<< "$body" || return 1
   [[ $(git show "$candidate:VERSION.md" | tr -d '[:space:]') == "$version" ]] || return 1
 
-  expected_files=$'Configuration GUI/package-lock.json\nConfiguration GUI/package.json\nController/Cargo.toml\nREADME.md\nVERSION.md\ndocs/CHANGELOG.md'
+  expected_files=$'Configuration GUI/package-lock.json\nConfiguration GUI/package.json\nController/Cargo.lock\nController/Cargo.toml\nREADME.md\nVERSION.md\ndocs/CHANGELOG.md'
   actual_files=$(git diff --name-only "$tested" "$candidate" | sort)
   [[ $actual_files == "$expected_files" ]]
 }
@@ -267,7 +276,7 @@ else
   released_on=${RELEASE_DATE:-$(date -u +%F)}
   update_release_files "$current_version" "$version" "$category" "$pr_title" "$pr_number" "$pr_url" "$released_on"
   if [[ $mode == commit ]]; then
-    git add VERSION.md README.md Controller/Cargo.toml \
+    git add VERSION.md README.md Controller/Cargo.toml Controller/Cargo.lock \
       'Configuration GUI/package.json' 'Configuration GUI/package-lock.json' \
       docs/CHANGELOG.md
     git -c user.name=github-actions\[bot\] \

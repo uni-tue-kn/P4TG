@@ -31,7 +31,7 @@ RUN apt update && \
     apt install -y libstdc++6 libgomp1 cmake libclang-dev
 
 # Cache Rust dependencies
-COPY ${path}/Cargo.toml .
+COPY ${path}/Cargo.toml ${path}/Cargo.lock ./
 # BREAKS THE CONTROLLER IMAGE SINCE VERSION 2.7.0 :(
 #RUN mkdir src && echo "fn main() {}" > src/main.rs
 #RUN cargo build --release || true  # Pre-cache dependencies
@@ -43,7 +43,7 @@ COPY ${path}/src ./src
 COPY --from=gui-builder /app/build ./gui_build
 
 # Build Rust app
-RUN cargo build --release
+RUN cargo build --release --locked
 
 ### === Stage 3: Runtime Image === ###
 FROM debian:bookworm

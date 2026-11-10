@@ -4,10 +4,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends cmake libclang-dev \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /build/Controller
-COPY Controller/Cargo.toml ./
+COPY Controller/Cargo.toml Controller/Cargo.lock ./
 COPY Controller/src ./src
 COPY Controller/gui_build ./gui_build
-RUN cargo build --release -j 8
+RUN cargo build --release --locked -j 8
 
 WORKDIR /build/tests
 COPY tests/Cargo.toml ./

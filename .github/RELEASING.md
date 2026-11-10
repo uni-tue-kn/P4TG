@@ -7,9 +7,9 @@ eligible. The workflow performs these steps:
 1. Verify that the exact SHA tested by the `Tests` workflow belongs to one
    merged pull request targeting this repository's `main` branch.
 2. Determine the semantic-version bump and changelog category from labels.
-3. Update `VERSION.md`, the controller and GUI package versions, the README
-   badge, and `docs/CHANGELOG.md` in one generated release commit.
-   (`Controller/Cargo.lock` is intentionally ignored by this repository.)
+3. Update `VERSION.md`, the controller and GUI package versions (including
+   both lockfiles), the README badge, and `docs/CHANGELOG.md` in one generated
+   release commit.
 4. Push that commit and its `vX.Y.Z` tag atomically, build the controller image
    as both `unituekn/p4tg-controller:X.Y.Z` and `:latest`, then create or update
    the GitHub Release.
