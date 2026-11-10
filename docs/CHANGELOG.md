@@ -7,6 +7,8 @@
 
 ### Bug fixes
 - Fixed the Ports page remaining on an indefinite loading spinner when the initial `GET /api/ports` request fails. It now shows a recoverable error with a retry action.
+- Fixed `/api/reset` during a multi-test cooldown allowing a completed pre-reset result to reappear in history when the next test started. Reset now establishes an internal history boundary while preserving post-reset results from an active run and allowing the remaining sequence to continue.
+- Fatal controller startup errors now return a non-zero process exit status instead of being logged as a successful exit.
 
 ## v2.8.2
 ### Bug fixes

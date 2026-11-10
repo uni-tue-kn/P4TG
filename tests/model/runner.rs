@@ -358,6 +358,9 @@ async fn assert_invalid_startup(label: &str, config: Value, needle: &str) -> Tes
         }
     };
     std::fs::remove_dir_all(&workdir)?;
+    if output.status.success() {
+        return Err(format!("{label}: fatal controller startup error exited successfully").into());
+    }
     let logs = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -768,6 +771,117 @@ async fn restart_lifecycle(api: &ApiClient, rate: f64) -> TestResult {
     Ok(())
 }
 
+async fn assert_result_names(api: &ApiClient, expected: &[&str], context: &str) -> TestResult {
+    for path in ["/api/statistics", "/api/time_statistics"] {
+        let results = json_get(api, path).await?;
+        let names = result_names(&results);
+        if names.len() != expected.len()
+            || expected.iter().any(|expected_name| {
+                names.iter().filter(|name| *name == expected_name).count() != 1
+            })
+        {
+            return Err(format!("{context}: {path} returned unexpected results: {names:?}").into());
+        }
+    }
+    Ok(())
+}
+
+/// Unreleased: reset keeps post-reset active-run results without restoring pre-reset cooldown history.
+async fn reset_history_boundary(api: &ApiClient, rate: f64) -> TestResult {
+    let active_before = named_payload(rate, "active reset before", 1, 1);
+    let active_current = named_payload(rate, "active reset current", 3, 1);
+    let active_after = named_payload(rate, "active reset after", 1, 1);
+    start_payload(
+        api,
+        "active reset sequence",
+        &json!([active_before, active_current, active_after]),
+    )
+    .await?;
+    wait_for_traffic_state(
+        api,
+        "active run before reset",
+        Duration::from_secs(15),
+        |status, value| status == StatusCode::OK && value["name"] == "active reset current",
+    )
+    .await?;
+    let reset = api.get("/api/reset").await?;
+    if reset.status() != StatusCode::OK {
+        return Err(format!("reset during active run returned {}", reset.status()).into());
+    }
+    wait_for_traffic_state(
+        api,
+        "successor run after active reset",
+        Duration::from_secs(15),
+        |status, value| status == StatusCode::OK && value["name"] == "active reset after",
+    )
+    .await?;
+    wait_for_traffic_state(
+        api,
+        "active-reset sequence completion",
+        Duration::from_secs(8),
+        |status, value| status == StatusCode::ACCEPTED && value["message"] == "Not running.",
+    )
+    .await?;
+    assert_result_names(
+        api,
+        &["active reset current", "active reset after"],
+        "active reset",
+    )
+    .await?;
+    println!("ok lifecycle::reset_active_run_preserves_post_reset_result");
+
+    let cooldown_first = named_payload(rate, "cooldown reset old", 1, 1);
+    let cooldown_second = named_payload(rate, "cooldown reset new", 1, 1);
+    start_payload(
+        api,
+        "cooldown reset sequence",
+        &json!([cooldown_first, cooldown_second]),
+    )
+    .await?;
+    // A newly spawned multi-test task briefly reports the stopped previous
+    // configuration as a cooldown. First observe this sequence's initial run
+    // so the following cooldown is unambiguously the boundary after it.
+    wait_for_traffic_state(
+        api,
+        "first run before cooldown reset",
+        Duration::from_secs(8),
+        |status, value| {
+            status == StatusCode::OK
+                && value["name"] == "cooldown reset old"
+                && value["cooldown"] == false
+        },
+    )
+    .await?;
+    wait_for_traffic_state(
+        api,
+        "cooldown before reset",
+        Duration::from_secs(10),
+        |status, value| status == StatusCode::OK && value["cooldown"] == true,
+    )
+    .await?;
+    let reset = api.get("/api/reset").await?;
+    if reset.status() != StatusCode::OK {
+        return Err(format!("reset during cooldown returned {}", reset.status()).into());
+    }
+    wait_for_traffic_state(
+        api,
+        "post-reset run after cooldown",
+        Duration::from_secs(10),
+        |status, value| status == StatusCode::OK && value["name"] == "cooldown reset new",
+    )
+    .await?;
+    wait_for_traffic_state(
+        api,
+        "cooldown-reset sequence completion",
+        Duration::from_secs(8),
+        |status, value| status == StatusCode::ACCEPTED && value["message"] == "Not running.",
+    )
+    .await?;
+    assert_result_names(api, &["cooldown reset new"], "cooldown reset").await?;
+    println!("ok lifecycle::reset_cooldown_discards_only_pre_reset_result");
+    Ok(())
+}
+
 async fn exercise_orchestration(api: &ApiClient, rate: f64) -> TestResult {
     duration_and_drain_lifecycle(api, rate).await?;
     duration_monitor_replacement(api, rate).await?;
@@ -775,6 +889,7 @@ async fn exercise_orchestration(api: &ApiClient, rate: f64) -> TestResult {
     skip_and_cancel_lifecycle(api, rate).await?;
     cancel_during_cooldown(api, rate).await?;
     restart_lifecycle(api, rate).await?;
+    reset_history_boundary(api, rate).await?;
     Ok(())
 }
 

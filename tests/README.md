@@ -115,7 +115,7 @@ TX/RX counts. No P4 product change is required.
 | Controller's 3,653 existing Rust tests | controller | Predominantly generated rate-solver cases, plus existing module-level behavior |
 | Twenty-four endpoint/response/OpenAPI checks | API/model | Detect route removal, response-shape changes, port/ARP mutation failures, invalid port combinations, crashes, and payload/schema drift |
 | Fifty-two named validation regressions | API/model | Exercise real deserialization and semantic validation, including exact 400/422 behavior |
-| Eight controller orchestration lifecycle scenarios | API/model | Natural duration/drain completion, duration-zero and stale-monitor replacement, multi-test repetitions/history, skip vs. stop, rejected-request preservation, cooldown cancellation, and idle/active/multi-test restart behavior |
+| Ten controller orchestration lifecycle scenarios | API/model | Natural duration/drain completion, duration-zero and stale-monitor replacement, multi-test repetitions/history, skip vs. stop, rejected-request preservation, cooldown cancellation, idle/active/multi-test restart behavior, and reset boundaries during active runs/cooldowns |
 | Breakout and manual recirculation startup | API/model | Programs valid T1 2/4-way and T2 2/4/8-way mappings, verifies explicit speed/FEC/autoneg/MAC settings, and rejects duplicate or traffic-port-overlapping manual TX/RX recirculation ports |
 | CBR loopback with counter, digest, histogram, loss, and ordering assertions | model | Complete controller/P4/model/DMA path |
 | Mpps, Poisson, Analyze, multiple-stream, per-stream RX, and rejected-request lifecycle | model | Programming paths beyond CBR and proof that invalid requests preserve live traffic |
@@ -189,13 +189,9 @@ working Retry action. Existing React DOM/key/NaN warnings and Vite's bundle-size
 warnings remain visible without failing the build.
 
 Controller lifecycle fault injection still needs an internal switch/BfRt test
-seam: simulated BfRt failures during start/stop/restart and RFC2544
-trial failures cannot be induced reliably through the public API. This does
-not depend on, or imply, a controller library refactor. The controller also
-documents a known reset/cooldown edge case:
-resetting during a multi-test cooldown may allow the pending pre-reset snapshot
-to be added back to result history. The black-box suite deliberately does not
-encode that incorrect behavior as the expected result.
+seam: simulated BfRt failures during start/stop/restart and RFC2544 trial
+failures cannot be induced reliably through the public API. This does not
+depend on, or imply, a controller library refactor.
 
 ## Changelog regression inventory
 

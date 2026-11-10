@@ -24,6 +24,7 @@ use rbfrt::{table, SwitchConnection};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
+use std::process::ExitCode;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -79,6 +80,8 @@ pub struct MultiTest {
     pub(crate) collected_statistics: Mutex<Vec<StatisticsApi>>,
     pub(crate) collected_time_statistics: Mutex<Vec<TimeStatisticsApi>>,
     pub(crate) multiple_test_monitor_task: Mutex<DurationMonitorTask>,
+    pub(crate) history_generation: AtomicU64,
+    pub(crate) active_run_generation: AtomicU64,
 }
 
 /// App state that is used between threads
@@ -278,6 +281,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 handle: None,
                 cancel_token: None,
             }),
+            history_generation: AtomicU64::new(0),
+            active_run_generation: AtomicU64::new(0),
         },
         rfc2544_results: Mutex::new(None),
         last_digest: AtomicU64::new(unix_secs()),
@@ -369,13 +374,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     env_logger::init();
 
     match run().await {
-        Ok(_) => {}
+        Ok(_) => ExitCode::SUCCESS,
         Err(e) => {
             warn!("Error: {e:#?}");
+            ExitCode::FAILURE
         }
     }
 }
