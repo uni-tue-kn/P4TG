@@ -11,7 +11,10 @@ use p4tg_tests::{
 use rbfrt::{table, SwitchConnection};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::Duration;
+use tokio::process::Command;
 use tokio::time::{sleep, Instant};
 
 fn packet_sum(value: &Value) -> u64 {
@@ -221,6 +224,199 @@ async fn assert_bfrt_table_read() -> TestResult {
     }
     switch.get_table_entries(table::Request::new(TABLE)).await?;
     println!("ok model::direct_bfrt_table_read");
+    Ok(())
+}
+
+fn startup_port_config(
+    speed: &str,
+    fec: &str,
+    channel_count: u8,
+    first_recirculation: (u32, u32),
+    second_recirculation: (u32, u32),
+) -> Value {
+    json!({
+        "tg_ports": [
+            {
+                "port": 1,
+                "mac": "02:00:00:00:00:01",
+                "speed": speed,
+                "fec": fec,
+                "auto_negotiation": "PM_AN_DEFAULT",
+                "channel_count": channel_count,
+                "recirculation_ports": {
+                    "tx_port": first_recirculation.0,
+                    "rx_port": first_recirculation.1
+                }
+            },
+            {
+                "port": 2,
+                "mac": "02:00:00:00:00:11",
+                "speed": speed,
+                "fec": fec,
+                "auto_negotiation": "PM_AN_DEFAULT",
+                "channel_count": channel_count,
+                "recirculation_ports": {
+                    "tx_port": second_recirculation.0,
+                    "rx_port": second_recirculation.1
+                }
+            }
+        ]
+    })
+}
+
+fn controller_command(workdir: &PathBuf, port: u16) -> Command {
+    let mut command = Command::new("/app/p4tg-controller");
+    command
+        .current_dir(workdir)
+        .env("P4_NAME", "traffic_gen")
+        .env("NUM_PORTS", "6")
+        .env("P4TG_PORT", port.to_string())
+        .env("P4TG_EXTERNAL_RECIRCULATION", "1")
+        .env("RUST_LOG", "warn,p4tg_controller=info")
+        .kill_on_drop(true);
+    command
+}
+
+async fn assert_valid_breakout_startup(
+    label: &str,
+    config: Value,
+    expected_channels: &[u64],
+) -> TestResult {
+    let workdir = PathBuf::from(format!(
+        "/tmp/p4tg-ci-breakout-{}-{label}",
+        std::process::id(),
+    ));
+    std::fs::create_dir_all(&workdir)?;
+    std::fs::write(workdir.join("config.json"), serde_json::to_vec(&config)?)?;
+
+    let mut child = controller_command(&workdir, 18081)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let api = ApiClient::new("http://127.0.0.1:18081");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let ports = loop {
+        if child.try_wait()?.is_some() {
+            let _ = std::fs::remove_dir_all(&workdir);
+            return Err(format!("{label}: controller exited before becoming ready").into());
+        }
+        if let Ok(response) = api.get("/api/ports").await {
+            if response.status().is_success() {
+                break response.json::<Value>().await?;
+            }
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            let _ = std::fs::remove_dir_all(&workdir);
+            return Err(format!("{label}: controller did not become ready").into());
+        }
+        sleep(Duration::from_millis(100)).await;
+    };
+    child.kill().await?;
+    child.wait().await?;
+    std::fs::remove_dir_all(&workdir)?;
+
+    let expected: std::collections::BTreeSet<u64> = expected_channels.iter().copied().collect();
+    for port_number in 1..=6 {
+        let actual: std::collections::BTreeSet<u64> = ports
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|port| port["port"] == port_number)
+            .filter_map(|port| port["channel"].as_u64())
+            .collect();
+        if actual != expected {
+            return Err(format!(
+                "{label}: port {port_number} channels were {actual:?}, expected {expected:?}"
+            )
+            .into());
+        }
+    }
+    println!("ok startup_config::{label}");
+    Ok(())
+}
+
+async fn assert_invalid_startup(label: &str, config: Value, needle: &str) -> TestResult {
+    let workdir = PathBuf::from(format!(
+        "/tmp/p4tg-ci-invalid-config-{}-{label}",
+        std::process::id(),
+    ));
+    std::fs::create_dir_all(&workdir)?;
+    std::fs::write(workdir.join("config.json"), serde_json::to_vec(&config)?)?;
+
+    let child = controller_command(&workdir, 18081)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let output = match tokio::time::timeout(Duration::from_secs(15), child.wait_with_output()).await
+    {
+        Ok(output) => output?,
+        Err(_) => {
+            let _ = std::fs::remove_dir_all(&workdir);
+            return Err(format!("{label}: controller did not reject invalid config").into());
+        }
+    };
+    std::fs::remove_dir_all(&workdir)?;
+    let logs = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !logs.contains(needle) {
+        return Err(format!("{label}: expected {needle:?} in controller logs: {logs}").into());
+    }
+    println!("ok startup_config::{label}");
+    Ok(())
+}
+
+async fn assert_breakout_and_manual_recirculation_startup() -> TestResult {
+    let is_tofino2 = std::env::var("P4TG_TARGET").as_deref() == Ok("tofino2");
+    if is_tofino2 {
+        assert_valid_breakout_startup(
+            "tofino2_two_way_breakout",
+            startup_port_config(
+                "BF_SPEED_200G",
+                "BF_FEC_TYP_REED_SOLOMON",
+                2,
+                (3, 4),
+                (5, 6),
+            ),
+            &[0, 4],
+        )
+        .await?;
+        assert_valid_breakout_startup(
+            "tofino2_eight_way_breakout",
+            startup_port_config("BF_SPEED_50G", "BF_FEC_TYP_REED_SOLOMON", 8, (3, 4), (5, 6)),
+            &[0, 1, 2, 3, 4, 5, 6, 7],
+        )
+        .await?;
+    } else {
+        assert_valid_breakout_startup(
+            "tofino_two_way_breakout",
+            startup_port_config("BF_SPEED_50G", "BF_FEC_TYP_NONE", 2, (3, 4), (5, 6)),
+            &[0, 2],
+        )
+        .await?;
+    }
+
+    let (speed, fec) = if is_tofino2 {
+        ("BF_SPEED_100G", "BF_FEC_TYP_REED_SOLOMON")
+    } else {
+        ("BF_SPEED_25G", "BF_FEC_TYP_NONE")
+    };
+    assert_invalid_startup(
+        "duplicate_manual_recirculation_rejected",
+        startup_port_config(speed, fec, 4, (3, 4), (3, 4)),
+        "Recirculation port 3 is used more than once",
+    )
+    .await?;
+    assert_invalid_startup(
+        "traffic_port_recirculation_overlap_rejected",
+        startup_port_config(speed, fec, 4, (2, 4), (5, 6)),
+        "Recirculation port 2 is also configured as a traffic-generation port",
+    )
+    .await?;
     Ok(())
 }
 
@@ -480,12 +676,105 @@ async fn cancel_during_cooldown(api: &ApiClient, rate: f64) -> TestResult {
     Ok(())
 }
 
+async fn restart_lifecycle(api: &ApiClient, rate: f64) -> TestResult {
+    let response = api.get("/api/restart").await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if status != StatusCode::BAD_REQUEST || !body.contains("Nothing to restart") {
+        return Err(format!("idle restart returned {status} {body}").into());
+    }
+    println!("ok lifecycle::restart_rejects_idle_controller");
+
+    let payload = named_payload(rate, "restart duration", 2, 1);
+    start_payload(api, "restart duration", &payload).await?;
+    sleep(Duration::from_millis(1200)).await;
+    let response = api.get("/api/restart").await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if status != StatusCode::OK {
+        return Err(format!("active restart returned {status} {body}").into());
+    }
+    let restarted: Value = serde_json::from_str(&body)
+        .map_err(|error| format!("active restart returned invalid JSON: {error}: {body}"))?;
+    if restarted.as_array().map_or(0, Vec::len) != 1 {
+        return Err(format!("active restart returned unexpected streams: {restarted}").into());
+    }
+
+    // The original deadline expires during this wait. The restarted duration
+    // monitor must own a fresh deadline and keep the replacement run alive.
+    sleep(Duration::from_millis(1100)).await;
+    let (status, state) = traffic_state(api).await?;
+    if status != StatusCode::OK || state["name"] != "restart duration" {
+        return Err(format!("old deadline stopped restarted traffic: {status} {state}").into());
+    }
+    wait_for_traffic_state(
+        api,
+        "restarted duration monitor completion",
+        Duration::from_secs(5),
+        |status, value| status == StatusCode::ACCEPTED && value["message"] == "Not running.",
+    )
+    .await?;
+    println!("ok lifecycle::restart_resets_duration_deadline");
+
+    let first = named_payload(rate, "restart multi first", 2, 1);
+    let second = named_payload(rate, "restart multi second", 1, 1);
+    start_payload(api, "restart multi sequence", &json!([first, second])).await?;
+    wait_for_traffic_state(
+        api,
+        "restartable multi-test run",
+        Duration::from_secs(8),
+        |status, value| status == StatusCode::OK && value["name"] == "restart multi first",
+    )
+    .await?;
+    let response = api.get("/api/restart").await?;
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = response.text().await?;
+        return Err(format!("multi-test restart returned {status} {body}").into());
+    }
+    wait_for_traffic_state(
+        api,
+        "second run after multi-test restart",
+        Duration::from_secs(12),
+        |status, value| status == StatusCode::OK && value["name"] == "restart multi second",
+    )
+    .await?;
+    wait_for_traffic_state(
+        api,
+        "restarted multi-test completion",
+        Duration::from_secs(8),
+        |status, value| status == StatusCode::ACCEPTED && value["message"] == "Not running.",
+    )
+    .await?;
+    for path in ["/api/statistics", "/api/time_statistics"] {
+        let results = json_get(api, path).await?;
+        let names = result_names(&results);
+        if names.len() != 2
+            || names
+                .iter()
+                .filter(|name| **name == "restart multi first")
+                .count()
+                != 1
+            || names
+                .iter()
+                .filter(|name| **name == "restart multi second")
+                .count()
+                != 1
+        {
+            return Err(format!("{path} lost or duplicated restarted runs: {names:?}").into());
+        }
+    }
+    println!("ok lifecycle::restart_preserves_multi_test_sequence");
+    Ok(())
+}
+
 async fn exercise_orchestration(api: &ApiClient, rate: f64) -> TestResult {
     duration_and_drain_lifecycle(api, rate).await?;
     duration_monitor_replacement(api, rate).await?;
     multiple_test_lifecycle(api, rate).await?;
     skip_and_cancel_lifecycle(api, rate).await?;
     cancel_during_cooldown(api, rate).await?;
+    restart_lifecycle(api, rate).await?;
     Ok(())
 }
 
@@ -496,6 +785,10 @@ async fn main() -> TestResult {
     let api = ApiClient::new(base_url);
     if std::env::var_os("P4TG_DIRECT_BFRT").is_some() {
         assert_bfrt_table_read().await?;
+        return Ok(());
+    }
+    if std::env::var_os("P4TG_ASSERT_CONFIG_VALIDATION").is_some() {
+        assert_breakout_and_manual_recirculation_startup().await?;
         return Ok(());
     }
     let online = json_get(&api, "/api/online").await?;

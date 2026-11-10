@@ -39,9 +39,9 @@ tests/ci/compile-p4.sh tofino "$out"
 ```
 
 All containers use a `p4tg-ci-` prefix. Model, switchd, and controller share an
-isolated network namespace. Front-panel ports 1 and 2 are connected by a veth
-pair. Each recirculation port uses a one-port Linux bridge with hairpin mode to
-emulate same-port loopback.
+isolated network namespace. Every channel of four-way front-panel ports 1 and 2
+is connected by a veth pair. Every channel of each manual recirculation port
+uses a one-port Linux bridge with hairpin mode to emulate same-port loopback.
 
 ## Model capabilities & limitations
 
@@ -50,7 +50,9 @@ emulate same-port loopback.
 | P4 compile | Pass | Pass |
 | Model and `bf_switchd` startup | Pass | Pass |
 | Controller startup and ASIC detection | Pass | Pass |
-| `config.json` and front-panel mapping | Pass (`1/0 -> 0`, `2/0 -> 4`) | Pass (`1/0 -> 8`, `2/0 -> 16`) |
+| Explicit `config.json` port settings and manual TX/RX recirculation | Pass | Pass |
+| Breakout mapping | Pass (2-way `0,2`; 4-way `0,1,2,3`) | Pass (2-way `0,4`; 4-way `0,2,4,6`; 8-way `0`–`7`) |
+| Port update, invalid-combination rejection, and per-channel ARP | Pass | Pass |
 | `GET /api/online` and `GET /api/ports` | Pass | Pass |
 | pktgen at stable smoke rate | Pass (0.001 Gbit/s) | Pass (0.00001 Gbit/s) |
 | 1-to-2 veth forwarding | Pass | Pass |
@@ -111,9 +113,10 @@ TX/RX counts. No P4 product change is required.
 | Test | Layer | Value |
 |---|---|---|
 | Controller's 3,653 existing Rust tests | controller | Predominantly generated rate-solver cases, plus existing module-level behavior |
-| Eleven endpoint/response/OpenAPI checks | API/model | Detect route removal, response-shape changes, crashes, and payload/schema drift |
+| Twenty-four endpoint/response/OpenAPI checks | API/model | Detect route removal, response-shape changes, port/ARP mutation failures, invalid port combinations, crashes, and payload/schema drift |
 | Fifty-two named validation regressions | API/model | Exercise real deserialization and semantic validation, including exact 400/422 behavior |
-| Five controller orchestration lifecycle scenarios | API/model | Natural duration/drain completion, duration-zero and stale-monitor replacement, multi-test repetitions/history, skip vs. stop, rejected-request preservation, and cooldown cancellation |
+| Eight controller orchestration lifecycle scenarios | API/model | Natural duration/drain completion, duration-zero and stale-monitor replacement, multi-test repetitions/history, skip vs. stop, rejected-request preservation, cooldown cancellation, and idle/active/multi-test restart behavior |
+| Breakout and manual recirculation startup | API/model | Programs valid T1 2/4-way and T2 2/4/8-way mappings, verifies explicit speed/FEC/autoneg/MAC settings, and rejects duplicate or traffic-port-overlapping manual TX/RX recirculation ports |
 | CBR loopback with counter, digest, histogram, loss, and ordering assertions | model | Complete controller/P4/model/DMA path |
 | Mpps, Poisson, Analyze, multiple-stream, per-stream RX, and rejected-request lifecycle | model | Programming paths beyond CBR and proof that invalid requests preserve live traffic |
 | IPv4, IPv6, VLAN, QinQ, MPLS, VxLAN, GTP-U, and T2 SRv6 payload lifecycles | model | Exercise controller-to-P4 header programming for every supported profile |
@@ -186,7 +189,7 @@ working Retry action. Existing React DOM/key/NaN warnings and Vite's bundle-size
 warnings remain visible without failing the build.
 
 Controller lifecycle fault injection still needs an internal switch/BfRt test
-seam: simulated BfRt failures during start/stop, restart races, and RFC2544
+seam: simulated BfRt failures during start/stop/restart and RFC2544
 trial failures cannot be induced reliably through the public API. This does
 not depend on, or imply, a controller library refactor. The controller also
 documents a known reset/cooldown edge case:
@@ -209,7 +212,7 @@ script, security, or purely visual work).
 | 2.8.2 | RFC2544 results use measured rather than requested TX rates | L — existing RFC2544/unit coverage; public orchestration still needs an injectable switch/BfRt test seam |
 | 2.8.1 | Rate-digest timestamps; IAT pipe bounds; 50k RTT/IAT storage cap; counter-regression rate guard; TX/RX digest jitter | L — monitor/statistics internals |
 | 2.8.1 | Large histogram processing; histogram NaN/null for 0/1 samples; unexpected frame table entries | T — model histogram/counter presence plus finite zero-bin results; malformed-table injection remains L |
-| 2.8.1 | Unsupported FEC, omitted breakout `channel_count`, 1x50G/8x50G FEC, T1 200G, mixed breakout warning, per-channel ARP MAC | H — depends on physical port manager/channel layout |
+| 2.8.1 | Unsupported FEC, omitted breakout `channel_count`, T1/T2 layout bounds, four-way channel mapping, manual recirculation, and per-channel ARP MAC | T — both model targets program all four channels and exercise successful/invalid port and ARP mutations; mixed-rate warnings and physical link behavior remain H |
 | 2.8.1 | Corrected ports Swagger and ARP docs | T — `schema::public_paths_and_payload` |
 | 2.8.1 | Python automation error handling and auto-negotiation constants | N — legacy Python harness intentionally unchanged |
 | 2.8.1 | Complete JSON result exports; single-point PDF chart; correct PDF time-series selection | G/T/L — `v2_8_1_complete_json_result_export` and result-tab tests cover full fetch/selection; `v2_8_1_pdf_result_export_contract` plus model PDF covers the public contract, while single-point chart drawing remains controller-internal |

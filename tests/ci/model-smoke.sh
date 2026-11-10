@@ -35,16 +35,26 @@ case "$target" in
   tofino)
     ingress_port=0
     egress_port=4
-    recirc_ports=8,12,16,20
-    port_map='{"PortToIf":[{"device_port":0,"if":"p0"},{"device_port":4,"if":"p4"},{"device_port":8,"if":"p8"},{"device_port":12,"if":"p12"},{"device_port":16,"if":"p16"},{"device_port":20,"if":"p20"}]}'
+    front_pairs='0:4 1:5 2:6 3:7'
+    recirc_ports=8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23
+    model_ports='0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23'
+    port_speed=BF_SPEED_25G
+    port_fec=BF_FEC_TYP_NONE
+    channel_mac_1='{"0":"02:00:00:00:00:01","1":"02:00:00:00:00:02","2":"02:00:00:00:00:03","3":"02:00:00:00:00:04"}'
+    channel_mac_2='{"0":"02:00:00:00:00:11","1":"02:00:00:00:00:12","2":"02:00:00:00:00:13","3":"02:00:00:00:00:14"}'
     probe_wait=12
     traffic_rate=${traffic_rate:-0.001}
     ;;
   tofino2)
     ingress_port=8
     egress_port=16
-    recirc_ports=24,32,40,48
-    port_map='{"PortToIf":[{"device_port":8,"if":"p8"},{"device_port":16,"if":"p16"},{"device_port":24,"if":"p24"},{"device_port":32,"if":"p32"},{"device_port":40,"if":"p40"},{"device_port":48,"if":"p48"}]}'
+    front_pairs='8:16 9:17 10:18 11:19 12:20 13:21 14:22 15:23'
+    recirc_ports=24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55
+    model_ports='8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55'
+    port_speed=BF_SPEED_100G
+    port_fec=BF_FEC_TYP_REED_SOLOMON
+    channel_mac_1='{"0":"02:00:00:00:00:01","2":"02:00:00:00:00:03","4":"02:00:00:00:00:05","6":"02:00:00:00:00:07"}'
+    channel_mac_2='{"0":"02:00:00:00:00:11","2":"02:00:00:00:00:13","4":"02:00:00:00:00:15","6":"02:00:00:00:00:17"}'
     probe_wait=25
     traffic_rate=${traffic_rate:-0.00001}
     ;;
@@ -57,13 +67,21 @@ if [[ -n "${P4TG_SMOKE_WAIT:-}" ]]; then
   probe_wait=$P4TG_SMOKE_WAIT
 fi
 
+port_map='{"PortToIf":['
+separator=
+for port in $model_ports; do
+  port_map+="${separator}{\"device_port\":${port},\"if\":\"p${port}\"}"
+  separator=,
+done
+port_map+=']}'
+
 mkdir -p "$runtime/run"
 chmod 0777 "$runtime" "$runtime/run"
 printf '%s\n' \
   '{' \
   '  "tg_ports": [' \
-  '    {"port": 1, "mac": "02:00:00:00:00:01", "recirculation_ports": {"tx_port": 3, "rx_port": 4}},' \
-  '    {"port": 2, "mac": "02:00:00:00:00:02", "recirculation_ports": {"tx_port": 5, "rx_port": 6}}' \
+  "    {\"port\": 1, \"mac\": \"02:00:00:00:00:01\", \"speed\": \"$port_speed\", \"fec\": \"$port_fec\", \"auto_negotiation\": \"PM_AN_DEFAULT\", \"channel_count\": 4, \"arp_reply\": false, \"channel_mac\": $channel_mac_1, \"recirculation_ports\": {\"tx_port\": 3, \"rx_port\": 4}}," \
+  "    {\"port\": 2, \"mac\": \"02:00:00:00:00:11\", \"speed\": \"$port_speed\", \"fec\": \"$port_fec\", \"auto_negotiation\": \"PM_AN_DEFAULT\", \"channel_count\": 4, \"arp_reply\": false, \"channel_mac\": $channel_mac_2, \"recirculation_ports\": {\"tx_port\": 5, \"rx_port\": 6}}" \
   '  ]' \
   '}' > "$runtime/config.json"
 printf '%s\n' \
@@ -93,13 +111,18 @@ docker run -d --name "$container" --network none \
   -v "$bundle:/p4tg/bundle:ro" \
   -v "$runtime:/p4tg/runtime" \
   -e P4TG_TARGET="$target" -e P4TG_INGRESS_PORT="$ingress_port" \
-  -e P4TG_EGRESS_PORT="$egress_port" -e P4TG_RECIRC_PORTS="$recirc_ports" \
+  -e P4TG_EGRESS_PORT="$egress_port" -e P4TG_FRONT_PAIRS="$front_pairs" \
+  -e P4TG_RECIRC_PORTS="$recirc_ports" \
   --entrypoint bash "$netsim_image" -ec '
-    ip link add "p$P4TG_INGRESS_PORT" type veth peer name "p$P4TG_EGRESS_PORT"
-    ip link set dev "p$P4TG_INGRESS_PORT" addrgenmode none
-    ip link set dev "p$P4TG_EGRESS_PORT" addrgenmode none
-    ip link set "p$P4TG_INGRESS_PORT" up
-    ip link set "p$P4TG_EGRESS_PORT" up
+    for pair in $P4TG_FRONT_PAIRS; do
+      ingress=${pair%%:*}
+      egress=${pair##*:}
+      ip link add "p$ingress" type veth peer name "p$egress"
+      ip link set dev "p$ingress" addrgenmode none
+      ip link set dev "p$egress" addrgenmode none
+      ip link set "p$ingress" up
+      ip link set "p$egress" up
+    done
     for port in ${P4TG_RECIRC_PORTS//,/ }; do
       ip link add "p$port" type veth peer name "q$port"
       ip link add "b$port" type bridge
@@ -190,6 +213,10 @@ fi
 # bf_switchd allows one P4 owner. Exercise rbfrt directly only after all REST
 # assertions are complete and the controller has released its ownership.
 docker stop "$controller_container" >/dev/null
+docker run --rm --name "$test_container" --network "container:$container" \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  -e P4TG_TARGET="$target" -e P4TG_ASSERT_CONFIG_VALIDATION=1 \
+  --entrypoint /app/p4tg-model-tests p4tg-ci-controller:local
 docker run --rm --name "$test_container" --network "container:$container" \
   --cap-drop ALL --security-opt no-new-privileges:true \
   -e P4TG_DIRECT_BFRT=1 \
