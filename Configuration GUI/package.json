@@ -2,6 +2,11 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "overrides": {
+    "serve": {
+      "compression": "1.8.2"
+    }
+  },
   "dependencies": {
     "@coreui/coreui": "^5.9.0",
     "@coreui/react": "^5.13.0",

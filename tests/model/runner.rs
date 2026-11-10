@@ -102,11 +102,6 @@ fn result_names(results: &Value) -> Vec<&str> {
 }
 
 async fn assert_data_plane(api: &ApiClient) -> TestResult {
-    let online = json_get(api, "/api/online").await?;
-    if online["digests_alive"] != true {
-        return Err(format!("digest pipeline is not alive: {online}").into());
-    }
-
     let running = json_get(api, "/api/trafficgen").await?;
     let running_text = running.to_string();
     for field in ["n_packets", "timeout", "generation_accuracy", "n_pipes"] {
@@ -115,16 +110,32 @@ async fn assert_data_plane(api: &ApiClient) -> TestResult {
         }
     }
 
-    let statistics = json_get(api, "/api/statistics").await?;
-    let latest = statistics
-        .as_array()
-        .and_then(|values| values.last())
-        .ok_or("statistics did not contain a test result")?;
-    let tx = packet_sum(&latest["frame_size"]["1"]["0"]["tx"]);
-    let rx = packet_sum(&latest["frame_size"]["2"]["0"]["rx"]);
-    if tx == 0 || rx == 0 {
-        return Err(format!("loopback counters did not grow: tx={tx}, rx={rx}").into());
-    }
+    let timeout = std::env::var("P4TG_DATA_PLANE_TIMEOUT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(30));
+    let deadline = Instant::now() + timeout;
+    let (latest, tx, rx) = loop {
+        let online = json_get(api, "/api/online").await?;
+        let statistics = json_get(api, "/api/statistics").await?;
+        let latest = statistics
+            .as_array()
+            .and_then(|values| values.last())
+            .ok_or("statistics did not contain a test result")?;
+        let tx = packet_sum(&latest["frame_size"]["1"]["0"]["tx"]);
+        let rx = packet_sum(&latest["frame_size"]["2"]["0"]["rx"]);
+        if online["digests_alive"] == true && tx > 0 && rx > 0 {
+            break (latest.clone(), tx, rx);
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "data plane did not become ready within {timeout:?}: online={online}, tx={tx}, rx={rx}"
+            )
+            .into());
+        }
+        sleep(Duration::from_secs(1)).await;
+    };
     if !is_zero_report(&latest["packet_loss"]) || !is_zero_report(&latest["out_of_order"]) {
         return Err(format!(
             "loopback reported loss/order errors: loss={}, out_of_order={}",
