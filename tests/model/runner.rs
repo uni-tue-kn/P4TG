@@ -9,7 +9,10 @@ use p4tg_tests::{
     payload::{payload_for_profile, HeaderProfile, TrafficGenPayload},
 };
 use rbfrt::{table, SwitchConnection};
+use reqwest::StatusCode;
 use serde_json::{json, Value};
+use std::time::Duration;
+use tokio::time::{sleep, Instant};
 
 fn packet_sum(value: &Value) -> u64 {
     value
@@ -27,6 +30,67 @@ fn all_numeric_leaves_are_zero(value: &Value) -> bool {
         Value::Number(number) => number.as_f64() == Some(0.0),
         _ => true,
     }
+}
+
+async fn traffic_state(api: &ApiClient) -> TestResult<(StatusCode, Value)> {
+    let response = api.get("/api/trafficgen").await?;
+    let status = response.status();
+    let body = response.text().await?;
+    let value = serde_json::from_str(&body)
+        .map_err(|error| format!("trafficgen returned invalid JSON: {error}: {body}"))?;
+    Ok((status, value))
+}
+
+async fn wait_for_traffic_state<F>(
+    api: &ApiClient,
+    label: &str,
+    timeout: Duration,
+    predicate: F,
+) -> TestResult<Value>
+where
+    F: Fn(StatusCode, &Value) -> bool,
+{
+    let deadline = Instant::now() + timeout;
+    loop {
+        let (status, value) = traffic_state(api).await?;
+        if predicate(status, &value) {
+            return Ok(value);
+        }
+        if Instant::now() >= deadline {
+            return Err(
+                format!("timed out waiting for {label}; last state was {status} {value}").into(),
+            );
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+}
+
+async fn start_payload(api: &ApiClient, label: &str, payload: &Value) -> TestResult<Value> {
+    let response = api.post_json("/api/trafficgen", payload).await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(format!("{label}: start returned {status} {body}").into());
+    }
+    serde_json::from_str(&body)
+        .map_err(|error| format!("{label}: start returned invalid JSON: {error}: {body}").into())
+}
+
+fn named_payload(rate: f64, name: &str, duration: u64, repetitions: u32) -> Value {
+    let mut payload = TrafficGenPayload::valid(rate).json();
+    payload["name"] = json!(name);
+    payload["duration"] = json!(duration);
+    payload["repetitions"] = json!(repetitions);
+    payload
+}
+
+fn result_names(results: &Value) -> Vec<&str> {
+    results
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|result| result["name"].as_str())
+        .collect()
 }
 
 async fn assert_data_plane(api: &ApiClient) -> TestResult {
@@ -200,6 +264,231 @@ async fn exercise_modes(api: &ApiClient, rate: f64) -> TestResult {
     Ok(())
 }
 
+async fn duration_and_drain_lifecycle(api: &ApiClient, rate: f64) -> TestResult {
+    let mut payload = named_payload(rate, "duration drain", 1, 1);
+    payload["drain_duration_secs"] = json!(1);
+    start_payload(api, "duration drain", &payload).await?;
+
+    wait_for_traffic_state(
+        api,
+        "duration monitor to enter drain",
+        Duration::from_secs(10),
+        |status, value| status == StatusCode::OK && value["draining"] == true,
+    )
+    .await?;
+    wait_for_traffic_state(
+        api,
+        "duration monitor to terminate",
+        Duration::from_secs(10),
+        |status, value| status == StatusCode::ACCEPTED && value["message"] == "Not running.",
+    )
+    .await?;
+
+    let statistics = json_get(api, "/api/statistics").await?;
+    if !result_names(&statistics).contains(&"duration drain") {
+        return Err(format!("duration-completed result was not retained: {statistics}").into());
+    }
+    println!("ok lifecycle::duration_auto_stop_and_drain");
+    Ok(())
+}
+
+async fn duration_monitor_replacement(api: &ApiClient, rate: f64) -> TestResult {
+    let no_deadline = named_payload(rate, "no duration deadline", 0, 1);
+    start_payload(api, "no duration deadline", &no_deadline).await?;
+    sleep(Duration::from_millis(1200)).await;
+    let (status, state) = traffic_state(api).await?;
+    if status != StatusCode::OK || state["name"] != "no duration deadline" {
+        return Err(format!("duration=0 stopped unexpectedly: {status} {state}").into());
+    }
+    let stop = api.delete("/api/trafficgen").await?;
+    if !stop.status().is_success() {
+        return Err(format!("explicit stop for duration=0 returned {}", stop.status()).into());
+    }
+
+    let old = named_payload(rate, "replaced duration", 1, 1);
+    start_payload(api, "replaced duration", &old).await?;
+    sleep(Duration::from_millis(300)).await;
+    let replacement = named_payload(rate, "replacement survives", 10, 1);
+    start_payload(api, "replacement survives", &replacement).await?;
+    sleep(Duration::from_millis(1200)).await;
+    let (status, state) = traffic_state(api).await?;
+    if status != StatusCode::OK || state["name"] != "replacement survives" {
+        return Err(format!("stale duration monitor stopped replacement: {status} {state}").into());
+    }
+    let stop = api.delete("/api/trafficgen").await?;
+    if !stop.status().is_success() {
+        return Err(format!("replacement stop returned {}", stop.status()).into());
+    }
+    println!("ok lifecycle::duration_zero_and_monitor_replacement");
+    Ok(())
+}
+
+async fn multiple_test_lifecycle(api: &ApiClient, rate: f64) -> TestResult {
+    let first = named_payload(rate, "multi first", 1, 2);
+    let second = named_payload(rate, "multi second", 1, 1);
+    let started = start_payload(api, "multiple tests", &json!([first, second])).await?;
+    if started.as_array().map_or(0, Vec::len) != 2 {
+        return Err(format!("multiple-test POST returned unexpected payload: {started}").into());
+    }
+
+    for (expected_name, expected_source) in [
+        ("multi first [1/2]", "multi first"),
+        ("multi first [2/2]", "multi first"),
+        ("multi second", "multi second"),
+    ] {
+        let state = wait_for_traffic_state(
+            api,
+            expected_name,
+            Duration::from_secs(12),
+            |status, value| status == StatusCode::OK && value["name"] == expected_name,
+        )
+        .await?;
+        if state["source_name"] != expected_source {
+            return Err(format!(
+                "{expected_name}: source_name was {}, expected {expected_source}",
+                state["source_name"]
+            )
+            .into());
+        }
+        if expected_name != "multi second" {
+            wait_for_traffic_state(
+                api,
+                &format!("cooldown after {expected_name}"),
+                Duration::from_secs(12),
+                |status, value| status == StatusCode::OK && value["cooldown"] == true,
+            )
+            .await?;
+        }
+    }
+
+    wait_for_traffic_state(
+        api,
+        "multiple-test completion",
+        Duration::from_secs(12),
+        |status, value| status == StatusCode::ACCEPTED && value["message"] == "Not running.",
+    )
+    .await?;
+
+    for path in ["/api/statistics", "/api/time_statistics"] {
+        let results = json_get(api, path).await?;
+        let names = result_names(&results);
+        for expected in ["multi first [1/2]", "multi first [2/2]", "multi second"] {
+            if !names.contains(&expected) {
+                return Err(format!("{path} omitted {expected}: {names:?}").into());
+            }
+        }
+        if names.len() != 3 {
+            return Err(format!("{path} duplicated or lost multi-test results: {names:?}").into());
+        }
+    }
+    println!("ok lifecycle::multiple_tests_and_repetitions");
+    Ok(())
+}
+
+async fn skip_and_cancel_lifecycle(api: &ApiClient, rate: f64) -> TestResult {
+    let first = named_payload(rate, "skip first", 10, 1);
+    let second = named_payload(rate, "skip second", 10, 1);
+    start_payload(api, "skip sequence", &json!([first, second])).await?;
+    wait_for_traffic_state(
+        api,
+        "first skippable run",
+        Duration::from_secs(10),
+        |status, value| status == StatusCode::OK && value["name"] == "skip first",
+    )
+    .await?;
+
+    let mut invalid = named_payload(rate, "invalid during sequence", 1, 1);
+    invalid["streams"][0]["app_id"] = json!(0);
+    let rejected = api.post_json("/api/trafficgen", &invalid).await?;
+    if rejected.status() != StatusCode::BAD_REQUEST {
+        return Err(format!(
+            "invalid request during sequence returned {}",
+            rejected.status()
+        )
+        .into());
+    }
+    let (status, state) = traffic_state(api).await?;
+    if status != StatusCode::OK || state["name"] != "skip first" {
+        return Err(
+            format!("rejected request cancelled multi-test sequence: {status} {state}").into(),
+        );
+    }
+
+    let skip = api.delete("/api/trafficgen?skip=true").await?;
+    if !skip.status().is_success() {
+        return Err(format!("skip current test returned {}", skip.status()).into());
+    }
+    wait_for_traffic_state(
+        api,
+        "second run after skip",
+        Duration::from_secs(12),
+        |status, value| status == StatusCode::OK && value["name"] == "skip second",
+    )
+    .await?;
+
+    let stop = api.delete("/api/trafficgen").await?;
+    if !stop.status().is_success() {
+        return Err(format!("stop sequence returned {}", stop.status()).into());
+    }
+    wait_for_traffic_state(
+        api,
+        "sequence cancellation",
+        Duration::from_secs(5),
+        |status, value| status == StatusCode::ACCEPTED && value["message"] == "Not running.",
+    )
+    .await?;
+    sleep(Duration::from_millis(500)).await;
+    let (status, state) = traffic_state(api).await?;
+    if status != StatusCode::ACCEPTED || state["message"] != "Not running." {
+        return Err(format!("cancelled sequence restarted unexpectedly: {status} {state}").into());
+    }
+    let repeated_stop = api.delete("/api/trafficgen").await?;
+    if !repeated_stop.status().is_success() {
+        return Err(format!("repeated idle stop returned {}", repeated_stop.status()).into());
+    }
+    println!("ok lifecycle::skip_advances_and_stop_cancels");
+    Ok(())
+}
+
+async fn cancel_during_cooldown(api: &ApiClient, rate: f64) -> TestResult {
+    let first = named_payload(rate, "cooldown first", 1, 1);
+    let second = named_payload(rate, "cooldown must not start", 10, 1);
+    start_payload(api, "cooldown cancellation", &json!([first, second])).await?;
+    wait_for_traffic_state(
+        api,
+        "multi-test cooldown",
+        Duration::from_secs(12),
+        |status, value| status == StatusCode::OK && value["cooldown"] == true,
+    )
+    .await?;
+
+    let stop = api.delete("/api/trafficgen").await?;
+    if !stop.status().is_success() {
+        return Err(format!("stop during cooldown returned {}", stop.status()).into());
+    }
+    sleep(Duration::from_millis(3500)).await;
+    let (status, state) = traffic_state(api).await?;
+    if status != StatusCode::ACCEPTED || state["message"] != "Not running." {
+        return Err(format!("test advanced after cooldown cancellation: {status} {state}").into());
+    }
+    let statistics = json_get(api, "/api/statistics").await?;
+    let names = result_names(&statistics);
+    if names.contains(&"cooldown must not start") {
+        return Err(format!("cancelled cooldown started the next test: {names:?}").into());
+    }
+    println!("ok lifecycle::cancel_during_cooldown");
+    Ok(())
+}
+
+async fn exercise_orchestration(api: &ApiClient, rate: f64) -> TestResult {
+    duration_and_drain_lifecycle(api, rate).await?;
+    duration_monitor_replacement(api, rate).await?;
+    multiple_test_lifecycle(api, rate).await?;
+    skip_and_cancel_lifecycle(api, rate).await?;
+    cancel_during_cooldown(api, rate).await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> TestResult {
     let base_url =
@@ -223,6 +512,7 @@ async fn main() -> TestResult {
         let rate = if is_tofino2 { 0.00001 } else { 0.001 };
         exercise_modes(&api, rate).await?;
         exercise_headers(&api, rate, is_tofino2).await?;
+        exercise_orchestration(&api, rate).await?;
     }
 
     api.delete("/api/trafficgen?skip=true").await?;

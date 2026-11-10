@@ -110,9 +110,10 @@ TX/RX counts. No P4 product change is required.
 
 | Test | Layer | Value |
 |---|---|---|
-| Controller's 3,653 existing Rust tests | controller | Rate solver and module-level behavior |
+| Controller's 3,653 existing Rust tests | controller | Predominantly generated rate-solver cases, plus existing module-level behavior |
 | Eleven endpoint/response/OpenAPI checks | API/model | Detect route removal, response-shape changes, crashes, and payload/schema drift |
 | Fifty-two named validation regressions | API/model | Exercise real deserialization and semantic validation, including exact 400/422 behavior |
+| Five controller orchestration lifecycle scenarios | API/model | Natural duration/drain completion, duration-zero and stale-monitor replacement, multi-test repetitions/history, skip vs. stop, rejected-request preservation, and cooldown cancellation |
 | CBR loopback with counter, digest, histogram, loss, and ordering assertions | model | Complete controller/P4/model/DMA path |
 | Mpps, Poisson, Analyze, multiple-stream, per-stream RX, and rejected-request lifecycle | model | Programming paths beyond CBR and proof that invalid requests preserve live traffic |
 | IPv4, IPv6, VLAN, QinQ, MPLS, VxLAN, GTP-U, and T2 SRv6 payload lifecycles | model | Exercise controller-to-P4 header programming for every supported profile |
@@ -183,6 +184,14 @@ Initial `/ports` GET failures, config-fetch failures, and ARP-update failures
 are regression tested; the initial failure now exits loading and offers a
 working Retry action. Existing React DOM/key/NaN warnings and Vite's bundle-size/config
 warnings remain visible without failing the build.
+
+Controller lifecycle fault injection still needs an internal test seam after
+the binary-to-library refactor: simulated BfRt failures during start/stop,
+restart races, and RFC2544 trial failures cannot be induced reliably through
+the public API. The controller also documents a known reset/cooldown edge case:
+resetting during a multi-test cooldown may allow the pending pre-reset snapshot
+to be added back to result history. The black-box suite deliberately does not
+encode that incorrect behavior as the expected result.
 
 ## Changelog regression inventory
 
