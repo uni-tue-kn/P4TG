@@ -11,8 +11,15 @@ RUN cargo build --release -j 8
 
 WORKDIR /build/tests
 COPY tests/Cargo.toml ./
+COPY tests/Cargo.lock ./
 COPY tests/common ./common
-RUN cargo check -j 8
+COPY tests/api ./api
+COPY tests/regression ./regression
+COPY tests/model ./model
+RUN --mount=type=cache,id=p4tg-ci-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=p4tg-ci-tests-target,target=/build/tests/target,sharing=locked \
+    cargo build --release --bin p4tg-model-tests -j 8 \
+ && cp target/release/p4tg-model-tests /build/p4tg-model-tests
 
 FROM debian:bookworm-slim
 RUN apt-get update \
@@ -20,4 +27,5 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /build/Controller/target/release/p4tg-controller ./p4tg-controller
+COPY --from=builder /build/p4tg-model-tests ./p4tg-model-tests
 ENTRYPOINT ["/app/p4tg-controller"]

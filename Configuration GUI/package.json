@@ -30,7 +30,7 @@
     "start": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "echo \"No frontend test runner configured.\""
+    "test": "vitest run"
   },
   "browserslist": {
     "production": [
@@ -46,7 +46,9 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^27.0.0",
     "typescript": "^7.0.2",
-    "vite": "^8.2.1"
+    "vite": "^8.2.1",
+    "vitest": "^4.0.0"
   }
 }

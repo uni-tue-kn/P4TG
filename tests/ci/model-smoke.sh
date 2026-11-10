@@ -8,11 +8,13 @@ traffic_rate=${P4TG_SMOKE_RATE:-}
 netsim_image='unituekn/unicornp4-netsim@sha256:b9ef8d75d7639808226340e51a79120a4752a43e082237eec9d78677d2d9dd07'
 container="p4tg-ci-model-${target}-$$"
 controller_container="p4tg-ci-controller-${target}-$$"
+test_container="p4tg-ci-tests-${target}-$$"
 runtime=$(mktemp -d "/tmp/p4tg-ci-${target}-XXXXXX")
 
 cleanup() {
   docker logs "$controller_container" > "$runtime/controller.log" 2>&1 || true
   docker rm -f "$controller_container" >/dev/null 2>&1 || true
+  docker rm -f "$test_container" >/dev/null 2>&1 || true
   docker logs "$container" > "$runtime/container.log" 2>&1 || true
   docker rm -f "$container" >/dev/null 2>&1 || true
 }
@@ -154,6 +156,10 @@ if [[ "$online" != true ]]; then
   exit 1
 fi
 
+docker run --rm --name "$test_container" --network "container:$container" \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  --entrypoint /app/p4tg-model-tests p4tg-ci-controller:local
+
 printf 'runtime=%s\n' "$runtime"
 printf 'online=%s\n' "$(cat "$runtime/online.json")"
 printf 'ports=%s\n' "$(docker exec "$container" curl --fail --silent http://127.0.0.1:18080/api/ports)"
@@ -166,13 +172,25 @@ docker exec "$container" curl --fail --silent http://127.0.0.1:18080/api/statist
   > "$runtime/statistics.json"
 docker exec "$container" curl --fail --silent http://127.0.0.1:18080/api/online \
   > "$runtime/online-after-traffic.json"
+docker run --rm --name "$test_container" --network "container:$container" \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  -e P4TG_ASSERT_DATA_PLANE=1 \
+  --entrypoint /app/p4tg-model-tests p4tg-ci-controller:local
 docker exec "$container" curl --fail --silent -X DELETE \
   'http://127.0.0.1:18080/api/trafficgen?skip=true' >/dev/null
 printf 'traffic=%s\n' "$(cat "$runtime/traffic-response.json")"
 printf 'online_after_traffic=%s\n' "$(cat "$runtime/online-after-traffic.json")"
-printf 'statistics=%s\n' "$(cat "$runtime/statistics.json")"
+printf 'statistics_file=%s/statistics.json\n' "$runtime"
 
 if grep -q '"digests_alive":false' "$runtime/online-after-traffic.json"; then
   echo "$target digest pipeline did not become live during the feasibility window" >&2
   exit 1
 fi
+
+# bf_switchd allows one P4 owner. Exercise rbfrt directly only after all REST
+# assertions are complete and the controller has released its ownership.
+docker stop "$controller_container" >/dev/null
+docker run --rm --name "$test_container" --network "container:$container" \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  -e P4TG_DIRECT_BFRT=1 \
+  --entrypoint /app/p4tg-model-tests p4tg-ci-controller:local

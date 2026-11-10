@@ -7,6 +7,10 @@ publish = false
 [lib]
 path = "common/lib.rs"
 
+[[bin]]
+name = "p4tg-model-tests"
+path = "model/runner.rs"
+
 [dependencies]
 rbfrt = "0.1.11"
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
