@@ -35,7 +35,7 @@ jobs:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -117,7 +117,7 @@ jobs:
       # The generated release commit contains [skip ci]. Build the image here
       # so its embedded controller version matches the tag without rerunning
       # the complete Tofino test matrix for deterministic version-only edits.
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: steps.prepare.outputs.ready == 'true'
       - uses: docker/login-action@v4
         if: steps.prepare.outputs.ready == 'true'
