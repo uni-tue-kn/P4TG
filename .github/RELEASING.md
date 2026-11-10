@@ -39,10 +39,11 @@ data-plane rebuild is necessary.
 
 ## Repository settings
 
-- Actions must have permission to write repository contents. If `main` is
-  protected by a ruleset, the GitHub Actions release actor must be allowed to
-  create the generated release commit and tag; otherwise the atomic push fails
-  without publishing a partial reservation.
+- Install the dedicated `P4TG Release` GitHub App only on this repository, with
+  read/write Contents and read Pull requests permissions. Store its App ID and
+  private key as `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` Actions secrets.
+  Add only this app to the bypass list for the `main` branch ruleset and, if
+  present, the release-tag ruleset. The normal workflow token remains read-only.
 - `DOCKER_USERNAME` and `DOCKER_PASSWORD` must be configured as Actions
   secrets for the stable controller image.
 - Create the labels above in the repository if maintainers want to select
@@ -62,19 +63,20 @@ release, but it does not move Docker's `latest` tag or GitHub's latest-release
 marker backwards once a newer version is present on `main`.
 
 Stable image publication does not happen on the initial `main` push: at that
-point `VERSION.md` still contains the preceding version. Because pushes made
-with `GITHUB_TOKEN` do not start new workflows, the stable image is built
-directly by `release.yml` after the version is reserved. The conditional
-nightly-image job in `tests.yml` publishes `:nightly` only after the complete
-test matrix passes on the `nightly` branch.
+point `VERSION.md` still contains the preceding version. The generated release
+commit uses `[skip ci]`, and the stable image is built directly by `release.yml`
+after the version is reserved. The conditional nightly-image job in `tests.yml`
+publishes `:nightly` only after the complete test matrix passes on `nightly`.
 
 ## Dependency updates
 
 Dependabot checks Cargo, npm, GitHub Actions, and Docker dependencies weekly.
 Version-update pull requests target `nightly`. Patch and minor updates are
 configured for squash auto-merge after all ruleset requirements pass; major
-updates remain open for manual review. Dependabot security updates target the
-default branch (`main`) and follow its normal review and release process.
+updates remain open for manual review. The `dtolnay/rust-toolchain` numeric ref
+is excluded because it selects the compiler rather than the action version and
+must be updated deliberately. Dependabot security updates target the default
+branch (`main`) and follow its normal review and release process.
 
 Periodically promote the accumulated changes with a reviewed `nightly` to
 `main` pull request. The normal release workflow makes the patch release after

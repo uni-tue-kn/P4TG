@@ -61,6 +61,11 @@ updates:
         update-types:
           - minor
           - patch
+    # The numeric ref selects the Rust compiler, not an action release.
+    # Dependabot otherwise treats future toolchain selectors as safe action
+    # updates and may merge a compiler version that rustup cannot install yet.
+    ignore:
+      - dependency-name: dtolnay/rust-toolchain
     commit-message:
       prefix: deps
       include: scope

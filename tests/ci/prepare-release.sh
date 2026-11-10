@@ -145,7 +145,7 @@ validate_release_commit() {
   [[ $(git show -s --format=%P "$candidate") == "$tested" ]] || return 1
   subject=$(git show -s --format=%s "$candidate")
   body=$(git show -s --format=%B "$candidate")
-  [[ $subject == "release: v$version" ]] || return 1
+  [[ $subject == "release: v$version [skip ci]" ]] || return 1
   grep -Fxq "P4TG-Release-Of: $tested" <<< "$body" || return 1
   grep -Fxq "P4TG-Release-Version: $version" <<< "$body" || return 1
   [[ $(git show "$candidate:VERSION.md" | tr -d '[:space:]') == "$version" ]] || return 1
@@ -281,7 +281,7 @@ else
       docs/CHANGELOG.md
     git -c user.name=github-actions\[bot\] \
       -c user.email=41898282+github-actions\[bot\]@users.noreply.github.com \
-      commit -m "release: v$version" \
+      commit -m "release: v$version [skip ci]" \
       -m "P4TG-Release-Of: $tested_sha" \
       -m "P4TG-Release-Version: $version"
     release_commit=$(git rev-parse HEAD)
