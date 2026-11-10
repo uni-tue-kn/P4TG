@@ -203,3 +203,47 @@ test("v2_4_0_offline_controller_crash", async ({ page }) => {
     await expect(page.locator(".bi-wifi-off")).toBeVisible();
     expect(await page.evaluate(() => window.innerWidth)).toBe(390);
 });
+
+/** v2.8.5: Fixed the GUI going blank when hovering "Add stream" or "Add IMIX" on the Settings page. */
+test("v2_8_5_add_stream_hover_crash", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await mockReleaseCheck(page);
+    // Tofino 2 allows 15 streams: "Below" keeps both buttons enabled (no
+    // tooltip), "Full" reaches the limit so both tooltips must still render.
+    await seedConfigs(page, { Below: configuration(0) });
+    await page.route("**/api/**", async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path === "/api/online") return route.fulfill({ json: online });
+        if (path === "/api/ports") return route.fulfill({ json: ports });
+        if (path === "/api/trafficgen") return route.fulfill(idle);
+        return route.fulfill({ status: 404, json: { message: `unmocked ${path}` } });
+    });
+
+    await page.goto("/settings");
+    const addStream = page.getByRole("button", { name: /Add stream/ });
+    const addIMIX = page.getByRole("button", { name: /Add IMIX/ });
+    await expect(addStream).toBeEnabled();
+    for (const button of [addStream, addIMIX, addStream]) {
+        await button.hover();
+        // Outlast the tooltip fade so a broken transition end listener fires.
+        await page.waitForTimeout(500);
+        expect(errors).toEqual([]);
+    }
+    await expect(page.getByRole("tab", { name: /Below/ })).toBeVisible();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+
+    const full = configuration(0);
+    full.streams = Array.from({ length: 15 }, (_, index) => stream(index + 1));
+    full.stream_settings = full.streams.map(({ stream_id }) => setting(stream_id, 1, true));
+    // Init scripts run in registration order, so this one replaces "Below".
+    await seedConfigs(page, { Full: full });
+    await page.reload();
+    await expect(page.getByRole("tab", { name: /Full/ })).toBeVisible();
+    await expect(addStream).toBeDisabled();
+    await addStream.locator("..").hover();
+    await expect(page.getByRole("tooltip", { name: "Maximum number of streams reached" })).toBeVisible();
+    await addIMIX.locator("..").hover();
+    await expect(page.getByRole("tooltip", { name: /IMIX requires/ })).toBeVisible();
+    expect(errors).toEqual([]);
+});

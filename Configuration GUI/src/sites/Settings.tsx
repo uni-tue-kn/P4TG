@@ -2416,16 +2416,21 @@ const Settings = ({ p4tg_infos, showToast, expertMode }: {
                                     (() => {
                                         const reachedMax = streams.length >= maxStreams;
                                         const reachedIMIXLimit = streams.length + IMIX_STREAM_COUNT > maxStreams;
+                                        // Attach a tooltip only when there is a message. An empty
+                                        // fragment overlay receives the fade transition's ref, and
+                                        // React 19 fragment refs then hand react-bootstrap a
+                                        // FragmentInstance instead of a DOM node, which crashes the
+                                        // transition and unmounts the whole app on hover.
+                                        const withTooltip = (message: string | null, element: React.ReactElement) =>
+                                            message === null ? element : (
+                                                <OverlayTrigger placement="top" overlay={(props) => renderTooltip(props, message)}>
+                                                    {element}
+                                                </OverlayTrigger>
+                                            );
                                         return (
                                             <>
-                                                <OverlayTrigger
-                                                    placement="top"
-                                                    overlay={
-                                                        reachedMax
-                                                            ? (props) => renderTooltip(props, "Maximum number of streams reached")
-                                                            : <></>
-                                                    }
-                                                >
+                                                {withTooltip(
+                                                    reachedMax ? "Maximum number of streams reached" : null,
                                                     <span className="d-inline-block me-2" tabIndex={0}>
                                                         <Button
                                                             disabled={reachedMax}
@@ -2436,16 +2441,10 @@ const Settings = ({ p4tg_infos, showToast, expertMode }: {
                                                             <i className="bi bi-plus" /> Add stream
                                                         </Button>
                                                     </span>
-                                                </OverlayTrigger>
+                                                )}
                                                 {mode === GenerationMode.CBR ?
-                                                    <OverlayTrigger
-                                                        placement="top"
-                                                        overlay={
-                                                            reachedIMIXLimit
-                                                                ? (props) => renderTooltip(props, `IMIX requires ${IMIX_STREAM_COUNT} free stream slots.`)
-                                                                : <></>
-                                                        }
-                                                    >
+                                                    withTooltip(
+                                                        reachedIMIXLimit ? `IMIX requires ${IMIX_STREAM_COUNT} free stream slots.` : null,
                                                         <span className="d-inline-block" tabIndex={0}>
                                                             <Button
                                                                 disabled={reachedIMIXLimit}
@@ -2456,7 +2455,7 @@ const Settings = ({ p4tg_infos, showToast, expertMode }: {
                                                                 Add IMIX
                                                             </Button>
                                                         </span>
-                                                    </OverlayTrigger>
+                                                    )
                                                     : null}
                                             </>
                                         );
