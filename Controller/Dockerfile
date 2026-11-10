@@ -1,5 +1,5 @@
 ### === Stage 1: Build GUI === ###
-FROM node:23-bookworm AS gui-builder
+FROM node:26-bookworm AS gui-builder
 
 ARG path="/Configuration GUI"
 WORKDIR /app
@@ -21,7 +21,7 @@ RUN npm run build
 
 
 ### === Stage 2: Build Controller === ###
-FROM rust:1.91-bookworm AS controller-builder
+FROM rust:1.99-bookworm AS controller-builder
 
 ARG path="/Controller"
 WORKDIR /app
