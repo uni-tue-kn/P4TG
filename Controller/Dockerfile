@@ -1,5 +1,5 @@
 ### === Stage 1: Build GUI === ###
-FROM node:23-bookworm AS gui-builder
+FROM node:26-bookworm AS gui-builder
 
 ARG path="/Configuration GUI"
 WORKDIR /app
