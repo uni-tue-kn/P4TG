@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Create repository-scoped release app token
         id: release-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
