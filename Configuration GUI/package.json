@@ -12,7 +12,7 @@
     "@coreui/react": "^5.13.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.10",
+    "@testing-library/user-event": "^14.6.13",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
@@ -26,9 +26,9 @@
     "react-bootstrap": "^2.10.10",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.3.1",
-    "react-router-dom": "^7.18.2",
+    "react-router-dom": "^7.18.6",
     "sass": "^1.108.2",
-    "serve": "^14.2.6",
+    "serve": "^14.2.8",
     "styled-components": "^6.5.1"
   },
   "scripts": {
@@ -52,10 +52,10 @@
     ]
   },
   "devDependencies": {
-    "@playwright/test": "^1.65.0",
+    "@playwright/test": "^1.65.1",
     "@vitejs/plugin-react": "^6.0.5",
-    "@vitest/coverage-v8": "^5.1.0",
-    "jsdom": "^31.0.0",
+    "@vitest/coverage-v8": "^5.1.1",
+    "jsdom": "^31.0.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
